@@ -2,9 +2,11 @@ package main
 
 import (
 	"fmt"
+	"html"
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 func home(w http.ResponseWriter, r *http.Request) {
@@ -31,7 +33,7 @@ func jobForm(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Method == http.MethodPost {
-		jobURL := r.FormValue("job_url")
+		jobURL := r.FormValue(strings.TrimSpace("job_url"))
 
 		parsed, err := url.Parse(jobURL)
 
@@ -43,10 +45,18 @@ func jobForm(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		fmt.Fprintf(w, "Received: %s", jobURL)
+		fmt.Fprintf(w, `
+			<h1>Job URL Validated</h1>
+			<p>URL: %s</p>
+			<p>Host: %s</p>
+			<a href="/jobs">Add another job</a>
+		`,
+			html.EscapeString(jobURL),
+			html.EscapeString(parsed.Hostname()),
+		)
 		return
 	}
-
+	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 }
 
 func main() {
