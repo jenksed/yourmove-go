@@ -87,6 +87,15 @@ func (a *App) jobForm(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		if jobTitle == "" && supportedMetadataURL(jobURL) {
+			extractedTitle, err := fetchJobTitle(r.Context(), jobURL)
+			if err != nil {
+				log.Printf("extract job title: %v", err)
+			} else {
+				jobTitle = extractedTitle
+			}
+		}
+
 		job := Job{
 			URL:   jobURL,
 			Host:  parsed.Hostname(),

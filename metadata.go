@@ -1,0 +1,138 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
+
+	"golang.org/x/net/html"
+)
+
+type jobPosting struct {
+	Type  string `json:"@type"`
+	Title string `json:"title"`
+}
+
+func fetchJobTitle(ctx context.Context, jobURL string) (string, error) {
+	if !supportedMetadataURL(jobURL) {
+		return "", fmt.Errorf("metadata extraction not supported for URL")
+	}
+
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if !supportedMetadataURL(req.URL.String()) {
+				return fmt.Errorf("metadata redirect to unsupported host")
+			}
+			if len(via) >= 5 {
+				return fmt.Errorf("too many metadata redirects")
+			}
+			return nil
+		},
+	}
+
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodGet,
+		jobURL,
+		nil,
+	)
+	if err != nil {
+		return "", fmt.Errorf("create metadata request: %w", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("fetch job metadata: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("job page returned HTTP %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1024*1024+1))
+	if err != nil {
+		return "", fmt.Errorf("read job metadata: %w", err)
+	}
+
+	if len(body) > 1024*1024 {
+		return "", fmt.Errorf("job metadata exceeds 1 MiB")
+	}
+
+	return extractJobTitle(bytes.NewReader(body))
+}
+
+func extractJobTitle(r io.Reader) (string, error) {
+	tokenizer := html.NewTokenizer(r)
+
+	for {
+		tokenType := tokenizer.Next()
+
+		if tokenType == html.ErrorToken {
+			if tokenizer.Err() == io.EOF {
+				break
+			}
+			return "", fmt.Errorf("parse HTML: %w", tokenizer.Err())
+		}
+
+		if tokenType != html.StartTagToken {
+			continue
+		}
+
+		token := tokenizer.Token()
+
+		if token.Data != "script" {
+			continue
+		}
+
+		isJSONLD := false
+
+		for _, attr := range token.Attr {
+			if attr.Key == "type" &&
+				strings.EqualFold(attr.Val, "application/ld+json") {
+				isJSONLD = true
+				break
+			}
+		}
+
+		if !isJSONLD {
+			continue
+		}
+
+		if tokenizer.Next() != html.TextToken {
+			continue
+		}
+
+		var posting jobPosting
+
+		if err := json.Unmarshal(tokenizer.Text(), &posting); err != nil {
+			continue
+		}
+
+		if posting.Type == "JobPosting" &&
+			strings.TrimSpace(posting.Title) != "" {
+			return strings.TrimSpace(posting.Title), nil
+		}
+	}
+
+	return "", fmt.Errorf("no JobPosting title found")
+}
+
+func supportedMetadataURL(rawURL string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+
+	return u.Scheme == "https" &&
+		u.Hostname() == "2000recruiting.paylocity.com" &&
+		u.User == nil &&
+		u.Port() == ""
+}
