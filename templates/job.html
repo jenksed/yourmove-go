@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{if .Title}}{{.Title}}{{else}}Saved Job{{end}} — YourMove</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <header class="site-header">
+        <div class="site-header-inner">
+            <a class="brand" href="/jobs" aria-label="YourMove home">
+                <img class="brand-logo" src="/static/yourmove-logo.png" alt="YourMove">
+            </a>
+            <span class="header-caption">Your application workspace</span>
+        </div>
+    </header>
+    <main class="page-container">
+        <a class="back-link" href="/jobs">← Back to saved jobs</a>
+        <div class="page-intro">
+            <p class="eyebrow">JOB DETAILS</p>
+            <h1>{{if .Title}}{{.Title}}{{else}}Untitled job{{end}}</h1>
+            <p class="muted">Source: {{.Host}}</p>
+            <a class="text-link" href="{{.URL}}" target="_blank" rel="noopener noreferrer">View original posting ↗</a>
+        </div>
+        <section class="panel" aria-labelledby="job-description-title">
+            <h2 id="job-description-title">Job description</h2>
+            {{if .Description}}
+            <div class="description">{{.Description}}</div>
+            {{else}}
+            <p class="muted">No description available.</p>
+            {{end}}
+        </section>
+    </main>
+</body>
+</html>

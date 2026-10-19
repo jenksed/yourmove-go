@@ -1,56 +1,28 @@
 package main
 
 import (
-	"fmt"
+	"database/sql"
+	"errors"
 	"html/template"
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
+
+	"example.com/yourmove-lite/internal/platforms"
 )
 
-var jobsTemplate = template.Must(template.New("jobs").Parse(`
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>YourMove — Saved Jobs</title>
-</head>
-<body>
-    <h1>Add a Job</h1>
+var jobsTemplate = template.Must(
+	template.ParseFiles("templates/jobs.html"),
+)
 
-    <form method="POST" action="/jobs">
-        <label for="job_url">Job URL</label>
-        <input id="job_url" name="job_url" type="url" required>
-		<label for="job_title">Job Title (optional)</label>
-		<input id="job_title" name="job_title" type="text">
-        <button type="submit">Add Job</button>
-    </form>
-
-    <h2>Saved Jobs</h2>
-    <ul>
-        {{range .}}
-            <li>
-                <a href="{{.URL}}" target="_blank" rel="noopener noreferrer">
-					{{if .Title}}
-						{{.Title}}
-					{{else}}
-						{{.URL}}
-					{{end}}
-				</a>
-				({{.Host}})
-            </li>
-        {{else}}
-            <li>No saved jobs yet.</li>
-        {{end}}
-    </ul>
-</body>
-</html>
-`))
+var jobDetailTemplate = template.Must(
+	template.ParseFiles("templates/job.html"),
+)
 
 func home(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "<h1>YourMove — Job Tracker</h1>")
-	fmt.Fprint(w, "<h2>Let's GOOOOOOO</h2>")
+	http.Redirect(w, r, "/jobs", http.StatusSeeOther)
 }
 
 func (a *App) jobForm(w http.ResponseWriter, r *http.Request) {
@@ -87,19 +59,28 @@ func (a *App) jobForm(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if jobTitle == "" && supportedMetadataURL(jobURL) {
-			extractedTitle, err := fetchJobTitle(r.Context(), jobURL)
-			if err != nil {
-				log.Printf("extract job title: %v", err)
-			} else {
-				jobTitle = extractedTitle
+		jobDescription := ""
+
+		metadata, err := platforms.FetchJob(r.Context(), jobURL)
+
+		switch {
+		case errors.Is(err, platforms.ErrUnsupported):
+			// Unsupported platforms can still be saved.
+		case err != nil:
+			log.Printf("extract job metadata: %v", err)
+		default:
+			jobDescription = metadata.Description
+
+			if jobTitle == "" {
+				jobTitle = metadata.Title
 			}
 		}
 
 		job := Job{
-			URL:   jobURL,
-			Host:  parsed.Hostname(),
-			Title: jobTitle,
+			URL:         jobURL,
+			Host:        parsed.Hostname(),
+			Title:       jobTitle,
+			Description: jobDescription,
 		}
 
 		if err := a.saveJob(job); err != nil {
@@ -112,4 +93,31 @@ func (a *App) jobForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+}
+
+func (a *App) jobDetail(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		http.NotFound(w, r)
+		return
+	}
+
+	job, err := a.jobByID(id)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		http.NotFound(w, r)
+		return
+	}
+
+	if err != nil {
+		log.Printf("load job detail: %v", err)
+		http.Error(w, "Unable to load job", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+	if err := jobDetailTemplate.Execute(w, job); err != nil {
+		log.Printf("render job detail: %v", err)
+	}
 }

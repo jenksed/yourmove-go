@@ -29,7 +29,8 @@ func main() {
 			id INTEGER PRIMARY KEY,
 			url TEXT NOT NULL,
 			host TEXT NOT NULL,
-			title TEXT NOT NULL DEFAULT ''
+			title TEXT NOT NULL DEFAULT '',
+			description TEXT NOT NULL DEFAULT ''
 		)
 	`)
 	if err != nil {
@@ -42,6 +43,7 @@ func main() {
 	}
 
 	hasTitle := false
+	hasDescription := false
 
 	for rows.Next() {
 		var cid int
@@ -66,6 +68,10 @@ func main() {
 		if name == "title" {
 			hasTitle = true
 		}
+
+		if name == "description" {
+			hasDescription = true
+		}
 	}
 
 	if err := rows.Err(); err != nil {
@@ -86,10 +92,22 @@ func main() {
 		}
 	}
 
+	if !hasDescription {
+		_, err := db.Exec(`
+			ALTER TABLE jobs
+			ADD COLUMN description TEXT NOT NULL DEFAULT ''
+		`)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
 	app := &App{db: db}
 
+	http.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 	http.HandleFunc("/", home)
 	http.HandleFunc("/jobs", app.jobForm)
+	http.HandleFunc("GET /jobs/{id}", app.jobDetail)
 
 	fmt.Println("Open http://127.0.0.1:3000")
 

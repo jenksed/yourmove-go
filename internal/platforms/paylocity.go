@@ -1,4 +1,4 @@
-package main
+package platforms
 
 import (
 	"bytes"
@@ -15,13 +15,14 @@ import (
 )
 
 type jobPosting struct {
-	Type  string `json:"@type"`
-	Title string `json:"title"`
+	Type        string `json:"@type"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
 }
 
-func fetchJobTitle(ctx context.Context, jobURL string) (string, error) {
+func fetchJobMetadata(ctx context.Context, jobURL string) (Metadata, error) {
 	if !supportedMetadataURL(jobURL) {
-		return "", fmt.Errorf("metadata extraction not supported for URL")
+		return Metadata{}, fmt.Errorf("metadata extraction not supported for URL")
 	}
 
 	client := &http.Client{
@@ -44,32 +45,32 @@ func fetchJobTitle(ctx context.Context, jobURL string) (string, error) {
 		nil,
 	)
 	if err != nil {
-		return "", fmt.Errorf("create metadata request: %w", err)
+		return Metadata{}, fmt.Errorf("create metadata request: %w", err)
 	}
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("fetch job metadata: %w", err)
+		return Metadata{}, fmt.Errorf("fetch job metadata: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("job page returned HTTP %d", resp.StatusCode)
+		return Metadata{}, fmt.Errorf("job page returned HTTP %d", resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1024*1024+1))
 	if err != nil {
-		return "", fmt.Errorf("read job metadata: %w", err)
+		return Metadata{}, fmt.Errorf("read job metadata: %w", err)
 	}
 
 	if len(body) > 1024*1024 {
-		return "", fmt.Errorf("job metadata exceeds 1 MiB")
+		return Metadata{}, fmt.Errorf("job metadata exceeds 1 MiB")
 	}
 
-	return extractJobTitle(bytes.NewReader(body))
+	return extractJobMetadata(bytes.NewReader(body))
 }
 
-func extractJobTitle(r io.Reader) (string, error) {
+func extractJobMetadata(r io.Reader) (Metadata, error) {
 	tokenizer := html.NewTokenizer(r)
 
 	for {
@@ -79,7 +80,7 @@ func extractJobTitle(r io.Reader) (string, error) {
 			if tokenizer.Err() == io.EOF {
 				break
 			}
-			return "", fmt.Errorf("parse HTML: %w", tokenizer.Err())
+			return Metadata{}, fmt.Errorf("parse HTML: %w", tokenizer.Err())
 		}
 
 		if tokenType != html.StartTagToken {
@@ -116,13 +117,15 @@ func extractJobTitle(r io.Reader) (string, error) {
 			continue
 		}
 
-		if posting.Type == "JobPosting" &&
-			strings.TrimSpace(posting.Title) != "" {
-			return strings.TrimSpace(posting.Title), nil
+		if posting.Type == "JobPosting" {
+			return Metadata{
+				Title:       strings.TrimSpace(posting.Title),
+				Description: strings.TrimSpace(posting.Description),
+			}, nil
 		}
 	}
 
-	return "", fmt.Errorf("no JobPosting title found")
+	return Metadata{}, fmt.Errorf("no JobPosting metadata found")
 }
 
 func supportedMetadataURL(rawURL string) bool {
