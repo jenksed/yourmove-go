@@ -18,6 +18,12 @@ func FetchJob(ctx context.Context, jobURL string) (Metadata, error) {
 		return fetchAshby(ctx, board, postingID)
 	}
 
+	if board, jobID, err := parseGreenhouseURL(jobURL); err == nil {
+		return fetchGreenhouse(ctx, postingClient(), board, jobID)
+	}
+	if site, postingID, apiHost, err := parseLeverURL(jobURL); err == nil {
+		return fetchLever(ctx, postingClient(), site, postingID, apiHost)
+	}
 	if supportedMetadataURL(jobURL) {
 		return fetchJobMetadata(ctx, jobURL)
 	}
