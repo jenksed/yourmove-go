@@ -3,15 +3,17 @@ package main
 import "fmt"
 
 type Job struct {
-	URL  string
-	Host string
+	Title string
+	URL   string
+	Host  string
 }
 
 func (a *App) saveJob(job Job) error {
 	_, err := a.db.Exec(
-		"INSERT INTO jobs (url, host) VALUES (?, ?)",
+		"INSERT INTO jobs (url, host, title) VALUES (?, ?, ?)",
 		job.URL,
 		job.Host,
+		job.Title,
 	)
 
 	if err != nil {
@@ -23,7 +25,7 @@ func (a *App) saveJob(job Job) error {
 
 func (a *App) allJobs() ([]Job, error) {
 	rows, err := a.db.Query(
-		"SELECT url, host FROM jobs ORDER BY id",
+		"SELECT url, host, title FROM jobs ORDER BY id",
 	)
 	if err != nil {
 		return nil, fmt.Errorf("query jobs: %w", err)
@@ -34,7 +36,7 @@ func (a *App) allJobs() ([]Job, error) {
 	for rows.Next() {
 		var job Job
 
-		err := rows.Scan(&job.URL, &job.Host)
+		err := rows.Scan(&job.URL, &job.Host, &job.Title)
 		if err != nil {
 			return nil, fmt.Errorf("scan job: %w", err)
 		}

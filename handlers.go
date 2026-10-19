@@ -22,6 +22,8 @@ var jobsTemplate = template.Must(template.New("jobs").Parse(`
     <form method="POST" action="/jobs">
         <label for="job_url">Job URL</label>
         <input id="job_url" name="job_url" type="url" required>
+		<label for="job_title">Job Title (optional)</label>
+		<input id="job_title" name="job_title" type="text">
         <button type="submit">Add Job</button>
     </form>
 
@@ -30,9 +32,13 @@ var jobsTemplate = template.Must(template.New("jobs").Parse(`
         {{range .}}
             <li>
                 <a href="{{.URL}}" target="_blank" rel="noopener noreferrer">
-                    {{.URL}}
-                </a>
-                ({{.Host}})
+					{{if .Title}}
+						{{.Title}}
+					{{else}}
+						{{.URL}}
+					{{end}}
+				</a>
+				({{.Host}})
             </li>
         {{else}}
             <li>No saved jobs yet.</li>
@@ -69,6 +75,7 @@ func (a *App) jobForm(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodPost {
 		jobURL := strings.TrimSpace(r.FormValue("job_url"))
+		jobTitle := strings.TrimSpace(r.FormValue("job_title"))
 
 		parsed, err := url.Parse(jobURL)
 
@@ -81,8 +88,9 @@ func (a *App) jobForm(w http.ResponseWriter, r *http.Request) {
 		}
 
 		job := Job{
-			URL:  jobURL,
-			Host: parsed.Hostname(),
+			URL:   jobURL,
+			Host:  parsed.Hostname(),
+			Title: jobTitle,
 		}
 
 		if err := a.saveJob(job); err != nil {
