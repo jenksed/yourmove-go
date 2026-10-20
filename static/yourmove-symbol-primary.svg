@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="141" height="151" viewBox="0 0 141 151" role="img" aria-label="YourMove logo">
+<defs>
+  <linearGradient id="rearGrad" x1="0" x2="1" y1="1" y2="0"><stop offset="0" stop-color="#17191B"/><stop offset="0.5" stop-color="#4E5051"/><stop offset="1" stop-color="#9A9C9D"/></linearGradient>
+  <linearGradient id="midGrad" x1="0" x2="1" y1="1" y2="0"><stop offset="0" stop-color="#64676A"/><stop offset="0.5" stop-color="#A2A5A6"/><stop offset="1" stop-color="#E1E2E1"/></linearGradient>
+  <linearGradient id="nearGrad" x1="0" x2="1" y1="1" y2="0"><stop offset="0" stop-color="#B1B2B3"/><stop offset="1" stop-color="#E7E7E5"/></linearGradient>
+</defs>
+<g transform="translate(8 5)">
+    <path d="M64 3 Q64 -2 71 2 L117 34 Q121 37 121 43 L121 135 Q121 141 116 139 L108 134 Q105 132 105 127 L105 52 Q105 47 101 44 L64 19 Q61 17 61 12 L61 8 Q61 4 64 3 Z" fill="url(#rearGrad)"/>
+    <path d="M50 24 Q50 18 56 19 L96 47 Q101 51 101 57 L101 139 Q101 144 96 143 L89 139 Q85 137 85 131 L85 68 Q85 63 81 60 L50 39 Q47 37 47 32 L47 28 Q47 25 50 24 Z" fill="url(#midGrad)"/>
+    <path d="M33 28 Q34 23 40 27 L77 53 Q82 57 82 63 L82 139 Q82 144 77 142 L70 138 Q66 136 66 130 L66 76 Q66 72 62 69 L33 48 Q30 46 30 41 L30 34 Q30 30 33 28 Z" fill="url(#nearGrad)"/>
+    <path d="M5 41 Q5 35 11 35 Q14 35 17 37 L58 66 Q63 70 63 76 L63 138 L27 99 L27 139 L5 139 Z" fill="#101011"/>
+    </g>
+</svg>

@@ -1,63 +1,58 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>YourMove — Saved Jobs</title>
-    <link rel="stylesheet" href="/static/styles.css">
-</head>
-<body>
-    <header class="site-header">
-        <div class="site-header-inner">
-            <a class="brand" href="/jobs" aria-label="YourMove home">
-                <img class="brand-logo" src="/static/yourmove-logo.png" alt="YourMove">
-            </a>
-            <span class="header-caption">Your application workspace</span>
-        </div>
-    </header>
-    <main class="page-container">
-        <div class="page-intro">
-            <p class="eyebrow">JOB OPPORTUNITIES</p>
-            <h1>Saved jobs</h1>
-            <p class="muted">Keep your opportunities organized and ready for application.</p>
-        </div>
-
-        <section class="panel" aria-labelledby="add-job-title">
-            <h2 id="add-job-title">Add an opportunity</h2>
-            <form class="job-form" method="POST" action="/jobs">
-                <div class="field">
-                    <label for="job_url">Job posting URL</label>
-                    <input id="job_url" name="job_url" type="url" placeholder="https://jobs.ashbyhq.com/..." required>
-                </div>
-                <div class="field">
-                    <label for="job_title">Job title <span class="muted">(optional)</span></label>
-                    <input id="job_title" name="job_title" type="text" placeholder="Extracted automatically when available">
-                </div>
-                <div class="form-actions">
-                    <button class="button button-primary" type="submit">Add job</button>
-                </div>
-            </form>
-        </section>
-
-        <section class="panel" aria-labelledby="saved-jobs-title">
-            <h2 id="saved-jobs-title">Opportunities</h2>
-            <ul class="job-list">
-                {{range .}}
-                <li class="job-row">
-                    <div class="job-info">
-                        <a class="job-title" href="/jobs/{{.ID}}">{{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}}</a>
-                        <span class="job-host">{{.Host}}</span>
-                    </div>
-                    <div class="job-actions">
-                        <a class="text-link" href="/jobs/{{.ID}}">Details</a>
-                        <a class="text-link" href="{{.URL}}" target="_blank" rel="noopener noreferrer">Original ↗</a>
-                    </div>
-                </li>
-                {{else}}
-                <li class="empty-state">No saved jobs yet. Add a posting URL above to get started.</li>
-                {{end}}
-            </ul>
-        </section>
-    </main>
-</body>
-</html>
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f7f7f4"><title>Opportunities · YourMove</title><link rel="stylesheet" href="/static/styles.css"><script defer src="/static/ui.js"></script></head><body>
+{{template "shell-open" "jobs"}}
+<div class="page-heading">
+  <div><p class="eyebrow">YOUR OPPORTUNITIES</p><h1>Find your next move.</h1><p class="page-description">Track what matters, prepare your documents, and decide when to apply.</p></div>
+  <div class="heading-actions"><a class="button button-secondary" href="/resumes">Document library</a><a class="button button-primary" href="#add-opportunity" data-open-add>+ Add opportunity</a></div>
+</div>
+<section class="stats-strip" aria-label="Opportunity summary">
+  <div class="stat"><span class="stat-label">Saved opportunities</span><strong>{{.Total}}</strong><span class="stat-help">Across your workspace</span></div>
+  <div class="stat"><span class="stat-label">Ready to apply</span><strong>{{.Ready}}</strong><span class="stat-help">Marked ready by you</span></div>
+  <div class="stat"><span class="stat-label">Applications recorded</span><strong>{{.Applied}}</strong><span class="stat-help">Jobs with submissions</span></div>
+</section>
+{{if .Next}}
+<section class="panel next-card" aria-labelledby="next-move-title"><div><p class="eyebrow">SUGGESTED NEXT MOVE · LOCAL PRIORITY</p><h2 id="next-move-title">{{.Next.Title}}</h2><p class="section-subtitle">{{.Next.Company}} · {{.Next.Reason}}</p></div><a class="button button-primary" href="{{.Next.Href}}">{{.Next.Label}} <span aria-hidden="true">→</span></a></section>
+{{end}}
+<details class="panel create-panel" id="add-opportunity">
+  <summary><span class="summary-icon">+</span><span><strong>Add an opportunity</strong><small>Save a job posting and fetch supported metadata.</small></span><span class="summary-chevron" aria-hidden="true">⌄</span></summary>
+  <div class="create-body"><form class="job-form" method="POST" action="/jobs">
+    <div class="field"><label for="job_url">Job posting URL</label><input id="job_url" name="job_url" type="url" placeholder="https://jobs.ashbyhq.com/..." required autocomplete="url"></div>
+    <div class="field"><label for="job_title">Job title <span class="muted">(optional)</span></label><input id="job_title" name="job_title" type="text" placeholder="Fetched automatically when available" maxlength="200"></div>
+    <div class="form-actions"><button class="button button-primary" type="submit">Save opportunity</button></div>
+  </form><details class="batch-disclosure"><summary><strong>Import multiple job URLs</strong><span class="muted">Up to 50 at once</span></summary>
+<form method="POST" action="/jobs/import" class="job-form batch-import-form"><div class="field field-full"><label for="job_urls">One job posting URL per line</label><textarea id="job_urls" name="job_urls" rows="7" maxlength="128000" placeholder="https://jobs.ashbyhq.com/...&#10;https://jobs.lever.co/..." required></textarea><small>Duplicates are skipped. Batch import saves URLs locally; use Posting checks to retrieve supported details without opening each job.</small></div><div class="form-actions"><button class="button button-secondary" type="submit">Import opportunities</button></div></form>
+</details></div>
+</details>
+<section class="panel list-panel" aria-labelledby="saved-jobs-title">
+  <div class="section-heading"><div><h2 id="saved-jobs-title">Opportunities</h2><p class="section-subtitle" id="results-status" role="status" aria-live="polite">{{.Total}} saved</p></div></div>
+  <div class="list-toolbar" data-job-filters><div class="field search-field"><label for="job-search">Search opportunities</label><input id="job-search" type="search" placeholder="Role, company or source" autocomplete="off" data-job-search></div>
+    <div class="field select-field"><label for="job-stage-filter">Stage</label><select id="job-stage-filter" data-job-stage><option value="all">All stages</option><option value="review">Review</option><option value="ready">Ready to apply</option><option value="applied">Applied</option><option value="closed">Closed</option></select></div>
+    <div class="field select-field"><label for="job-sort">Order</label><select id="job-sort" data-job-sort><option value="priority">Priority &amp; next steps</option><option value="newest">Recently saved</option><option value="company">Company A–Z</option></select></div>
+  </div>
+  <form method="POST" action="/jobs/delete" class="bulk-delete-form" aria-label="Delete selected test or unwanted jobs">
+  <div class="job-list" data-job-list>
+    {{range .Jobs}}
+    <article class="job-row" data-job-row data-stage="{{.Stage}}" data-priority="{{.Priority}}" data-order="{{.ID}}" data-company="{{.Company}}" data-search="{{.Title}} {{.Company}} {{.Host}}">
+      <label class="job-select"><input type="checkbox" name="job_ids" value="{{.ID}}" aria-label="Select {{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}} for deletion" {{if gt .SubmissionCount 0}}disabled title="Submitted job: remove individually from its workspace"{{end}}></label>
+      <div class="job-row-body"><div class="job-row-meta"><span class="company-label">{{if .Company}}{{.Company}}{{else}}{{.Host}}{{end}}</span>{{template "status-badge" .}}{{template "priority-badge" .}}</div>
+        <h3><a class="job-title" href="/jobs/{{.ID}}">{{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}}</a></h3>
+        <p class="job-row-detail">{{if gt .SelectedResumeID 0}}Resume selected{{else}}{{with index $.Matches .ID}}{{if eq .Status "matched"}}Suggested: {{.ResumeName}}{{else}}No resume selected{{end}}{{else}}No resume selected{{end}}{{end}} <span class="dot-sep" aria-hidden="true">·</span> {{.ActionLabel}}</p>
+      </div>
+      <div class="job-row-actions">{{if $.Desktop}}<button type="submit" form="open-posting-{{.ID}}" class="text-link row-secondary posting-open-button">Posting ↗</button>{{else}}<a class="text-link row-secondary" href="{{.URL}}" target="_blank" rel="noopener noreferrer">Posting ↗</a>{{end}}<a class="button button-secondary row-primary" href="/jobs/{{.ID}}">Open workspace <span aria-hidden="true">→</span></a></div>
+    </article>
+    {{else}}
+    <div class="empty-state"><div class="empty-mark" aria-hidden="true">↗</div><h3>No opportunities yet</h3><p>Start by saving a job posting. YourMove will keep the details together.</p><a href="#add-opportunity" class="button button-primary" data-open-add>Save your first job</a></div>
+    {{end}}
+  </div>
+  {{if .Jobs}}<details class="bulk-remove"><summary>Delete selected jobs <span class="muted">(test and unwanted records)</span></summary>
+     <div class="bulk-remove-body"><p class="confirmation-note">Permanent deletion. Jobs with confirmed submissions are excluded here; remove them individually from their workspace.</p>
+       <div class="field"><label for="delete_selected_phrase">Type DELETE to confirm</label><input id="delete_selected_phrase" name="confirm_phrase" required pattern="DELETE" autocomplete="off"></div>
+       <label class="confirm-row"><input type="checkbox" name="confirm" value="yes" required><span>I want to permanently remove the selected jobs.</span></label>
+       <button class="button button-danger" type="submit">Delete selected jobs</button>
+     </div></details>{{end}}
+  </form>
+  {{if .Desktop}}{{range .Jobs}}<form id="open-posting-{{.ID}}" method="POST" action="/jobs/{{.ID}}/open"></form>{{end}}{{end}}
+  {{if .Jobs}}<div class="empty-state" id="filtered-empty" hidden><h3>No matching opportunities</h3><p>Try a different search or stage.</p><button class="button button-secondary" type="button" data-clear-filters>Clear filters</button></div>{{end}}
+</section>
+{{template "shell-close" .}}
+</body></html>

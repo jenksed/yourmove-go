@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -32,10 +34,38 @@ func parseLeverURL(rawURL string) (site, postingID, apiHost string, err error) {
 	return parts[0], parts[1], apiHost, nil
 }
 
+type leverSalaryRange struct {
+	Currency string  `json:"currency"`
+	Interval string  `json:"interval"`
+	Min      float64 `json:"min"`
+	Max      float64 `json:"max"`
+}
+
+func (r *leverSalaryRange) display() string {
+	if r == nil || r.Min <= 0 || r.Max < r.Min || math.IsNaN(r.Min) || math.IsNaN(r.Max) || math.IsInf(r.Min, 0) || math.IsInf(r.Max, 0) ||
+		r.Currency == "" || r.Interval == "" || len(r.Currency) != 3 {
+		return ""
+	}
+	for _, c := range r.Currency {
+		if c < 'A' || c > 'Z' {
+			return ""
+		}
+	}
+	// Preserve the vendor interval instead of guessing annual versus hourly pay.
+	amount := func(v float64) string { return strconv.FormatFloat(v, 'f', -1, 64) }
+	return r.Currency + " " + amount(r.Min) + "–" + amount(r.Max) + " / " + r.Interval
+}
+
 type leverPosting struct {
-	Text             string `json:"text"`
-	DescriptionPlain string `json:"descriptionPlain"`
-	AdditionalPlain  string `json:"additionalPlain"`
+	Text             string            `json:"text"`
+	DescriptionPlain string            `json:"descriptionPlain"`
+	DescriptionHTML  string            `json:"description"`
+	DescriptionBody  string            `json:"descriptionBody"`
+	OpeningPlain     string            `json:"openingPlain"`
+	OpeningHTML      string            `json:"opening"`
+	AdditionalPlain  string            `json:"additionalPlain"`
+	AdditionalHTML   string            `json:"additional"`
+	SalaryRange      *leverSalaryRange `json:"salaryRange"`
 	Lists            []struct {
 		Text    string `json:"text"`
 		Content string `json:"content"`
@@ -56,18 +86,45 @@ func fetchLever(ctx context.Context, client *http.Client, site, postingID, apiHo
 	if strings.TrimSpace(posting.Text) == "" {
 		return Metadata{}, fmt.Errorf("Lever posting has no title")
 	}
-	sections := []string{strings.TrimSpace(posting.DescriptionPlain)}
+	description := strings.TrimSpace(posting.DescriptionPlain)
+	if description == "" {
+		// Published Lever postings sometimes omit the plain-text field while
+		// still returning the populated HTML description.
+		description = descriptionText(posting.DescriptionHTML)
+	}
+	if description == "" {
+		description = strings.TrimSpace(posting.OpeningPlain)
+		if description == "" {
+			description = descriptionText(posting.OpeningHTML)
+		}
+		if body := descriptionText(posting.DescriptionBody); body != "" {
+			if description != "" {
+				description += "\n\n"
+			}
+			description += body
+		}
+	}
+	sections := []string{}
+	if description != "" {
+		sections = append(sections, description)
+	}
 	for _, list := range posting.Lists {
 		content := descriptionText(list.Content)
 		if content != "" {
 			sections = append(sections, strings.TrimSpace(list.Text)+"\n"+content)
 		}
 	}
-	if additional := strings.TrimSpace(posting.AdditionalPlain); additional != "" {
+	additional := strings.TrimSpace(posting.AdditionalPlain)
+	if additional == "" {
+		additional = descriptionText(posting.AdditionalHTML)
+	}
+	if additional != "" {
 		sections = append(sections, additional)
 	}
 	return Metadata{
 		Title:       strings.TrimSpace(posting.Text),
+		Company:     boardNameSuggestion(site),
 		Description: strings.TrimSpace(strings.Join(sections, "\n\n")),
+		SalaryText:  posting.SalaryRange.display(),
 	}, nil
 }

@@ -30,7 +30,7 @@ func TestExtractJobMetadata(t *testing.T) {
 		t.Errorf("title = %q, want %q", metadata.Title, want)
 	}
 
-	if want := "<p>Description</p><p>Paylocity is...</p>"; metadata.Description != want {
+	if want := "Description\nPaylocity is..."; metadata.Description != want {
 		t.Errorf("description = %q, want %q", metadata.Description, want)
 	}
 }

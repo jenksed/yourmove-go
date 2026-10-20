@@ -4,11 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"strings"
-	"time"
 )
 
 func parseAshbyURL(rawURL string) (board, postingID string, err error) {
@@ -26,11 +23,29 @@ func parseAshbyURL(rawURL string) (board, postingID string, err error) {
 
 	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
 
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", "", fmt.Errorf("invalid Ashby posting path")
+	if len(parts) != 2 || !safeToken(parts[0]) || !ashbyUUID(parts[1]) {
+		return "", "", fmt.Errorf("invalid Ashby posting URL: expected full posting UUID")
 	}
 
 	return parts[0], parts[1], nil
+}
+
+func ashbyUUID(id string) bool {
+	if len(id) != 36 {
+		return false
+	}
+	for i, c := range id {
+		if i == 8 || i == 13 || i == 18 || i == 23 {
+			if c != '-' {
+				return false
+			}
+			continue
+		}
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
 }
 
 type ashbyBoard struct {
@@ -38,6 +53,11 @@ type ashbyBoard struct {
 		ID               string `json:"id"`
 		Title            string `json:"title"`
 		DescriptionPlain string `json:"descriptionPlain"`
+		DescriptionHTML  string `json:"descriptionHtml"`
+		JobURL           string `json:"jobUrl"`
+		Compensation     *struct {
+			SalarySummary string `json:"scrapeableCompensationSalarySummary"`
+		} `json:"compensation"`
 	} `json:"jobs"`
 }
 
@@ -49,10 +69,26 @@ func extractAshbyMetadata(data []byte, postingID string) (Metadata, error) {
 	}
 
 	for _, job := range board.Jobs {
-		if job.ID == postingID {
+		match := job.ID == postingID
+		if !match && job.JobURL != "" {
+			if u, err := url.Parse(job.JobURL); err == nil && u.Hostname() == "jobs.ashbyhq.com" {
+				parts := pathSegments(u.Path)
+				match = len(parts) == 2 && parts[1] == postingID
+			}
+		}
+		if match {
+			salary := ""
+			if job.Compensation != nil {
+				salary = strings.TrimSpace(job.Compensation.SalarySummary)
+			}
+			description := strings.TrimSpace(job.DescriptionPlain)
+			if description == "" {
+				description = descriptionText(job.DescriptionHTML)
+			}
 			return Metadata{
 				Title:       job.Title,
-				Description: job.DescriptionPlain,
+				Description: description,
+				SalaryText:  salary,
 			}, nil
 		}
 	}
@@ -62,37 +98,18 @@ func extractAshbyMetadata(data []byte, postingID string) (Metadata, error) {
 
 func fetchAshby(ctx context.Context, board, postingID string) (Metadata, error) {
 	apiURL := "https://api.ashbyhq.com/posting-api/job-board/" +
-		url.PathEscape(board)
+		url.PathEscape(board) + "?includeCompensation=true"
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
-	if err != nil {
-		return Metadata{}, fmt.Errorf("create Ashby request: %w", err)
-	}
-
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
-
-	resp, err := client.Do(req)
+	// Unlike Lever/Greenhouse, this API returns every posting on the board.
+	// 32 MiB remains bounded but accommodates larger employers.
+	body, err := getPostingJSONLimited(ctx, postingClient(), apiURL, 32<<20)
 	if err != nil {
 		return Metadata{}, fmt.Errorf("fetch Ashby board: %w", err)
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return Metadata{}, fmt.Errorf("Ashby API returned HTTP %d", resp.StatusCode)
-	}
-
-	const maxBytes = 4 << 20 // 4 MiB
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
+	meta, err := extractAshbyMetadata(body, postingID)
 	if err != nil {
-		return Metadata{}, fmt.Errorf("read Ashby response: %w", err)
+		return Metadata{}, err
 	}
-
-	if len(body) > maxBytes {
-		return Metadata{}, fmt.Errorf("Ashby response exceeds 4 MiB")
-	}
-
-	return extractAshbyMetadata(body, postingID)
+	meta.Company = boardNameSuggestion(board)
+	return meta, nil
 }

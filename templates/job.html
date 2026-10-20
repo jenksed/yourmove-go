@@ -1,36 +1,68 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{if .Title}}{{.Title}}{{else}}Saved Job{{end}} — YourMove</title>
-    <link rel="stylesheet" href="/static/styles.css">
-</head>
-<body>
-    <header class="site-header">
-        <div class="site-header-inner">
-            <a class="brand" href="/jobs" aria-label="YourMove home">
-                <img class="brand-logo" src="/static/yourmove-logo.png" alt="YourMove">
-            </a>
-            <span class="header-caption">Your application workspace</span>
-        </div>
-    </header>
-    <main class="page-container">
-        <a class="back-link" href="/jobs">← Back to saved jobs</a>
-        <div class="page-intro">
-            <p class="eyebrow">JOB DETAILS</p>
-            <h1>{{if .Title}}{{.Title}}{{else}}Untitled job{{end}}</h1>
-            <p class="muted">Source: {{.Host}}</p>
-            <a class="text-link" href="{{.URL}}" target="_blank" rel="noopener noreferrer">View original posting ↗</a>
-        </div>
-        <section class="panel" aria-labelledby="job-description-title">
-            <h2 id="job-description-title">Job description</h2>
-            {{if .Description}}
-            <div class="description">{{.Description}}</div>
-            {{else}}
-            <p class="muted">No description available.</p>
-            {{end}}
-        </section>
-    </main>
-</body>
-</html>
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f7f7f4"><title>{{if .Title}}{{.Title}}{{else}}Saved Job{{end}} · YourMove</title><link rel="stylesheet" href="/static/styles.css"><script defer src="/static/ui.js"></script></head><body>
+{{template "shell-open" "jobs"}}
+<nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/jobs">Opportunities</a><span aria-hidden="true">/</span><span>{{if .Company}}{{.Company}}{{else}}{{.Host}}{{end}}</span></nav>
+<header class="job-hero"><div class="job-hero-main"><p class="eyebrow">JOB WORKSPACE</p><h1>{{if .Title}}{{.Title}}{{else}}Untitled job{{end}}</h1><p class="page-description">{{if .Company}}{{.Company}}{{else}}{{.Host}}{{end}} <span class="dot-sep">·</span> {{.Host}}</p><div class="hero-tags">{{template "status-badge" .}}{{template "priority-badge" .}}{{if .SalaryText}}<span class="salary-tag">{{.SalaryText}}</span>{{end}}</div></div><div class="heading-actions">{{if .Desktop}}<form method="POST" action="/jobs/{{.ID}}/open"><button class="button button-secondary" type="submit">Open employer site ↗</button></form>{{else}}<a class="button button-secondary" href="{{.URL}}" target="_blank" rel="noopener noreferrer">Open employer site ↗</a>{{end}}{{if eq .Stage "applied"}}<a class="button button-primary" href="#history" data-tab-target="history">View history →</a>{{else}}<a class="button button-primary" href="#prepare" data-tab-target="prepare">Prepare application →</a>{{end}}</div></header>
+<div class="workspace-tabs" data-workspace-tabs aria-label="Job workspace sections"><a href="#overview" class="workspace-tab" data-tab-target="overview">Overview</a><a href="#prepare" class="workspace-tab" data-tab-target="prepare">Prepare</a><a href="#history" class="workspace-tab" data-tab-target="history">History {{if .SubmissionCount}}<span class="tab-count">{{.SubmissionCount}}</span>{{end}}</a></div>
+<div class="workspace-panel" id="overview" data-workspace-panel="overview" tabindex="-1">
+  <div class="workspace-grid"><div class="workspace-column">
+    <section class="panel read-panel" aria-labelledby="description-title"><div class="section-heading"><div><p class="eyebrow">THE ROLE</p><h2 id="description-title">Job description</h2></div><a class="text-link" href="#edit-details" data-open-details="edit-details">Edit details →</a></div>
+      {{if .Description}}<div class="description">{{.Description}}</div>{{else}}<div class="inline-empty"><h3>No description saved yet</h3><p>Refresh from the employer posting or add your own notes in Edit details.</p></div>{{end}}
+    </section>
+    <details class="panel detail-editor" id="edit-details"><summary><span><strong>Edit job and tracking</strong><small>Title, company, salary, description, stage and priority.</small></span><span class="summary-chevron" aria-hidden="true">⌄</span></summary><div class="editor-content">
+      <form method="POST" action="/jobs/{{.ID}}/edit" class="job-edit-form">
+        <div class="field"><label for="title">Job title</label><input id="title" name="title" value="{{.Title}}" maxlength="200"></div>
+        <div class="field"><label for="company">Company</label><input id="company" name="company" value="{{.Company}}" maxlength="200">{{if and .Company (not .CompanyManual)}}<small>ATS board suggestion — confirm spelling if needed.</small>{{end}}</div>
+        {{if eq .Stage "applied"}}<div class="field"><label>Stage</label><input value="Applied (confirmed)" disabled><input type="hidden" name="stage" value="applied"></div>{{else}}<div class="field"><label for="stage">Stage</label><select id="stage" name="stage" required><option value="review" {{if eq .Stage "review"}}selected{{end}}>Review</option><option value="ready" {{if eq .Stage "ready"}}selected{{end}}>Ready to Apply</option><option value="closed" {{if eq .Stage "closed"}}selected{{end}}>Closed</option></select></div>{{end}}
+        <div class="field"><label for="priority">Priority</label><select id="priority" name="priority" required><option value="normal" {{if eq .Priority "normal"}}selected{{end}}>Normal</option><option value="high" {{if eq .Priority "high"}}selected{{end}}>High</option><option value="low" {{if eq .Priority "low"}}selected{{end}}>Low</option></select></div>
+        <div class="field field-full"><label for="salary_text">Salary / compensation <span class="muted">(optional)</span></label><input id="salary_text" name="salary_text" maxlength="500" value="{{.SalaryText}}"><small>Current source: {{.SalaryOriginLabel}}</small></div>
+        <div class="field field-full"><label for="description">Job description</label><textarea id="description" name="description" rows="11">{{.Description}}</textarea></div>
+        <p class="field-full form-note">Application status comes from confirmed submission history, not the stage selector.</p><div class="form-actions"><button class="button button-primary" type="submit">Save changes</button></div>
+      </form></div></details>
+  </div><aside class="workspace-aside">
+    <section class="panel facts-panel" aria-labelledby="details-title"><p class="eyebrow">AT A GLANCE</p><h2 id="details-title">Role details</h2><dl class="fact-list"><div><dt>Employer</dt><dd>{{if .Company}}{{.Company}}{{else}}Not recorded{{end}}</dd></div><div><dt>Compensation</dt><dd>{{if .SalaryText}}{{.SalaryText}}{{else}}Not available{{end}}</dd></div><div><dt>Priority</dt><dd>{{.PriorityLabel}}</dd></div><div><dt>Current status</dt><dd>{{.StageLabel}}</dd></div></dl></section>
+    <section class="panel facts-panel" aria-labelledby="source-title"><p class="eyebrow">SOURCE TRANSPARENCY</p><h2 id="source-title">Posting source</h2><p class="source-result">{{.SourceStatusLabel}}</p>{{if .SourceCheckedAt}}<p class="small-muted">Last checked {{.SourceCheckedAt}}</p>{{end}}{{if .SourceNote}}<p class="small-muted">{{.SourceNote}}</p>{{end}}<form method="POST" action="/jobs/{{.ID}}/refresh"><button class="button button-secondary button-full" type="submit">Refresh from posting ↻</button></form><p class="small-muted">Refreshing preserves your manual edits. It does not verify whether the employer still accepts applications.</p></section>
+    <details class="panel danger-zone"><summary>Delete this job permanently</summary><div class="danger-zone-body">
+       {{if gt .SubmissionCount 0}}<p class="confirmation-note">This job has {{.SubmissionCount}} confirmed submission(s). Deleting it removes all submission history for this job. Resume library files are retained.</p>{{else}}<p class="confirmation-note">Remove this saved job and its tracking data. This cannot be undone. Imported resumes are retained.</p>{{end}}
+       <form method="POST" action="/jobs/{{.ID}}/delete" class="job-form">
+        <label class="confirm-row"><input type="checkbox" name="confirm" value="yes" required><span>I understand that this deletion is permanent.</span></label>
+        {{if gt .SubmissionCount 0}}<label class="confirm-row"><input type="checkbox" name="confirm_history" value="yes" required><span>Also permanently delete this job's submission history.</span></label>{{end}}
+        <div class="field field-full"><label for="delete_phrase">Type {{if gt .SubmissionCount 0}}DELETE APPLICATION HISTORY{{else}}DELETE{{end}} to confirm</label><input id="delete_phrase" name="confirm_phrase" required pattern="{{if gt .SubmissionCount 0}}DELETE APPLICATION HISTORY{{else}}DELETE{{end}}" autocomplete="off"></div>
+        <button class="button button-danger" type="submit">Delete this job</button>
+       </form>
+      </div></details>
+  </aside></div>
+</div>
+<div class="workspace-panel" id="prepare" data-workspace-panel="prepare" tabindex="-1"><div class="workspace-grid"><div class="workspace-column">
+  <section class="panel preparation-panel" aria-labelledby="preparation-title"><div class="section-heading"><div><p class="eyebrow">YOUR APPLICATION PACKET</p><h2 id="preparation-title">Application preparation</h2></div>{{if .SelectedResume}}<span class="status status-ready">Resume selected</span>{{else}}<span class="status status-review">Needs a resume</span>{{end}}</div>
+    <div class="preparation-steps"><div class="preparation-step"><div class="step-number">01</div><div><h3>Choose your resume</h3><p>Select the document you intend to use for this role.</p></div></div>
+    <form method="POST" action="/jobs/{{.ID}}/resume" class="resume-select-form"><div class="field"><label for="resume_id">Resume for this job</label><select id="resume_id" name="resume_id"><option value="0">No resume selected</option>{{range .ResumeOptions}}<option value="{{.ID}}" {{if eq .ID $.SelectedResumeID}}selected{{end}}>{{if .FamilyName}}{{.FamilyName}} · {{end}}{{.Name}} ({{.Kind}}){{if .IsPrimary}} · Primary{{end}}</option>{{end}}</select><small>Need a different resume? <a href="/resumes">Open resume library</a>.</small></div><button type="submit" class="button button-secondary">Save selection</button></form>
+    {{if and (not .SelectedResume) .HasFamilies}}<div class="match-suggestion">
+      {{if eq .Match.Status "matched"}}<div><p class="eyebrow">LOCAL RESUME MATCH</p><h3>Suggested: {{.Match.ResumeName}}</h3><p class="small-muted">Family: {{.Match.FamilyName}} · Job title phrase “{{.Match.TitleEvidence}}”{{if .Match.ContextEvidence}} · Description phrase “{{.Match.ContextEvidence}}”{{end}}. A suggestion does not change your saved selection.</p></div>
+      <form method="POST" action="/jobs/{{.ID}}/resume"><input type="hidden" name="resume_id" value="{{.Match.ResumeID}}"><button class="button button-primary" type="submit">Use suggested resume</button></form>
+      {{else if eq .Match.Status "no-resume"}}<p class="small-muted">Matched family: <strong>{{.Match.FamilyName}}</strong>. <a href="/resumes">Assign a resume to this family</a> to enable document suggestions.</p>
+      {{else if eq .Match.Status "choose-primary"}}<p class="small-muted">Matched family: <strong>{{.Match.FamilyName}}</strong>. <a href="/resumes">Choose a primary resume</a> for this family to get one suggestion.</p>
+      {{else if eq .Match.Status "ambiguous"}}<p class="small-muted">Several role families matched equally. <a href="/families">Refine the title rules</a> or select a resume manually.</p>
+      {{else}}<p class="small-muted">No confident resume match yet. <a href="/families">Adjust role-family rules</a> or select a document manually.</p>{{end}}
+    </div>{{end}}
+    {{if .SelectedResume}}<div class="selected-file"><span class="selected-file-icon">{{if eq .SelectedResume.Kind ".pdf"}}PDF{{else}}DOCX{{end}}</span><div><strong>{{.SelectedResume.Name}}</strong><small>Selected document</small></div><a class="text-link" href="/resumes/{{.SelectedResume.ID}}/download">Download ↓</a></div>{{else}}<p class="inline-hint">No resume selected yet. You can still open the employer application and choose a document there.</p>{{end}}
+    <div class="preparation-step"><div class="step-number">02</div><div><h3>Prepare resume and hand off</h3><p>Use the selected document in a separate employer browser. YourMove waits for the resume control as you move through Ashby's application pages; you complete the rest.</p></div></div>
+    {{if and .SelectedResume (eq .Host "jobs.ashbyhq.com") (eq .SubmissionCount 0)}}
+    <form method="POST" action="/jobs/{{.ID}}/handoff" class="g55-handoff-form">
+      <input type="hidden" name="resume_id" value="{{.SelectedResume.ID}}"><input type="hidden" name="resume_hash" value="{{.SelectedResume.SHA256}}">
+      <label class="confirm-row"><input type="checkbox" name="confirm" value="yes" required><span>Use <strong>{{.SelectedResume.Name}}</strong> for this job. Allow YourMove to attach it on the matching Ashby form, which may upload it immediately to the employer. I will review and submit manually.</span></label>
+      <button type="submit" class="button button-primary">Prepare resume handoff ↗</button>
+    </form>
+    {{else}}<p class="inline-hint">{{if not .SelectedResume}}Choose and save a resume above before starting a prepared handoff.{{else}}Managed resume handoff currently supports Ashby. Open the employer site to attach the selected file manually.{{end}}</p>{{end}}
+    <p class="small-muted"><a href="/jobs/{{.ID}}/inspection">View application inspection and browser status →</a></p>{{if .Desktop}}<form method="POST" action="/jobs/{{.ID}}/open" class="external-application-action"><button class="button button-primary" type="submit">Open employer application ↗</button></form>{{else}}<a class="button button-primary step-cta" href="{{.URL}}" target="_blank" rel="noopener noreferrer">Open employer application ↗</a>{{end}}
+    <div class="preparation-step"><div class="step-number">03</div><div><h3>Record a completed submission</h3><p>Only confirm this after actually submitting at the employer's website.</p></div></div>
+    <details class="submission-disclosure" id="record-submission"><summary><span>Record completed application</span><span class="summary-chevron" aria-hidden="true">⌄</span></summary><div class="submission-disclosure-body"><div class="confirmation-note">This action records your confirmation. It does not submit an application or prove receipt by the employer.</div><form method="POST" action="/jobs/{{.ID}}/submit" class="submission-form"><input type="hidden" name="submission_token" value="{{.SubmissionToken}}"><div class="field"><label for="notes">Submission notes <span class="muted">(optional)</span></label><input id="notes" name="notes" maxlength="1000" placeholder="Confirmation number or follow-up"></div><label class="confirm-row"><input type="checkbox" name="confirm" value="yes" required><span>I confirm that I submitted this application on the employer website.</span></label><button type="submit" class="button button-primary">Record completed application</button></form></div></details>
+    </div>
+  </section>
+  </div><aside class="workspace-aside"><div class="panel guidance-panel"><p class="eyebrow">YOUR NEXT MOVE</p><h2>{{if .SubmissionCount}}Application recorded{{else if .SelectedResume}}Review the employer form{{else}}Pick a resume{{end}}</h2><p>{{if .SubmissionCount}}You've recorded {{.SubmissionCount}} submission(s) for this job. Review the history for details.{{else if .SelectedResume}}Your document is selected. Visit the employer's site to apply.{{else}}Select a resume to keep a clear record of the document you intend to use.{{end}}</p><p class="small-muted">You stay in control of every submission.</p></div></aside></div>
+</div>
+<div class="workspace-panel" id="history" data-workspace-panel="history" tabindex="-1"><section class="panel history-panel" aria-labelledby="history-title"><div class="section-heading"><div><p class="eyebrow">APPLICATION TIMELINE</p><h2 id="history-title">Submission history</h2></div>{{if .SubmissionCount}}<span class="summary-count">{{.SubmissionCount}} recorded</span>{{end}}</div>
+  {{if .Submissions}}<ol class="timeline">{{range .Submissions}}<li><span class="timeline-dot" aria-hidden="true"></span><div class="timeline-content"><strong>Submission recorded</strong><time>{{.SubmittedAt}}</time><p>Resume: {{.ResumeName}}</p>{{if .Notes}}<p class="timeline-note">{{.Notes}}</p>{{end}}</div></li>{{end}}</ol>{{else}}<div class="empty-state"><div class="empty-mark" aria-hidden="true">◎</div><h3>No submissions recorded</h3><p>After submitting at an employer site, record it from the Prepare tab. Your application record will appear here.</p><a class="button button-secondary" href="#prepare" data-tab-target="prepare">Go to preparation →</a></div>{{end}}
+</section></div>
+{{template "shell-close" .}}
+</body></html>

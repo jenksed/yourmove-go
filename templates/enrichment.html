@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f7f7f4"><title>Posting checks · YourMove</title><link rel="stylesheet" href="/static/styles.css"><script defer src="/static/ui.js"></script>{{if eq .State "running"}}<meta http-equiv="refresh" content="3">{{end}}</head><body>
+{{template "shell-open" "utilities"}}
+<nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/utilities">Utilities</a><span aria-hidden="true">/</span><span>Posting checks</span></nav>
+<div class="page-heading"><div><p class="eyebrow">METADATA ENRICHMENT</p><h1>Fill in the details.</h1><p class="page-description">Retrieve public titles, employers, descriptions and salaries from supported job boards. Manual edits are never overwritten.</p></div><a href="/jobs" class="button button-secondary">Back to opportunities</a></div>
+<section class="stats-strip" aria-label="Posting check summary">
+ <div class="stat"><span class="stat-label">Unchecked, active</span><strong>{{.Pending}}</strong><span class="stat-help">Ready for a first check</span></div>
+ <div class="stat"><span class="stat-label">Failed checks</span><strong>{{.Retryable}}</strong><span class="stat-help">Eligible for retry</span></div>
+ <div class="stat"><span class="stat-label">Batch limit</span><strong>30</strong><span class="stat-help">Two requests at once</span></div>
+</section>
+<section class="panel metadata-controller" aria-labelledby="enrichment-control-title"><div class="section-heading"><div><h2 id="enrichment-control-title">Controlled posting checks</h2><p class="section-subtitle">Nothing runs automatically. Checking a source does not verify that the job is still open.</p></div></div>
+ <div class="metadata-controls">
+ {{if or (eq .State "idle") (eq .State "complete")}}
+ <form method="POST" action="/enrichment/start"><input type="hidden" name="mode" value="pending"><button class="button button-primary" type="submit" {{if eq .Pending 0}}disabled{{end}}>Check next 30 unchecked jobs</button></form>
+ <form method="POST" action="/enrichment/start"><input type="hidden" name="mode" value="failed"><button class="button button-secondary" type="submit" {{if eq .Retryable 0}}disabled{{end}}>Retry up to 30 failed checks</button></form>
+ {{else if eq .State "running"}}
+ <form method="POST" action="/enrichment/pause"><button class="button button-secondary" type="submit">Pause after current checks</button></form>
+ {{else if eq .State "paused"}}
+ <form method="POST" action="/enrichment/resume"><button class="button button-primary" type="submit">Resume remaining checks</button></form>
+ {{end}}
+ <a class="text-link" href="/enrichment">Refresh progress</a>
+ </div>
+ <p class="small-muted">Checks run in a bounded queue with a 12-second per-job budget. Pausing does not cancel the requests already in flight. Unsupported sites are reported separately from network failures.</p>
+</section>
+{{if ne .State "idle"}}
+<section class="panel metadata-results" aria-labelledby="metadata-results-title">
+ <div class="section-heading"><div><p class="eyebrow">{{.Mode}} BATCH</p><h2 id="metadata-results-title">{{.Done}} of {{.Total}} checked</h2><p class="section-subtitle" role="status" aria-live="polite">{{if eq .State "running"}}Checking sources; this page updates automatically.{{else if eq .State "paused"}}Paused. In-flight checks may finish.{{else}}Batch complete.{{end}}</p></div></div>
+ <div class="metadata-progress" role="progressbar" aria-valuemin="0" aria-valuemax="{{.Total}}" aria-valuenow="{{.Done}}" aria-label="Completed source checks"><span style="width:{{if gt .Total 0}}{{.Percent}}{{else}}0{{end}}%"></span></div>
+ <div class="metadata-totals"><span>{{.Retrieved}} retrieved</span><span>{{.Unsupported}} unsupported</span><span>{{.Failed}} failed</span>{{if .Removed}}<span>{{.Removed}} deleted during check</span>{{end}}</div>
+ <div class="metadata-items">{{range .Items}}<div class="metadata-item"><div><strong>{{if eq .State "removed"}}{{.Title}}{{else}}<a href="/jobs/{{.JobID}}">{{.Title}}</a>{{end}}</strong><span class="muted metadata-url">{{.URL}}</span>{{if .Detail}}<small>{{.Detail}}</small>{{end}}</div><span class="status status-{{.State}}">{{.State}}</span></div>{{end}}</div>
+</section>
+{{end}}
+{{template "shell-close" .}}
+</body></html>

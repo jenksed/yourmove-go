@@ -5,3 +5,6 @@ jobs.db-wal
 jobs.db-shm
 
 /yourmove-lite
+
+# Pre-migration SQLite snapshots and local app artifacts
+*.db.pre-*.bak

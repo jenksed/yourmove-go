@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f7f7f4"><title>Role families · YourMove</title><link rel="stylesheet" href="/static/styles.css"><script defer src="/static/ui.js"></script></head><body>
+{{template "shell-open" "resumes"}}
+<nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/resumes">Document library</a><span>/</span><span>Role families</span></nav>
+<div class="page-heading"><div><p class="eyebrow">DOCUMENT ROUTING</p><h1>Role families</h1><p class="page-description">Build your own matching rules. YourMove uses literal job-title phrases and supporting description evidence, not AI or invisible estimates.</p></div><a class="button button-secondary" href="/resumes">← Document library</a></div>
+<section class="panel family-examples"><div><h2>Start with examples, then make them yours</h2><p class="section-subtitle">Optional examples cover Technical Support Engineering, Linux &amp; Hosting, Implementation, Technical Account Management, Customer Success, Application Support, Web Operations, and Customer Service. Existing families are never replaced.</p></div><form method="POST" action="/families/examples"><input type="hidden" name="confirm" value="yes"><button type="submit" class="button button-secondary">Add eight example families</button></form></section>
+<details class="panel create-panel" id="create-family" {{if not .Families}}open{{end}}><summary><span class="summary-icon">+</span><span><strong>Create role family</strong><small>Add a name, title phrases and optional supporting/exclusion phrases.</small></span><span class="summary-chevron">⌄</span></summary><div class="create-body"><form method="POST" action="/families" class="family-editor">
+ <div class="field"><label for="new-family-name">Family name</label><input id="new-family-name" name="name" maxlength="80" required placeholder="Technical Support Engineering"></div>
+ <div class="field"><label for="new-family-titles">Job-title phrases (required)</label><textarea id="new-family-titles" name="title_terms" rows="4" required placeholder="technical support engineer&#10;support engineer"></textarea><small>One literal phrase per line. At least one phrase must occur in the job title.</small></div>
+ <div class="field"><label for="new-family-context">Supporting description phrases</label><textarea id="new-family-context" name="context_terms" rows="4" placeholder="api&#10;debugging&#10;logs"></textarea><small>Help distinguish similarly named roles. Never a match by themselves.</small></div>
+ <div class="field"><label for="new-family-exclude">Exclude job-title phrases</label><textarea id="new-family-exclude" name="exclude_terms" rows="3" placeholder="director&#10;intern"></textarea><small>If a phrase appears in the title, the family is ineligible.</small></div>
+ <div><button class="button button-primary" type="submit">Create family</button></div>
+ </form></div></details>
+<section class="panel list-panel"><div class="section-heading"><div><h2>Your matching rules</h2><p class="section-subtitle">{{len .Families}} configured families. A more specific title phrase outranks a shorter one; ambiguous ties get no automatic recommendation.</p></div></div>
+ {{range .Families}}<details class="family-row"><summary><span><strong>{{.Name}}</strong><small>Title: {{.TitleTerms}}</small></span><span class="summary-chevron">Edit rules ⌄</span></summary><div class="family-body"><form method="POST" action="/families/{{.ID}}/edit" class="family-editor">
+ <div class="field"><label for="family-name-{{.ID}}">Name</label><input id="family-name-{{.ID}}" name="name" value="{{.Name}}" maxlength="80" required></div>
+ <div class="field"><label for="family-titles-{{.ID}}">Title phrases</label><textarea id="family-titles-{{.ID}}" name="title_terms" rows="4" required>{{.TitleTerms}}</textarea></div>
+ <div class="field"><label for="family-context-{{.ID}}">Description phrases</label><textarea id="family-context-{{.ID}}" name="context_terms" rows="4">{{.ContextTerms}}</textarea></div>
+ <div class="field"><label for="family-exclude-{{.ID}}">Exclude title phrases</label><textarea id="family-exclude-{{.ID}}" name="exclude_terms" rows="3">{{.ExcludeTerms}}</textarea></div>
+ <div><button class="button button-primary" type="submit">Save rules</button></div></form>
+ <form method="POST" action="/families/{{.ID}}/delete" class="family-remove"><label class="confirm-row"><input type="checkbox" name="confirm" value="yes" required>Remove this family and unassign its resumes from the family. Jobs and documents stay saved.</label><button class="button button-danger" type="submit">Remove family</button></form></div></details>
+ {{else}}<div class="empty-state"><h3>No rules configured</h3><p>Create one role family or install the examples above. Import documents and assign them from the library.</p></div>{{end}}
+</section>
+<section class="panel family-test"><div class="section-heading"><div><p class="eyebrow">EXPLAINABLE MATCHING</p><h2>Test your rules without saving a job</h2><p class="section-subtitle">Paste a title and optional description to see exactly which family and resume would be suggested.</p></div></div>
+<form method="POST" action="/families/test" class="family-editor"><div class="field"><label for="preview-title">Job title</label><input id="preview-title" name="title" maxlength="200" required value="{{.PreviewTitle}}" placeholder="Senior Technical Support Engineer"></div><div class="field"><label for="preview-description">Description excerpt (optional)</label><textarea id="preview-description" name="description" rows="4" maxlength="4000" placeholder="Diagnose APIs, logs and SQL...">{{.PreviewDescription}}</textarea></div><button class="button button-secondary" type="submit">Preview matching result</button></form>
+{{if .Preview}}<div class="family-preview" role="status"><h3>Test result</h3>
+{{if eq .Preview.Status "matched"}}<p><strong>{{.Preview.FamilyName}}</strong> → <strong>{{.Preview.ResumeName}}</strong> (suggested; not assigned)</p>
+{{else if eq .Preview.Status "no-resume"}}<p>Matched <strong>{{.Preview.FamilyName}}</strong>, but no resume is linked to this family.</p>
+{{else if eq .Preview.Status "choose-primary"}}<p>Matched <strong>{{.Preview.FamilyName}}</strong>. Multiple resumes exist; choose a primary document in the library.</p>
+{{else if eq .Preview.Status "ambiguous"}}<p>Two or more families are equally strong. Update the rules to resolve the ambiguity.</p>
+{{else if eq .Preview.Status "no-title"}}<p>A job title is needed before suggesting a resume.</p>
+{{else}}<p>No title phrases matched. Add a more specific title phrase to a family.</p>{{end}}
+{{if .Preview.TitleEvidence}}<p class="small-muted">Title matched: “{{.Preview.TitleEvidence}}”{{if .Preview.ContextEvidence}} · Supporting description: “{{.Preview.ContextEvidence}}”{{end}}</p>{{end}}
+</div>{{end}}
+</section>
+{{template "shell-close" .}}</body></html>

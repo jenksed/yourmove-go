@@ -23,6 +23,12 @@ func postingClient() *http.Client {
 }
 
 func getPostingJSON(ctx context.Context, client *http.Client, endpoint string) ([]byte, error) {
+	return getPostingJSONLimited(ctx, client, endpoint, maxPostingResponse)
+}
+
+// Ashby's public endpoint returns a whole board; it needs a different
+// bounded limit from single-posting APIs such as Lever and Greenhouse.
+func getPostingJSONLimited(ctx context.Context, client *http.Client, endpoint string, maxBytes int64) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create posting request: %w", err)
@@ -38,12 +44,12 @@ func getPostingJSON(ctx context.Context, client *http.Client, endpoint string) (
 		return nil, fmt.Errorf("posting API returned HTTP %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxPostingResponse+1))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("read posting response: %w", err)
 	}
-	if len(body) > maxPostingResponse {
-		return nil, fmt.Errorf("posting response exceeds 4 MiB")
+	if int64(len(body)) > maxBytes {
+		return nil, fmt.Errorf("posting response exceeds %d MiB", maxBytes>>20)
 	}
 	return body, nil
 }
@@ -64,4 +70,10 @@ func safeToken(s string) bool {
 
 func pathSegments(path string) []string {
 	return strings.Split(strings.Trim(path, "/"), "/")
+}
+
+// An ATS board slug is an identifying hint, not a verified employer name.
+// Keep the capitalization simple so the user can correct branded names.
+func boardNameSuggestion(slug string) string {
+	return strings.Join(strings.Fields(strings.ReplaceAll(slug, "-", " ")), " ")
 }

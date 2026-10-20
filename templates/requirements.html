@@ -1,0 +1,9 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Discovered Requirements · YourMove</title><link rel="stylesheet" href="/static/styles.css"><script defer src="/static/ui.js"></script></head><body>
+{{template "shell-open" "utilities"}}
+<nav class="breadcrumbs"><a href="/utilities">Utilities</a><span>/</span>Discovered requirements</nav>
+<div class="page-heading"><div><p class="eyebrow">FORM RESEARCH · READ ONLY</p><h1>Discovered requirements</h1><p class="page-description">Patterns from public application schemas and rendered, read-only browser observations.</p></div><span class="summary-count">{{.InspectedJobs}} inspected jobs</span></div>
+<section class="panel g5-card"><div class="section-heading"><div><h2>Observed questions</h2><p class="section-subtitle">The same wording can mean different things across employers. Counts do not establish that answers are reusable.</p></div></div>
+{{if .Questions}}<div class="g5-requirements" role="list">{{range .Questions}}<article role="listitem" class="g5-field"><div><strong>{{.Label}}</strong><p class="small-muted">{{.Platform}} · {{.Source}} · {{.Kind}} · {{.Group}} · Required in {{.RequiredCount}} observation(s)</p></div><span class="summary-count">{{.JobCount}} job(s)</span></article>{{end}}</div>{{else}}<div class="empty-state"><h3>No questions recorded yet</h3><p>Inspect the public requirements for a Greenhouse posting or a rendered Ashby application to collect questions.</p><a href="/jobs" class="button button-primary">Go to opportunities →</a></div>{{end}}</section>
+<section class="panel g5-card"><h2>Question Bank foundation</h2><p>Only question labels, types, choices and provenance are collected. No personal answers are captured. Later, we can review which questions are genuinely equivalent and approve reusable answers deliberately.</p></section>
+{{template "shell-close" .}}
+</body></html>

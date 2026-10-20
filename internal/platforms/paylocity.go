@@ -120,7 +120,7 @@ func extractJobMetadata(r io.Reader) (Metadata, error) {
 		if posting.Type == "JobPosting" {
 			return Metadata{
 				Title:       strings.TrimSpace(posting.Title),
-				Description: strings.TrimSpace(posting.Description),
+				Description: descriptionText(posting.Description),
 			}, nil
 		}
 	}

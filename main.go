@@ -1,36 +1,46 @@
+//go:build !desktop
+
 package main
 
 import (
-	"database/sql"
+	"context"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 )
 
-type App struct {
-	db *sql.DB
-}
-
 func main() {
-	db, err := openDB("jobs.db")
+	dbPath, resumeDir, err := applicationStorage()
+	if err != nil {
+		log.Fatal(err)
+	}
+	db, err := openDB(dbPath)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer db.Close()
 
-	app := &App{db: db}
+	app := &App{db: db, resumeDir: resumeDir}
+	defer app.browsers.closeAll()
 
 	fmt.Println("Open http://127.0.0.1:3000")
-	if err := http.ListenAndServe("127.0.0.1:3000", newMux(app)); err != nil {
-		log.Fatal(err)
+	server := &http.Server{Addr: "127.0.0.1:3000", Handler: newMux(app)}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	done := make(chan error, 1)
+	go func() { done <- server.ListenAndServe() }()
+	select {
+	case err := <-done:
+		if err != nil && err != http.ErrServerClosed {
+			log.Printf("YourMove HTTP server: %v", err)
+		}
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = server.Shutdown(shutdownCtx)
 	}
-}
-
-func newMux(app *App) http.Handler {
-	mux := http.NewServeMux()
-	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
-	mux.HandleFunc("/", home)
-	mux.HandleFunc("/jobs", app.jobForm)
-	mux.HandleFunc("GET /jobs/{id}", app.jobDetail)
-	return mux
 }

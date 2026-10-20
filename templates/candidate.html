@@ -1,0 +1,21 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Candidate Profile · YourMove</title><link rel="stylesheet" href="/static/styles.css"><script defer src="/static/ui.js"></script></head><body>
+{{template "shell-open" "candidate"}}
+<div class="page-heading"><div><p class="eyebrow">YOUR VERIFIED INFORMATION</p><h1>Candidate profile</h1><p class="page-description">Use approved facts to identify ordinary employer questions. This profile stays on your device until you separately authorize an application.</p></div>{{if .Approved}}<span class="status status-ready">Approved · Revision {{.Revision}}</span>{{else}}<span class="status status-review">Not approved</span>{{end}}</div>
+<section class="panel g5-card"><div class="section-heading"><div><h2>Contact and professional details</h2><p class="section-subtitle">Editing a field replaces the profile revision. Uncheck approval to save a draft.</p></div></div>
+<form method="POST" action="/candidate" class="job-form g5-profile-grid">
+ <div class="field"><label for="first_name">First name</label><input id="first_name" name="first_name" value="{{.FirstName}}" autocomplete="given-name" maxlength="160"></div>
+ <div class="field"><label for="last_name">Last name</label><input id="last_name" name="last_name" value="{{.LastName}}" autocomplete="family-name" maxlength="160"></div>
+ <div class="field"><label for="email">Email</label><input id="email" name="email" type="email" value="{{.Email}}" autocomplete="email" maxlength="320"></div>
+ <div class="field"><label for="phone">Phone</label><input id="phone" name="phone" value="{{.Phone}}" autocomplete="tel" maxlength="160"></div>
+ <div class="field"><label for="city">City</label><input id="city" name="city" value="{{.City}}" maxlength="160"></div>
+ <div class="field"><label for="region">State / region</label><input id="region" name="region" value="{{.Region}}" maxlength="160"></div>
+ <div class="field"><label for="country">Country</label><input id="country" name="country" value="{{.Country}}" maxlength="160"></div>
+ <div class="field"><label for="linkedin">LinkedIn URL</label><input id="linkedin" name="linkedin" value="{{.LinkedIn}}" maxlength="320"></div>
+ <div class="field"><label for="github">GitHub URL</label><input id="github" name="github" value="{{.GitHub}}" maxlength="320"></div>
+ <div class="field"><label for="portfolio">Portfolio URL</label><input id="portfolio" name="portfolio" value="{{.Portfolio}}" maxlength="320"></div>
+ <label class="confirm-row g5-span"><input type="checkbox" name="approve" value="yes"><span>I have reviewed these facts and approve them for future mapping suggestions. This does not authorize transmission to an employer.</span></label>
+ <div class="g5-span"><button class="button button-primary" type="submit">Save profile revision</button></div>
+</form></section>
+<section class="panel g5-card"><h2>Privacy and application controls</h2><p>Inspection requests contain a saved public job URL only. They do not transmit your candidate profile, documents, or application answers. Work authorization, demographic questions and consent must be reviewed on the employer's form.</p></section>
+{{template "shell-close" .}}
+</body></html>
