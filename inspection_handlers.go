@@ -12,8 +12,8 @@ import (
 	"example.com/yourmove-lite/internal/application/discovery"
 )
 
-var candidateTemplate = template.Must(template.ParseFiles("templates/candidate.html", "templates/partials.html"))
-var inspectionTemplate = template.Must(template.ParseFiles("templates/inspection.html", "templates/partials.html"))
+var candidateTemplate = template.Must(template.ParseFS(templateFiles, "templates/candidate.html", "templates/partials.html"))
+var inspectionTemplate = template.Must(template.ParseFS(templateFiles, "templates/inspection.html", "templates/partials.html"))
 
 func (a *App) candidatePage(w http.ResponseWriter, r *http.Request) {
 	p, err := a.candidateProfile()

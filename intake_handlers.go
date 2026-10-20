@@ -7,7 +7,7 @@ import (
 	"net/http"
 )
 
-var batchResultsTemplate = template.Must(template.ParseFiles("templates/import_results.html", "templates/partials.html"))
+var batchResultsTemplate = template.Must(template.ParseFS(templateFiles, "templates/import_results.html", "templates/partials.html"))
 
 // importJobs is a bounded local-only operation. Metadata enrichment remains an
 // explicit per-job action, avoiding dozens of surprise external requests.

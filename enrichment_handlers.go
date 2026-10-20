@@ -6,7 +6,7 @@ import (
 	"net/http"
 )
 
-var enrichmentTemplate = template.Must(template.ParseFiles("templates/enrichment.html", "templates/partials.html"))
+var enrichmentTemplate = template.Must(template.ParseFS(templateFiles, "templates/enrichment.html", "templates/partials.html"))
 
 func (a *App) enrichmentPage(w http.ResponseWriter, r *http.Request) {
 	view := struct {

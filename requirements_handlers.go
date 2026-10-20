@@ -6,7 +6,7 @@ import (
 	"net/http"
 )
 
-var requirementsTemplate = template.Must(template.ParseFiles("templates/requirements.html", "templates/partials.html"))
+var requirementsTemplate = template.Must(template.ParseFS(templateFiles, "templates/requirements.html", "templates/partials.html"))
 
 type requirementSummary struct {
 	Platform      string

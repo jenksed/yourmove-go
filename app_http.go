@@ -10,26 +10,29 @@ import (
 )
 
 type App struct {
-	intakeMu           sync.Mutex
-	enrichmentMu       sync.Mutex
-	enrichment         *enrichmentRun
-	enrichmentFetch    postingFetcher
-	db                 *sql.DB
-	resumeDir          string
-	pickResume         func() (string, error)
-	openPosting        func(string) error // desktop-only native default-browser action
-	inspectApplication func(context.Context, string) (schema.Result, error)
-	browsers           sessionHost
+	intakeMu            sync.Mutex
+	enrichmentMu        sync.Mutex
+	enrichment          *enrichmentRun
+	enrichmentFetch     postingFetcher
+	db                  *sql.DB
+	resumeDir           string
+	pickResume          func() (string, error)
+	openPosting         func(string) error // desktop-only native default-browser action
+	inspectApplication  func(context.Context, string) (schema.Result, error)
+	browsers            sessionHost
+	coverLetterGenerate func(context.Context, string) (string, error) // test override; production uses local Ollama
 }
 
 func newMux(app *App) http.Handler {
 	mux := http.NewServeMux()
-	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+	mux.Handle("GET /static/",
+		http.FileServer(http.FS(staticFiles)))
 	mux.HandleFunc("/", home)
 	mux.HandleFunc("/jobs", app.jobForm)
 	mux.HandleFunc("POST /jobs/import", app.importJobs)
 	mux.HandleFunc("POST /jobs/delete", app.deleteSelectedJobs)
 	mux.HandleFunc("GET /utilities", app.utilitiesPage)
+	mux.HandleFunc("GET /ai", app.aiConnectionsPage)
 	mux.HandleFunc("GET /candidate", app.candidatePage)
 	mux.HandleFunc("GET /requirements", app.requirementsPage)
 	mux.HandleFunc("POST /candidate", app.updateCandidate)
@@ -54,6 +57,8 @@ func newMux(app *App) http.Handler {
 	mux.HandleFunc("POST /jobs/{id}/open", app.openJobPosting)
 	mux.HandleFunc("POST /jobs/{id}/delete", app.deleteJobHandler)
 	mux.HandleFunc("POST /jobs/{id}/refresh", app.refreshJob)
+	mux.HandleFunc("POST /jobs/{id}/cover-letter/generate", app.generateCoverLetterHandler)
+	mux.HandleFunc("POST /jobs/{id}/cover-letter/save", app.saveCoverLetterHandler)
 	mux.HandleFunc("GET /resumes", app.resumeLibrary)
 	mux.HandleFunc("GET /applications", app.applicationsPage)
 	mux.HandleFunc("POST /resumes/import", app.uploadResume)

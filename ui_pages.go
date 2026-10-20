@@ -30,7 +30,7 @@ func summarizeJobs(jobs []Job) opportunityPage {
 	return page
 }
 
-var applicationsTemplate = template.Must(template.ParseFiles("templates/applications.html", "templates/partials.html"))
+var applicationsTemplate = template.Must(template.ParseFS(templateFiles, "templates/applications.html", "templates/partials.html"))
 
 func (a *App) applicationsPage(w http.ResponseWriter, r *http.Request) {
 	jobs, err := a.allJobs()

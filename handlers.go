@@ -15,11 +15,19 @@ import (
 )
 
 var jobsTemplate = template.Must(
-	template.ParseFiles("templates/jobs.html", "templates/partials.html"),
+	template.ParseFS(
+		templateFiles,
+		"templates/jobs.html",
+		"templates/partials.html",
+	),
 )
 
 var jobDetailTemplate = template.Must(
-	template.ParseFiles("templates/job.html", "templates/partials.html"),
+	template.ParseFS(
+		templateFiles,
+		"templates/job.html",
+		"templates/partials.html",
+	),
 )
 
 func home(w http.ResponseWriter, r *http.Request) {
@@ -176,9 +184,66 @@ func (a *App) jobDetail(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unable to prepare submission confirmation", http.StatusInternalServerError)
 		return
 	}
+	letters, err := a.listCoverLetters(id)
+	if err != nil {
+		log.Printf("list cover letters: %v", err)
+		http.Error(w, "Unable to list cover letter drafts", 500)
+		return
+	}
+	var letter CoverLetter
+	if selectedDraft := r.URL.Query().Get("draft"); selectedDraft != "" {
+		draftID, parseErr := strconv.ParseInt(selectedDraft, 10, 64)
+		if parseErr != nil || draftID <= 0 {
+			http.NotFound(w, r)
+			return
+		}
+		letter, err = a.coverLetterByID(id, draftID)
+	} else {
+		letter, err = a.latestCoverLetter(id)
+	}
+	if errors.Is(err, sql.ErrNoRows) && r.URL.Query().Has("draft") {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		log.Printf("load cover letter: %v", err)
+		http.Error(w, "Unable to load saved cover letter", 500)
+		return
+	}
+	notice := map[string]string{
+		"generated":            "Cover letter generated and saved locally. Review the text before using it.",
+		"saved":                "Your edits were saved locally.",
+		"sources":              "The selected letter source could not be read. Check the job description and master resume, or choose a different DOCX/PDF resume below.",
+		"model":                "Choose a provider and enter a valid model name. For custom providers, set YOURMOVE_COMPAT_URL and YOURMOVE_COMPAT_MODEL.",
+		"key":                  "This API provider needs a key. Set the appropriate environment variable, then restart YourMove. API usage is billed separately from subscriptions.",
+		"cli":                  "The subscription CLI is not installed or not in YourMove's PATH. Open AI connections for setup instructions.",
+		"login":                "The CLI is not signed in with a subscription account. Open AI connections, then sign in using the official CLI.",
+		"cli-failed":           "The subscription CLI could not finish writing. Try it from Terminal, verify your subscription and model availability, and retry.",
+		"auth":                 "The provider rejected its API key or permissions. Check the key and account access.",
+		"rate":                 "The provider is rate-limiting requests. Try again later or choose another provider.",
+		"credits":              "The provider reports insufficient credits or billing access. Check the provider account.",
+		"timeout":              "Generation timed out. Try a smaller/faster model or a different provider.",
+		"output":               "The model returned no usable letter. Try another model or generate again; existing drafts are unchanged.",
+		"provider-unavailable": "The provider could not complete the request. Check service status and model availability.",
+		"model-missing":        "That Ollama model is not installed. Run ollama list, then select an installed model.",
+		"offline":              "Cannot reach Ollama at 127.0.0.1:11434. Start Ollama and try again.",
+		"failed":               "YourMove could not generate or save a cover letter. The existing draft is unchanged. Check the application log.",
+		"invalid":              "The draft could not be saved. Check its length and try again.",
+	}[r.URL.Query().Get("cover")]
+	letterModel := coverDefaultModel("ollama")
+	providerReady := make(map[string]bool)
+	for _, id := range []string{"codex", "claude-cli", "ollama", "openai", "anthropic", "openrouter", "compatible"} {
+		providerReady[id] = coverProviderConfigured(id)
+	}
+	letterResumes := make([]documentRow, 0, len(resumeOptions))
+	for _, r := range resumeOptions {
+		if r.ArchivedAt == "" && !r.IsMaster {
+			letterResumes = append(letterResumes, r)
+		}
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "private, no-store")
-	if err := jobDetailTemplate.Execute(w, jobWorkspace{Job: job, Resumes: resumes, ResumeOptions: resumeOptions, Submissions: history, Desktop: a.openPosting != nil, SubmissionToken: token, SelectedResume: selected, Handoff: assessResumeHandoff(job, selected), Sources: a.coverLetterSources(job, selected), Match: match, HasFamilies: showMatch}); err != nil {
+	if err := jobDetailTemplate.Execute(w, jobWorkspace{Job: job, Resumes: resumes, ResumeOptions: resumeOptions, LetterResumes: letterResumes, Submissions: history, Desktop: a.openPosting != nil, SubmissionToken: token, SelectedResume: selected, Handoff: assessResumeHandoff(job, selected), Sources: a.coverLetterSources(job, selected), Letter: letter, Letters: letters, LetterNotice: notice, LetterModel: letterModel, ProviderReady: providerReady, Match: match, HasFamilies: showMatch}); err != nil {
 		log.Printf("render job detail: %v", err)
 	}
 }

@@ -17,7 +17,7 @@ import (
 	browser "example.com/yourmove-lite/internal/application/browser"
 )
 
-var resumesTemplate = template.Must(template.ParseFiles("templates/resumes.html", "templates/partials.html"))
+var resumesTemplate = template.Must(template.ParseFS(templateFiles, "templates/resumes.html", "templates/partials.html"))
 
 type jobWorkspace struct {
 	Job
@@ -29,6 +29,12 @@ type jobWorkspace struct {
 	SelectedResume  *Resume
 	Handoff         HandoffEligibility
 	Sources         coverLetterSourcePreview
+	Letter          CoverLetter
+	Letters         []CoverLetterSummary
+	LetterNotice    string
+	LetterModel     string
+	ProviderReady   map[string]bool
+	LetterResumes   []documentRow
 	Match           MatchRecommendation
 	HasFamilies     bool
 }
@@ -107,9 +113,9 @@ func (a *App) previewResumeSource(resume Resume) resumeSourcePreview {
 		// Show a useful explanation without revealing filesystem paths or
 		// unexpected internal errors in the desktop application.
 		if resume.Kind == ".pdf" {
-			out.Message = "PDF text extraction isn't supported yet. Import a DOCX version for cover letter evidence."
+			out.Message = "This PDF has no readable text or could not be parsed. Choose a DOCX resume below for this letter."
 		} else {
-			out.Message = "Text could not be read from this document. Verify the DOCX and try a new revision."
+			out.Message = "This document's text could not be read. Use another DOCX or PDF for this letter."
 		}
 		return out
 	}
@@ -175,7 +181,7 @@ func (a *App) resumeLibrary(w http.ResponseWriter, r *http.Request) {
 		rows = append(rows, documentRow{Resume: r, FamilyName: names[r.RoleFamilyID]})
 	}
 	notice := map[string]string{
-		"in-use":    "This resume is referenced by a job or submission. Archive it to remove it from active choices without losing application evidence.",
+		"in-use":    "This resume is referenced by a job, submission, or saved cover letter. Archive it to remove it from active choices without losing application evidence.",
 		"master":    "Remove the master designation or upload a new master revision before deleting this document.",
 		"archived":  "Resume archived. Existing job assignments and submission history are unchanged.",
 		"restored":  "Resume restored. Assign it to a role family or designate it as master if needed.",
