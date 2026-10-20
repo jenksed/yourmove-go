@@ -1,13 +1,12 @@
 package main
 
 import (
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"html/template"
 	"io"
+
 	"log"
 	"net/http"
 	"os"
@@ -29,6 +28,7 @@ type jobWorkspace struct {
 	SubmissionToken string
 	SelectedResume  *Resume
 	Handoff         HandoffEligibility
+	Sources         coverLetterSourcePreview
 	Match           MatchRecommendation
 	HasFamilies     bool
 }
@@ -59,6 +59,10 @@ func assessResumeHandoff(job Job, resume *Resume) HandoffEligibility {
 		return HandoffEligibility{
 			Reason: "The selected resume is unavailable. Choose a valid document.",
 		}
+	case resume.ArchivedAt != "":
+		return HandoffEligibility{
+			Reason: "This resume is archived. Select its current version before starting another handoff.",
+		}
 
 	case !browser.OwnsAshbyURL(job.URL, job.URL):
 		return HandoffEligibility{
@@ -73,6 +77,71 @@ func assessResumeHandoff(job Job, resume *Resume) HandoffEligibility {
 	}
 }
 
+// coverLetterSources is a read-only inspection of verified career evidence.
+// This previews sources; it does not generate text, call a model, or upload files.
+type resumeSourcePreview struct {
+	Name       string
+	Version    int
+	Excerpt    string
+	Characters int
+	Truncated  bool
+	Message    string
+	Ready      bool
+}
+
+type coverLetterSourcePreview struct {
+	Master              resumeSourcePreview
+	Role                resumeSourcePreview
+	Ready               bool
+	JobDescriptionReady bool
+}
+
+func (a *App) previewResumeSource(resume Resume) resumeSourcePreview {
+	out := resumeSourcePreview{Name: resume.Name, Version: resume.Version}
+	if resume.ArchivedAt != "" {
+		out.Message = "This version is archived. Select an active version for new cover letters."
+		return out
+	}
+	text, err := a.extractResumeText(resume)
+	if err != nil {
+		// Show a useful explanation without revealing filesystem paths or
+		// unexpected internal errors in the desktop application.
+		if resume.Kind == ".pdf" {
+			out.Message = "PDF text extraction isn't supported yet. Import a DOCX version for cover letter evidence."
+		} else {
+			out.Message = "Text could not be read from this document. Verify the DOCX and try a new revision."
+		}
+		return out
+	}
+	runes := []rune(text)
+	out.Characters = len(runes)
+	const excerptLimit = 32000
+	if len(runes) > excerptLimit {
+		runes = runes[:excerptLimit]
+		out.Truncated = true
+	}
+	out.Excerpt = string(runes)
+	out.Ready = true
+	return out
+}
+
+func (a *App) coverLetterSources(job Job, selected *Resume) coverLetterSourcePreview {
+	sources := coverLetterSourcePreview{JobDescriptionReady: strings.TrimSpace(job.Description) != ""}
+	sources.Master.Message = "Designate an active master resume in the document library."
+	master, err := a.masterResume()
+	if err == nil {
+		sources.Master = a.previewResumeSource(master)
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		sources.Master.Message = "Unable to load the master resume."
+	}
+	sources.Role.Message = "Choose an active role-specific resume for this job."
+	if selected != nil {
+		sources.Role = a.previewResumeSource(*selected)
+	}
+	sources.Ready = sources.Master.Ready && sources.Role.Ready && sources.JobDescriptionReady
+	return sources
+}
+
 type documentRow struct {
 	Resume
 	FamilyName string
@@ -83,6 +152,7 @@ type resumeLibrary struct {
 	Rows     []documentRow
 	Families []RoleFamily
 	Desktop  bool
+	Notice   string
 }
 
 func (a *App) resumeLibrary(w http.ResponseWriter, r *http.Request) {
@@ -104,8 +174,17 @@ func (a *App) resumeLibrary(w http.ResponseWriter, r *http.Request) {
 	for _, r := range resumes {
 		rows = append(rows, documentRow{Resume: r, FamilyName: names[r.RoleFamilyID]})
 	}
+	notice := map[string]string{
+		"in-use":    "This resume is referenced by a job or submission. Archive it to remove it from active choices without losing application evidence.",
+		"master":    "Remove the master designation or upload a new master revision before deleting this document.",
+		"archived":  "Resume archived. Existing job assignments and submission history are unchanged.",
+		"restored":  "Resume restored. Assign it to a role family or designate it as master if needed.",
+		"revised":   "New revision saved. Existing job assignments still point to the original document until you update them.",
+		"duplicate": "That file is already in your document library. A revision must contain different document bytes.",
+		"failed":    "YourMove could not complete that document change. The current library remains available.",
+	}[r.URL.Query().Get("notice")]
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := resumesTemplate.Execute(w, resumeLibrary{Resumes: resumes, Rows: rows, Families: families, Desktop: a.pickResume != nil}); err != nil {
+	if err := resumesTemplate.Execute(w, resumeLibrary{Resumes: resumes, Rows: rows, Families: families, Desktop: a.pickResume != nil, Notice: notice}); err != nil {
 		log.Printf("render resume library: %v", err)
 	}
 }
@@ -170,6 +249,172 @@ func (a *App) nativeResumeImport(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/resumes", http.StatusSeeOther)
 }
 
+func (a *App) chooseMasterResume(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		http.NotFound(w, r)
+		return
+	}
+	if !parseLocalForm(w, r, 4<<10) {
+		return
+	}
+	raw := r.PostForm.Get("master")
+	if raw != "yes" && raw != "no" {
+		http.Redirect(w, r, "/resumes?notice=failed", http.StatusSeeOther)
+		return
+	}
+	err = a.setMasterResume(id, raw == "yes")
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		http.NotFound(w, r)
+	case errors.Is(err, ErrResumeInUse):
+		http.Redirect(w, r, "/resumes?notice=in-use", http.StatusSeeOther)
+	case errors.Is(err, ErrResumeArchived):
+		http.Redirect(w, r, "/resumes?notice=archived", http.StatusSeeOther)
+	case err != nil:
+		log.Printf("set master resume: %v", err)
+		http.Error(w, "Unable to update master resume", 500)
+	default:
+		http.Redirect(w, r, "/resumes", http.StatusSeeOther)
+	}
+}
+
+func (a *App) deleteResumeHandler(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		http.NotFound(w, r)
+		return
+	}
+	if !parseLocalForm(w, r, 4<<10) {
+		return
+	}
+	if r.PostForm.Get("confirm") != "yes" || r.PostForm.Get("confirm_phrase") != "DELETE" {
+		http.Redirect(w, r, "/resumes?notice=failed", http.StatusSeeOther)
+		return
+	}
+	err = a.deleteResume(id)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		http.NotFound(w, r)
+	case errors.Is(err, ErrResumeInUse):
+		http.Redirect(w, r, "/resumes?notice=in-use", http.StatusSeeOther)
+	case errors.Is(err, ErrMasterResume):
+		http.Redirect(w, r, "/resumes?notice=master", http.StatusSeeOther)
+	case err != nil:
+		log.Printf("delete resume: %v", err)
+		http.Error(w, "Unable to delete resume", 500)
+	default:
+		http.Redirect(w, r, "/resumes", http.StatusSeeOther)
+	}
+}
+
+func (a *App) changeResumeArchive(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		http.NotFound(w, r)
+		return
+	}
+	if !parseLocalForm(w, r, 4<<10) {
+		return
+	}
+	action := r.PostForm.Get("action")
+	if action != "archive" && action != "restore" {
+		http.Redirect(w, r, "/resumes?notice=failed", http.StatusSeeOther)
+		return
+	}
+	if action == "archive" && r.PostForm.Get("confirm") != "yes" {
+		http.Redirect(w, r, "/resumes?notice=failed", http.StatusSeeOther)
+		return
+	}
+	err = a.setResumeArchived(id, action == "archive")
+	if errors.Is(err, sql.ErrNoRows) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		log.Printf("archive resume: %v", err)
+		http.Redirect(w, r, "/resumes?notice=failed", http.StatusSeeOther)
+		return
+	}
+	notice := "archived"
+	if action == "restore" {
+		notice = "restored"
+	}
+	http.Redirect(w, r, "/resumes?notice="+notice, http.StatusSeeOther)
+}
+
+func (a *App) reviseResumeBrowser(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		http.NotFound(w, r)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxResumeSize+(1<<20))
+	if err := r.ParseMultipartForm(64 << 10); err != nil {
+		http.Redirect(w, r, "/resumes?notice=failed", http.StatusSeeOther)
+		return
+	}
+	if r.MultipartForm != nil {
+		defer r.MultipartForm.RemoveAll()
+	}
+	f, h, err := r.FormFile("resume")
+	if err != nil {
+		http.Redirect(w, r, "/resumes?notice=failed", http.StatusSeeOther)
+		return
+	}
+	defer f.Close()
+	a.completeResumeRevision(w, r, id, h.Filename, f)
+}
+
+func (a *App) reviseResumeNative(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		http.NotFound(w, r)
+		return
+	}
+	if !parseLocalForm(w, r, 4<<10) {
+		return
+	}
+	if a.pickResume == nil || r.Host != "localhost" ||
+		r.Header.Get("X-Wails-Window-Id") == "" || r.Header.Get("Origin") != "http://localhost" {
+		http.Error(w, "Desktop window required", http.StatusForbidden)
+		return
+	}
+	path, err := a.pickResume()
+	if err != nil {
+		http.Redirect(w, r, "/resumes?notice=failed", http.StatusSeeOther)
+		return
+	}
+	if path == "" {
+		http.Redirect(w, r, "/resumes", http.StatusSeeOther)
+		return
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		http.Redirect(w, r, "/resumes?notice=failed", http.StatusSeeOther)
+		return
+	}
+	defer f.Close()
+	a.completeResumeRevision(w, r, id, filepath.Base(path), f)
+}
+
+func (a *App) completeResumeRevision(w http.ResponseWriter, r *http.Request, id int64, filename string, reader io.Reader) {
+	_, err := a.reviseResume(id, filename, reader)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		http.NotFound(w, r)
+	case errors.Is(err, ErrDuplicateResumeRevision):
+		http.Redirect(w, r, "/resumes?notice=duplicate", http.StatusSeeOther)
+	case errors.Is(err, ErrResumeArchived):
+		http.Redirect(w, r, "/resumes?notice=archived", http.StatusSeeOther)
+	case err != nil:
+		log.Printf("revise resume: %v", err)
+		http.Redirect(w, r, "/resumes?notice=failed", http.StatusSeeOther)
+	default:
+		http.Redirect(w, r, "/resumes?notice=revised", http.StatusSeeOther)
+	}
+}
+
 func (a *App) downloadResume(w http.ResponseWriter, r *http.Request) {
 	// Read-only private user files should not be usable as cross-site resources.
 	if r.Header.Get("Sec-Fetch-Site") == "cross-site" {
@@ -190,21 +435,13 @@ func (a *App) downloadResume(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	file, err := os.Open(filepath.Join(a.resumeDir, resume.StoredName))
+	body, err := a.readResumeBytes(resume)
 	if err != nil {
-		http.NotFound(w, r)
-		return
-	}
-	defer file.Close()
-	// Never download altered or truncated artifacts under a verified resume identity.
-	body, err := io.ReadAll(io.LimitReader(file, maxResumeSize+1))
-	if err != nil || int64(len(body)) != resume.Size || len(body) > maxResumeSize {
-		http.Error(w, "Stored resume failed integrity verification", http.StatusInternalServerError)
-		return
-	}
-	sum := sha256.Sum256(body)
-	if hex.EncodeToString(sum[:]) != resume.SHA256 {
-		http.Error(w, "Stored resume failed integrity verification", http.StatusInternalServerError)
+		if errors.Is(err, os.ErrNotExist) {
+			http.NotFound(w, r)
+			return
+		}
+		http.Error(w, "Stored resume failed integrity verification", 500)
 		return
 	}
 	typ := "application/pdf"

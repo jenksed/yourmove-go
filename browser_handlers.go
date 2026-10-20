@@ -1,13 +1,10 @@
 package main
 
 import (
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
@@ -182,24 +179,9 @@ func (a *App) startResumeHandoff(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Current browser already has a resume handoff; finish it before changing files", 409)
 		return
 	}
-	if filepath.Base(resume.StoredName) != resume.StoredName {
-		http.Error(w, "Invalid stored document", 409)
-		return
-	}
-	file, err := os.Open(filepath.Join(a.resumeDir, resume.StoredName))
+	data, err := a.readResumeBytes(*resume)
 	if err != nil {
 		http.Error(w, "Resume file missing or has changed", 409)
-		return
-	}
-	defer file.Close()
-	data, err := io.ReadAll(io.LimitReader(file, maxResumeSize+1))
-	if err != nil || int64(len(data)) != resume.Size || len(data) > maxResumeSize {
-		http.Error(w, "Resume file missing or has changed", 409)
-		return
-	}
-	digest := sha256.Sum256(data)
-	if hex.EncodeToString(digest[:]) != resume.SHA256 {
-		http.Error(w, "Resume integrity check failed", 409)
 		return
 	}
 	dir, err := os.MkdirTemp("", "yourmove-approved-resume-")

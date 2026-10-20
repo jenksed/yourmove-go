@@ -55,6 +55,234 @@ func sampleDOCX(t *testing.T) []byte {
 	return b.Bytes()
 }
 
+func TestResumeRevisionArchiveAndInAppNotice(t *testing.T) {
+	a, _ := testWorkspace(t)
+	old, err := a.importResume("support.pdf", strings.NewReader("%PDF-1.4\nfirst"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.saveJob(Job{URL: "https://example.com/job", Host: "example.com"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.assignResume(1, old.ID); err != nil {
+		t.Fatal(err)
+	}
+	token, err := newSubmissionToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.recordSubmission(1, "submitted", token); err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := a.reviseResume(old.ID, "support-v2.pdf", strings.NewReader("%PDF-1.4\nsecond"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fresh.Version != 2 || fresh.SeriesID != old.ID || fresh.ArchivedAt != "" {
+		t.Fatalf("revision metadata: %+v", fresh)
+	}
+	prior, err := a.resumeByID(old.ID)
+	if err != nil || prior.ArchivedAt == "" {
+		t.Fatalf("old resume not retired: %+v %v", prior, err)
+	}
+	retained, err := a.readResumeBytes(prior)
+	if err != nil || string(retained) != "%PDF-1.4\nfirst" {
+		t.Fatalf("historical bytes lost or changed: %q %v", retained, err)
+	}
+	job, err := a.jobByID(1)
+	if err != nil || job.SelectedResumeID != old.ID {
+		t.Fatalf("job selection changed: %+v %v", job, err)
+	}
+	history, err := a.jobSubmissions(1)
+	if err != nil || len(history) != 1 || history[0].ResumeID != old.ID || history[0].ResumeSHA256 != old.SHA256 {
+		t.Fatalf("submission evidence changed: %+v %v", history, err)
+	}
+	if err := a.assignResume(1, old.ID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("allowed archived selection: %v", err)
+	}
+	if err := a.deleteResume(old.ID); !errors.Is(err, ErrResumeInUse) {
+		t.Fatalf("allowed deletion of submitted version: %v", err)
+	}
+	if _, err := a.reviseResume(fresh.ID, "same.pdf", strings.NewReader("%PDF-1.4\nsecond")); !errors.Is(err, ErrDuplicateResumeRevision) {
+		t.Fatalf("duplicate revision: %v", err)
+	}
+	post := postApp(newMux(a), "/resumes/1/delete", url.Values{"confirm": {"yes"}, "confirm_phrase": {"DELETE"}}, "", "")
+	if post.Code != http.StatusSeeOther || post.Header().Get("Location") != "/resumes?notice=in-use" {
+		t.Fatalf("deletion left document app: %d %s", post.Code, post.Body.String())
+	}
+	notice := httptest.NewRecorder()
+	newMux(a).ServeHTTP(notice, httptest.NewRequest("GET", post.Header().Get("Location"), nil))
+	if notice.Code != 200 || !strings.Contains(notice.Body.String(), "Archive it") {
+		t.Fatalf("in-app explanation absent: %d %s", notice.Code, notice.Body.String())
+	}
+	desktop := postApp(newDesktopMux(a), "/resumes/1/delete", url.Values{"confirm": {"yes"}, "confirm_phrase": {"DELETE"}}, "wails://localhost", "1")
+	if desktop.Code != 200 || !strings.Contains(desktop.Body.String(), `window.location.replace("/resumes?notice=in-use")`) {
+		t.Fatalf("desktop notice failed: %d %s", desktop.Code, desktop.Body.String())
+	}
+}
+
+func TestMasterRevisionTransfersDesignation(t *testing.T) {
+	a, _ := testWorkspace(t)
+	master, err := a.importResume("master.pdf", strings.NewReader("%PDF-1.4\nmaster one"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.setMasterResume(master.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	next, err := a.reviseResume(master.ID, "master-v2.pdf", strings.NewReader("%PDF-1.4\nmaster two"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	prior, err := a.resumeByID(master.ID)
+	if err != nil || prior.IsMaster || prior.ArchivedAt == "" {
+		t.Fatalf("old master still active: %+v %v", prior, err)
+	}
+	now, err := a.masterResume()
+	if err != nil || now.ID != next.ID || !next.IsMaster {
+		t.Fatalf("new master not designated: %+v %+v %v", now, next, err)
+	}
+	if err := a.setResumeArchived(next.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.masterResume(); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("archived master remains selected: %v", err)
+	}
+	if err := a.setResumeArchived(next.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := a.resumeByID(next.ID)
+	if err != nil || restored.IsMaster {
+		t.Fatalf("restored version incorrectly re-mastered: %+v %v", restored, err)
+	}
+}
+
+func TestMasterResumeRoutingAndSafeDeletion(t *testing.T) {
+	a, _ := testWorkspace(t)
+	first, err := a.importResume("master.docx", bytes.NewReader(sampleDOCX(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	role, err := a.importResume("role.pdf", strings.NewReader("%PDF-1.4\nrole"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := a.importResume("other.pdf", strings.NewReader("%PDF-1.4\nother"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.setMasterResume(first.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	master, err := a.masterResume()
+	if err != nil || master.ID != first.ID || !master.IsMaster {
+		t.Fatalf("master: %+v %v", master, err)
+	}
+	if err := a.assignResumeFamily(first.ID, 0, false); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("master accepted role-family assignment: %v", err)
+	}
+	if err := a.saveJob(Job{URL: "https://example.com/role", Host: "example.com"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.assignResume(1, first.ID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("master accepted for employer attachment: %v", err)
+	}
+	if err := a.assignResume(1, role.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.deleteResume(role.ID); !errors.Is(err, ErrResumeInUse) {
+		t.Fatalf("deleted job-selected resume: %v", err)
+	}
+	if err := a.setMasterResume(role.ID, true); !errors.Is(err, ErrResumeInUse) {
+		t.Fatalf("reclassified job resume as master: %v", err)
+	}
+	if err := a.assignResume(1, 0); err != nil {
+		t.Fatal(err)
+	}
+	token, err := newSubmissionToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.assignResume(1, role.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.recordSubmission(1, "submitted", token); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.assignResume(1, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.deleteResume(role.ID); !errors.Is(err, ErrResumeInUse) {
+		t.Fatalf("deleted historical resume: %v", err)
+	}
+	if err := a.deleteResume(first.ID); !errors.Is(err, ErrMasterResume) {
+		t.Fatalf("deleted master resume: %v", err)
+	}
+	if err := a.setMasterResume(first.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.setMasterResume(other.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.setMasterResume(first.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	noLongerMaster, err := a.resumeByID(other.ID)
+	if err != nil || noLongerMaster.IsMaster {
+		t.Fatalf("old master still selected: %+v %v", noLongerMaster, err)
+	}
+	if err := a.deleteResume(other.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.resumeByID(other.ID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("deleted resume still exists: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(a.resumeDir, other.StoredName)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("deleted file still exists: %v", err)
+	}
+}
+
+func TestResumeLibraryMasterAndDeleteRoutes(t *testing.T) {
+	a, _ := testWorkspace(t)
+	r, err := a.importResume("career.docx", bytes.NewReader(sampleDOCX(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := newMux(a)
+	get := httptest.NewRecorder()
+	mux.ServeHTTP(get, httptest.NewRequest("GET", "/resumes", nil))
+	if get.Code != 200 || !strings.Contains(get.Body.String(), "/resumes/1/delete") || !strings.Contains(get.Body.String(), "Set as master resume") {
+		t.Fatalf("resume controls not rendered: %d %s", get.Code, get.Body.String())
+	}
+	unconfirmed := postApp(mux, "/resumes/1/delete", url.Values{}, "", "")
+	if unconfirmed.Code != 303 || unconfirmed.Header().Get("Location") != "/resumes?notice=failed" {
+		t.Fatalf("deletion without confirmation should stay in app: %d", unconfirmed.Code)
+	}
+	crossSite := postApp(mux, "/resumes/1/master", url.Values{"master": {"yes"}}, "https://malicious.test", "")
+	if crossSite.Code != 403 {
+		t.Fatalf("cross-site master selection: %d", crossSite.Code)
+	}
+	mark := postApp(mux, "/resumes/1/master", url.Values{"master": {"yes"}}, "", "")
+	if mark.Code != 303 {
+		t.Fatalf("mark master: %d %s", mark.Code, mark.Body.String())
+	}
+	denied := postApp(mux, "/resumes/1/delete", url.Values{"confirm": {"yes"}, "confirm_phrase": {"DELETE"}}, "", "")
+	if denied.Code != 303 || denied.Header().Get("Location") != "/resumes?notice=master" {
+		t.Fatalf("master delete should redirect to library: %d %s", denied.Code, denied.Header().Get("Location"))
+	}
+	clear := postApp(newDesktopMux(a), "/resumes/1/master", url.Values{"master": {"no"}}, "wails://localhost", "1")
+	if clear.Code != 200 || !strings.Contains(clear.Body.String(), `window.location.replace("/resumes")`) {
+		t.Fatalf("desktop clear master: %d %s", clear.Code, clear.Body.String())
+	}
+	deleted := postApp(mux, "/resumes/1/delete", url.Values{"confirm": {"yes"}, "confirm_phrase": {"DELETE"}}, "", "")
+	if deleted.Code != 303 {
+		t.Fatalf("delete: %d %s", deleted.Code, deleted.Body.String())
+	}
+	if _, err := a.resumeByID(r.ID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("resume survived deletion: %v", err)
+	}
+}
+
 func TestResumeImportAndAssignSubmissionLifecycle(t *testing.T) {
 	a, dir := testWorkspace(t)
 	if err := a.saveJob(Job{URL: "https://example.com/job", Host: "example.com", Title: "Test role"}); err != nil {
@@ -413,5 +641,204 @@ func TestAssessResumeHandoff(t *testing.T) {
 				t.Error("missing explanation")
 			}
 		})
+	}
+}
+
+func TestReadResumeBytesVerifiesIntegrity(t *testing.T) {
+	a, _ := testWorkspace(t)
+	original := []byte("%PDF-1.4\\nresume content")
+
+	resume, err := a.importResume("source.pdf", bytes.NewReader(original))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := a.readResumeBytes(resume)
+	if err != nil || !bytes.Equal(got, original) {
+		t.Fatalf("verified read: %v", err)
+	}
+
+	stored := filepath.Join(a.resumeDir, resume.StoredName)
+	if err := os.WriteFile(stored, []byte("%PDF-1.4\\naltered content"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := a.readResumeBytes(resume); err == nil {
+		t.Fatal("accepted altered resume")
+	}
+}
+
+func TestExtractResumeTextDOCX(t *testing.T) {
+	a, _ := testWorkspace(t)
+
+	var buf bytes.Buffer
+	archive := zip.NewWriter(&buf)
+
+	types, err := archive.Create("[Content_Types].xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.WriteString(types, `<Types/>`)
+
+	document, err := archive.Create("word/document.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const xmlBody = `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Support</w:t></w:r><w:r><w:t xml:space="preserve"> Engineer</w:t></w:r></w:p><w:p><w:r><w:t>Linux &amp; MySQL troubleshooting</w:t></w:r></w:p></w:body></w:document>`
+
+	if _, err := io.WriteString(document, xmlBody); err != nil {
+		t.Fatal(err)
+	}
+	if err := archive.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	resume, err := a.importResume("career.docx", bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := a.extractResumeText(resume)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := "Support Engineer\nLinux & MySQL troubleshooting"
+	if got != want {
+		t.Fatalf("extracted text = %q, want %q", got, want)
+	}
+
+	// Extraction must not bypass document integrity verification.
+	stored := filepath.Join(a.resumeDir, resume.StoredName)
+	if err := os.WriteFile(stored, []byte("modified"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.extractResumeText(resume); err == nil {
+		t.Fatal("extraction accepted altered document")
+	}
+
+	pdf, err := a.importResume(
+		"career.pdf",
+		strings.NewReader("%PDF-1.4\nsample"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.extractResumeText(pdf); err == nil {
+		t.Fatal("PDF incorrectly reported extraction support")
+	}
+}
+
+// A transaction failure must not strand a new revision or archive the old one.
+func TestResumeRevisionFailureLeavesNoUnlinkedDocument(t *testing.T) {
+	a, _ := testWorkspace(t)
+	previous, err := a.importResume("support.pdf", strings.NewReader("%PDF-1.4\noriginal"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Exec(`CREATE TRIGGER fail_resume_archive BEFORE UPDATE OF archived_at ON resumes
+        WHEN OLD.id=1 BEGIN SELECT RAISE(ABORT, 'forced revision failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := a.reviseResume(previous.ID, "support-v2.pdf", strings.NewReader("%PDF-1.4\nnew")); err == nil {
+		t.Fatal("revision unexpectedly succeeded")
+	}
+	files, err := os.ReadDir(a.resumeDir)
+	if err != nil || len(files) != 1 {
+		t.Fatalf("failed revision left an extra file: %v %v", files, err)
+	}
+	all, err := a.allResumes()
+	if err != nil || len(all) != 1 || all[0].ID != previous.ID || all[0].ArchivedAt != "" {
+		t.Fatalf("failed revision changed library: %+v %v", all, err)
+	}
+	if _, err := a.readResumeBytes(all[0]); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Exec(`DROP TRIGGER fail_resume_archive`); err != nil {
+		t.Fatal(err)
+	}
+	next, err := a.reviseResume(previous.ID, "support-v2.pdf", strings.NewReader("%PDF-1.4\nnew"))
+	if err != nil || next.Version != 2 {
+		t.Fatalf("retry revision failed: %+v %v", next, err)
+	}
+}
+
+func sampleDOCXForPreview(t *testing.T, phrase string) []byte {
+	t.Helper()
+	var b bytes.Buffer
+	z := zip.NewWriter(&b)
+	types, err := z.Create("[Content_Types].xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = io.WriteString(types, `<Types/>`); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := z.Create("word/document.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	xmlBody := `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>` + phrase + `</w:t></w:r></w:p></w:body></w:document>`
+	if _, err = io.WriteString(doc, xmlBody); err != nil {
+		t.Fatal(err)
+	}
+	if err := z.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return b.Bytes()
+}
+
+func TestCoverLetterSourcesPreviewIsReadOnlyAndEscaped(t *testing.T) {
+	a, _ := testWorkspace(t)
+	if err := a.saveJob(Job{URL: "https://example.com/support", Host: "example.com", Title: "Support Engineer", Description: "Experience with production incidents"}); err != nil {
+		t.Fatal(err)
+	}
+	master, err := a.importResume("master.docx", bytes.NewReader(sampleDOCXForPreview(t, "Career &lt;facts&gt;")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	role, err := a.importResume("role.docx", bytes.NewReader(sampleDOCXForPreview(t, "Linux &amp; SQL")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.setMasterResume(master.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.assignResume(1, role.ID); err != nil {
+		t.Fatal(err)
+	}
+	page := httptest.NewRecorder()
+	newMux(a).ServeHTTP(page, httptest.NewRequest(http.MethodGet, "/jobs/1", nil))
+	html := page.Body.String()
+	if page.Code != 200 || !strings.Contains(html, "Career evidence") || !strings.Contains(html, "Sources readable") ||
+		!strings.Contains(html, "Career &lt;facts&gt;") || strings.Contains(html, "Career <facts>") ||
+		!strings.Contains(html, "Linux &amp; SQL") || page.Header().Get("Cache-Control") != "private, no-store" {
+		t.Fatalf("bad cover letter source preview: %d %s", page.Code, html)
+	}
+	// Removing the assigned role resume must leave an explanatory preview,
+	// not a broken page or a silently substituted master resume.
+	if err := a.assignResume(1, 0); err != nil {
+		t.Fatal(err)
+	}
+	page = httptest.NewRecorder()
+	newMux(a).ServeHTTP(page, httptest.NewRequest(http.MethodGet, "/jobs/1", nil))
+	if page.Code != 200 || !strings.Contains(page.Body.String(), "Choose an active role-specific resume") ||
+		strings.Contains(page.Body.String(), "Sources readable") {
+		t.Fatal("missing resume was treated as ready")
+	}
+	pdf, err := a.importResume("role.pdf", strings.NewReader("%PDF-1.4\nrole evidence"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.assignResume(1, pdf.ID); err != nil {
+		t.Fatal(err)
+	}
+	page = httptest.NewRecorder()
+	newMux(a).ServeHTTP(page, httptest.NewRequest(http.MethodGet, "/jobs/1", nil))
+	if page.Code != 200 || !strings.Contains(page.Body.String(), "PDF text extraction") ||
+		strings.Contains(page.Body.String(), "Sources readable") {
+		t.Fatal("unsupported PDF was treated as readable")
 	}
 }

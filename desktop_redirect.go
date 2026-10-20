@@ -86,6 +86,11 @@ func (w *desktopRedirectWriter) Write(p []byte) (int, error) {
 }
 
 func safeDesktopRedirectTarget(target string) bool {
+	for _, notice := range []string{"in-use", "master", "archived", "restored", "revised", "duplicate", "failed"} {
+		if target == "/resumes?notice="+notice {
+			return true
+		}
+	}
 	if target == "/jobs" || target == "/resumes" || target == "/enrichment" || target == "/families" || target == "/utilities" || target == "/candidate" {
 		return true
 	}

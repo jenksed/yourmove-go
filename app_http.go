@@ -40,6 +40,8 @@ func newMux(app *App) http.Handler {
 	mux.HandleFunc("POST /families/{id}/edit", app.editFamily)
 	mux.HandleFunc("POST /families/{id}/delete", app.removeFamily)
 	mux.HandleFunc("POST /resumes/{id}/family", app.setResumeFamily)
+	mux.HandleFunc("POST /resumes/{id}/master", app.chooseMasterResume)
+	mux.HandleFunc("POST /resumes/{id}/delete", app.deleteResumeHandler)
 	mux.HandleFunc("GET /enrichment", app.enrichmentPage)
 	mux.HandleFunc("POST /enrichment/{action}", app.enrichmentAction)
 	mux.HandleFunc("GET /jobs/{id}", app.jobDetail)
@@ -59,6 +61,10 @@ func newMux(app *App) http.Handler {
 	mux.HandleFunc("GET /resumes/{id}/download", app.downloadResume)
 	mux.HandleFunc("POST /jobs/{id}/resume", app.setJobResume)
 	mux.HandleFunc("POST /jobs/{id}/submit", app.submitJob)
+	mux.HandleFunc("POST /resumes/{id}/archive", app.changeResumeArchive)
+	mux.HandleFunc("POST /resumes/{id}/revise", app.reviseResumeBrowser)
+	mux.HandleFunc("POST /resumes/{id}/revise-native", app.reviseResumeNative)
+
 	return protectLocalWrites(mux)
 }
 

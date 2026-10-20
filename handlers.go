@@ -152,6 +152,9 @@ func (a *App) jobDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	resumeOptions := make([]documentRow, 0, len(resumes))
 	for _, resume := range resumes {
+		if resume.IsMaster || (resume.ArchivedAt != "" && resume.ID != job.SelectedResumeID) {
+			continue
+		}
 		resumeOptions = append(resumeOptions, documentRow{Resume: resume, FamilyName: familyNames[resume.RoleFamilyID]})
 	}
 	showMatch := len(families) > 0 && job.SubmissionCount == 0 && job.Stage != StageApplied && job.Stage != StageClosed
@@ -174,7 +177,8 @@ func (a *App) jobDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := jobDetailTemplate.Execute(w, jobWorkspace{Job: job, Resumes: resumes, ResumeOptions: resumeOptions, Submissions: history, Desktop: a.openPosting != nil, SubmissionToken: token, SelectedResume: selected, Handoff: assessResumeHandoff(job, selected), Match: match, HasFamilies: showMatch}); err != nil {
+	w.Header().Set("Cache-Control", "private, no-store")
+	if err := jobDetailTemplate.Execute(w, jobWorkspace{Job: job, Resumes: resumes, ResumeOptions: resumeOptions, Submissions: history, Desktop: a.openPosting != nil, SubmissionToken: token, SelectedResume: selected, Handoff: assessResumeHandoff(job, selected), Sources: a.coverLetterSources(job, selected), Match: match, HasFamilies: showMatch}); err != nil {
 		log.Printf("render job detail: %v", err)
 	}
 }

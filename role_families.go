@@ -164,7 +164,7 @@ func (a *App) assignResumeFamily(resumeID, familyID int64, primary bool) error {
 		}
 	}
 	var result sql.Result
-	result, err = tx.Exec(`UPDATE resumes SET role_family_id=NULLIF(?,0),is_primary=? WHERE id=?`, familyID, primary && familyID != 0, resumeID)
+	result, err = tx.Exec(`UPDATE resumes SET role_family_id=NULLIF(?,0),is_primary=? WHERE id=? AND is_master=0 AND archived_at=''`, familyID, primary && familyID != 0, resumeID)
 	if err != nil {
 		return err
 	}
@@ -305,7 +305,7 @@ func matchResume(job Job, families []RoleFamily, resumes []Resume) MatchRecommen
 	result := MatchRecommendation{Status: "no-resume", FamilyName: best.family.Name, TitleEvidence: best.term, ContextEvidence: best.context}
 	var candidates []Resume
 	for _, r := range resumes {
-		if r.RoleFamilyID == best.family.ID {
+		if r.RoleFamilyID == best.family.ID && !r.IsMaster && r.ArchivedAt == "" {
 			candidates = append(candidates, r)
 		}
 	}

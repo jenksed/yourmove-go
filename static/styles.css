@@ -213,7 +213,7 @@ small,.small-muted{font-size:12px;line-height:1.55;color:var(--color-muted)}
 .g5-stats .panel {padding:20px}
 .g5-stats h2 {margin:8px 0;font-size:1.7rem}
 .g5-fields {display:grid;gap:0}
-.g5-field {padding:16px 0;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;border-bottom:1px solid var(--line, #e7e8e9)}
+.g5-field {padding:16px 0;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;border-bottom:1px solid var(--color-border)}
 .g5-field:last-child {border-bottom:0}
 .g5-field .status {white-space:normal;flex-shrink:0}
 .g5-step-list {padding-left:22px}
@@ -234,9 +234,197 @@ small,.small-muted{font-size:12px;line-height:1.55;color:var(--color-muted)}
 .g53-heading{margin-bottom:20px}.g53-panel{margin:0 0 18px;padding:22px 24px}.g53-panel .section-heading{align-items:center;justify-content:space-between;gap:16px}.g53-panel .section-heading form{flex:0 0 auto}.g53-button-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:19px 0 12px}.g53-button-row form{margin:0}.g53-state{display:flex;align-items:start;gap:13px;background:var(--color-primary-soft);border:1px solid var(--color-border);padding:14px 16px;border-radius:9px;margin-top:18px}.g53-state strong{font-size:13px}.g53-state p{font-size:12px;color:var(--color-muted);margin:5px 0 0}.g53-pulse{margin-top:6px;flex:0 0 9px;height:9px;border-radius:100%;background:var(--color-primary)}.g53-results-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:24px;padding-top:18px;border-top:1px solid var(--color-border)}.g53-results-heading h3{font-size:17px;margin:4px 0}.g53-url{overflow-wrap:anywhere;margin-bottom:16px}.g53-empty{padding:19px;background:var(--color-surface-muted);border:1px solid var(--color-border);border-radius:9px;color:var(--color-muted);font-size:13px;margin-top:18px}.g53-detail{border-top:1px solid var(--color-border);padding:14px 0;margin-top:15px}.g53-detail summary{font-size:13px;font-weight:650;cursor:pointer}.g53-history{font-size:12px;padding-left:23px;margin:12px 0}.g53-history li{margin-bottom:6px}@media(max-width:760px){.g53-panel{padding:17px}.g53-panel .section-heading{align-items:stretch;flex-direction:column}.g53-panel .section-heading form,.g53-button-row form{width:100%}.g53-panel .section-heading .button,.g53-button-row .button{width:100%}}
 
 /* G5.5 — explicit resume authorization and visible handoff result */
-.g55-handoff-form{display:grid;gap:12px;margin:16px 0;padding:16px;border:1px solid var(--border,#d8dce3);border-radius:12px}
+.g55-handoff-form{display:grid;gap:12px;margin:16px 0;padding:16px;border:1px solid var(--color-border);border-radius:12px}
 .g55-handoff-form .button{justify-self:start}
-.g55-resume-status{margin:12px 0;padding:14px 16px;border:1px solid var(--border,#d8dce3);border-radius:12px}
+.g55-resume-status{margin:12px 0;padding:14px 16px;border:1px solid var(--color-border);border-radius:12px}
 .g55-resume-status p{margin:6px 0 0}
 .g55-resume-status[data-resume-state="selected"]{border-left:3px solid #628c80}
 .g55-resume-status[data-resume-state="attention"]{border-left:3px solid #bd9056}
+
+
+/* UI consistency audit: document lifecycle, career evidence and small viewports.
+   These rules preserve server-owned forms and existing navigation semantics. */
+.page-heading > div,
+.section-heading > div,
+.job-hero-main,
+.g53-results-heading > div,
+.g5-field > div {min-width:0}
+.page-heading h1,.job-hero h1,.section-heading h2 {overflow-wrap:anywhere}
+.button {max-width:100%}
+.g5-card > .section-heading,
+.family-test > .section-heading,
+.g53-panel > .section-heading {padding:0 0 18px}
+.g53-panel > .section-heading {flex-wrap:wrap}
+.g53-results-heading {flex-wrap:wrap}
+.g53-results-heading > .button {flex-shrink:0}
+.g5-field {border-bottom-color:var(--color-border)}
+.g55-handoff-form,.g55-resume-status {border-color:var(--color-border)}
+.g55-handoff-form .confirm-row {min-width:0;overflow-wrap:anywhere}
+
+/* A document's controls are full-width rows, never implicit grid columns.
+   Without these explicit placements, long filenames collapse the middle column
+   and turn the revision/deletion disclosures into narrow columns. */
+.document-row {
+  grid-template-columns:45px minmax(0,1fr) auto;
+  gap:12px 15px;
+  align-items:center;
+  min-width:0;
+}
+.document-row > .resume-info {min-width:0}
+.document-row > .resume-info h3 {font-size:14px;overflow-wrap:anywhere}
+.document-row > .button {grid-column:3;justify-self:end}
+.document-row > .document-routing-form,
+.document-row > .danger-zone {grid-column:1/-1;min-width:0;width:100%}
+.document-row > .document-routing-form {
+  display:flex;
+  align-items:end;
+  flex-wrap:wrap;
+  gap:12px 16px;
+  padding:14px 0 0;
+  border-top:1px solid var(--color-border);
+}
+.document-row > .document-routing-form .field {flex:1 1 215px;min-width:0}
+.document-row > .document-routing-form .confirm-row {max-width:none;flex:0 1 230px}
+.document-row > .document-routing-form > .button {flex:0 0 auto}
+.document-row > .danger-zone {
+  margin:0;
+  padding:7px 0 0;
+  border-top:1px solid var(--color-border);
+  border-radius:0;
+}
+.document-row > .danger-zone > summary {
+  list-style:none;
+  min-height:37px;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  color:var(--color-muted);
+  font-size:13px;
+  font-weight:680;
+  overflow-wrap:anywhere;
+}
+.document-row > .danger-zone > summary::-webkit-details-marker {display:none}
+.document-row > .danger-zone > summary::after {
+  content:"⌄";
+  margin-left:auto;
+  font-size:18px;
+  line-height:1;
+  transition:transform .15s ease;
+}
+.document-row > .danger-zone[open] > summary::after {transform:rotate(180deg)}
+.document-row > .danger-zone > .danger-zone-body {
+  max-width:none;
+  min-width:0;
+  padding:13px 0 17px;
+}
+.document-row > .danger-zone form {min-width:0}
+.document-row > .danger-zone .document-routing-form {
+  display:flex;
+  gap:12px;
+  align-items:end;
+  flex-wrap:wrap;
+  width:100%;
+}
+.document-row > .danger-zone .document-routing-form > label {font-size:12px;font-weight:690}
+.document-row input[type="file"] {max-width:100%;min-width:0;width:100%;color:var(--color-text)}
+.document-row > .danger-zone .job-form {grid-template-columns:minmax(0,1fr);max-width:490px;gap:12px}
+.document-row > .danger-zone .job-form > .field {grid-column:1;max-width:none}
+.document-row > .danger-zone .job-form > .button {justify-self:start}
+.document-row .confirmation-note {margin:0}
+
+/* In-app notices stay within the library layout, including Wails redirects. */
+.library-notice {
+  display:flex;
+  gap:14px;
+  align-items:flex-start;
+  justify-content:space-between;
+  background:var(--color-info-soft);
+  border-color:var(--color-border-strong);
+  padding:14px 18px;
+}
+.library-notice p {margin:0;min-width:0;overflow-wrap:anywhere}
+.library-notice .text-link {flex:0 0 auto}
+
+/* Career evidence is a nested read-only area, not another outer card.
+   Limit long evidence text and keep its typography readable in both themes. */
+.evidence-panel {
+  min-width:0;
+  margin:20px 0;
+  padding:18px;
+  border:1px solid var(--color-border);
+  border-radius:10px;
+  background:var(--color-surface-muted);
+}
+.evidence-panel > .section-heading {padding:0 0 12px;align-items:flex-start;flex-wrap:wrap}
+.evidence-panel > .section-heading .status {white-space:normal}
+.evidence-panel > .small-muted {margin:4px 0 15px}
+.evidence-document {
+  min-width:0;
+  border:1px solid var(--color-border);
+  border-radius:8px;
+  background:var(--color-surface);
+  margin:10px 0;
+  overflow:hidden;
+}
+.evidence-document > summary {
+  list-style:none;
+  display:flex;
+  align-items:center;
+  gap:7px;
+  padding:13px 15px;
+  font-size:12px;
+  overflow-wrap:anywhere;
+}
+.evidence-document-label {min-width:0;display:grid;gap:3px;overflow-wrap:anywhere}
+.evidence-document-name {color:var(--color-muted);font-size:11px;font-weight:450}
+.evidence-document > summary::-webkit-details-marker {display:none}
+.evidence-document > summary::after {content:"⌄";margin-left:auto;flex-shrink:0;font-size:17px;color:var(--color-muted)}
+.evidence-document[open] > summary::after {transform:rotate(180deg)}
+.evidence-document > .editor-content {padding:14px 15px 17px;min-width:0}
+.evidence-document .inline-hint {margin:0;overflow-wrap:anywhere}
+.evidence-text {
+  max-height:22rem;
+  overflow:auto;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+  font-family:inherit;
+  font-size:12px;
+  line-height:1.7;
+  tab-size:4;
+  padding:13px;
+  margin:10px 0 0;
+  border:1px solid var(--color-border);
+  border-radius:6px;
+  background:var(--color-bg);
+  color:var(--color-text);
+}
+
+@media(max-width:760px) {
+  /* The horizontally scrollable nav must not determine the page width. */
+  .sidebar {width:100%;max-width:100%;min-width:0;overflow:hidden}
+  .primary-nav {min-width:0;max-width:100%;width:100%;overflow-x:auto;flex-wrap:nowrap}
+}
+@media(max-width:800px) {
+  .document-row {grid-template-columns:45px minmax(0,1fr)}
+  .document-row > .button {grid-column:2;justify-self:start}
+  .document-row > .document-routing-form,.document-row > .danger-zone {grid-column:1/-1}
+}
+@media(max-width:480px) {
+  .document-row > .resume-info h3 {font-size:13px}
+  .document-row > .document-routing-form {flex-direction:column;align-items:stretch}
+  .document-row > .document-routing-form .field,
+  .document-row > .document-routing-form .confirm-row {flex:auto;width:100%;min-width:0;max-width:none}
+  .document-row > .document-routing-form .button,
+  .document-row > .danger-zone .button {width:100%;white-space:normal}
+  .document-row > .danger-zone .job-form {max-width:100%}
+  .document-row > .danger-zone .job-form > .button {justify-self:stretch}
+  .library-notice {flex-direction:column;gap:9px}
+  .evidence-panel {padding:13px;margin:17px 0}
+  .evidence-document > summary {align-items:flex-start;flex-wrap:wrap}
+  .heading-actions {justify-content:flex-start}
+  .page-heading .heading-actions {width:100%}
+  .page-heading .heading-actions .button {white-space:normal;text-align:center}
+  .job-hero .heading-actions {width:100%;justify-content:flex-start}
+  .job-hero .heading-actions > * {max-width:100%}
+  .g55-handoff-form .button {width:100%;white-space:normal}
+}

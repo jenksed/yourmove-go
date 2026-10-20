@@ -179,6 +179,26 @@ func initJobsSchema(db *sql.DB) error {
 			return fmt.Errorf("add primary resume flag: %w", err)
 		}
 	}
+	if !resumeColumns["is_master"] {
+		if _, err := db.Exec(`ALTER TABLE resumes ADD COLUMN is_master INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return fmt.Errorf("add master resume flag: %w", err)
+		}
+	}
+	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS one_master_resume ON resumes(is_master) WHERE is_master=1`); err != nil {
+		return fmt.Errorf("index master resume: %w", err)
+	}
+	for _, column := range []struct{ name, ddl string }{
+		{"archived_at", `ALTER TABLE resumes ADD COLUMN archived_at TEXT NOT NULL DEFAULT ''`},
+		{"series_id", `ALTER TABLE resumes ADD COLUMN series_id INTEGER NOT NULL DEFAULT 0`},
+		{"version", `ALTER TABLE resumes ADD COLUMN version INTEGER NOT NULL DEFAULT 1`},
+	} {
+		if !resumeColumns[column.name] {
+			if _, err := db.Exec(column.ddl); err != nil {
+				return fmt.Errorf("add resume %s: %w", column.name, err)
+			}
+		}
+	}
+
 	// G5: read-only application requirements and a single locally approved profile.
 	for _, statement := range []string{
 		`CREATE TABLE IF NOT EXISTS candidate_profile (
