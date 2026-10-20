@@ -47,12 +47,20 @@ func (j Job) ActionHref() string {
 
 func (j Job) ActionReason() string {
 	switch {
+	case j.SubmissionCount > 0 || j.Stage == StageApplied:
+		return "This opportunity is marked applied. Review its recorded history."
+
+	case j.Stage == StageClosed:
+		return "This opportunity is closed in YourMove. Change its stage to resume preparation."
+
 	case j.SelectedResumeID == 0:
-		return "Choose a document before applying, or continue manually."
+		return "No resume selected. Choose a document or continue manually."
+
 	case j.Stage == StageReady:
-		return "Resume selected and marked ready. Review the employer form."
+		return "You marked this job ready. Review the employer application before submitting."
+
 	default:
-		return "Review the opportunity and set your tracking stage."
+		return "Review the saved posting and decide whether to continue."
 	}
 }
 

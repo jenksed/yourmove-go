@@ -59,7 +59,79 @@
     <details class="submission-disclosure" id="record-submission"><summary><span>Record completed application</span><span class="summary-chevron" aria-hidden="true">⌄</span></summary><div class="submission-disclosure-body"><div class="confirmation-note">This action records your confirmation. It does not submit an application or prove receipt by the employer.</div><form method="POST" action="/jobs/{{.ID}}/submit" class="submission-form"><input type="hidden" name="submission_token" value="{{.SubmissionToken}}"><div class="field"><label for="notes">Submission notes <span class="muted">(optional)</span></label><input id="notes" name="notes" maxlength="1000" placeholder="Confirmation number or follow-up"></div><label class="confirm-row"><input type="checkbox" name="confirm" value="yes" required><span>I confirm that I submitted this application on the employer website.</span></label><button type="submit" class="button button-primary">Record completed application</button></form></div></details>
     </div>
   </section>
-  </div><aside class="workspace-aside"><div class="panel guidance-panel"><p class="eyebrow">YOUR NEXT MOVE</p><h2>{{if .SubmissionCount}}Application recorded{{else if .SelectedResume}}Review the employer form{{else}}Pick a resume{{end}}</h2><p>{{if .SubmissionCount}}You've recorded {{.SubmissionCount}} submission(s) for this job. Review the history for details.{{else if .SelectedResume}}Your document is selected. Visit the employer's site to apply.{{else}}Select a resume to keep a clear record of the document you intend to use.{{end}}</p><p class="small-muted">You stay in control of every submission.</p></div></aside></div>
+  </div>
+
+<aside class="workspace-aside">
+  <div class="panel guidance-panel">
+    <p class="eyebrow">JOB BRIEF</p>
+    <h2>{{.ActionLabel}}</h2>
+    <p>{{.ActionReason}}</p>
+
+    <dl class="fact-list">
+      <div>
+        <dt>Posting source</dt>
+        <dd>{{.SourceStatusLabel}}</dd>
+      </div>
+
+      <div>
+        <dt>Job description</dt>
+        <dd>
+          {{if .Description}}
+            {{if .DescriptionManual}}
+              Saved · Manually edited
+            {{else}}
+              Saved · No manual edit recorded
+            {{end}}
+          {{else}}
+            Not recorded
+          {{end}}
+        </dd>
+      </div>
+
+      <div>
+        <dt>Resume</dt>
+        <dd>
+          {{if .SelectedResume}}
+            {{.SelectedResume.Name}} · Selected
+          {{else}}
+            Not selected
+          {{end}}
+        </dd>
+      </div>
+
+    <div>
+    <dt>Missing posting details</dt>
+    <dd>
+        {{range .MissingPostingDetails}}
+        <div>{{.}} not recorded</div>
+        {{else}}
+        Core posting details recorded
+        {{end}}
+    </dd>
+    </div>
+
+    </dl>
+
+    {{if or (gt .SubmissionCount 0) (eq .Stage "applied")}}
+      <a class="button button-primary"
+         href="#history" data-tab-target="history">
+        View application history →
+      </a>
+    {{else if eq .Stage "closed"}}
+      <a class="button button-secondary"
+         href="#overview" data-tab-target="overview">
+        Review opportunity →
+      </a>
+    {{else if .SelectedResume}}
+      <a class="button button-primary"
+         href="/jobs/{{.ID}}/inspection">
+        Review application →
+      </a>
+    {{end}}
+  </div>
+</aside>
+
+</div>
 </div>
 <div class="workspace-panel" id="history" data-workspace-panel="history" tabindex="-1"><section class="panel history-panel" aria-labelledby="history-title"><div class="section-heading"><div><p class="eyebrow">APPLICATION TIMELINE</p><h2 id="history-title">Submission history</h2></div>{{if .SubmissionCount}}<span class="summary-count">{{.SubmissionCount}} recorded</span>{{end}}</div>
   {{if .Submissions}}<ol class="timeline">{{range .Submissions}}<li><span class="timeline-dot" aria-hidden="true"></span><div class="timeline-content"><strong>Submission recorded</strong><time>{{.SubmittedAt}}</time><p>Resume: {{.ResumeName}}</p>{{if .Notes}}<p class="timeline-note">{{.Notes}}</p>{{end}}</div></li>{{end}}</ol>{{else}}<div class="empty-state"><div class="empty-mark" aria-hidden="true">◎</div><h3>No submissions recorded</h3><p>After submitting at an employer site, record it from the Prepare tab. Your application record will appear here.</p><a class="button button-secondary" href="#prepare" data-tab-target="prepare">Go to preparation →</a></div>{{end}}

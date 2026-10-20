@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	"example.com/yourmove-lite/internal/platforms"
 )
@@ -100,6 +101,24 @@ func (j Job) SourceStatusLabel() string {
 	default:
 		return "Not checked"
 	}
+}
+
+func (j Job) MissingPostingDetails() []string {
+	var missing []string
+
+	if strings.TrimSpace(j.Title) == "" {
+		missing = append(missing, "Job title")
+	}
+
+	if strings.TrimSpace(j.Company) == "" {
+		missing = append(missing, "Employer name")
+	}
+
+	if strings.TrimSpace(j.Description) == "" {
+		missing = append(missing, "Job description")
+	}
+
+	return missing
 }
 
 func (a *App) saveJob(job Job) error {
