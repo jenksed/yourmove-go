@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	browser "example.com/yourmove-lite/internal/application/browser"
 )
 
 var resumesTemplate = template.Must(template.ParseFiles("templates/resumes.html", "templates/partials.html"))
@@ -26,8 +28,49 @@ type jobWorkspace struct {
 	Desktop         bool
 	SubmissionToken string
 	SelectedResume  *Resume
+	Handoff         HandoffEligibility
 	Match           MatchRecommendation
 	HasFamilies     bool
+}
+
+type HandoffEligibility struct {
+	Allowed bool
+	Reason  string
+}
+
+func assessResumeHandoff(job Job, resume *Resume) HandoffEligibility {
+	switch {
+	case job.SubmissionCount > 0 || job.Stage == StageApplied:
+		return HandoffEligibility{
+			Reason: "This opportunity is marked applied. Review its history.",
+		}
+
+	case job.Stage == StageClosed:
+		return HandoffEligibility{
+			Reason: "This opportunity is closed in YourMove.",
+		}
+
+	case job.SelectedResumeID == 0:
+		return HandoffEligibility{
+			Reason: "Select a resume before starting a handoff.",
+		}
+
+	case resume == nil || resume.ID != job.SelectedResumeID:
+		return HandoffEligibility{
+			Reason: "The selected resume is unavailable. Choose a valid document.",
+		}
+
+	case !browser.OwnsAshbyURL(job.URL, job.URL):
+		return HandoffEligibility{
+			Reason: "Managed resume handoff currently supports Ashby applications.",
+		}
+
+	default:
+		return HandoffEligibility{
+			Allowed: true,
+			Reason:  "Resume handoff is available. Explicit approval is required.",
+		}
+	}
 }
 
 type documentRow struct {

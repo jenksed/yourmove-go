@@ -308,3 +308,79 @@ func TestResumeHandoffPinsSelectedFileAcrossSteps(t *testing.T) {
 	}
 }
 func (f *attachmentFake) timesClosedIsOne() bool { return f.timesClosed() == 1 }
+
+func TestResumeHandoffHTTPRespectsEligibility(t *testing.T) {
+	const ashby = testAshbyPosting
+
+	tests := []struct {
+		name     string
+		url      string
+		selected bool
+		closed   bool
+		applied  bool
+		status   int
+	}{
+		{"closed", ashby, true, true, false, 409},
+		{"applied", ashby, true, false, true, 409},
+		{"missing resume", ashby, false, false, false, 409},
+		{"unsupported provider", "https://example.com/job", true, false, false, 422},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a, _ := testWorkspace(t)
+
+			if err := a.saveJob(Job{URL: tt.url, Host: "example.com"}); err != nil {
+				t.Fatal(err)
+			}
+
+			resume, err := a.importResume(
+				"test.pdf",
+				strings.NewReader("%PDF-1.4\nrole-doc"),
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if tt.selected {
+				if err := a.assignResume(1, resume.ID); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			if tt.closed {
+				job, err := a.jobByID(1)
+				if err != nil {
+					t.Fatal(err)
+				}
+				job.Stage = StageClosed
+				if err := a.updateJob(job); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			if tt.applied {
+				if err := a.recordSubmission(1, "confirmed", mustToken(t)); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			a.browsers.factory = func(context.Context, string) (readOnlySession, error) {
+				t.Error("rejected handoff launched the browser")
+				return nil, errors.New("unexpected browser launch")
+			}
+
+			form := url.Values{
+				"confirm":     {"yes"},
+				"resume_id":   {strconv.FormatInt(resume.ID, 10)},
+				"resume_hash": {resume.SHA256},
+			}
+
+			got := postApp(newMux(a), "/jobs/1/handoff", form, "", "")
+			if got.Code != tt.status {
+				t.Fatalf("status = %d, want %d: %s",
+					got.Code, tt.status, got.Body.String())
+			}
+		})
+	}
+}

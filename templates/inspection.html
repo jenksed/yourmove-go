@@ -10,7 +10,7 @@
   <div class="g53-state" role="status" {{if .BrowserOpen}}data-browser-watch data-job-id="{{.Job.ID}}" data-observed-id="{{.BrowserState.LatestID}}" data-resume-status="{{.BrowserState.ResumeStatus}}" data-phase="{{.BrowserState.Phase}}"{{end}}>
     <div><strong data-handoff-title>{{.BrowserState.HandoffTitle}}</strong><p data-handoff-detail aria-live="polite">{{.BrowserState.HandoffDetail}}</p></div>
   </div>
-  {{if and .SelectedResume (eq .Job.SubmissionCount 0) (or (eq .BrowserState.ResumeStatus "") (and (not .BrowserOpen) (eq .BrowserState.ResumeStatus "waiting")))}}
+  {{if and .Handoff.Allowed (or (eq .BrowserState.ResumeStatus "") (and (not .BrowserOpen) (eq .BrowserState.ResumeStatus "waiting")))}}
   <form method="POST" action="/jobs/{{.Job.ID}}/handoff" class="g55-handoff-form">
     <input type="hidden" name="resume_id" value="{{.SelectedResume.ID}}"><input type="hidden" name="resume_hash" value="{{.SelectedResume.SHA256}}">
     <label class="confirm-row"><input type="checkbox" required name="confirm" value="yes"><span>Attach the selected <strong>{{.SelectedResume.Name}}</strong> to this Ashby application if a unique resume field is found. Ashby may receive the file immediately. I will review and submit personally.</span></label>
@@ -18,7 +18,7 @@
   </form>
   {{end}}
   {{if and (eq .BrowserState.Phase "interrupted") (or (eq .BrowserState.ResumeStatus "selected") (eq .BrowserState.ResumeStatus "checking") (eq .BrowserState.ResumeStatus "attention"))}}<p class="small-muted">A previous resume attachment may have been attempted. It will not be automatically replayed. Reopen the application and check the employer form; if needed, attach the selected resume manually.</p>{{end}}
-  {{if not .SelectedResume}}<p class="small-muted">No resume selected. <a href="/jobs/{{.Job.ID}}#prepare">Choose the correct document</a> to enable resume handoff.</p>{{end}}
+  {{if not .Handoff.Allowed}}<p class="small-muted">{{.Handoff.Reason}} <a href="/jobs/{{.Job.ID}}#prepare">Review preparation</a>.</p>{{end}}
   {{if .BrowserOpen}}
   {{if .BrowserState.ResumeName}}<div class="g55-resume-status" data-resume-state="{{.BrowserState.ResumeStatus}}"><strong>Selected document: {{.BrowserState.ResumeName}}</strong><p>{{.BrowserState.ResumeMessage}}</p></div>{{else}}<p class="small-muted">Read-only browser session: no resume has been authorized for upload.</p>{{end}}
   {{if .BrowserState.ResumeRetryable}}

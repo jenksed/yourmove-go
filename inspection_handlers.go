@@ -55,6 +55,7 @@ type inspectionPageModel struct {
 	BrowserHistory   []InspectionSummary
 	BrowserState     browserRunState
 	SelectedResume   *Resume
+	Handoff          HandoffEligibility
 }
 
 func (a *App) inspectionPage(w http.ResponseWriter, r *http.Request) {
@@ -85,6 +86,7 @@ func (a *App) inspectionPage(w http.ResponseWriter, r *http.Request) {
 			view.SelectedResume = &resume
 		}
 	}
+	view.Handoff = assessResumeHandoff(job, view.SelectedResume)
 	view.BrowserHistory, _ = a.inspectionSummaries(id, "browser", 12)
 	if len(view.BrowserHistory) > 0 {
 		view.BrowserLatestID = view.BrowserHistory[0].ID

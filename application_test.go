@@ -375,3 +375,43 @@ func TestStoredResumeIntegrityRequiredForDownload(t *testing.T) {
 		t.Fatalf("altered artifact served: status=%d", w.Code)
 	}
 }
+
+func TestAssessResumeHandoff(t *testing.T) {
+	const ashby = "https://jobs.ashbyhq.com/render/e1f2d6a2-b9e2-4f16-b863-3ca228c83e75"
+
+	selected := &Resume{ID: 7}
+	active := Job{
+		URL:              ashby,
+		Stage:            StageReview,
+		SelectedResumeID: 7,
+	}
+
+	tests := []struct {
+		name    string
+		job     Job
+		resume  *Resume
+		allowed bool
+	}{
+		{"active Ashby", active, selected, true},
+		{"missing document", active, nil, false},
+		{"wrong document", active, &Resume{ID: 8}, false},
+		{"closed", Job{URL: ashby, Stage: StageClosed, SelectedResumeID: 7}, selected, false},
+		{"applied", Job{URL: ashby, Stage: StageApplied, SelectedResumeID: 7}, selected, false},
+		{"no selection", Job{URL: ashby, Stage: StageReview}, nil, false},
+		{"unsupported provider", Job{URL: "https://example.com/job", Stage: StageReview, SelectedResumeID: 7}, selected, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := assessResumeHandoff(tt.job, tt.resume)
+
+			if got.Allowed != tt.allowed {
+				t.Errorf("Allowed = %v, want %v", got.Allowed, tt.allowed)
+			}
+
+			if got.Reason == "" {
+				t.Error("missing explanation")
+			}
+		})
+	}
+}

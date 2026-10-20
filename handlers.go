@@ -174,7 +174,7 @@ func (a *App) jobDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := jobDetailTemplate.Execute(w, jobWorkspace{Job: job, Resumes: resumes, ResumeOptions: resumeOptions, Submissions: history, Desktop: a.openPosting != nil, SubmissionToken: token, SelectedResume: selected, Match: match, HasFamilies: showMatch}); err != nil {
+	if err := jobDetailTemplate.Execute(w, jobWorkspace{Job: job, Resumes: resumes, ResumeOptions: resumeOptions, Submissions: history, Desktop: a.openPosting != nil, SubmissionToken: token, SelectedResume: selected, Handoff: assessResumeHandoff(job, selected), Match: match, HasFamilies: showMatch}); err != nil {
 		log.Printf("render job detail: %v", err)
 	}
 }

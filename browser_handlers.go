@@ -154,21 +154,24 @@ func (a *App) startResumeHandoff(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if job.Stage == StageClosed || job.Stage == StageApplied || job.SubmissionCount > 0 {
-		http.Error(w, "Active jobs only", 409)
-		return
+	var resume *Resume
+	if job.SelectedResumeID > 0 {
+		saved, readErr := a.resumeByID(job.SelectedResumeID)
+		if readErr == nil {
+			resume = &saved
+		}
 	}
-	if !browser.OwnsAshbyURL(job.URL, job.URL) {
-		http.Error(w, "Resume handoff currently supports Ashby applications", 422)
-		return
-	}
-	if job.SelectedResumeID == 0 {
-		http.Error(w, "Select a resume in this job before continuing", 409)
-		return
-	}
-	resume, err := a.resumeByID(job.SelectedResumeID)
-	if err != nil {
-		http.Error(w, "Selected resume not available", 409)
+
+	eligibility := assessResumeHandoff(job, resume)
+	if !eligibility.Allowed {
+		status := http.StatusConflict
+		// Preserve the existing 422 response for unsupported providers.
+		if job.Stage != StageClosed && job.Stage != StageApplied &&
+			job.SubmissionCount == 0 &&
+			!browser.OwnsAshbyURL(job.URL, job.URL) {
+			status = http.StatusUnprocessableEntity
+		}
+		http.Error(w, eligibility.Reason, status)
 		return
 	}
 	if r.PostForm.Get("confirm") != "yes" || r.PostForm.Get("resume_id") != strconv.FormatInt(resume.ID, 10) || r.PostForm.Get("resume_hash") != resume.SHA256 {
