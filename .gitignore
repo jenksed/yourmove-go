@@ -8,3 +8,6 @@ jobs.db-shm
 
 # Pre-migration SQLite snapshots and local app artifacts
 *.db.pre-*.bak
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
