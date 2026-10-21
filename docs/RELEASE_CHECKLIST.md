@@ -1,32 +1,30 @@
-# Before announcing YourMove v0.1 broadly
+# Release status and checklist
 
-This is a short maintainer checklist, not a commitment that the work below is already finished. The documentation PR was drafted against public `main`, which may lag active local development. **Reconcile every claim with the actual v0.1 release commit.**
+**Status checked:** October 21, 2026, against baseline commit `2345d3157eb61e8ed7633a7ad8d8d5c318b50227`. This page describes the evidence available now; dated records in `docs/implementation/` remain historical.
 
-## Minimum release gate
+## What is available
 
-- [ ] Pick the exact release commit and decide whether this is a **source preview** or an **installable desktop preview**. Do not imply an installer exists when it does not.
-- [ ] Walk through the real job seeker path from a clean, isolated data directory: add job → inspect/prepare → choose resume → open employer form → return without losing work → record only a genuinely submitted application.
-- [ ] Verify both entry points against that same commit: `go run .` and macOS `go run -tags desktop .`, if native mode is advertised.
-- [ ] Confirm the Wails native build can actually open, save, restart, and retain data; describe any packaging/signing limitations explicitly.
-- [ ] Confirm experimental browser automation works on supported employer forms without accidental submission or unwanted repeated document transfer. Do not generalize platform support beyond observed evidence.
-- [ ] Verify test/qualification harnesses cannot write synthetic profiles or resume selections into normal user storage; test in a separate `YOURMOVE_DATA_DIR`.
-- [ ] If newer local features (cover letters, question preparation, expanded autofill/continuation) land in the release, update the README with **verified** behavior and limits. If not, do not advertise them as shipped.
-- [ ] Capture redacted/synthetic screenshots from the release build and replace the README's three visible image placeholders using `docs/VISUALS.md`.
-- [ ] Provide appropriate project licensing information before describing the repository as “open source.” As of this documentation draft, the public root had no LICENSE file.
-- [ ] Verify that public GitHub Issues and both feedback templates work. Consider a lower-friction feedback form later if non-technical testers struggle with GitHub.
-- [ ] Create the v0.1 GitHub release/tag and attach tested downloads **only** when such artifacts exist. If distributing source only, say so in launch copy.
+| Area | Current evidence |
+| --- | --- |
+| Run from source | The local browser interface runs with `go run .` on `127.0.0.1:3000`. Go 1.27.2 is required. |
+| Local desktop development | The Wails host uses `go run -tags desktop .` on macOS. The desktop-tagged Go test suite passed on Darwin/arm64; this is not a clean-machine native acceptance run. |
+| Packaged development candidate | `release/macos/build.sh` describes a local Apple Silicon/macOS 26 candidate with an ad-hoc signature. Its output is not a public download. |
+| Public downloads | No GitHub release is published as of this check. See [GitHub Releases](https://github.com/jenksed/yourmove-go/releases) for current availability. |
+| Signing and notarization | No signed, notarized public build or clean-machine download/install acceptance is established. The distribution script requires an owner-provisioned Developer ID identity and notary profile. |
+| Employer-site behavior | Current browser evidence is from controlled local fixtures for selected Ashby, Greenhouse, and Lever flows. Real Ashby qualification remains unresolved; the dated Lever/Spreedly notes record markup inspection, not a successful live upload. Fixture results do not prove compatibility with a live employer account or every site. No universal ATS support is claimed. |
 
-## What not to solve in this PR
+`go test ./...` and `go test -tags desktop ./...` passed on Go 1.27.2, Darwin/arm64, at the status commit above. These tests do not replace manual Wails acceptance, notarization, clean-machine installation, or employer-specific qualification.
 
-No Go code, Go dependencies, Wails configuration, automation behavior, data migration, packaging, tests, or release binary changes. This branch should be safe to merge or cherry-pick alongside ongoing implementation.
+## Before publishing a release
 
-### Bring into the working branch
+- [ ] Select and freeze the exact source commit and target platform/architecture.
+- [ ] Run both Go test commands from the frozen checkout and record the results.
+- [ ] Use a new isolated `YOURMOVE_DATA_DIR` for a manual local-browser walkthrough; confirm stored jobs and resumes survive restart.
+- [ ] On macOS, manually qualify the Wails window, native file dialogs, persistence, and restart behavior on the stated OS/architecture.
+- [ ] Run controlled browser fixtures and any intended employer-site checks separately. Describe only the exact sites, pages, controls, and actions that were verified. Never treat a successful local fixture as universal compatibility.
+- [ ] Build the local candidate outside the repository and retain its source and artifact hashes.
+- [ ] Before distribution, sign and notarize with owner-provisioned credentials, then verify the downloaded artifact on a clean Mac with normal Gatekeeper protections.
+- [ ] Publish a GitHub release only after the artifact passes the applicable checks. Until then, describe YourMove as source-run and do not imply that a packaged download is available.
+- [ ] Keep user feedback links and the warning not to post resumes, application answers, credentials, or unredacted employer forms.
 
-The PR is based on `main` and introduces only new documentation and issue-template paths. Merge the PR normally if the working branch can consume `main` safely. Otherwise cherry-pick its single documentation commit:
-
-```sh
-git fetch origin docs/v0.1-public-launch
-git cherry-pick origin/docs/v0.1-public-launch
-```
-
-Check the resulting diff and update product claims as needed against the **actual** release branch before publishing.
+The app does not submit employer applications. Release qualification must preserve the applicant's review and explicit submission decision.

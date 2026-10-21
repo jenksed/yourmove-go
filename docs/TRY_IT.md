@@ -1,70 +1,71 @@
-# Try YourMove locally
+# Run YourMove locally
 
-This is the **source-run preview** guide. It is not an installer guide, and it does not claim that a packaged v0.1 build exists.
+This is the authoritative source-run quickstart for contributors and people evaluating YourMove. It does not describe an installer or a public desktop download.
 
-[Back to README](../README.md) · [Give feedback](FEEDBACK.md)
+[Back to README](../README.md) · [Codebase guide](CODEBASE_GUIDE.md) · [Give feedback](FEEDBACK.md)
 
-## Choose your mode
+## Requirements
 
-Both modes run the same Go application and read the same user data. Use one at a time for an uncomplicated first trial.
+- Go 1.27.2, as declared in `go.mod`, and Git.
+- For the Wails desktop development run: macOS and Xcode Command Line Tools. Wails v3 is a beta dependency.
+- For employer-form browser assistance: a supported local Chromium-compatible browser. Other parts of the app remain available without it.
 
-### Local browser (the easiest development path)
+## Run the local browser interface
 
-1. Install Git and the Go version required by `go.mod` (currently Go 1.27.2).
-2. Run the following from a terminal:
-
-   ```sh
-   git clone https://github.com/jenksed/yourmove-go.git
-   cd yourmove-go
-   go run .
-   ```
-
-3. Visit `http://127.0.0.1:3000` in a browser on the **same computer**.
-4. Stop YourMove with Ctrl+C when done.
-
-This address is a loopback server on your computer, not a publicly accessible web app. If port 3000 is already in use, this preview may fail to start; check the terminal rather than assuming the app has launched.
-
-### Wails native window (macOS development mode)
-
-1. Install the Go version required by `go.mod` and the Xcode Command Line Tools.
-2. From the repository root, run:
-
-   ```sh
-   go run -tags desktop .
-   ```
-
-3. The Wails v3 WebView should present the same YourMove workspace.
-
-Wails v3 is still a beta dependency in this repository. This mode has been developed for macOS and needs release-build qualification; there is no signed, notarized, or packaged app offered here. Other operating systems should not be assumed supported.
-
-## Protect your normal data when experimenting
-
-By default, YourMove stores data under:
-
-- **macOS:** `~/Library/Application Support/YourMove`
-- **Other systems:** the OS user config directory, in a `YourMove` folder.
-
-You can explicitly choose a *new, absolute* directory for a throwaway trial. For example on macOS:
+From a checkout:
 
 ```sh
-mkdir -p /tmp/yourmove-preview
-YOURMOVE_DATA_DIR=/tmp/yourmove-preview go run .
+git clone https://github.com/jenksed/yourmove-go.git
+cd yourmove-go
+go run .
 ```
 
-Do not point a test run at an existing YourMove data directory. A first run may import an old `jobs.db` from the repository working directory into a new data directory when one exists. Use a clean checkout if you want a completely fresh start. Do not share the local database or uploaded document directory when filing bugs.
+Open `http://127.0.0.1:3000` in a browser on the same computer. The server listens on loopback; it is not a hosted service. Stop it with Ctrl+C. If port 3000 is already in use, check the terminal output instead of stopping another YourMove process.
 
-## A useful 10-minute test
+## Use an isolated data directory
 
-1. **Save one opportunity.** Use a real job-description link you are considering, or a public job link for a non-submission trial.
-2. **Open its workspace.** Check the title, company, description, and source-status note. If something is wrong, edit it and save.
-3. **Add a resume.** Go to Documents, import a PDF or DOCX, and select it for the job. For privacy, a test resume is fine.
-4. **Review Prepare.** Identify the next action and what the app is offering to do. If inspection or browser handoff is available, review the stated scope before using it.
-5. **Visit the employer form if you want.** Review everything in the real employer UI. Do **not** click Submit as part of a test. Only record a completed application in YourMove after you have actually submitted one yourself.
+By default, macOS stores data in `~/Library/Application Support/YourMove`; other systems use the OS user-config directory under `YourMove`. Set `YOURMOVE_DATA_DIR` to a new absolute path to keep a development run separate from your normal workspace:
 
-You can provide useful feedback after any step. Unsupported posting sources and incomplete form inspection are expected limitations, not proof that you did anything incorrectly.
+```sh
+export YOURMOVE_DATA_DIR="$(mktemp -d /tmp/yourmove-go-dev.XXXXXX)"
+go run .
+```
 
-## What would be most valuable to report?
+The new directory contains `jobs.db` and a `resumes/` folder. YourMove creates it with owner-only permissions. The same exported `YOURMOVE_DATA_DIR` is used by the Wails command below if you run it in this terminal. If the selected directory is empty and a legacy `jobs.db` exists in the repository's current working directory, startup may import that jobs-only database. Use a clean checkout or make sure no legacy database is present when you need a completely empty test workspace. Do not point test runs at your normal data directory.
 
-Was the next action obvious? Did the right resume remain selected? Did opening the employer application preserve your work? Did a source or form behave differently from what YourMove suggested? What took longer than it should?
+## Run the macOS Wails development host
 
-[Send experience feedback](https://github.com/jenksed/yourmove-go/issues/new?template=experience-feedback.md) or [report a bug](https://github.com/jenksed/yourmove-go/issues/new?template=bug-report.md). Remove all personal or employer application data from logs and screenshots first.
+From the repository root on macOS:
+
+```sh
+go run -tags desktop .
+```
+
+This opens the same Go application and routes in a Wails window. The `desktop` entry point is built only for Darwin. This command is a development run; it does not create a signed or notarized app. The local candidate recipe and its current limits are in [release/macos/README.md](../release/macos/README.md).
+
+## Run the tests
+
+```sh
+go test ./...
+go test -tags desktop ./...
+```
+
+The first command tests browser mode and shared application logic. The second compiles and tests the macOS desktop build path. Both commands passed on Go 1.27.2, Darwin/arm64, at baseline commit `2345d3157eb61e8ed7633a7ad8d8d5c318b50227`. Opt-in browser qualification tests use local fixtures and extra environment guards; inspect the specific test before enabling one.
+
+For a focused test while iterating:
+
+```sh
+go test ./... -run TestName -count=1
+```
+
+## Follow a change and debug it
+
+Start with the source map in the [codebase guide](CODEBASE_GUIDE.md). It shows how a template control maps to an HTTP route, handler, persistence operation, and browser command.
+
+For browser mode, keep the server terminal open to read startup and error logs, and use the browser's developer tools to inspect the local page. Reproduce data-related issues with a separate `YOURMOVE_DATA_DIR`; reproduce logic issues with a focused Go test. A managed employer browser session is in memory and does not return after the YourMove process exits.
+
+## Try the workflow and report friction
+
+Save an opportunity, review its imported details, add a test resume if needed, and read the Prepare workspace. If you choose to open an employer form, review it yourself. Do not submit an application as part of a test. Only record a completed application in YourMove after you have actually submitted it yourself.
+
+[Report a bug](https://github.com/jenksed/yourmove-go/issues/new?template=bug-report.md) or [share experience feedback](https://github.com/jenksed/yourmove-go/issues/new?template=experience-feedback.md). Remove personal and employer application data from logs or screenshots before posting.

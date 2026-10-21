@@ -1,4 +1,4 @@
-# macOS public beta candidate
+# Local macOS build candidate
 
 This recipe prepares a local candidate. Public distribution is gated on signing,
 notarization, and the manual acceptance record below. It does not publish anything.
