@@ -13,6 +13,7 @@
  <div class="field"><label for="linkedin">LinkedIn URL</label><input id="linkedin" name="linkedin" value="{{.LinkedIn}}" maxlength="320"></div>
  <div class="field"><label for="github">GitHub URL</label><input id="github" name="github" value="{{.GitHub}}" maxlength="320"></div>
  <div class="field"><label for="portfolio">Portfolio URL</label><input id="portfolio" name="portfolio" value="{{.Portfolio}}" maxlength="320"></div>
+ <div class="field"><label for="pronouns">Pronouns</label><select id="pronouns" name="pronouns"><option value="" {{if eq .Pronouns ""}}selected{{end}}>Not specified</option><option {{if eq .Pronouns "He/him"}}selected{{end}}>He/him</option><option {{if eq .Pronouns "She/her"}}selected{{end}}>She/her</option><option {{if eq .Pronouns "They/them"}}selected{{end}}>They/them</option></select></div>
  <label class="confirm-row g5-span"><input type="checkbox" name="approve" value="yes"><span>I have reviewed these facts and approve them for future mapping suggestions. This does not authorize transmission to an employer.</span></label>
  <div class="g5-span"><button class="button button-primary" type="submit">Save profile revision</button></div>
 </form></section>

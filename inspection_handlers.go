@@ -31,7 +31,7 @@ func (a *App) updateCandidate(w http.ResponseWriter, r *http.Request) {
 	if !parseLocalForm(w, r, 12<<10) {
 		return
 	}
-	p := CandidateProfile{FirstName: r.PostForm.Get("first_name"), LastName: r.PostForm.Get("last_name"), Email: r.PostForm.Get("email"), Phone: r.PostForm.Get("phone"), City: r.PostForm.Get("city"), Region: r.PostForm.Get("region"), Country: r.PostForm.Get("country"), LinkedIn: r.PostForm.Get("linkedin"), GitHub: r.PostForm.Get("github"), Portfolio: r.PostForm.Get("portfolio"), Approved: r.PostForm.Get("approve") == "yes"}
+	p := CandidateProfile{FirstName: r.PostForm.Get("first_name"), LastName: r.PostForm.Get("last_name"), Email: r.PostForm.Get("email"), Phone: r.PostForm.Get("phone"), City: r.PostForm.Get("city"), Region: r.PostForm.Get("region"), Country: r.PostForm.Get("country"), LinkedIn: r.PostForm.Get("linkedin"), GitHub: r.PostForm.Get("github"), Portfolio: r.PostForm.Get("portfolio"), Pronouns: r.PostForm.Get("pronouns"), Approved: r.PostForm.Get("approve") == "yes"}
 	if err := a.saveCandidateProfile(p); err != nil {
 		http.Error(w, "Profile was not saved: "+err.Error(), 400)
 		return

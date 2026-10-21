@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -35,10 +36,13 @@ func TestCoverLetterStudioGeneratesSavesAndPinsSources(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.coverLetterGenerate = func(_ context.Context, prompt string) (string, error) {
-		for _, phrase := range []string{"Managed production incidents", "Linux and MySQL troubleshooting", "Work on Linux incidents"} {
+		for _, phrase := range []string{"Managed production incidents", "Linux and MySQL troubleshooting", "Work on Linux incidents", "Target 120–160 words", "180 words as the editorial ceiling", "Choose the strongest documented professional example", "never move achievements or responsibilities between employers", "Internal operations are not automatically external customer support", "Investigating a problem does not establish", "Preserve distinctions between technologies and databases", "not independently fact-checked records"} {
 			if !strings.Contains(prompt, phrase) {
 				t.Errorf("missing prompt source %q", phrase)
 			}
+		}
+		if !strings.HasSuffix(prompt, coverLetterInstructions) {
+			t.Error("source evidence must be followed by the canonical writing instructions")
 		}
 		return "I have worked on Linux troubleshooting and production support. I would bring that experience to this role.", nil
 	}
@@ -112,7 +116,7 @@ func TestCoverLetterSourcesRequiredAndNoDraftOnFailure(t *testing.T) {
 		return "Unexpected model response should never be used here.", nil
 	}
 	w := postApp(newMux(a), "/jobs/1/cover-letter/generate", url.Values{"confirm_local": {"yes"}}, "", "")
-	if w.Code != 303 || w.Header().Get("Location") != coverNoticeURL(1, "sources") || calls != 0 {
+	if w.Code != 303 || w.Header().Get("Location") != coverNoticeURL(1, "source-description") || calls != 0 {
 		t.Fatalf("missing source validation %d %+v", w.Code, calls)
 	}
 	if _, err := a.latestCoverLetter(1); err == nil {
@@ -196,8 +200,24 @@ func TestExtractPDFTextForCoverLetter(t *testing.T) {
 	}
 }
 
+func TestCoverLetterWritingPolicyHasSingleEditableSource(t *testing.T) {
+	if strings.TrimSpace(coverLetterInstructions) == "" {
+		t.Fatal("embedded cover letter instructions are empty")
+	}
+	for _, phrase := range []string{
+		"120–160 words",
+		"Dear Hiring Team,",
+		"No markdown",
+		"never move achievements or responsibilities between employers",
+	} {
+		if !strings.Contains(coverLetterInstructions, phrase) {
+			t.Errorf("canonical instructions missing %q", phrase)
+		}
+	}
+}
+
 func TestCoverProviderHTTPContracts(t *testing.T) {
-	const letter = "I have worked on production troubleshooting, incident recovery and Linux systems for several years."
+	const letter = "  I have worked on production troubleshooting, incident recovery and Linux systems for several years.  "
 	examples := []struct {
 		provider string
 		response string
@@ -205,8 +225,8 @@ func TestCoverProviderHTTPContracts(t *testing.T) {
 		{"ollama", `{"response":"` + letter + `"}`},
 		{"openai", `{"status":"completed","output":[{"type":"reasoning"},{"type":"message","content":[{"type":"output_text","text":"` + letter + `"}]}]}`},
 		{"anthropic", `{"content":[{"type":"text","text":"` + letter + `"}]}`},
-		{"openrouter", `{"choices":[{"message":{"content":"` + letter + `"}}]}`},
-		{"compatible", `{"choices":[{"message":{"content":"` + letter + `"}}]}`},
+		{"openrouter", `{"choices":[{"finish_reason":"stop","message":{"content":"` + letter + `"}}]}`},
+		{"compatible", `{"choices":[{"finish_reason":"stop","message":{"content":"` + letter + `"}}]}`},
 	}
 	for _, example := range examples {
 		t.Run(example.provider, func(t *testing.T) {
@@ -235,8 +255,35 @@ func TestCoverProviderHTTPContracts(t *testing.T) {
 				if !bytes.Contains(data, []byte("sample-model")) {
 					t.Error("model omitted")
 				}
+				var payload map[string]any
+				if err := json.Unmarshal(data, &payload); err != nil {
+					t.Fatal(err)
+				}
+				if example.provider == "ollama" {
+					if think, exists := payload["think"]; !exists || think != false || payload["options"].(map[string]any)["num_predict"] != float64(850) {
+						t.Error("Ollama must disable thinking at the top level within the existing budget")
+					}
+				} else if _, exists := payload["think"]; exists {
+					t.Error("Ollama thinking control leaked to another provider")
+				}
 				if example.provider == "openai" && !bytes.Contains(data, []byte(`"store":false`)) {
 					t.Error("OpenAI request must disable storage")
+				}
+				// The genre/format contract is consistent across API providers.
+				switch example.provider {
+				case "openai":
+					if payload["instructions"] != coverLetterInstructions {
+						t.Error("OpenAI format instructions missing")
+					}
+				case "anthropic":
+					if payload["system"] != coverLetterInstructions {
+						t.Error("Anthropic format instructions missing")
+					}
+				case "openrouter", "compatible":
+					messages, ok := payload["messages"].([]any)
+					if !ok || len(messages) != 2 || messages[0].(map[string]any)["role"] != "system" || messages[0].(map[string]any)["content"] != coverLetterInstructions {
+						t.Error("chat provider format instructions missing")
+					}
 				}
 				w.Header().Set("Content-Type", "application/json")
 				fmt.Fprint(w, example.response)
@@ -277,6 +324,25 @@ func TestCoverProviderFailureCategories(t *testing.T) {
 				t.Fatalf("got %q wanted %q", got, tc.want)
 			}
 		})
+	}
+}
+
+// A partial answer should not become a saved draft even when its text
+// otherwise looks plausible. Do not retry automatically or trim to fit.
+func TestCoverProviderRejectsIncompleteChatResponse(t *testing.T) {
+	for _, provider := range []string{"openrouter", "compatible"} {
+		for _, reason := range []string{"length", "content_filter", "tool_calls"} {
+			t.Run(provider+"/"+reason, func(t *testing.T) {
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					fmt.Fprintf(w, `{"choices":[{"finish_reason":%q,"message":{"content":"Dear Hiring Team,\n\nI have documented production failures and helped customers.\n\nSincerely,\nAlex"}}]}`, reason)
+				}))
+				defer server.Close()
+				_, err := runCoverProvider(context.Background(), coverBackend{Provider: provider, Model: "test-model", URL: server.URL, APIKey: "secret"}, "evidence", nil)
+				if !errors.Is(err, errCoverOutput) {
+					t.Fatalf("accepted incomplete response: %v", err)
+				}
+			})
+		}
 	}
 }
 
@@ -429,5 +495,111 @@ func TestWritingDeskShowsSubscriptionAndSeparateAPIChoices(t *testing.T) {
 		if !strings.Contains(page.Body.String(), expected) {
 			t.Errorf("writing desk missing %q", expected)
 		}
+	}
+}
+
+func TestValidateGeneratedLetter(t *testing.T) {
+	valid := "Dear Hiring Team,\n\nI investigated production failures and documented reproducible findings for engineering. I would bring that troubleshooting experience to your support team.\n\nSincerely,\nAlex"
+	for name, body := range map[string]string{
+		"candidate voice": "I need to understand each customer’s issue before recommending a next step. Let me know if you would like to discuss my support experience.",
+		"plain":           valid, "exact whitespace": " \n" + valid + "\n\n", "long usable": strings.Repeat("I investigated production failures and documented findings. ", 30),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := validateGeneratedLetter(body); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+	for name, body := range map[string]string{
+		"empty": " \n", "invalid utf8": valid + string([]byte{255}), "nul": valid + "\x00", "control": valid + "\x1b", "oversize": strings.Repeat("a", maxLetterBytes+1),
+		"punctuation": strings.Repeat("!", 80), "two letters": valid + "\n\n" + valid,
+		"inline greetings":        "Dear Hiring Team, my technical support work involved production debugging.\n\nDear Hiring Team, my account work involved technical escalations.",
+		"two bodies and closings": "My support experience includes production debugging.\nSincerely,\nAlex\n\nMy account experience includes escalation management.\nBest regards,\nAlex",
+		"reasoning":               "<think>I should select the strongest evidence.</think>\n" + valid,
+		"analysis":                "Analysis: choose troubleshooting evidence.\n" + valid,
+		"correction":              "Wait, I should revise this cover letter before returning it.\n" + valid,
+		"alternatives":            "Letter 1:\n" + valid,
+		"fenced":                  "```text\n" + valid + "\n```",
+		"json envelope":           `{"letter":"I investigated production failures and documented findings for engineering."}`,
+		"resume summary": `Based on the detailed work history you provided, here is a summary of your profile.
+
+### Professional Summary
+Senior software professional with extensive experience.
+
+### Core Competencies
+* Linux administration
+* Client management`,
+		"bulleted profile": "Dear Hiring Team,\n\nKey qualifications:\n- Linux troubleshooting\n- Customer escalations\n\nThank you for considering me.",
+		"bare preamble":    "Based on your resume, your qualifications include troubleshooting production systems and managing support relationships across client portfolios.",
+		"too many words":   strings.Repeat("I investigated production failures and documented findings. ", 60),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if !errors.Is(validateGeneratedLetter(body), errCoverOutput) {
+				t.Fatal("accepted malformed response")
+			}
+		})
+	}
+}
+
+func TestGeneratedLetterRejectionPreservesDrafts(t *testing.T) {
+	a, browser := scopeFirstWorkspace(t)
+	original, err := a.coverLetterByID(1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, _ := a.jobByID(1)
+	for _, body := range []string{"", "Analysis: I should invent an example before writing this cover letter.", "Based on your resume, here is a profile summary.\n\n### Professional Summary\nExtensive Linux and customer support experience.\n\n* Managed hosting\n* Customer support", "Dear Hiring Team,\nFirst complete letter with professional evidence.\nSincerely,\nAlex\n\nDear Hiring Team,\nAnother complete letter with different professional evidence.\nSincerely,\nAlex"} {
+		a.coverLetterGenerate = func(context.Context, string) (string, error) { return body, nil }
+		r := postApp(newMux(a), "/jobs/1/cover-letter/generate", url.Values{"confirm_local": {"yes"}}, "", "")
+		if r.Header().Get("Location") != coverNoticeURL(1, "output") {
+			t.Fatal(r.Code, r.Header())
+		}
+		drafts, _ := a.listCoverLetters(1)
+		after, _ := a.coverLetterByID(1, 1)
+		currentJob, _ := a.jobByID(1)
+		if len(drafts) != 2 || after != original || currentJob.SelectedResumeID != job.SelectedResumeID || browser.calls != 0 {
+			t.Fatal("failure changed existing work")
+		}
+	}
+	exact := " \n" + strings.Repeat("I investigated production failures and documented findings. ", 25) + "\n\n"
+	a.coverLetterGenerate = func(context.Context, string) (string, error) { return exact, nil }
+	r := postApp(newMux(a), "/jobs/1/cover-letter/generate", url.Values{"confirm_local": {"yes"}}, "", "")
+	draft, err := a.latestCoverLetter(1)
+	if r.Header().Get("Location") != coverNoticeURL(1, "generated") || err != nil || draft.Body != exact {
+		t.Fatal("usable output changed", r.Header(), err)
+	}
+	edited := "\n  " + exact + "  \n"
+	if err := a.saveCoverLetterBody(1, draft.ID, edited); err != nil {
+		t.Fatal(err)
+	}
+	saved, _ := a.coverLetterByID(1, draft.ID)
+	if saved.Body != edited {
+		t.Fatal("manual save altered whitespace")
+	}
+}
+
+func TestMiniMaxCoverLetterReasoningBudget(t *testing.T) {
+	for _, model := range []string{"minimax-m3.1-flash:cloud", "minimax-m3.1-flash"} {
+		t.Run(model, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var payload struct {
+					Think   *bool `json:"think"`
+					Options struct {
+						NumPredict int `json:"num_predict"`
+					} `json:"options"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+					t.Error(err)
+				}
+				if payload.Think == nil || *payload.Think || payload.Options.NumPredict != 16384 {
+					t.Errorf("reasoning control/budget: %+v", payload)
+				}
+				fmt.Fprint(w, `{"response":"I investigated application failures and provided reproducible findings to engineering."}`)
+			}))
+			defer server.Close()
+			if _, err := runCoverProvider(context.Background(), coverBackend{Provider: "ollama", Model: model, URL: server.URL}, "Synthetic evidence", nil); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }

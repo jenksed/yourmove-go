@@ -18,7 +18,7 @@ import (
 const contactResolver = `(function(origin, base) {
  const owns = () => location.origin === origin && (location.pathname === base || location.pathname.startsWith(base + '/'));
  const visible = el => !el.closest('[inert],[aria-hidden="true"]') && getComputedStyle(el).visibility !== 'hidden' && el.getClientRects().length > 0;
- const norm = s => String(s || '').toLowerCase().replace(/[\s_-]/g, '');
+ const norm = s => String(s || '').toLowerCase().replace(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}__(systemfield_[a-z_]+)$/, '$1').replace(/[\s_-]/g, '');
  const ids = {name:'name',fullname:'name',systemfieldname:'name',firstname:'first_name',givenname:'first_name',systemfieldfirstname:'first_name',lastname:'last_name',familyname:'last_name',surname:'last_name',systemfieldlastname:'last_name',email:'email',emailaddress:'email',systemfieldemail:'email',phone:'phone',phonenumber:'phone',mobilephone:'phone',systemfieldphone:'phone'};
  const auto = {'name':'name','given-name':'first_name','family-name':'last_name','email':'email','tel':'phone'};
  const labels = {name:['name','full name','full legal name','your name'],first_name:['first name','given name'],last_name:['last name','family name','surname'],email:['email','email address'],phone:['phone','phone number','mobile phone','mobile number']};
@@ -64,14 +64,16 @@ const contactResolver = `(function(origin, base) {
      if (el.value !== '' || document.activeElement === el) return {status:'manual',detail:'Existing or active user entry preserved.'};
      if (el.maxLength >= 0 && value.length > el.maxLength) return {status:'manual',detail:'Approved value exceeds this control’s limit.'};
      if (!el.isConnected || !owns()) throw Error('application changed');
+     el.focus();
      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,value);
      el.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:null}));
      if (el.isConnected && owns()) el.dispatchEvent(new Event('change',{bubbles:true}));
+     if (el.isConnected && owns()) el.blur();
      return {status:'pending',detail:''};
    },
    verify(key, value) {
      const found = resolve(key);
-     if (found.el && found.el.value === value) return {status:'filled',detail:'Filled and verified in the live form.'};
+     if (found.el && found.el.value === value && found.el.validity.valid) return {status:'filled',detail:'Filled and verified in the live form.'};
      return {status:'uncertain',detail:'The form changed after entry. Review this field yourself; it will not be replayed.'};
    }
  };

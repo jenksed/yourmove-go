@@ -1,6 +1,30 @@
 /* Small progressive enhancements only; every mutating form remains server-owned. */
 (() => {
   'use strict';
+  const copyDescription = document.querySelector('[data-copy-description]');
+  if (copyDescription) {
+    copyDescription.hidden = false;
+    copyDescription.addEventListener('click', async () => {
+      const status = document.querySelector('[data-copy-description-status]');
+      const text = document.getElementById('job-description').innerText.trim();
+      try {
+        if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
+        else {
+          const field = document.createElement('textarea');
+          field.value = text;
+          field.style.position = 'fixed';
+          field.style.opacity = '0';
+          document.body.append(field);
+          field.select();
+          const copied = document.execCommand('copy');
+          field.remove();
+          copyDescription.focus();
+          if (!copied) throw new Error('Clipboard unavailable');
+        }
+        status.textContent = 'Job description copied.';
+      } catch (_) { status.textContent = 'Could not copy. Select the description and copy it manually.'; }
+    });
+  }
   const key = 'yourmove:theme';
   const themeControl = document.querySelector('[data-theme-choice]');
   const setTheme = (value) => {
@@ -31,7 +55,13 @@
   if (addDisclosure && location.hash === '#add-opportunity') addDisclosure.open = true;
   document.querySelectorAll('[data-open-details]').forEach((link) => link.addEventListener('click', () => {
     const target = document.getElementById(link.dataset.openDetails);
-    if (target) target.open = true;
+    if (target) {
+      target.open = true;
+      if (target.id === 'record-submission') {
+        document.querySelector('[data-tab-target=prepare]')?.click();
+        requestAnimationFrame(() => target.scrollIntoView({block:'center'}));
+      }
+    }
   }));
 
   // Client-side presentation filtering. Server output stays complete without JS.
@@ -43,18 +73,18 @@
     const sort = document.querySelector('[data-job-sort]');
     const status = document.getElementById('results-status');
     const empty = document.getElementById('filtered-empty');
-    const storageKey = 'yourmove:opportunities:filters';
+    const storageKey = 'yourmove:opportunities:filters:v2';
     try {
       const saved = JSON.parse(sessionStorage.getItem(storageKey) || '{}');
       if (search && typeof saved.query === 'string') search.value = saved.query;
-      if (stage && ['all','review','ready','applied','closed'].includes(saved.stage)) stage.value = saved.stage;
+      if (stage && ['active','all','review','ready','applied','closed'].includes(saved.stage)) stage.value = saved.stage;
       if (sort && ['priority','newest','company'].includes(saved.sort)) sort.value = saved.sort;
     } catch (_) {}
     const stateOrder = {ready: 0, review: 1, applied: 2, closed: 3};
     const priorityOrder = {high: 0, normal: 1, low: 2};
     const render = () => {
       const query = (search?.value || '').toLocaleLowerCase().trim();
-      const currentStage = stage?.value || 'all';
+      const currentStage = stage?.value || 'active';
       const ordering = sort?.value || 'priority';
       const ordered = rows.slice().sort((a,b) => {
         if (ordering === 'newest') return Number(b.dataset.order) - Number(a.dataset.order);
@@ -68,19 +98,26 @@
       ordered.forEach((row) => list.appendChild(row));
       let visible = 0;
       rows.forEach((row) => {
-        row.hidden = (currentStage !== 'all' && row.dataset.stage !== currentStage) || !!(query && !row.dataset.search.toLocaleLowerCase().includes(query));
+        const stageMatches = currentStage === 'all' ||
+          (currentStage === 'active' ? !['applied','closed'].includes(row.dataset.stage) : row.dataset.stage === currentStage);
+        row.hidden = !stageMatches || !!(query && !row.dataset.search.toLocaleLowerCase().includes(query));
         // A filtered-out selection must not become an invisible destructive action.
         if (row.hidden) { const picked = row.querySelector('input[name="job_ids"]'); if (picked) picked.checked = false; }
         if (!row.hidden) visible++;
       });
-      if (status) status.textContent = `${visible} of ${rows.length} opportunities shown`;
+      if (status) status.textContent = `${visible} shown · ${rows.length} saved in total`;
       if (empty) empty.hidden = visible !== 0;
       try { sessionStorage.setItem(storageKey, JSON.stringify({query: search?.value || '', stage: currentStage, sort: ordering})); } catch (_) {}
     };
     [search,stage,sort].forEach((el) => el?.addEventListener(el === search ? 'input' : 'change', render));
+    document.querySelector('[data-remaining-count]')?.addEventListener('click', () => {
+      if (stage) stage.value = 'active';
+      if (search) search.value = '';
+      render();
+    });
     document.querySelector('[data-clear-filters]')?.addEventListener('click', () => {
       if (search) search.value = '';
-      if (stage) stage.value = 'all';
+      if (stage) stage.value = 'active';
       if (sort) sort.value = 'priority';
       render(); search?.focus();
     });
@@ -92,7 +129,8 @@
   const panels = Array.from(document.querySelectorAll('[data-workspace-panel]'));
   if (tabs.length && panels.length) {
     const names = new Set(panels.map((panel) => panel.dataset.workspacePanel));
-    const current = () => names.has(location.hash.slice(1)) ? location.hash.slice(1) : 'overview';
+    const defaultTab = document.querySelector('[data-workspace-tabs]')?.dataset.defaultTab || 'overview';
+    const current = () => names.has(location.hash.slice(1)) ? location.hash.slice(1) : defaultTab;
     const show = (name, focus = false) => {
       const target = names.has(name) ? name : 'overview';
       document.documentElement.classList.add('tabs-enabled');
@@ -139,6 +177,7 @@
 
   document.querySelectorAll('form[method="POST"]').forEach((form) => {
     form.addEventListener('submit', () => {
+      document.documentElement.dataset.pendingAction = 'yes';
       // Native browser validation already ran; prevent accidental double clicks while loading.
       const button = form.querySelector('button[type="submit"]');
       if (!button) return;
@@ -211,7 +250,7 @@
   const draft = document.getElementById('letter-body');
   const count = document.querySelector('[data-ai-word-count]');
   if (draft && count) {
-    const update = () => { const words = draft.value.trim() ? draft.value.trim().split(/\s+/).length : 0; count.textContent = `${words} words · editable draft`; };
+    const update = () => { const words = draft.value.trim() ? draft.value.trim().split(/\s+/).length : 0; const feedback = words < 120 ? "below target" : words <= 160 ? "within target" : words <= 180 ? "above target" : "over editorial ceiling"; count.textContent = `${words} words · ${feedback} · target 120–160; ceiling 180 · edit freely`; };
     update(); draft.addEventListener('input', update);
   }
 })();
@@ -219,7 +258,7 @@
 // Question workbench: visibility and navigation over the authoritative Go forms.
 (() => {
   const workbench = document.querySelector('[data-question-workbench]');
-  if (workbench) {
+  if (workbench && workbench.querySelector('[data-question-panel]')) {
     const returning = new URLSearchParams(location.search).has('question');
     const panels = Array.from(workbench.querySelectorAll('[data-question-panel]'));
     const index = workbench.querySelector('[data-question-index]');
@@ -304,10 +343,10 @@
     }
   }
 
-  // No autosave or storage: guards protect the current document, including Wails
-  // links and POST navigation where beforeunload alone is insufficient.
+  // Explicit server saves remain authoritative. Independent material actions
+  // carry unsaved edits across their same-job redirect in this tab only.
   const editors = Array.from(document.querySelectorAll('form[action$="/answers/save"], form[action$="/cover-letter/save"]'));
-  const recovery = document.querySelector('[data-answer-recovery], [data-letter-recovery]');
+  const recovery = () => document.querySelector('[data-answer-recovery], [data-letter-recovery]');
   const initial = new Map(editors.map(form => [form, new URLSearchParams(new FormData(form)).toString()]));
   const dirtyForms = () => editors.filter(form => form.dataset.dirty === 'true');
   let leaving = false;
@@ -329,14 +368,58 @@
     const form = event.target.closest('form');
     if (initial.has(form)) update(form);
   });
+  const editKey = 'yourmove:pending-edits:' + location.pathname;
+  const identity = form => form.getAttribute('action') + ':' + (form.querySelector('[name=question_key], [name=draft_id]')?.value || '');
+  const carryEdits = ownForm => {
+    const others = dirtyForms().filter(form => form !== ownForm);
+    if (recovery()) return false;
+    try {
+      const pending = others.map(form => ({identity: identity(form), baseline: initial.get(form), fields: [...new FormData(form)]}));
+      if (pending.length) sessionStorage.setItem(editKey, JSON.stringify(pending));
+      else sessionStorage.removeItem(editKey);
+      return true;
+    } catch (_) { return false; }
+  };
+  // Restore only against the same saved revision and exact original contents.
+  // If another save changed them, expose the text for recovery, never transfer it.
+  try {
+    const pending = JSON.parse(sessionStorage.getItem(editKey) || '[]');
+    sessionStorage.removeItem(editKey);
+    for (const saved of pending) {
+      const form = editors.find(form => identity(form) === saved.identity);
+      if (form && initial.get(form) === saved.baseline) {
+        for (const [name, value] of saved.fields) {
+          const control = form.elements.namedItem(name);
+          if (!control || !['answer','body','reusable'].includes(name)) continue;
+          if (control.type === 'checkbox') control.checked = true;
+          else control.value = value;
+          control.dispatchEvent(new Event(control.type === 'checkbox' ? 'change' : 'input', {bubbles:true}));
+        }
+        update(form);
+      } else {
+        const notice = document.createElement('section');
+        notice.dataset.answerRecovery = '';
+        const heading = document.createElement('p');
+        heading.textContent = 'Unsaved edits preserved below. The saved source changed; copy your text into the current editor before saving. This text is excluded from transfers.';
+        const text = document.createElement('textarea');
+        text.readOnly = true;
+        text.setAttribute('aria-label', 'Preserved unsaved edits');
+        text.value = saved.fields.filter(([name]) => ['answer','body'].includes(name)).map(([,value]) => value).join('\n');
+        notice.append(heading,text);
+        document.getElementById('application-action')?.append(notice);
+      }
+    }
+  } catch (_) {}
   const allowLeaving = ownForm => {
     const others = dirtyForms().filter(form => form !== ownForm);
-    if (!others.length && !recovery) return true;
+    if (!others.length && !recovery()) return true;
     if (window.confirm('Unsaved answer or letter changes will be lost. Leave and discard them? Choose Cancel to stay and save or copy your work first.')) return true;
     const first = others[0];
     if (first) {
       first.dispatchEvent(new CustomEvent('question:reveal', {bubbles:true}));
-      first.closest('details')?.setAttribute('open', '');
+      for (let parent = first.parentElement; parent; parent = parent.parentElement) {
+        if (parent.matches('details')) parent.open = true;
+      }
       first.querySelector('textarea, select')?.focus();
     }
     return false;
@@ -348,15 +431,38 @@
     // Hash/tab navigation keeps the same inputs alive in this document.
     if (target.origin === location.origin && target.pathname === location.pathname && target.search === location.search && target.hash && target.hash !== location.hash) return;
     if (link.getAttribute('href').startsWith('#')) return;
+    if (link.closest('[data-new-questions]') && target.origin === location.origin && target.pathname === location.pathname && carryEdits(null)) { event.preventDefault(); leaving = true; location.reload(); return; }
     if (!allowLeaving(null)) { event.preventDefault(); event.stopImmediatePropagation(); }
     else leaving = true;
   }, true);
   document.addEventListener('submit', event => {
-    if (!allowLeaving(event.target)) { event.preventDefault(); event.stopImmediatePropagation(); }
+    // Recording is independent of question completion. Keep Cancel at this
+    // decision instead of revealing/focusing an unrelated question editor.
+    const recording = event.target.matches('form[data-record-completion]');
+    const independent = event.target.matches('form[data-ai-generate], form[data-ai-draft], form[action$="/continue"], form[action$="/cover-letter/transfer"], form[action$="/browser/observe"], form[action$="/browser/start"]');
+    const allowed = independent && carryEdits(event.target) ? true : recording
+      ? (!(dirtyForms().length || recovery()) || window.confirm('You have unsaved answer or letter edits. Record completion anyway? Choose OK to record your confirmed employer submission and leave these unsaved edits behind; they will be lost. Choose Cancel to stay and save or copy them first.'))
+      : allowLeaving(event.target);
+    if (!allowed) { event.preventDefault(); event.stopImmediatePropagation(); }
     else leaving = true;
   }, true);
   window.addEventListener('beforeunload', event => {
-    if (!leaving && (dirtyForms().length || recovery)) { event.preventDefault(); event.returnValue = ''; }
+    if (!leaving && (dirtyForms().length || recovery())) { event.preventDefault(); event.returnValue = ''; }
   });
-  window.addEventListener('pageshow', () => { leaving = false; });
+  window.addEventListener('pageshow', () => { leaving = false; delete document.documentElement.dataset.pendingAction; });
+})();
+
+// A letter result belongs at the writing desk; saved edits return to transfer scope.
+(() => {
+  const result = new URLSearchParams(location.search).get('cover');
+  if (!result || ['saved','transferring'].includes(result)) return;
+  const editor = document.getElementById('letter-editor');
+  if (!editor) return;
+  const show = () => {
+    editor.open = true;
+    document.querySelector('[data-tab-target=prepare]')?.click();
+    editor.scrollIntoView({block:'start',behavior:'instant'});
+  };
+  if (document.readyState === 'complete') show();
+  else window.addEventListener('load', () => requestAnimationFrame(show), {once:true});
 })();

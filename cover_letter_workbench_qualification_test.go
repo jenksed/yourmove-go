@@ -120,6 +120,10 @@ func TestControlledScopeFirstWorkbench(t *testing.T) {
 		wait(`!window.scopePreviousDocument && document.readyState==='complete' && !!document.querySelector('#letter-editor')`)
 	}
 	wait(`document.readyState==='complete' && !!document.querySelector('#letter-body')`)
+	// Word guidance remains editorial and never constrains edits.
+	assert(`document.querySelector('[data-ai-word-count]').textContent.includes('target 120–160; ceiling 180')`)
+	run(`(()=>{const e=document.querySelector('#letter-body');e.value=('word ').repeat(185);e.dispatchEvent(new Event('input',{bubbles:true}))})()`)
+	assert(`document.querySelector('[data-ai-word-count]').textContent.includes('185 words · over editorial ceiling') && document.querySelector('#letter-body').checkValidity()`)
 	// Existing draft opens intentionally. Enter a real edit and save via the form.
 	assert(`document.querySelector('#letter-editor').open`)
 	const edited = "Dear Hiring Team, this is the selected draft edited through the rendered local workspace."
@@ -205,7 +209,7 @@ func TestControlledScopeFirstWorkbench(t *testing.T) {
 		a.browsers.letters = map[int64]*coverLetterTransfer{1: {status: status, draftID: 1, body: "Previously attempted letter", message: "Synthetic prior attachment result; inspect manually."}}
 		a.browsers.mu.Unlock()
 		navigate("/jobs/1?cover=saved&draft=1#prepare")
-		assert(`!document.querySelector('form[action$="/continue"] [name=include_letter]') && document.querySelector('form[action$="/continue"] button').textContent==='Fill saved answers and continue'`)
+		assert(`!document.querySelector('form[action$="/continue"] [name=include_letter]') && document.querySelector('form[action$="/continue"] button').textContent==='Continue application'`)
 		capture("letter-" + status)
 	}
 	a.browsers.mu.Lock()

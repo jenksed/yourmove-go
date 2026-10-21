@@ -738,3 +738,43 @@ small,.small-muted{font-size:12px;line-height:1.55;color:var(--color-muted)}
   .question-panel button { white-space:normal; max-width:100%; }
   .question-heading { align-items:flex-start; }
 }
+
+/* Ready profile facts stay outside the employer-question navigator. */
+.profile-question-summary > summary {cursor:pointer;color:var(--color-muted);line-height:1.7}
+.profile-question-summary > summary strong {color:var(--color-text)}
+.profile-question-fact {max-width:780px;padding:12px 0;border-top:1px solid var(--color-border)}
+.profile-question-fact > p {margin:0 0 4px}
+
+/* Opportunities: visible progress paired with the next concrete action. */
+.opportunity-dashboard {display:grid;grid-template-columns:minmax(0,1.35fr) minmax(250px,1fr);padding:0;overflow:hidden}
+.queue-progress {padding:26px 28px}
+.progress-metrics {display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:20px;margin:18px 0 26px;align-items:end}
+.progress-metric {display:flex;flex-direction:column;align-items:flex-start;gap:6px;min-width:0;color:var(--color-text);text-decoration:none}
+.progress-metric strong {font-size:38px;line-height:1.1;letter-spacing:-.045em;font-weight:740;font-variant-numeric:tabular-nums}
+.progress-metric span {font-size:12px;color:var(--color-muted)}
+.progress-remaining strong {font-size:54px;color:var(--color-primary)}
+a.progress-metric:hover span {text-decoration:underline;color:var(--color-primary)}
+.queue-progress-caption {display:flex;justify-content:space-between;gap:12px;font-size:12px;margin-bottom:9px}
+.queue-progress-caption span {color:var(--color-muted)}
+.queue-progress-bar {display:block;appearance:none;-webkit-appearance:none;width:100%;height:9px;border:0;border-radius:10px;overflow:hidden;background:var(--color-border)}
+.queue-progress-bar::-webkit-progress-bar {background:var(--color-border);border-radius:10px}
+.queue-progress-bar::-webkit-progress-value {background:var(--color-primary);border-radius:10px}
+.queue-progress-bar::-moz-progress-bar {background:var(--color-primary);border-radius:10px}
+.queue-progress-note {font-size:11px;color:var(--color-muted);line-height:1.55;margin:10px 0 0}
+.dashboard-next {padding:26px 28px;border-left:1px solid var(--color-border);background:var(--color-surface-muted);display:flex;flex-direction:column;align-items:flex-start;justify-content:center}
+.dashboard-next h2 {font-size:21px;margin-bottom:3px;overflow-wrap:anywhere}
+.dashboard-next-company {font-size:13px;margin-bottom:10px}
+.dashboard-next .small-muted {max-width:44ch;margin-bottom:16px}
+.dashboard-next .button {max-width:100%;white-space:normal;text-align:center}
+@media(max-width:1000px) {
+ .opportunity-dashboard {grid-template-columns:minmax(0,1fr)}
+ .dashboard-next {border-left:0;border-top:1px solid var(--color-border)}
+}
+@media(max-width:480px) {
+ .queue-progress,.dashboard-next {padding:20px}
+ .progress-metrics {gap:12px;margin:16px 0 22px;grid-template-columns:1.1fr 1fr 1fr}
+ .progress-metric strong {font-size:32px}
+ .progress-remaining strong {font-size:44px}
+ .progress-metric span {font-size:11px}
+ .dashboard-next .button {width:100%}
+}

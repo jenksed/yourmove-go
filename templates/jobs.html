@@ -5,14 +5,31 @@
   <div><p class="eyebrow">YOUR OPPORTUNITIES</p><h1>Find your next move.</h1><p class="page-description">Track what matters, prepare your documents, and decide when to apply.</p></div>
   <div class="heading-actions"><a class="button button-secondary" href="/resumes">Document library</a><a class="button button-primary" href="#add-opportunity" data-open-add>+ Add opportunity</a></div>
 </div>
-<section class="stats-strip" aria-label="Opportunity summary">
-  <div class="stat"><span class="stat-label">Saved opportunities</span><strong>{{.Total}}</strong><span class="stat-help">Across your workspace</span></div>
-  <div class="stat"><span class="stat-label">Ready to apply</span><strong>{{.Ready}}</strong><span class="stat-help">Marked ready by you</span></div>
-  <div class="stat"><span class="stat-label">Applications recorded</span><strong>{{.Applied}}</strong><span class="stat-help">Jobs with submissions</span></div>
+<section class="panel opportunity-dashboard" aria-labelledby="opportunity-progress-title">
+  <div class="queue-progress">
+    <p class="eyebrow" id="opportunity-progress-title">YOUR PROGRESS</p>
+    <div class="progress-metrics">
+      <a class="progress-metric progress-remaining" href="#saved-jobs-title" data-remaining-count><strong>{{.Remaining}}</strong> <span>left to work on</span></a>
+      <div class="progress-metric"><strong data-recorded-today>{{.RecordedToday}}</strong> <span>recorded today</span></div>
+      <a class="progress-metric" href="/applications"><strong data-recorded-overall>{{.Applied}}</strong> <span>recorded overall</span></a>
+    </div>
+    {{if .QueueTotal}}
+    <div class="queue-progress-caption"><span>Current queue</span><strong>{{.RecordedPercent}}% recorded</strong></div>
+    <progress class="queue-progress-bar" value="{{.Applied}}" max="{{.QueueTotal}}" aria-label="Applications recorded out of active and applied opportunities">{{.Applied}} of {{.QueueTotal}}</progress>
+    <p class="queue-progress-note">{{.Applied}} of {{.QueueTotal}} opportunities in your current queue. Closed jobs excluded.</p>
+    {{else}}<p class="queue-progress-note">Save an opportunity to start your next application.</p>{{end}}
+  </div>
+  <div class="dashboard-next">
+    {{if .Next}}
+    <p class="eyebrow">SUGGESTED NEXT MOVE</p>
+    <h2 id="next-move-title">{{.Next.Title}}</h2>
+    <p class="dashboard-next-company">{{.Next.Company}}</p>
+    <p class="small-muted">{{.Next.Reason}}</p>
+    <a class="button button-primary" href="{{.Next.Href}}">{{.Next.Label}} <span aria-hidden="true">→</span></a>
+    {{else if .Applied}}<p class="eyebrow">CURRENT QUEUE COMPLETE</p><h2>Your applications are recorded.</h2><p class="small-muted">Review your history or save another opportunity to keep going.</p><a class="button button-secondary" href="/applications">Review applications →</a>
+    {{else}}<p class="eyebrow">YOUR NEXT STEP</p><h2>Start with a job you want.</h2><a class="button button-primary" href="#add-opportunity" data-open-add>Save an opportunity →</a>{{end}}
+  </div>
 </section>
-{{if .Next}}
-<section class="panel next-card" aria-labelledby="next-move-title"><div><p class="eyebrow">SUGGESTED NEXT MOVE · LOCAL PRIORITY</p><h2 id="next-move-title">{{.Next.Title}}</h2><p class="section-subtitle">{{.Next.Company}} · {{.Next.Reason}}</p></div><a class="button button-primary" href="{{.Next.Href}}">{{.Next.Label}} <span aria-hidden="true">→</span></a></section>
-{{end}}
 <details class="panel create-panel" id="add-opportunity">
   <summary><span class="summary-icon">+</span><span><strong>Add an opportunity</strong><small>Save a job posting and fetch supported metadata.</small></span><span class="summary-chevron" aria-hidden="true">⌄</span></summary>
   <div class="create-body"><form class="job-form" method="POST" action="/jobs">
@@ -24,9 +41,9 @@
 </details></div>
 </details>
 <section class="panel list-panel" aria-labelledby="saved-jobs-title">
-  <div class="section-heading"><div><h2 id="saved-jobs-title">Opportunities</h2><p class="section-subtitle" id="results-status" role="status" aria-live="polite">{{.Total}} saved</p></div></div>
+  <div class="section-heading"><div><h2 id="saved-jobs-title">Opportunities</h2><p class="small-muted" id="results-status" role="status" aria-live="polite">{{.Total}} saved in total</p></div></div>
   <div class="list-toolbar" data-job-filters><div class="field search-field"><label for="job-search">Search opportunities</label><input id="job-search" type="search" placeholder="Role, company or source" autocomplete="off" data-job-search></div>
-    <div class="field select-field"><label for="job-stage-filter">Stage</label><select id="job-stage-filter" data-job-stage><option value="all">All stages</option><option value="review">Review</option><option value="ready">Ready to apply</option><option value="applied">Applied</option><option value="closed">Closed</option></select></div>
+    <div class="field select-field"><label for="job-stage-filter">Stage</label><select id="job-stage-filter" data-job-stage><option value="active" selected>Still to work on</option><option value="all">All stages</option><option value="review">Review</option><option value="ready">Marked ready</option><option value="applied">Applied</option><option value="closed">Closed</option></select></div>
     <div class="field select-field"><label for="job-sort">Order</label><select id="job-sort" data-job-sort><option value="priority">Priority &amp; next steps</option><option value="newest">Recently saved</option><option value="company">Company A–Z</option></select></div>
   </div>
   <form method="POST" action="/jobs/delete" class="bulk-delete-form" aria-label="Delete selected test or unwanted jobs">

@@ -272,5 +272,15 @@ func initJobsSchema(db *sql.DB) error {
 			return fmt.Errorf("initialize application discovery: %w", err)
 		}
 	}
+	// Add an empty explicit preference without revising or approving existing data.
+	var hasPronouns bool
+	if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM pragma_table_info('candidate_profile') WHERE name='pronouns')`).Scan(&hasPronouns); err != nil {
+		return fmt.Errorf("inspect candidate pronouns schema: %w", err)
+	}
+	if !hasPronouns {
+		if _, err := db.Exec(`ALTER TABLE candidate_profile ADD COLUMN pronouns TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("migrate candidate pronouns: %w", err)
+		}
+	}
 	return nil
 }

@@ -74,6 +74,12 @@ func TestDesktopRedirectShimLeavesOtherResponsesUntouched(t *testing.T) {
 		{"query", "/jobs/1?next=bad", http.StatusSeeOther},
 		{"valid job", "/jobs/1", http.StatusOK},
 		{"prepare", "/jobs/1#prepare", http.StatusOK},
+		{"history", "/jobs/1#history", http.StatusOK},
+		{"history noncanonical id", "/jobs/01#history", http.StatusSeeOther},
+		{"history zero id", "/jobs/0#history", http.StatusSeeOther},
+		{"history query", "/jobs/1?next=bad#history", http.StatusSeeOther},
+		{"history external", "https://untrusted.test/jobs/1#history", http.StatusSeeOther},
+		{"history extra fragment", "/jobs/1#prepare#history", http.StatusSeeOther},
 		{"prepare noncanonical id", "/jobs/01#prepare", http.StatusSeeOther},
 		{"prepare query", "/jobs/1?next=bad#prepare", http.StatusSeeOther},
 		{"inspection prepare", "/jobs/1/inspection#prepare", http.StatusSeeOther},
@@ -105,5 +111,39 @@ func TestContinuationRedirectTargetsStayLocalAndCanonical(t *testing.T) {
 		if safeDesktopRedirectTarget(target) {
 			t.Fatal("accepted unsafe target", target)
 		}
+	}
+}
+
+// Exercise the actual completion handler, not just an artificial redirect:
+// persistence succeeds once and desktop navigation returns to rendered history.
+func TestDesktopRecordCompletionReturnsToHistory(t *testing.T) {
+	a, _ := testWorkspace(t)
+	if err := a.saveJob(Job{URL: "https://example.com/completed", Title: "Completion regression"}); err != nil {
+		t.Fatal(err)
+	}
+	token := reviewedSubmissionToken(t, a, 1)
+	form := url.Values{"confirm": {"yes"}, "submission_token": {token}, "notes": {"Completed in employer browser"}}
+	for _, desktop := range []bool{true, false} {
+		var handler http.Handler = newMux(a)
+		if desktop {
+			handler = newDesktopMux(a)
+		}
+		response := postApp(handler, "/jobs/1/submit", form, "http://localhost", "")
+		if desktop {
+			if response.Code != http.StatusOK || response.Header().Get("Location") != "" || !strings.Contains(response.Body.String(), `window.location.replace("/jobs/1#history")`) || !strings.Contains(response.Body.String(), `href="/jobs/1#history"`) {
+				t.Fatalf("desktop completion cannot navigate: %d %s", response.Code, response.Body.String())
+			}
+		} else if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/jobs/1#history" {
+			t.Fatal("browser PRG changed", response.Code, response.Header())
+		}
+	}
+	history, err := a.jobSubmissions(1)
+	if err != nil || len(history) != 1 {
+		t.Fatalf("completion retry duplicated or lost record: %+v %v", history, err)
+	}
+	page := httptest.NewRecorder()
+	newDesktopMux(a).ServeHTTP(page, httptest.NewRequest("GET", "http://localhost/jobs/1", nil))
+	if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), "Application recorded as Applied.") || !strings.Contains(page.Body.String(), "Completed in employer browser") {
+		t.Fatalf("history destination unavailable: %d %s", page.Code, page.Body.String())
 	}
 }

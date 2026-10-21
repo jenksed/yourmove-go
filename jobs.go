@@ -53,7 +53,7 @@ func (j Job) StageLabel() string {
 	case StageApplied:
 		return "Applied"
 	case StageReady:
-		return "Ready to Apply"
+		return "Marked ready"
 	case StageClosed:
 		return "Closed"
 	default:

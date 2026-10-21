@@ -139,7 +139,7 @@ func TestLetterSaveReturnsToExactScopeWithoutBrowserAuthority(t *testing.T) {
 				t.Fatal("save reopened editor")
 			}
 			start := strings.Index(page, `action="/jobs/1/continue"`)
-			want := map[string]string{"initial": "Fill application", "late": "Attach cover letter and continue", "combined": "Continue application", "uncertain with answers": "Fill saved answers and continue"}[state]
+			want := map[string]string{"initial": "Fill application", "late": "Continue application", "combined": "Continue application", "uncertain with answers": "Continue application"}[state]
 			if want == "" {
 				if start >= 0 {
 					t.Fatal("ineligible transfer offered", state)
@@ -154,17 +154,17 @@ func TestLetterSaveReturnsToExactScopeWithoutBrowserAuthority(t *testing.T) {
 				if button < 0 {
 					t.Fatal("wrong server-derived action", form)
 				}
-				if state != "uncertain with answers" && (!strings.Contains(form[:button], body) || !strings.Contains(form[:button], draft.ContentHash())) {
-					t.Fatal("exact saved revision missing before authorization")
+				if state != "uncertain with answers" && (!strings.Contains(form, body) || !strings.Contains(form, draft.ContentHash())) {
+					t.Fatal("exact saved revision missing beside authorization")
 				}
-				if state == "initial" && !strings.Contains(form[:button], "selected-support-resume.docx") {
+				if state == "initial" && !strings.Contains(form, "selected-support-resume.docx") {
 					t.Fatal("first fill omitted selected resume")
 				}
 				if state != "initial" && strings.Contains(form, `name="include_resume"`) {
 					t.Fatal("completed resume re-included")
 				}
 				if state == "combined" || state == "uncertain with answers" {
-					if !strings.Contains(form[:button], "Why this team?") || !strings.Contains(form[:button], "I enjoy resolving incidents with this team.") {
+					if !strings.Contains(form, "Why this team?") || !strings.Contains(form, "I enjoy resolving incidents with this team.") {
 						t.Fatal("pending answer authority omitted")
 					}
 				}

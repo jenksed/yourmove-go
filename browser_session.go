@@ -546,3 +546,16 @@ func (h *sessionHost) closeAll() {
 		}
 	}
 }
+
+// otherApplication identifies the live owner without inspecting or altering its
+// browser. A session on another job must never be silently replaced.
+func (h *sessionHost) otherApplication(jobID int64) int64 {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for id := range h.sessions {
+		if id != jobID {
+			return id
+		}
+	}
+	return 0
+}

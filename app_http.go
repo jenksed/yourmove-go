@@ -74,6 +74,7 @@ func newMux(app *App) http.Handler {
 	mux.HandleFunc("GET /resumes/{id}/download", app.downloadResume)
 	mux.HandleFunc("POST /jobs/{id}/resume", app.setJobResume)
 	mux.HandleFunc("POST /jobs/{id}/submit", app.submitJob)
+	mux.HandleFunc("POST /jobs/{id}/next", app.nextApplication)
 	mux.HandleFunc("POST /resumes/{id}/archive", app.changeResumeArchive)
 	mux.HandleFunc("POST /resumes/{id}/revise", app.reviseResumeBrowser)
 	mux.HandleFunc("POST /resumes/{id}/revise-native", app.reviseResumeNative)

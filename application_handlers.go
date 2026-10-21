@@ -21,6 +21,9 @@ import (
 var resumesTemplate = template.Must(template.ParseFS(templateFiles, "templates/resumes.html", "templates/partials.html"))
 
 type jobWorkspace struct {
+	OtherBrowser   *Job
+	SavedBrowser   *Inspection
+	NextJob        *NextAction
 	Preparation    HandoffPresentation
 	TransferNotice string
 	Questions      questionPreparation
@@ -567,7 +570,7 @@ func (a *App) submitJob(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unable to record application", 500)
 		return
 	}
-	http.Redirect(w, r, fmt.Sprintf("/jobs/%d", id), http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/jobs/%d#history", id), http.StatusSeeOther)
 }
 
 func parseJobID(r *http.Request) (int64, error) {

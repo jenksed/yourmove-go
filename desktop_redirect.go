@@ -176,10 +176,12 @@ func safeDesktopRedirectTarget(target string) bool {
 		return false
 	}
 	rawID := strings.TrimPrefix(target, "/jobs/")
-	if strings.HasSuffix(rawID, "#prepare") {
-		rawID = strings.TrimSuffix(rawID, "#prepare")
-		id, err := strconv.ParseInt(rawID, 10, 64)
-		return err == nil && id > 0 && target == "/jobs/"+strconv.FormatInt(id, 10)+"#prepare"
+	for _, fragment := range []string{"#prepare", "#history"} {
+		if strings.HasSuffix(rawID, fragment) {
+			rawID = strings.TrimSuffix(rawID, fragment)
+			id, err := strconv.ParseInt(rawID, 10, 64)
+			return err == nil && id > 0 && target == "/jobs/"+strconv.FormatInt(id, 10)+fragment
+		}
 	}
 	rawID = strings.TrimSuffix(rawID, "/inspection")
 	id, err := strconv.ParseInt(rawID, 10, 64)

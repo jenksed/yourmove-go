@@ -321,7 +321,7 @@ document.querySelector('[name=resume]').addEventListener('change',async e=>{cons
 		return evaluate(ui, `document.body.textContent.includes('Your edits were saved')`, &ready) == nil && ready
 	})
 	var returnedToScope bool
-	if err := evaluate(ui, `(()=>{const action=document.querySelector('#application-action');const form=action.querySelector('form[action$="/continue"]');const body=form.querySelector('.transfer-letter-scope');return location.hash==='#prepare'&&!document.querySelector('.prepare-writer').open&&action.getBoundingClientRect().top>=0&&action.getBoundingClientRect().top<innerHeight&&body.textContent===`+strconv.Quote(letterBody)+`&&!!(body.compareDocumentPosition(form.querySelector('button'))&Node.DOCUMENT_POSITION_FOLLOWING)})()`, &returnedToScope); err != nil || !returnedToScope {
+	if err := evaluate(ui, `(()=>{const action=document.querySelector('#application-action');const form=action.querySelector('form[action$="/continue"]');const body=form.querySelector('.transfer-letter-scope');return location.hash==='#prepare'&&!document.querySelector('.prepare-writer').open&&action.getBoundingClientRect().top>=0&&action.getBoundingClientRect().top<innerHeight&&body.textContent===`+strconv.Quote(letterBody)+`&&!!form.querySelector('button')})()`, &returnedToScope); err != nil || !returnedToScope {
 		t.Fatal("successful save did not return directly to exact scope", err)
 	}
 	t.Log("save → Prepare: zero navigation or disclosure actions to locate current exact scope; authorization remains a separate button")
@@ -353,7 +353,7 @@ document.querySelector('[name=resume]').addEventListener('change',async e=>{cons
 		return evaluate(ui, `!!document.querySelector('form[action$="/continue"]')&&[...document.querySelectorAll('form[action$="/answers/save"]')].some(f=>f.textContent.includes('Why this team?'))`, &ready) == nil && ready
 	})
 	const combinedAnswer = "I enjoy resolving difficult incidents with a collaborative support team."
-	expectedAction := "Attach cover letter and continue"
+	expectedAction := "Continue application"
 	if combined {
 		if err := evaluate(ui, `(()=>{const f=[...document.querySelectorAll('form[action$="/answers/save"]')].find(f=>f.textContent.includes('Why this team?'));f.querySelector('textarea').value='`+combinedAnswer+`';f.querySelector('button').click();return true})()`, nil); err != nil {
 			t.Fatal(err)
@@ -687,7 +687,7 @@ document.querySelector('[name=resume]').addEventListener('change',async e=>{cons
 		t.Fatalf("full name=%q err=%v", fullName, err)
 	}
 	// Real Ashby uses a scoped div container and a custom phone ID.
-	if err := evaluate(employer, `document.querySelector('form').outerHTML='<div class="ashby-application-form-container"><label>Full Legal Name<input name="_systemfield_name"></label><label>Email<input name="_systemfield_email" type="email"></label><label>Phone Number<input id="custom-phone-uuid" type="tel"></label></div>';true`, nil); err != nil {
+	if err := evaluate(employer, `document.querySelector('form').outerHTML='<div class="ashby-application-form-container"><label>Full Legal Name<input name="ff5bb721-1230-4753-bb72-2f8324c0bf26__systemfield_name"></label><label>Email<input name="ff5bb721-1230-4753-bb72-2f8324c0bf26__systemfield_email" type="email"></label><label>Phone Number<input id="ff5bb721-1230-4753-bb72-2f8324c0bf26_106ba651-5f51-4048-af0a-ef3195a66c55" type="tel"></label></div>';true`, nil); err != nil {
 		t.Fatal(err)
 	}
 	result, err = chrome.FillContacts(ctx, approved)

@@ -131,7 +131,11 @@ func (a *App) browserOperation(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	http.Redirect(w, r, "/jobs/"+strconv.FormatInt(id, 10)+"/inspection", http.StatusSeeOther)
+	target := "/jobs/" + strconv.FormatInt(id, 10) + "/inspection"
+	if r.PostForm.Get("return_to") == "prepare" {
+		target = "/jobs/" + strconv.FormatInt(id, 10) + "#prepare"
+	}
+	http.Redirect(w, r, target, http.StatusSeeOther)
 }
 
 // startResumeHandoff pins and verifies the exact job-selected resume bytes before

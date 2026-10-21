@@ -29,7 +29,7 @@
     host.append(notice);
   }
   async function poll() {
-    if (pending) return;
+    if (pending || document.documentElement.dataset.pendingAction === 'yes') return;
     pending = true;
     try {
       const response = await fetch(`/jobs/${id}/browser-status`, {cache:'no-store'});
@@ -39,7 +39,7 @@
       if (detail && state.handoff_detail) detail.textContent = state.handoff_detail;
       // Refresh the server-authored action controls when a browser closes,
       // an upload reaches an actionable outcome, or the recovery state changes.
-      const changed = (state.answer_status || '') !== answerStatus || (state.letter_status || '') !== letterStatus || (state.resume_status || '') !== resumeStatus || (state.contact_status || '') !== contactStatus || (!preparation && (state.phase || '') !== phase);
+      const changed = (state.answer_status || '') !== answerStatus || (state.letter_status || '') !== letterStatus || (state.resume_status || '') !== resumeStatus || (state.contact_status || '') !== contactStatus || ((!preparation || state.phase === 'attention' || phase === 'attention') && (state.phase || '') !== phase);
       if (!state.active || changed || (!preparation && !historical && state.latest_id > 0 && state.latest_id !== last)) {
         if (unsavedEdits || document.querySelector('form[data-dirty="true"], [data-answer-recovery]')) {
           offerRefresh('Updated transfer results are available');

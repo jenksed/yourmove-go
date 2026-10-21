@@ -214,7 +214,7 @@ func TestPreparationActionStates(t *testing.T) {
 		action string
 	}{
 		{"initial", browserRunState{}, true, "Fill application"},
-		{"late letter", browserRunState{Active: true, ResumeStatus: "selected"}, true, "Attach cover letter and continue"},
+		{"late letter", browserRunState{Active: true, ResumeStatus: "selected"}, true, "Continue application"},
 		{"running", browserRunState{Active: true, ResumeStatus: "selected", LetterStatus: "checking"}, true, ""},
 		{"uncertain", browserRunState{Active: true, ResumeStatus: "selected", LetterStatus: "attention"}, true, ""},
 		{"lost", browserRunState{Phase: "interrupted"}, true, ""},

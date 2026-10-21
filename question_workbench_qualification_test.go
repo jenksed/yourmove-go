@@ -166,7 +166,9 @@ func TestControlledQuestionWorkbench(t *testing.T) {
 				return
 			}
 			if time.Now().After(deadline) {
-				t.Fatalf("timed out: %s (%s)", script, page)
+				var state string
+				_ = evaluate(`JSON.stringify({url:location.href,before:window.beforeRefresh,confirm:window.confirmCalls,values:[...document.querySelectorAll('[name=answer]')].map(e=>e.value),dirty:[...document.querySelectorAll('form[data-dirty="true"]')].map(f=>f.action),cache:sessionStorage.getItem('yourmove:pending-edits:'+location.pathname),recovery:document.querySelector('[data-answer-recovery]')?.textContent})`, &state)
+				t.Fatalf("timed out: %s (%s): %s", script, page, state)
 			}
 			time.Sleep(50 * time.Millisecond)
 		}
@@ -249,12 +251,14 @@ func TestControlledQuestionWorkbench(t *testing.T) {
 	a.browsers.setState(1, "detected", "Synthetic conditional question.", observed, false)
 	waitJS(`!!document.querySelector('[data-new-questions]')`)
 	assertJS(`window.originalEditor===document.querySelector('[name=answer]') && originalEditor.value==='https://alex.example.test/work'`)
-	// A refresh link and a different-area link are both guarded in Wails-style
-	// navigation, independently of the platform's beforeunload implementation.
+	// Same-job refresh preserves unsaved text across the new document; leaving
+	// for an unrelated page still requires an explicit discard decision.
+	mustEvaluate(`window.beforeRefresh=true;true`, nil)
 	click(`[data-new-questions] a`)
-	assertJS(`confirmCalls.length===1 && originalEditor.value==='https://alex.example.test/work'`)
+	waitJS(`!window.beforeRefresh && document.readyState==='complete' && document.querySelector('[name=answer]')?.value==='https://alex.example.test/work' && !!document.querySelector('form[data-dirty="true"]')`)
+	mustEvaluate(`window.originalEditor=document.querySelector('[name=answer]');window.confirmCalls=[];window.confirm=message=>{confirmCalls.push(message);return false};true`, nil)
 	click(`a.nav-item[href="/resumes"]`)
-	assertJS(`confirmCalls.length===2 && location.pathname==='/jobs/1'`)
+	assertJS(`confirmCalls.length===1 && location.pathname==='/jobs/1'`)
 	// Next/Previous retain the exact same input nodes and unsaved values.
 	click(`[data-question-next]`)
 	assertJS(`document.querySelector('[data-question-chooser]').value===document.querySelector('[data-question-panel]:not([hidden])').dataset.questionKey`)
@@ -264,7 +268,7 @@ func TestControlledQuestionWorkbench(t *testing.T) {
 	snapshot("dirty-navigation", ".application-questions")
 	// Saving one question must guard a second unsaved answer instead of losing it.
 	click(`[data-question-panel]:not([hidden]) button[type=submit]`)
-	assertJS(`confirmCalls.length===3 && document.querySelectorAll('form[data-dirty="true"]').length===2`)
+	assertJS(`confirmCalls.length===2 && document.querySelectorAll('form[data-dirty="true"]').length===2`)
 	// Save the other work later: explicitly clear it in this fixture, leaving only
 	// the selected question dirty. No discard is implicit in question navigation.
 	choose(1)
@@ -301,8 +305,10 @@ func TestControlledQuestionWorkbench(t *testing.T) {
 	assertJS(`document.activeElement.id==='application-action' && document.querySelector('form[action$="/continue"]')?.textContent.includes('https://alex.example.test/work') && document.querySelector('form[action$="/continue"]')?.textContent.includes('I enjoy resolving difficult technical problems.')`)
 	snapshot("ready-scope", "#application-action")
 	// Explicit profile overrides remain separate and manual panels have no forms.
-	choose(4)
-	assertJS(`!!document.querySelector('[data-question-panel]:not([hidden]) .question-override:not([open])') && document.querySelector('[data-question-panel]:not([hidden])').textContent.includes('Approved candidate information')`)
+	assertJS(`!document.querySelector('[data-question-chooser]').textContent.includes('Email') && !!document.querySelector('.profile-question-summary .question-override:not([open])')`)
+	click(`.profile-question-summary > summary`)
+	assertJS(`document.querySelector('.profile-question-summary').textContent.includes('alex@example.test')`)
+	snapshot("profile-facts", ".profile-question-summary")
 	choose(5)
 	assertJS(`!document.querySelector('[data-question-panel]:not([hidden]) form') && document.querySelector('[data-question-panel]:not([hidden])').textContent.includes('manual completion')`)
 	p = current // The conditional question is now part of the freshly rendered form.

@@ -78,7 +78,7 @@ func (a *App) continueApplication(w http.ResponseWriter, r *http.Request) {
 func pendingAnswers(ready, attempted []preparedQuestion, contactsHandled bool) []preparedQuestion {
 	var pending []preparedQuestion
 	for _, q := range ready {
-		if contactsHandled && q.Source == "Approved candidate information" {
+		if contactsHandled && q.profileContact() {
 			continue
 		}
 		seen := false
@@ -108,6 +108,12 @@ func summarizePreparation(w jobWorkspace) HandoffPresentation {
 		out.OpenExternally = true
 		return out
 	}
+	if w.OtherBrowser != nil {
+		out.Title = "Another application browser is open"
+		out.Detail = "Return to that application to preserve its browser work. If it is complete, record completion and use Next job; otherwise close its Chromium window deliberately before opening another job."
+		out.Recovery = false
+		return out
+	}
 	if s.Active && s.Destination != w.URL {
 		out.Title = "Application destination changed"
 		out.Detail = "Inspect the current browser before deliberately reopening the new destination. Browser-only work may be lost."
@@ -119,9 +125,8 @@ func summarizePreparation(w jobWorkspace) HandoffPresentation {
 		out.Detail = "Wait for the managed browser to open."
 		return out
 	}
-	if s.Phase == "attention" {
-		return out
-	}
+	// Inspection warnings do not revoke independently guarded operations. Each
+	// transfer still checks the live destination and control before writing.
 	if !s.Active && s.Phase == "interrupted" {
 		return out
 	}
@@ -138,12 +143,8 @@ func summarizePreparation(w jobWorkspace) HandoffPresentation {
 		out.Action = "Fill application"
 		out.Title = "Ready to fill application"
 		out.Detail = "Review the material below, then fill the supported controls in the employer application."
-	case out.IncludeLetter && out.IncludeAnswers:
+	case out.IncludeLetter || out.IncludeAnswers:
 		out.Action = "Continue application"
-	case out.IncludeLetter:
-		out.Action = "Attach cover letter and continue"
-	case out.IncludeAnswers:
-		out.Action = "Fill saved answers and continue"
 	}
 	if out.Action != "" && !out.IncludeResume {
 		out.Title = "New material ready"
@@ -169,4 +170,40 @@ func summarizePreparation(w jobWorkspace) HandoffPresentation {
 // The rendered hash covers exactly the pending answers shown beside the action.
 func (p HandoffPresentation) AnswerReviewHash() string {
 	return (questionPreparation{Questions: p.PendingAnswers}).ReviewHash()
+}
+
+// Moving on is explicit: recording completion alone keeps the employer browser
+// open for review. Only this action retires the completed job's own session.
+func (a *App) nextApplication(w http.ResponseWriter, r *http.Request) {
+	id, err := parseJobID(r)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if !parseLocalForm(w, r, 2<<10) {
+		return
+	}
+	job, err := a.jobByID(id)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if job.Stage != StageApplied || job.SubmissionCount == 0 {
+		http.Error(w, "Record the completed application before moving on. The current employer browser remains open.", 409)
+		return
+	}
+	jobs, err := a.allJobs()
+	if err != nil {
+		http.Error(w, "Unable to load the next opportunity. Return to Opportunities.", 500)
+		return
+	}
+	if err = a.browsers.close(id); err != nil {
+		http.Error(w, "Could not close the completed application browser. Close it in Chromium, then return to Opportunities.", 500)
+		return
+	}
+	target := "/jobs"
+	if next := recommendNext(jobs); next != nil {
+		target = fmt.Sprintf("/jobs/%d#prepare", next.JobID)
+	}
+	http.Redirect(w, r, target, http.StatusSeeOther)
 }

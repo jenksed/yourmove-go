@@ -60,3 +60,11 @@ See `RULES.md` R6–R10 for specific failure modes and verification criteria.
 ## Prepare: discovered questions and exact reuse
 
 Missing application questions lead in one bounded editor area; ready answers and approved candidate facts use a secondary disclosure. Each question has one authoritative local editor with an optional, narrowly scoped reuse choice. Saving is local; field/document transfer retains explicit consent. Live status polling must offer refresh instead of discarding unsaved edits. Resume/contact, saved-letter and answer approvals currently remain distinct actions within Prepare; consolidation is still an experience gap. Native qualification of the new save/transfer paths remains release work.
+
+Ready, editable answers from the approved candidate profile appear in a compact “From your profile” disclosure below employer questions. They do not contribute to question navigation or counts. Missing, unapproved, manual, and application-specific answers remain in the workbench. The disclosure retains values and per-application override forms; presentation does not change transfer scope or approval. Checked in isolated Chromium at desktop and 390px widths, including keyboard navigation and no-JavaScript saving; native Wails visual verification remains separate.
+
+## Opportunities: progress drives the dashboard
+
+A prominent progress panel pairs current work with the suggested next opportunity. It shows opportunities left to work on, distinct jobs with applications recorded today (local calendar day), and overall jobs with recorded applications. Its progress bar measures recorded jobs against active plus applied opportunities; closed jobs are excluded. Recording an application increases the recorded counters and reduces remaining work on the next list load.
+
+The suggested job and its existing action sit alongside progress on desktop and below it on narrow windows. Clicking the remaining metric returns the list to active opportunities and clears search. The saved lifetime total stays secondary list context. “Marked ready” remains a manual planning label, not an automated readiness check. All saved rows remain available through All stages and without JavaScript.

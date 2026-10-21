@@ -130,17 +130,25 @@ func runCoverProvider(ctx context.Context, backend coverBackend, prompt string, 
 	var request any
 	switch backend.Provider {
 	case "ollama":
-		request = map[string]any{"model": backend.Model, "prompt": prompt, "stream": false,
-			"options": map[string]any{"temperature": 0.35, "num_predict": 850}}
+		// Disable optional reasoning before budgeting. MiniMax M3.1 Flash on
+		// Ollama Cloud still reasons with think:false (verified on both APIs);
+		// its reasoning and answer share num_predict. Keep other models bounded
+		// as before, and allow this model the budget its measured calls need.
+		budget := 850
+		if backend.Model == "minimax-m3.1-flash:cloud" || backend.Model == "minimax-m3.1-flash" {
+			budget = 16384
+		}
+		request = map[string]any{"model": backend.Model, "prompt": prompt, "stream": false, "think": false,
+			"options": map[string]any{"temperature": 0.35, "num_predict": budget}}
 	case "openai":
 		// The API's output_text is an SDK convenience; parse output[] in raw HTTP.
-		request = map[string]any{"model": backend.Model, "input": prompt, "store": false, "max_output_tokens": 1400}
+		request = map[string]any{"model": backend.Model, "input": prompt, "instructions": coverLetterInstructions, "store": false, "max_output_tokens": 1400}
 	case "anthropic":
-		request = map[string]any{"model": backend.Model, "max_tokens": 900,
+		request = map[string]any{"model": backend.Model, "max_tokens": 900, "system": coverLetterInstructions,
 			"messages": []map[string]string{{"role": "user", "content": prompt}}}
 	default:
 		request = map[string]any{"model": backend.Model, "stream": false, "max_tokens": 900,
-			"messages": []map[string]string{{"role": "user", "content": prompt}}}
+			"messages": []map[string]string{{"role": "system", "content": coverLetterInstructions}, {"role": "user", "content": prompt}}}
 	}
 	data, err := json.Marshal(request)
 	if err != nil {
@@ -259,7 +267,8 @@ func runCoverProvider(ctx context.Context, backend coverBackend, prompt string, 
 	default:
 		var result struct {
 			Choices []struct {
-				Message struct {
+				FinishReason string `json:"finish_reason"`
+				Message      struct {
 					Content string `json:"content"`
 				} `json:"message"`
 			} `json:"choices"`
@@ -267,9 +276,16 @@ func runCoverProvider(ctx context.Context, backend coverBackend, prompt string, 
 		if json.Unmarshal(limited, &result) != nil || len(result.Choices) == 0 {
 			return "", errCoverOutput
 		}
+		// A completion stopped by the output cap is not a complete letter.
+		// Compatible endpoints may omit finish_reason; reject known failures,
+		// and require a successful stop when OpenRouter supplies a reason.
+		reason := strings.ToLower(strings.TrimSpace(result.Choices[0].FinishReason))
+		if reason == "length" || reason == "max_tokens" || reason == "content_filter" || reason == "tool_calls" ||
+			(backend.Provider == "openrouter" && reason != "" && reason != "stop") {
+			return "", errCoverOutput
+		}
 		text = result.Choices[0].Message.Content
 	}
-	text = strings.TrimSpace(text)
 	if len(text) < 30 || len(text) > maxLetterBytes || strings.ContainsRune(text, 0) {
 		return "", errCoverOutput
 	}

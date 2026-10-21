@@ -176,7 +176,6 @@ func runCoverSubscription(ctx context.Context, provider, model, prompt string) (
 		}
 		text = string(body)
 	}
-	text = strings.TrimSpace(text)
 	if len(text) < 30 || len(text) > maxLetterBytes || strings.ContainsRune(text, 0) {
 		return "", errCoverOutput
 	}
