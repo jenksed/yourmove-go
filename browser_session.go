@@ -13,8 +13,8 @@ import (
 	"example.com/yourmove-lite/internal/application/browser/chromium"
 )
 
-// Read-only inspection and explicitly authorized resume attachment are separate
-// capabilities. Other application writes and final submission are unsupported.
+// Read-only inspection does not confer transfer authority. The handoff alone
+// pins approved contact values and resume bytes; final submission stays manual.
 type readOnlySession interface {
 	Observe(context.Context) (browser.Observation, error)
 	Close() error
@@ -22,6 +22,10 @@ type readOnlySession interface {
 
 type resumeAttachmentSession interface {
 	AttachResume(context.Context, string) (chromium.AttachmentResult, error)
+}
+
+type contactFillSession interface {
+	FillContacts(context.Context, browser.ContactValues) (browser.ContactResult, error)
 }
 
 type resumeHandoff struct {
@@ -32,24 +36,40 @@ type resumeHandoff struct {
 	name              string
 	status            string // waiting, selected, attention
 	message           string
+	contacts          *browser.ContactValues
+	contactStatus     string
+	contactResult     browser.ContactResult
 }
 
 type browserRunState struct {
-	ResumeStatus    string `json:"resume_status"`
-	ResumeRetryable bool   `json:"resume_retryable"`
-	ResumeMessage   string `json:"resume_message"`
-	ResumeName      string `json:"resume_name"`
-	Active          bool   `json:"active"`
-	Phase           string `json:"phase"` // opening, watching, detected, attention, idle
-	Message         string `json:"message"`
-	LatestID        int64  `json:"latest_id"`
-	Captured        int    `json:"captured"`
-	HandoffTitle    string `json:"handoff_title"`
-	HandoffDetail   string `json:"handoff_detail"`
-	HandoffRecovery bool   `json:"handoff_recovery"`
+	AnswerAttempted  []preparedQuestion       `json:"-"`
+	AnswerReviewHash string                   `json:"-"`
+	AnswerStatus     string                   `json:"answer_status"`
+	AnswerOutcomes   []browser.AnswerOutcome  `json:"answer_outcomes,omitempty"`
+	Destination      string                   `json:"-"`
+	LetterStatus     string                   `json:"letter_status"`
+	LetterMessage    string                   `json:"letter_message"`
+	Contacts         *browser.ContactValues   `json:"-"`
+	ContactStatus    string                   `json:"contact_status"`
+	ContactSummary   string                   `json:"contact_summary"`
+	ContactOutcomes  []browser.ContactOutcome `json:"contact_outcomes,omitempty"`
+	ResumeStatus     string                   `json:"resume_status"`
+	ResumeRetryable  bool                     `json:"resume_retryable"`
+	ResumeMessage    string                   `json:"resume_message"`
+	ResumeName       string                   `json:"resume_name"`
+	Active           bool                     `json:"active"`
+	Phase            string                   `json:"phase"` // opening, watching, detected, attention, idle
+	Message          string                   `json:"message"`
+	LatestID         int64                    `json:"latest_id"`
+	Captured         int                      `json:"captured"`
+	HandoffTitle     string                   `json:"handoff_title"`
+	HandoffDetail    string                   `json:"handoff_detail"`
+	HandoffRecovery  bool                     `json:"handoff_recovery"`
 }
 
 type sessionHost struct {
+	answers   map[int64]*applicationAnswerTransfer
+	letters   map[int64]*coverLetterTransfer
 	mu        sync.Mutex
 	sessions  map[int64]readOnlySession
 	starting  bool
@@ -64,12 +84,35 @@ func (h *sessionHost) state(jobID int64) browserRunState {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	state := h.states[jobID]
+	if answers := h.answers[jobID]; answers != nil {
+		state.AnswerAttempted = append([]preparedQuestion(nil), answers.attempted...)
+		state.AnswerReviewHash = answers.hash
+		state.AnswerStatus = answers.status
+		state.AnswerOutcomes = answers.outcomes
+	}
 	state.Active = h.sessions[jobID] != nil
+	if letter := h.letters[jobID]; letter != nil {
+		state.LetterStatus = letter.status
+		state.LetterMessage = fmt.Sprintf("Draft %d · %s", letter.draftID, letter.message)
+	}
 	if up := h.handoffs[jobID]; up != nil {
 		state.ResumeStatus = up.status
 		state.ResumeMessage = up.message
 		state.ResumeName = up.name
 		state.ResumeRetryable = up.retryable
+		state.Contacts = up.contacts
+		state.ContactStatus = up.contactStatus
+		state.ContactOutcomes = up.contactResult.Fields
+		switch up.contactStatus {
+		case "waiting":
+			state.ContactSummary = "Waiting for supported contact controls. Continue in Chromium if this step needs your input."
+		case "checking":
+			state.ContactSummary = "Filling the contact information you approved…"
+		case "complete":
+			state.ContactSummary = up.contactResult.Summary()
+		case "attention":
+			state.ContactSummary = "Contact transfer could not be fully verified. Review the remaining fields in Chromium; nothing will be replayed."
+		}
 	}
 	if h.starting && !state.Active {
 		state.Phase = "opening"
@@ -129,7 +172,7 @@ func (h *sessionHost) start(ctx context.Context, jobID int64, jobURL string) err
 		if h.states == nil {
 			h.states = map[int64]browserRunState{}
 		}
-		h.states[jobID] = browserRunState{Active: true, Phase: "watching", Message: "Chromium is opening the application's URL directly. Waiting for the resume field; continue manually if Ashby requires another step."}
+		h.states[jobID] = browserRunState{Destination: jobURL, Active: true, Phase: "watching", Message: "Chromium is opening the application's URL directly. Waiting for the resume field; continue manually if the employer requires another step."}
 	}
 	h.mu.Unlock()
 	return err
@@ -143,7 +186,7 @@ func (h *sessionHost) inspect(ctx context.Context, jobID int64) (browser.Observa
 	}
 	return s.Observe(ctx)
 }
-func (h *sessionHost) armResume(jobID int64, dir, path, name string) error {
+func (h *sessionHost) armResume(jobID int64, dir, path, name string, contacts *browser.ContactValues) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.sessions[jobID] == nil {
@@ -159,9 +202,54 @@ func (h *sessionHost) armResume(jobID int64, dir, path, name string) error {
 		return errors.New("resume preparation already authorized for this browser; close it to start a different document")
 	}
 	h.handoffs[jobID] = &resumeHandoff{dir: dir, path: path, name: name, status: "waiting", message: "Opening the application directly and looking for its resume field. The browser remains yours for any later pages."}
+	if contacts != nil {
+		snapshot := *contacts
+		h.handoffs[jobID].contacts = &snapshot
+		h.handoffs[jobID].contactStatus = "waiting"
+	}
 	return nil
 }
+
+func (h *sessionHost) tryContacts(ctx context.Context, jobID int64) {
+	if ctx.Err() != nil {
+		return
+	}
+	h.mu.Lock()
+	up, session := h.handoffs[jobID], h.sessions[jobID]
+	if up == nil || session == nil || up.contacts == nil || up.contactStatus != "waiting" {
+		h.mu.Unlock()
+		return
+	}
+	up.contactStatus = "checking"
+	approved := *up.contacts
+	h.mu.Unlock()
+	filler, ok := session.(contactFillSession)
+	var result browser.ContactResult
+	var err error
+	if ok {
+		result, err = filler.FillContacts(ctx, approved)
+	} else {
+		err = errors.New("contact transfer unavailable")
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.handoffs[jobID] != up {
+		return // A closed/replaced browser never inherits the old approval.
+	}
+	up.contactResult = result
+	switch {
+	case err != nil:
+		up.contactStatus = "attention"
+	case !result.Ready:
+		up.contactStatus = "waiting" // Read-only wait; no contact mutation occurred.
+	default:
+		up.contactStatus = "complete" // Never replay a changed or cleared user value.
+	}
+}
 func (h *sessionHost) tryResume(ctx context.Context, jobID int64) {
+	if ctx.Err() != nil {
+		return
+	}
 	h.mu.Lock()
 	up := h.handoffs[jobID]
 	s := h.sessions[jobID]
@@ -174,21 +262,21 @@ func (h *sessionHost) tryResume(ctx context.Context, jobID int64) {
 	h.mu.Unlock()
 	uploader, ok := s.(resumeAttachmentSession)
 	if !ok {
-		h.resumeResult(jobID, "attention", "This browser cannot attach files")
+		h.resumeResult(jobID, up, "attention", "This browser cannot attach files")
 		return
 	}
 	result, err := uploader.AttachResume(ctx, up.path)
 	if errors.Is(err, chromium.ErrNoResumeInput) {
-		h.resumeResult(jobID, "waiting", "No resume field is available on this step yet. Continue in the employer browser; YourMove will check subsequent pages.")
+		h.resumeResult(jobID, up, "waiting", "No resume field is available on this step yet. Continue in the employer browser; YourMove will check subsequent pages.")
 		return
 	}
 	if err != nil {
 		var preflight *chromium.PreflightError
 		if errors.As(err, &preflight) {
-			h.resumePreflightFailure(jobID)
+			h.resumePreflightFailure(jobID, up)
 			return
 		}
-		h.resumeResult(jobID, "attention", "Unable to confirm whether the employer received the resume. Inspect the attachment in Chromium; do not resend automatically. ("+err.Error()+")")
+		h.resumeResult(jobID, up, "attention", "Unable to confirm whether the employer received the resume. Inspect the attachment in Chromium; do not resend automatically. ("+err.Error()+")")
 		return
 	}
 	if result.Selected {
@@ -196,15 +284,15 @@ func (h *sessionHost) tryResume(ctx context.Context, jobID int64) {
 		if !result.Verified {
 			msg = "File selection was attempted but the browser could not verify it. Review the attachment manually."
 		}
-		h.resumeResult(jobID, "selected", msg)
+		h.resumeResult(jobID, up, "selected", msg)
 		return
 	}
-	h.resumeResult(jobID, "attention", "Resume selection could not be confirmed; attach manually")
+	h.resumeResult(jobID, up, "attention", "Resume selection could not be confirmed; attach manually")
 }
-func (h *sessionHost) resumeResult(jobID int64, status, message string) {
+func (h *sessionHost) resumeResult(jobID int64, expected *resumeHandoff, status, message string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if up := h.handoffs[jobID]; up != nil {
+	if up := h.handoffs[jobID]; up != nil && up == expected {
 		up.status = status
 		up.message = message
 		up.retryable = false
@@ -217,11 +305,11 @@ func (h *sessionHost) resumeResult(jobID int64, status, message string) {
 // Only transport/form-rerender errors raised before the file selection
 // command are safe to retry. Stop after three failures and offer a deliberate
 // recheck; do not tell users they must attach manually for a read error.
-func (h *sessionHost) resumePreflightFailure(jobID int64) {
+func (h *sessionHost) resumePreflightFailure(jobID int64, expected *resumeHandoff) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	up := h.handoffs[jobID]
-	if up == nil {
+	if up == nil || up != expected {
 		return
 	}
 	up.preflightFailures++
@@ -292,13 +380,20 @@ func (h *sessionHost) watch(jobID int64, jobURL string, save func(browser.Observ
 		h.cancels = map[int64]context.CancelFunc{}
 	}
 	h.cancels[jobID] = cancel
+	session := h.sessions[jobID]
 	interval := h.pollEvery
 	if interval <= 0 {
 		interval = 2200 * time.Millisecond
 	}
 	h.mu.Unlock()
 	go func() {
-		defer func() { h.mu.Lock(); delete(h.cancels, jobID); h.mu.Unlock() }()
+		defer func() {
+			h.mu.Lock()
+			if h.sessions[jobID] == session {
+				delete(h.cancels, jobID)
+			}
+			h.mu.Unlock()
+		}()
 		tick := time.NewTicker(interval)
 		defer tick.Stop()
 		var previous, pending string
@@ -335,9 +430,9 @@ func (h *sessionHost) watch(jobID int64, jobURL string, save func(browser.Observ
 					unavailable = 0
 				}
 				if errors.Is(err, chromium.ErrNoMatchingTab) {
-					h.setState(jobID, "attention", "This browser is on another page (possibly sign-in). Return to this Ashby application, or use Reopen application to start over. No document was resent.", 0, false)
+					h.setState(jobID, "attention", "This browser is on another page (possibly sign-in). Return to this employer application, or use Reopen application to start over. No document was resent.", 0, false)
 				} else {
-					h.setState(jobID, "attention", "This page cannot be inspected right now. Return to the Ashby application, or use Reopen application to restart from its posting.", 0, false)
+					h.setState(jobID, "attention", "This page cannot be inspected right now. Return to the employer application, or use Reopen application to restart from its posting.", 0, false)
 				}
 				pending = ""
 				pendingCount = 0
@@ -346,8 +441,8 @@ func (h *sessionHost) watch(jobID int64, jobURL string, save func(browser.Observ
 				missingPages = 0
 				// Avoid duplicate database writes: require a stable observed form
 				// across two successive reads. Posting pages without controls are skipped.
-				if !browser.OwnsAshbyURL(jobURL, observation.URL) {
-					h.setState(jobID, "attention", "The managed browser is not showing this saved Ashby job. Return to the application; nothing was saved.", 0, false)
+				if !browser.OwnsPostingURL(jobURL, observation.URL) {
+					h.setState(jobID, "attention", "The managed browser is not showing this saved job. Return to the application; nothing was saved.", 0, false)
 					pending = ""
 					pendingCount = 0
 				} else if len(observation.Controls) == 0 && observation.Forms == 0 && len(observation.Actions) == 0 && len(observation.Frames) == 0 {
@@ -358,7 +453,7 @@ func (h *sessionHost) watch(jobID int64, jobURL string, save func(browser.Observ
 					// Deterministic non-sensitive snapshot identity; no values read.
 					result, conversionErr := browser.AsResult(jobURL, observation)
 					if conversionErr != nil {
-						h.setState(jobID, "attention", "The browser is no longer showing this saved Ashby job. Return to the correct application.", 0, false)
+						h.setState(jobID, "attention", "The browser is no longer showing this saved job. Return to the correct application.", 0, false)
 						pending = ""
 						pendingCount = 0
 						select {
@@ -390,10 +485,19 @@ func (h *sessionHost) watch(jobID int64, jobURL string, save func(browser.Observ
 					}
 				}
 			}
-			if ctx.Err() == nil && err == nil && browser.OwnsAshbyURL(jobURL, observation.URL) {
+			if ctx.Err() == nil && err == nil && browser.OwnsPostingURL(jobURL, observation.URL) {
 				upCtx, upCancel := context.WithTimeout(ctx, 12*time.Second)
 				h.tryResume(upCtx, jobID)
 				upCancel()
+				contactCtx, contactCancel := context.WithTimeout(ctx, 12*time.Second)
+				h.tryContacts(contactCtx, jobID)
+				contactCancel()
+				letterCtx, letterCancel := context.WithTimeout(ctx, 12*time.Second)
+				h.tryCoverLetter(letterCtx, jobID)
+				letterCancel()
+				answerCtx, answerCancel := context.WithTimeout(ctx, 30*time.Second)
+				h.tryAnswers(answerCtx, jobID)
+				answerCancel()
 			}
 			select {
 			case <-ctx.Done():
@@ -414,7 +518,13 @@ func (h *sessionHost) close(jobID int64) error {
 	delete(h.states, jobID)
 	up := h.handoffs[jobID]
 	delete(h.handoffs, jobID)
+	letter := h.letters[jobID]
+	delete(h.letters, jobID)
+	delete(h.answers, jobID)
 	h.mu.Unlock()
+	if letter != nil {
+		defer os.RemoveAll(letter.dir)
+	}
 	if up != nil {
 		defer os.RemoveAll(up.dir)
 	}

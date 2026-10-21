@@ -93,7 +93,7 @@ func extractAshbyMetadata(data []byte, postingID string) (Metadata, error) {
 		}
 	}
 
-	return Metadata{}, fmt.Errorf("Ashby posting %s not found", postingID)
+	return Metadata{}, fmt.Errorf("%w: Ashby posting %s not found", ErrClosed, postingID)
 }
 
 func fetchAshby(ctx context.Context, board, postingID string) (Metadata, error) {

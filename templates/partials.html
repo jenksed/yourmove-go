@@ -12,6 +12,7 @@
       <a class="nav-item {{if eq . "resumes"}}is-active{{end}}" {{if eq . "resumes"}}aria-current="page"{{end}} href="/resumes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h8"/></svg>Documents</a>
       <a class="nav-item {{if eq . "candidate"}}is-active{{end}}" href="/candidate"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-3a8 8 0 0 1 16 0v3"/></svg>Candidate profile</a>
       <a class="nav-item {{if eq . "applications"}}is-active{{end}}" {{if eq . "applications"}}aria-current="page"{{end}} href="/applications"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 12 5 5L20 6"/><path d="M20 13v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h10"/></svg>Applications</a>
+      <a class="nav-item {{if eq . "ai"}}is-active{{end}}" {{if eq . "ai"}}aria-current="page"{{end}} href="/ai"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 1.6 5.4L19 9l-5.4 1.6L12 16l-1.6-5.4L5 9l5.4-1.6L12 2Z"/><path d="m19 16 .6 2.4L22 19l-2.4.6L19 22l-.6-2.4L16 19l2.4-.6L19 16Z"/></svg>AI connections</a>
       <a class="nav-item {{if or (eq . "utilities") (eq . "enrichment")}}is-active{{end}}" href="/utilities"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v3m0 12v3m9-9h-3M6 12H3m15.4-6.4-2.1 2.1M7.7 16.3l-2.1 2.1m12.8 0-2.1-2.1M7.7 7.7 5.6 5.6"/><circle cx="12" cy="12" r="4"/></svg>Utilities</a>
     </nav>
     <div class="sidebar-bottom"><span class="local-dot" aria-hidden="true"></span><span>Local workspace</span><small>Your resumes stay on this device.</small></div>
@@ -25,3 +26,6 @@
 {{define "shell-close"}}</main><footer class="main-footer"><span>YourMove · Local-first application workspace</span><span>You review and submit every application.</span></footer></div></div>{{end}}
 {{define "status-badge"}}<span class="status status-{{.Stage}}">{{.StageLabel}}</span>{{end}}
 {{define "priority-badge"}}{{if eq .Priority "high"}}<span class="priority-flag">High priority</span>{{else if eq .Priority "low"}}<span class="priority-quiet">Low priority</span>{{end}}{{end}}
+
+{{define "contact-facts"}}<dl class="fact-list transfer-contact-facts"><div><dt>Name</dt><dd>{{.FirstName}} {{.LastName}}</dd></div><div><dt>Email</dt><dd>{{.Email}}</dd></div>{{if .Phone}}<div><dt>Phone</dt><dd>{{.Phone}}</dd></div>{{end}}</dl>{{end}}
+{{define "contact-outcomes"}}{{if .}}<ul class="transfer-contact-outcomes">{{range .}}{{if and (ne .Status "filled") (ne .Status "correct")}}<li><strong>{{.Label}}</strong><span>{{.Detail}}</span></li>{{end}}{{end}}</ul>{{end}}{{end}}

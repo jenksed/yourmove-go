@@ -31,6 +31,49 @@ func testWorkspace(t *testing.T) (*App, string) {
 	return &App{db: db, resumeDir: resumeDir}, dir
 }
 
+func reviewedSubmissionToken(t *testing.T, a *App, jobID int64) string {
+	t.Helper()
+	token, err := newSubmissionToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, err := a.jobByID(jobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resumeHash := ""
+	if job.SelectedResumeID > 0 {
+		if resume, resumeErr := a.resumeByID(job.SelectedResumeID); resumeErr == nil {
+			resumeHash = resume.SHA256
+		} else if !errors.Is(resumeErr, sql.ErrNoRows) {
+			t.Fatal(resumeErr)
+		}
+	}
+	if err := a.recordSubmissionReview(jobID, token, job.SelectedResumeID, resumeHash); err != nil {
+		t.Fatal(err)
+	}
+	return token
+}
+
+func submissionTokenFromPage(t *testing.T, page string) string {
+	t.Helper()
+	const field = `name="submission_token" value="`
+	start := strings.Index(page, field)
+	if start < 0 {
+		t.Fatal("job page is missing its submission token")
+	}
+	start += len(field)
+	end := strings.IndexByte(page[start:], '"')
+	if end < 0 {
+		t.Fatal("job page has an invalid submission token")
+	}
+	token := page[start : start+end]
+	if !validSubmissionToken(token) {
+		t.Fatalf("job page has invalid submission token %q", token)
+	}
+	return token
+}
+
 func sampleDOCX(t *testing.T) []byte {
 	t.Helper()
 	var b bytes.Buffer
@@ -67,10 +110,7 @@ func TestResumeRevisionArchiveAndInAppNotice(t *testing.T) {
 	if err := a.assignResume(1, old.ID); err != nil {
 		t.Fatal(err)
 	}
-	token, err := newSubmissionToken()
-	if err != nil {
-		t.Fatal(err)
-	}
+	token := reviewedSubmissionToken(t, a, 1)
 	if err := a.recordSubmission(1, "submitted", token); err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +151,7 @@ func TestResumeRevisionArchiveAndInAppNotice(t *testing.T) {
 		t.Fatalf("deletion left document app: %d %s", post.Code, post.Body.String())
 	}
 	notice := httptest.NewRecorder()
-	newMux(a).ServeHTTP(notice, httptest.NewRequest("GET", post.Header().Get("Location"), nil))
+	newMux(a).ServeHTTP(notice, httptest.NewRequest("GET", "http://localhost"+post.Header().Get("Location"), nil))
 	if notice.Code != 200 || !strings.Contains(notice.Body.String(), "Archive it") {
 		t.Fatalf("in-app explanation absent: %d %s", notice.Code, notice.Body.String())
 	}
@@ -199,13 +239,10 @@ func TestMasterResumeRoutingAndSafeDeletion(t *testing.T) {
 	if err := a.assignResume(1, 0); err != nil {
 		t.Fatal(err)
 	}
-	token, err := newSubmissionToken()
-	if err != nil {
-		t.Fatal(err)
-	}
 	if err := a.assignResume(1, role.ID); err != nil {
 		t.Fatal(err)
 	}
+	token := reviewedSubmissionToken(t, a, 1)
 	if err := a.recordSubmission(1, "submitted", token); err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +287,7 @@ func TestResumeLibraryMasterAndDeleteRoutes(t *testing.T) {
 	}
 	mux := newMux(a)
 	get := httptest.NewRecorder()
-	mux.ServeHTTP(get, httptest.NewRequest("GET", "/resumes", nil))
+	mux.ServeHTTP(get, httptest.NewRequest("GET", "http://localhost/resumes", nil))
 	if get.Code != 200 || !strings.Contains(get.Body.String(), "/resumes/1/delete") || !strings.Contains(get.Body.String(), "Set as master resume") {
 		t.Fatalf("resume controls not rendered: %d %s", get.Code, get.Body.String())
 	}
@@ -307,10 +344,7 @@ func TestResumeImportAndAssignSubmissionLifecycle(t *testing.T) {
 	if err := a.assignResume(1, imported.ID); err != nil {
 		t.Fatal(err)
 	}
-	token, err := newSubmissionToken()
-	if err != nil {
-		t.Fatal(err)
-	}
+	token := reviewedSubmissionToken(t, a, 1)
 	if err := a.recordSubmission(1, "Confirmation ABC <script>", token); err != nil {
 		t.Fatal(err)
 	}
@@ -380,7 +414,7 @@ func TestApplicationHTTPBrowserAndDesktop(t *testing.T) {
 	}
 	file.Write([]byte("%PDF-1.4\nhello"))
 	form.Close()
-	req := httptest.NewRequest("POST", "/resumes/import", &body)
+	req := httptest.NewRequest("POST", "http://localhost/resumes/import", &body)
 	req.Header.Set("Content-Type", form.FormDataContentType())
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -399,21 +433,23 @@ func TestApplicationHTTPBrowserAndDesktop(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("submission without explicit confirm=%d", rec.Code)
 	}
-	token, err := newSubmissionToken()
-	if err != nil {
-		t.Fatal(err)
+	get := httptest.NewRecorder()
+	mux.ServeHTTP(get, httptest.NewRequest("GET", "http://localhost/jobs/1", nil))
+	if get.Code != http.StatusOK {
+		t.Fatalf("review page=%d %s", get.Code, get.Body.String())
 	}
+	token := submissionTokenFromPage(t, get.Body.String())
 	rec = postApp(mux, "/jobs/1/submit", url.Values{"confirm": {"yes"}, "notes": {"Applied with test"}, "submission_token": {token}}, "", "")
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("submission=%d %s", rec.Code, rec.Body.String())
 	}
-	get := httptest.NewRecorder()
-	mux.ServeHTTP(get, httptest.NewRequest("GET", "/jobs/1", nil))
+	get = httptest.NewRecorder()
+	mux.ServeHTTP(get, httptest.NewRequest("GET", "http://localhost/jobs/1", nil))
 	if get.Code != 200 || !strings.Contains(get.Body.String(), `name="submission_token"`) || !strings.Contains(get.Body.String(), "Applied with test") || !strings.Contains(get.Body.String(), "test.pdf") {
 		t.Fatalf("detail=%d body=%s", get.Code, get.Body.String())
 	}
 	get = httptest.NewRecorder()
-	mux.ServeHTTP(get, httptest.NewRequest("GET", "/resumes/1/download", nil))
+	mux.ServeHTTP(get, httptest.NewRequest("GET", "http://localhost/resumes/1/download", nil))
 	if get.Code != 200 || !strings.HasPrefix(get.Body.String(), "%PDF-") {
 		t.Fatalf("download=%d", get.Code)
 	}
@@ -467,6 +503,105 @@ func postApp(mux http.Handler, path string, form url.Values, origin, id string) 
 	return w
 }
 
+func TestSubmissionConfirmationUsesReviewedResume(t *testing.T) {
+	newReviewedJob := func(t *testing.T) (*App, http.Handler, Resume, Resume) {
+		t.Helper()
+		a, _ := testWorkspace(t)
+		if err := a.saveJob(Job{URL: "https://example.com/role", Host: "example.com", Title: "Sample"}); err != nil {
+			t.Fatal(err)
+		}
+		resumeA, err := a.importResume("resume-a.pdf", strings.NewReader("%PDF-1.4\nresume A"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resumeB, err := a.importResume("resume-b.pdf", strings.NewReader("%PDF-1.4\nresume B"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := a.assignResume(1, resumeA.ID); err != nil {
+			t.Fatal(err)
+		}
+		return a, newMux(a), resumeA, resumeB
+	}
+	review := func(t *testing.T, mux http.Handler) string {
+		t.Helper()
+		page := httptest.NewRecorder()
+		mux.ServeHTTP(page, httptest.NewRequest(http.MethodGet, "http://localhost/jobs/1", nil))
+		if page.Code != http.StatusOK {
+			t.Fatalf("review page=%d %s", page.Code, page.Body.String())
+		}
+		return submissionTokenFromPage(t, page.Body.String())
+	}
+	confirm := func(mux http.Handler, token string) *httptest.ResponseRecorder {
+		return postApp(mux, "/jobs/1/submit", url.Values{
+			"confirm": {"yes"}, "submission_token": {token},
+		}, "", "")
+	}
+
+	t.Run("same resume after navigation", func(t *testing.T) {
+		a, mux, resumeA, _ := newReviewedJob(t)
+		token := review(t, mux)
+		for _, path := range []string{"/applications", "/jobs/1"} {
+			page := httptest.NewRecorder()
+			mux.ServeHTTP(page, httptest.NewRequest(http.MethodGet, "http://localhost"+path, nil))
+			if page.Code != http.StatusOK {
+				t.Fatalf("navigation to %s: %d", path, page.Code)
+			}
+		}
+		if response := confirm(mux, token); response.Code != http.StatusSeeOther {
+			t.Fatalf("unchanged review confirmation=%d %s", response.Code, response.Body.String())
+		}
+		history, err := a.jobSubmissions(1)
+		if err != nil || len(history) != 1 || history[0].ResumeID != resumeA.ID || history[0].ResumeSHA256 != resumeA.SHA256 {
+			t.Fatalf("confirmed resume history=%+v err=%v", history, err)
+		}
+	})
+
+	t.Run("selected resume switched", func(t *testing.T) {
+		a, mux, _, resumeB := newReviewedJob(t)
+		token := review(t, mux)
+		if err := a.assignResume(1, resumeB.ID); err != nil {
+			t.Fatal(err)
+		}
+		response := confirm(mux, token)
+		if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "Review the application and resume again") {
+			t.Fatalf("stale selection confirmation=%d %s", response.Code, response.Body.String())
+		}
+		if history, err := a.jobSubmissions(1); err != nil || len(history) != 0 {
+			t.Fatalf("stale selection was recorded: %+v err=%v", history, err)
+		}
+	})
+
+	for _, mutate := range []struct {
+		name string
+		fn   func(*testing.T, *App, Resume)
+	}{
+		{name: "resume modified", fn: func(t *testing.T, a *App, resume Resume) {
+			if err := os.WriteFile(filepath.Join(a.resumeDir, resume.StoredName), []byte("%PDF-1.4\nchanged resume A"), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "resume file deleted", fn: func(t *testing.T, a *App, resume Resume) {
+			if err := os.Remove(filepath.Join(a.resumeDir, resume.StoredName)); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	} {
+		t.Run(mutate.name, func(t *testing.T) {
+			a, mux, resumeA, _ := newReviewedJob(t)
+			token := review(t, mux)
+			mutate.fn(t, a, resumeA)
+			response := confirm(mux, token)
+			if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "Review the application and resume again") {
+				t.Fatalf("stale file confirmation=%d %s", response.Code, response.Body.String())
+			}
+			if history, err := a.jobSubmissions(1); err != nil || len(history) != 0 {
+				t.Fatalf("stale file was recorded: %+v err=%v", history, err)
+			}
+		})
+	}
+}
+
 func TestAppliedCannotBeForgedOrReverted(t *testing.T) {
 	a, _ := testWorkspace(t)
 	if err := a.saveJob(Job{URL: "https://example.com/job", Host: "example.com", Title: "Example"}); err != nil {
@@ -478,10 +613,7 @@ func TestAppliedCannotBeForgedOrReverted(t *testing.T) {
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("forged applied stage: %d", w.Code)
 	}
-	token, err := newSubmissionToken()
-	if err != nil {
-		t.Fatal(err)
-	}
+	token := reviewedSubmissionToken(t, a, 1)
 	if err := a.recordSubmission(1, "confirmed", token); err != nil {
 		t.Fatal(err)
 	}
@@ -504,10 +636,7 @@ func TestSubmissionTokenIdempotenceAndMissingJob(t *testing.T) {
 	if err := a.saveJob(Job{URL: "https://example.com/job", Host: "example.com"}); err != nil {
 		t.Fatal(err)
 	}
-	token, err := newSubmissionToken()
-	if err != nil {
-		t.Fatal(err)
-	}
+	token := reviewedSubmissionToken(t, a, 1)
 	if err := a.recordSubmission(1, "first", token); err != nil {
 		t.Fatal(err)
 	}
@@ -535,7 +664,7 @@ func TestBrowserRejectsCrossSiteResumeDownload(t *testing.T) {
 	if _, err := a.importResume("cv.pdf", bytes.NewReader([]byte("%PDF-1.4\nmock"))); err != nil {
 		t.Fatal(err)
 	}
-	req := httptest.NewRequest(http.MethodGet, "/resumes/1/download", nil)
+	req := httptest.NewRequest(http.MethodGet, "http://localhost/resumes/1/download", nil)
 	req.Header.Set("Sec-Fetch-Site", "cross-site")
 	w := httptest.NewRecorder()
 	newMux(a).ServeHTTP(w, req)
@@ -598,7 +727,7 @@ func TestStoredResumeIntegrityRequiredForDownload(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := httptest.NewRecorder()
-	newMux(a).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/resumes/1/download", nil))
+	newMux(a).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "http://localhost/resumes/1/download", nil))
 	if w.Code != http.StatusInternalServerError || strings.Contains(w.Body.String(), "modified") {
 		t.Fatalf("altered artifact served: status=%d", w.Code)
 	}
@@ -810,9 +939,9 @@ func TestCoverLetterSourcesPreviewIsReadOnlyAndEscaped(t *testing.T) {
 		t.Fatal(err)
 	}
 	page := httptest.NewRecorder()
-	newMux(a).ServeHTTP(page, httptest.NewRequest(http.MethodGet, "/jobs/1", nil))
+	newMux(a).ServeHTTP(page, httptest.NewRequest(http.MethodGet, "http://localhost/jobs/1", nil))
 	html := page.Body.String()
-	if page.Code != 200 || !strings.Contains(html, "Career evidence") || !strings.Contains(html, "Sources readable") ||
+	if page.Code != 200 || !strings.Contains(html, `id="letter-studio-title"`) || !strings.Contains(html, "Master resume readable") ||
 		!strings.Contains(html, "Career &lt;facts&gt;") || strings.Contains(html, "Career <facts>") ||
 		!strings.Contains(html, "Linux &amp; SQL") || page.Header().Get("Cache-Control") != "private, no-store" {
 		t.Fatalf("bad cover letter source preview: %d %s", page.Code, html)
@@ -823,9 +952,9 @@ func TestCoverLetterSourcesPreviewIsReadOnlyAndEscaped(t *testing.T) {
 		t.Fatal(err)
 	}
 	page = httptest.NewRecorder()
-	newMux(a).ServeHTTP(page, httptest.NewRequest(http.MethodGet, "/jobs/1", nil))
-	if page.Code != 200 || !strings.Contains(page.Body.String(), "Choose an active role-specific resume") ||
-		strings.Contains(page.Body.String(), "Sources readable") {
+	newMux(a).ServeHTTP(page, httptest.NewRequest(http.MethodGet, "http://localhost/jobs/1", nil))
+	if page.Code != 200 || !strings.Contains(page.Body.String(), "Selected resume unavailable") ||
+		strings.Contains(page.Body.String(), "Selected resume readable") {
 		t.Fatal("missing resume was treated as ready")
 	}
 	pdf, err := a.importResume("role.pdf", strings.NewReader("%PDF-1.4\nrole evidence"))
@@ -836,9 +965,9 @@ func TestCoverLetterSourcesPreviewIsReadOnlyAndEscaped(t *testing.T) {
 		t.Fatal(err)
 	}
 	page = httptest.NewRecorder()
-	newMux(a).ServeHTTP(page, httptest.NewRequest(http.MethodGet, "/jobs/1", nil))
-	if page.Code != 200 || !strings.Contains(page.Body.String(), "PDF text extraction") ||
-		strings.Contains(page.Body.String(), "Sources readable") {
+	newMux(a).ServeHTTP(page, httptest.NewRequest(http.MethodGet, "http://localhost/jobs/1", nil))
+	if page.Code != 200 || !strings.Contains(page.Body.String(), "This PDF has no readable text") ||
+		strings.Contains(page.Body.String(), "Selected resume readable") {
 		t.Fatal("unsupported PDF was treated as readable")
 	}
 }

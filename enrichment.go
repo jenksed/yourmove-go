@@ -179,7 +179,7 @@ func (a *App) enrichmentWorker(r *enrichmentRun, fetch postingFetcher) {
 		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 		metadata, state, note := fetch(ctx, item.URL)
 		cancel()
-		if state != "retrieved" && state != "unsupported" && state != "failed" {
+		if state != "retrieved" && state != "unsupported" && state != "failed" && state != "closed" {
 			state, note = "failed", "Extractor returned an unexpected outcome."
 		}
 		if len([]rune(note)) > 240 {

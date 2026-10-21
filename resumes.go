@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	pdf "github.com/ledongthuc/pdf"
 )
 
 const maxResumeSize = 10 << 20
@@ -115,7 +117,7 @@ func (a *App) importResume(name string, body io.Reader) (Resume, error) {
 	sum := sha256.Sum256(data)
 	hash := hex.EncodeToString(sum[:])
 	if r, err := a.resumeByHash(hash); err == nil {
-		return r, nil
+		return a.verifiedImportedResume(r)
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return Resume{}, err
 	}
@@ -143,7 +145,7 @@ func (a *App) importResume(name string, body io.Reader) (Resume, error) {
 	if err != nil {
 		os.Remove(path)
 		if r, e := a.resumeByHash(hash); e == nil {
-			return r, nil
+			return a.verifiedImportedResume(r)
 		}
 		return Resume{}, fmt.Errorf("save resume record: %w", err)
 	}
@@ -153,6 +155,14 @@ func (a *App) importResume(name string, body io.Reader) (Resume, error) {
 		return Resume{}, err
 	}
 	return Resume{ID: rowID, Name: name, StoredName: storedName, SHA256: hash, Size: int64(len(data)), Kind: kind, ImportedAt: now}, nil
+}
+
+// A matching registry entry alone does not establish that the document exists.
+func (a *App) verifiedImportedResume(r Resume) (Resume, error) {
+	if _, err := a.readResumeBytes(r); err != nil {
+		return Resume{}, fmt.Errorf("this resume is already registered, but its stored file is unavailable or damaged; restore the complete workspace from backup before retrying: %w", err)
+	}
+	return r, nil
 }
 
 // readResumeBytes returns stored document bytes only when they match
@@ -195,10 +205,49 @@ func (a *App) extractResumeText(resume Resume) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if resume.Kind != ".docx" {
-		return "", fmt.Errorf("text extraction for %s is not implemented", resume.Kind)
+	switch resume.Kind {
+	case ".docx":
+		return extractDOCXText(data)
+	case ".pdf":
+		return extractPDFText(data)
+	default:
+		return "", fmt.Errorf("text extraction for %s is not supported", resume.Kind)
 	}
-	return extractDOCXText(data)
+}
+
+// A read-only, bounded PDF extraction. No external process, upload or shell command.
+// Image-only or encrypted PDFs may not contain usable text: those need DOCX.
+func extractPDFText(data []byte) (result string, err error) {
+	defer func() {
+		if recover() != nil {
+			result = ""
+			err = errors.New("unable to parse PDF text")
+		}
+	}()
+	reader, err := pdf.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return "", err
+	}
+	if reader.NumPage() > 60 {
+		return "", errors.New("PDF has too many pages")
+	}
+	textReader, err := reader.GetPlainText()
+	if err != nil {
+		return "", err
+	}
+	const limit = 256 << 10
+	raw, err := io.ReadAll(io.LimitReader(textReader, limit+1))
+	if err != nil {
+		return "", err
+	}
+	if len(raw) > limit {
+		return "", errors.New("PDF extracted text exceeds limit")
+	}
+	result = strings.TrimSpace(string(raw))
+	if len([]rune(result)) < 30 {
+		return "", errors.New("PDF contains insufficient selectable text; use a DOCX revision")
+	}
+	return result, nil
 }
 
 func extractDOCXText(data []byte) (string, error) {
@@ -366,7 +415,7 @@ func (a *App) assignResume(jobID, resumeID int64) error {
 
 // A single master resume is a source of career evidence, never an automatic
 // employer attachment. The master and role-specific primaries are independent.
-var ErrResumeInUse = errors.New("resume is assigned to a job or recorded in submission history")
+var ErrResumeInUse = errors.New("resume is referenced by a job, submission, or cover letter")
 var ErrMasterResume = errors.New("remove the master designation before deleting this resume")
 
 func (a *App) masterResume() (Resume, error) {
@@ -443,7 +492,8 @@ func (a *App) deleteResume(id int64) error {
 	}
 	var used bool
 	if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM jobs WHERE selected_resume_id=?)
-        OR EXISTS(SELECT 1 FROM submissions WHERE resume_id=?)`, id, id).Scan(&used); err != nil {
+        OR EXISTS(SELECT 1 FROM submissions WHERE resume_id=?)
+        OR EXISTS(SELECT 1 FROM cover_letters WHERE master_resume_id=? OR role_resume_id=?)`, id, id, id, id).Scan(&used); err != nil {
 		return err
 	}
 	if used {
@@ -632,6 +682,38 @@ func validSubmissionToken(token string) bool {
 	return err == nil
 }
 
+var ErrSubmissionReviewStale = errors.New("submission review is stale")
+
+func (a *App) recordSubmissionReview(jobID int64, token string, resumeID int64, resumeHash string) error {
+	if !validSubmissionToken(token) || jobID <= 0 || resumeID < 0 {
+		return fmt.Errorf("invalid submission review")
+	}
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var selectedResumeID sql.NullInt64
+	var selectedResumeHash string
+	if err := tx.QueryRow(`SELECT j.selected_resume_id, COALESCE(r.sha256,'')
+		FROM jobs j LEFT JOIN resumes r ON r.id=j.selected_resume_id WHERE j.id=?`, jobID).
+		Scan(&selectedResumeID, &selectedResumeHash); err != nil {
+		return err
+	}
+	if selectedResumeID.Int64 != resumeID || selectedResumeHash != resumeHash {
+		return ErrSubmissionReviewStale
+	}
+	var reviewedResume any
+	if resumeID > 0 {
+		reviewedResume = resumeID
+	}
+	if _, err := tx.Exec(`INSERT INTO submission_reviews(token,job_id,resume_id,resume_sha256) VALUES(?,?,?,?)`, token, jobID, reviewedResume, resumeHash); err != nil {
+		return fmt.Errorf("save submission review: %w", err)
+	}
+	return tx.Commit()
+}
+
 func (a *App) recordSubmission(jobID int64, note, token string) error {
 	// Keep explicit submission creation and destructive deletion serialized.
 	a.intakeMu.Lock()
@@ -655,15 +737,66 @@ func (a *App) recordSubmission(jobID int64, note, token string) error {
 	if tokenExists {
 		return nil
 	}
-	var resumeID sql.NullInt64
-	var name, hash string
-	if err := tx.QueryRow(`SELECT j.selected_resume_id, COALESCE(r.name,''), COALESCE(r.sha256,'')
-            FROM jobs j LEFT JOIN resumes r ON r.id=j.selected_resume_id WHERE j.id=?`, jobID).Scan(&resumeID, &name, &hash); err != nil {
+	staleReview := func() error {
+		if _, err := tx.Exec(`DELETE FROM submission_reviews WHERE token=?`, token); err != nil {
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		return ErrSubmissionReviewStale
+	}
+	var reviewedJobID int64
+	var reviewedResumeID sql.NullInt64
+	var reviewedResumeHash string
+	if err := tx.QueryRow(`SELECT job_id,resume_id,resume_sha256 FROM submission_reviews WHERE token=?`, token).
+		Scan(&reviewedJobID, &reviewedResumeID, &reviewedResumeHash); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			var jobExists bool
+			if checkErr := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM jobs WHERE id=?)`, jobID).Scan(&jobExists); checkErr != nil {
+				return checkErr
+			}
+			if !jobExists {
+				return sql.ErrNoRows
+			}
+			return staleReview()
+		}
 		return err
 	}
+	if reviewedJobID != jobID {
+		return staleReview()
+	}
+	var currentResumeID sql.NullInt64
+	if err := tx.QueryRow(`SELECT selected_resume_id FROM jobs WHERE id=?`, jobID).Scan(&currentResumeID); err != nil {
+		return err
+	}
+	if currentResumeID.Int64 != reviewedResumeID.Int64 || currentResumeID.Valid != reviewedResumeID.Valid {
+		return staleReview()
+	}
+	var name, hash string
+	if reviewedResumeID.Valid {
+		var resume Resume
+		resume.ID = reviewedResumeID.Int64
+		if err := tx.QueryRow(`SELECT name,stored_name,sha256,size,kind FROM resumes WHERE id=?`, resume.ID).
+			Scan(&resume.Name, &resume.StoredName, &resume.SHA256, &resume.Size, &resume.Kind); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return staleReview()
+			}
+			return err
+		}
+		if resume.SHA256 != reviewedResumeHash {
+			return staleReview()
+		}
+		if _, err := a.readResumeBytes(resume); err != nil {
+			return staleReview()
+		}
+		name, hash = resume.Name, resume.SHA256
+	} else if reviewedResumeHash != "" {
+		return staleReview()
+	}
 	var selected any
-	if resumeID.Valid {
-		selected = resumeID.Int64
+	if reviewedResumeID.Valid {
+		selected = reviewedResumeID.Int64
 	}
 	_, err = tx.Exec(`INSERT INTO submissions (job_id,resume_id,resume_name,resume_sha256,submitted_at,notes,token)
         VALUES (?,?,?,?,?,?,?)`, jobID, selected, name, hash, time.Now().UTC().Format(time.RFC3339), note, token)
@@ -671,6 +804,9 @@ func (a *App) recordSubmission(jobID int64, note, token string) error {
 		return fmt.Errorf("record submission: %w", err)
 	}
 	if _, err := tx.Exec(`UPDATE jobs SET stage='applied' WHERE id=?`, jobID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM submission_reviews WHERE token=?`, token); err != nil {
 		return err
 	}
 	return tx.Commit()

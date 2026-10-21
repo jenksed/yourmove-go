@@ -78,7 +78,7 @@ func (a *App) inspectionPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unable to read profile", 500)
 		return
 	}
-	view := inspectionPageModel{Job: job, Profile: profile, BrowserSupported: browser.OwnsAshbyURL(job.URL, job.URL)}
+	view := inspectionPageModel{Job: job, Profile: profile, BrowserSupported: browser.OwnsPostingURL(job.URL, job.URL)}
 	view.BrowserState = a.browsers.state(id)
 	view.BrowserOpen = view.BrowserState.Active
 	if job.SelectedResumeID > 0 {

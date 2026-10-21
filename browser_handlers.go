@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 
 	browser "example.com/yourmove-lite/internal/application/browser"
 	"example.com/yourmove-lite/internal/application/browser/chromium"
@@ -53,8 +52,8 @@ func (a *App) browserOperation(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Inspection is limited to active jobs", 409)
 		return
 	}
-	if !browser.OwnsAshbyURL(job.URL, job.URL) {
-		http.Error(w, "Managed inspection supports saved Ashby postings only", 422)
+	if !browser.OwnsPostingURL(job.URL, job.URL) {
+		http.Error(w, "Managed inspection supports saved Ashby, Greenhouse, and Lever postings", 422)
 		return
 	}
 	switch r.PathValue("action") {
@@ -94,7 +93,7 @@ func (a *App) browserOperation(w http.ResponseWriter, r *http.Request) {
 			if errors.Is(err, chromium.ErrNoPageTargets) || errors.Is(err, chromium.ErrBrowserUnavailable) {
 				a.browsers.interrupt(id, "The application browser or its tab was closed. Reopen the application; the selected resume remains in YourMove, but unsaved form data may be lost.")
 			} else {
-				a.browsers.setState(id, "attention", "Could not inspect this page. Return to the Ashby posting in Chromium, or use Reopen application. No data was uploaded.", 0, false)
+				a.browsers.setState(id, "attention", "Could not inspect this page. Return to the employer posting in Chromium, or use Reopen application. No data was uploaded.", 0, false)
 			}
 		}
 	case "restart":
@@ -136,7 +135,7 @@ func (a *App) browserOperation(w http.ResponseWriter, r *http.Request) {
 }
 
 // startResumeHandoff pins and verifies the exact job-selected resume bytes before
-// any browser interaction. Selecting the file may immediately send it to Ashby.
+// any browser interaction. Selecting the file may immediately send it to the employer.
 func (a *App) startResumeHandoff(w http.ResponseWriter, r *http.Request) {
 	id, err := parseJobID(r)
 	if err != nil {
@@ -146,10 +145,19 @@ func (a *App) startResumeHandoff(w http.ResponseWriter, r *http.Request) {
 	if !parseLocalForm(w, r, 4<<10) {
 		return
 	}
+	status, detail := a.resumeHandoffCommand(r, id)
+	writeTransferResult(w, r, status, detail)
+}
+
+// resumeHandoffCommand validates the exact submitted material before arming its existing operation.
+func (a *App) resumeHandoffCommand(r *http.Request, id int64) (int, string) {
+	returnURL := fmt.Sprintf("/jobs/%d/inspection", id)
+	if r.PostForm.Get("return_to") == "prepare" {
+		returnURL = fmt.Sprintf("/jobs/%d#prepare", id)
+	}
 	job, err := a.jobByID(id)
 	if err != nil {
-		http.NotFound(w, r)
-		return
+		return http.StatusNotFound, "Opportunity or material unavailable"
 	}
 	var resume *Resume
 	if job.SelectedResumeID > 0 {
@@ -165,56 +173,67 @@ func (a *App) startResumeHandoff(w http.ResponseWriter, r *http.Request) {
 		// Preserve the existing 422 response for unsupported providers.
 		if job.Stage != StageClosed && job.Stage != StageApplied &&
 			job.SubmissionCount == 0 &&
-			!browser.OwnsAshbyURL(job.URL, job.URL) {
+			!browser.OwnsPostingURL(job.URL, job.URL) {
 			status = http.StatusUnprocessableEntity
 		}
-		http.Error(w, eligibility.Reason, status)
-		return
+		return status, eligibility.Reason
 	}
-	if r.PostForm.Get("confirm") != "yes" || r.PostForm.Get("resume_id") != strconv.FormatInt(resume.ID, 10) || r.PostForm.Get("resume_hash") != resume.SHA256 {
-		http.Error(w, "Confirm the exact selected resume before allowing an employer upload", 409)
-		return
+	if r.PostForm.Get("destination") != job.URL || r.PostForm.Get("resume_id") != strconv.FormatInt(resume.ID, 10) || r.PostForm.Get("resume_hash") != resume.SHA256 {
+		return 409, "Confirm the exact selected resume before allowing an employer upload"
 	}
-	if a.browsers.has(id) && a.browsers.state(id).ResumeStatus != "" {
-		http.Error(w, "Current browser already has a resume handoff; finish it before changing files", 409)
-		return
+	state := a.browsers.state(id)
+	if state.Active && state.Destination != job.URL {
+		return http.StatusConflict, "The managed browser belongs to an earlier destination. Inspect it before reopening this application."
+	}
+	if state.Active && state.ResumeStatus != "" {
+		return 409, "Current browser already has a resume handoff; finish it before changing files"
+	}
+	var contacts *browser.ContactValues
+	if r.PostForm.Get("transfer_contacts") == "yes" {
+		profile, profileErr := a.candidateProfile()
+		if profileErr != nil {
+			return 500, "Unable to read candidate information"
+		}
+		if !profile.Approved || r.PostForm.Get("profile_revision") != strconv.FormatInt(profile.Revision, 10) {
+			return http.StatusConflict, "Candidate information changed or is not approved. Review it again before transferring."
+		}
+		contacts = &browser.ContactValues{Revision: profile.Revision, FirstName: profile.FirstName, LastName: profile.LastName, Email: profile.Email, Phone: profile.Phone}
 	}
 	data, err := a.readResumeBytes(*resume)
 	if err != nil {
-		http.Error(w, "Resume file missing or has changed", 409)
-		return
+		return 409, "Resume file missing or has changed"
 	}
 	dir, err := os.MkdirTemp("", "yourmove-approved-resume-")
 	if err != nil {
-		http.Error(w, "Unable to prepare resume", 500)
-		return
+		return 500, "Unable to prepare resume"
 	}
-	name := cleanResumeName(resume.Name)
-	if name == "" || filepath.Ext(strings.ToLower(name)) != resume.Kind {
+	if resume.Kind != ".pdf" && resume.Kind != ".docx" {
 		os.RemoveAll(dir)
-		http.Error(w, "Resume display name invalid", 409)
-		return
+		return 409, "Resume file type invalid"
 	}
+	profile, err := a.candidateProfile()
+	if err != nil {
+		os.RemoveAll(dir)
+		return 500, "Unable to read candidate information"
+	}
+	name := attachmentFilename(profile, job, "Resume", resume.Kind)
 	path := filepath.Join(dir, name)
 	if err := os.WriteFile(path, data, 0600); err != nil {
 		os.RemoveAll(dir)
-		http.Error(w, "Unable to prepare resume", 500)
-		return
+		return 500, "Unable to prepare resume"
 	}
 	if err := a.browsers.start(r.Context(), id, job.URL); err != nil {
 		os.RemoveAll(dir)
 		a.browsers.reportLaunchFailure(id, err)
-		http.Redirect(w, r, fmt.Sprintf("/jobs/%d/inspection", id), http.StatusSeeOther)
-		return
+		return http.StatusSeeOther, returnURL
 	}
-	if err := a.browsers.armResume(id, dir, path, name); err != nil {
+	if err := a.browsers.armResume(id, dir, path, name, contacts); err != nil {
 		os.RemoveAll(dir)
 		// Existing browser remains available for manual use. Never leave an
 		// unowned staged document or attempt a second unauthorized upload.
 		log.Printf("resume handoff could not be armed: %v", err)
 		a.browsers.setState(id, "attention", "Resume handoff could not be started. Inspect the employer browser or close the session before selecting a new document.", 0, false)
-		http.Redirect(w, r, fmt.Sprintf("/jobs/%d/inspection", id), http.StatusSeeOther)
-		return
+		return http.StatusSeeOther, returnURL
 	}
 	a.browsers.watch(id, job.URL, func(o browser.Observation) (int64, error) {
 		result, e := browser.AsResult(job.URL, o)
@@ -223,5 +242,5 @@ func (a *App) startResumeHandoff(w http.ResponseWriter, r *http.Request) {
 		}
 		return a.saveInspection(id, result)
 	})
-	http.Redirect(w, r, fmt.Sprintf("/jobs/%d/inspection", id), http.StatusSeeOther)
+	return http.StatusSeeOther, returnURL
 }

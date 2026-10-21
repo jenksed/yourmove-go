@@ -184,6 +184,19 @@ func (a *App) jobDetail(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unable to prepare submission confirmation", http.StatusInternalServerError)
 		return
 	}
+	reviewedResumeHash := ""
+	if selected != nil {
+		reviewedResumeHash = selected.SHA256
+	}
+	if err := a.recordSubmissionReview(id, token, job.SelectedResumeID, reviewedResumeHash); err != nil {
+		if errors.Is(err, ErrSubmissionReviewStale) {
+			http.Error(w, "The selected resume changed while this page was loading. Reload and review it again.", http.StatusConflict)
+			return
+		}
+		log.Printf("record submission review: %v", err)
+		http.Error(w, "Unable to prepare submission confirmation", http.StatusInternalServerError)
+		return
+	}
 	letters, err := a.listCoverLetters(id)
 	if err != nil {
 		log.Printf("list cover letters: %v", err)
@@ -211,8 +224,9 @@ func (a *App) jobDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	notice := map[string]string{
+		"transferring":         "Cover-letter transfer authorized. Review its result below.",
 		"generated":            "Cover letter generated and saved locally. Review the text before using it.",
-		"saved":                "Your edits were saved locally.",
+		"saved":                "Your edits were saved locally. Review the current scope before continuing.",
 		"sources":              "The selected letter source could not be read. Check the job description and master resume, or choose a different DOCX/PDF resume below.",
 		"model":                "Choose a provider and enter a valid model name. For custom providers, set YOURMOVE_COMPAT_URL and YOURMOVE_COMPAT_MODEL.",
 		"key":                  "This API provider needs a key. Set the appropriate environment variable, then restart YourMove. API usage is billed separately from subscriptions.",
@@ -241,9 +255,33 @@ func (a *App) jobDetail(w http.ResponseWriter, r *http.Request) {
 			letterResumes = append(letterResumes, r)
 		}
 	}
+	profile, err := a.candidateProfile()
+	if err != nil {
+		http.Error(w, "Unable to read candidate information", 500)
+		return
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "private, no-store")
-	if err := jobDetailTemplate.Execute(w, jobWorkspace{Job: job, Resumes: resumes, ResumeOptions: resumeOptions, LetterResumes: letterResumes, Submissions: history, Desktop: a.openPosting != nil, SubmissionToken: token, SelectedResume: selected, Handoff: assessResumeHandoff(job, selected), Sources: a.coverLetterSources(job, selected), Letter: letter, Letters: letters, LetterNotice: notice, LetterModel: letterModel, ProviderReady: providerReady, Match: match, HasFamilies: showMatch}); err != nil {
+	questions, err := a.prepareQuestions(job, profile)
+	if err != nil {
+		http.Error(w, "Unable to load saved application answers", 500)
+		return
+	}
+	questions.selectQuestion(r)
+	workspace := jobWorkspace{Questions: questions, Job: job, Profile: profile, BrowserState: a.browsers.state(id), Resumes: resumes, ResumeOptions: resumeOptions, LetterResumes: letterResumes, Submissions: history, Desktop: a.openPosting != nil, SubmissionToken: token, SelectedResume: selected, Handoff: assessResumeHandoff(job, selected), Sources: a.coverLetterSources(job, selected), Letter: letter, Letters: letters, LetterNotice: notice, LetterOpen: notice != "" || r.URL.Query().Has("draft"), LetterModel: letterModel, ProviderReady: providerReady, Match: match, HasFamilies: showMatch}
+	workspace.TransferNotice = r.URL.Query().Get("transfer_notice")
+	workspace.LetterSaved = r.URL.Query().Get("cover") == "saved" && letter.ID > 0
+	// Keep the canonical saved-draft URL, but return to the action rather than
+	// reopening the editor. Generation and deliberate draft selection still open it.
+	if r.URL.Query().Get("cover") == "saved" || r.URL.Query().Get("cover") == "transferring" {
+		workspace.LetterOpen = false
+	}
+	if selected != nil && selected.ArchivedAt == "" {
+		_, fileErr := a.readResumeBytes(*selected)
+		workspace.ResumeSelectionValid = fileErr == nil
+	}
+	workspace.Preparation = summarizePreparation(workspace)
+	if err := jobDetailTemplate.Execute(w, workspace); err != nil {
 		log.Printf("render job detail: %v", err)
 	}
 }
@@ -320,6 +358,8 @@ func (a *App) refreshJob(w http.ResponseWriter, r *http.Request) {
 func fetchPostingDetails(ctx context.Context, rawURL string) (platforms.Metadata, string, string) {
 	metadata, err := platforms.FetchJob(ctx, rawURL)
 	switch {
+	case errors.Is(err, platforms.ErrClosed):
+		return platforms.Metadata{}, "closed", "This job is closed; the employer is no longer hiring for this posting."
 	case errors.Is(err, platforms.ErrUnsupported):
 		return platforms.Metadata{}, "unsupported", "This platform has no metadata extractor yet."
 	case err != nil:

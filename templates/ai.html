@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f7f7f4"><title>AI connections · YourMove</title><link rel="stylesheet" href="/static/styles.css"><script defer src="/static/ui.js"></script></head>
+<body>
+{{template "shell-open" "ai"}}
+<div class="ai-hub">
+  <header class="page-heading ai-hub-header">
+    <div><p class="eyebrow">WRITING PROVIDERS</p><h1>AI connections</h1><p class="page-description">Review the services available for cover letters. Generation happens only after you authorize it for a job.</p></div>
+    <a href="/jobs" class="button button-secondary">Back to opportunities →</a>
+  </header>
+  <div class="ai-mode-heading"><h2>Available connections</h2><span class="ai-muted-inline">Readiness checked when you opened this page</span></div>
+  <div class="ai-connection-grid">
+  {{range .Connections}}
+    <article class="ai-connection-card" id="connection-{{.ID}}">
+      <div class="ai-connection-top"><h3>{{.Name}}</h3><span class="ai-state ai-state-{{.State}}">{{if eq .State "ready"}}Ready{{else if eq .State "signin"}}Sign in{{else if eq .State "unavailable"}}Not installed{{else}}Setup needed{{end}}</span></div>
+      <p class="ai-connection-access">{{.Access}}</p>
+      <p class="ai-connection-detail">{{.Detail}}</p>
+      <div class="ai-connection-setup">{{.Setup}}</div>
+    </article>
+  {{end}}
+  </div>
+  <div class="ai-hub-footer"><h2>How writing works</h2><p>YourMove builds one prompt from your saved job description, master resume, and chosen role resume. Generation only starts when you approve it. Cloud and subscription-backed options send that evidence off-device; Ollama runs locally. Existing drafts are never replaced automatically.</p><p>CLI integrations use your separately installed, unmodified vendor tools. A detected login is not a guarantee of remaining subscription allowance. API keys and usage are separate from ChatGPT and Claude subscriptions. Claude subscription use in a distributed third-party product may require additional permission.</p></div>
+</div>
+{{template "shell-close"}}
+</body></html>

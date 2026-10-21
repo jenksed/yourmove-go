@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -206,7 +207,7 @@ func TestBrowserStatusDoesNotExposeCandidateData(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := httptest.NewRecorder()
-	newMux(a).ServeHTTP(w, httptest.NewRequest("GET", "/jobs/1/browser-status", nil))
+	newMux(a).ServeHTTP(w, httptest.NewRequest("GET", "http://localhost/jobs/1/browser-status", nil))
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"active":false`) {
 		t.Fatalf("bad browser status: %d %s", w.Code, w.Body.String())
 	}
@@ -262,11 +263,11 @@ func TestResumeHandoffPinsSelectedFileAcrossSteps(t *testing.T) {
 	a.browsers.factory = func(context.Context, string) (readOnlySession, error) { return f, nil }
 	a.browsers.pollEvery = 15 * time.Millisecond
 	mux := newDesktopMux(a)
-	invalid := postApp(mux, "/jobs/1/handoff", url.Values{"confirm": {"yes"}, "resume_id": {strconv.FormatInt(other.ID, 10)}, "resume_hash": {other.SHA256}}, "wails://localhost", "1")
+	invalid := postApp(mux, "/jobs/1/handoff", url.Values{"confirm": {"yes"}, "resume_id": {strconv.FormatInt(other.ID, 10)}, "destination": {testAshbyPosting}, "resume_hash": {other.SHA256}}, "wails://localhost", "1")
 	if invalid.Code != 409 || a.browsers.has(1) {
 		t.Fatalf("wrong resume accepted: %d", invalid.Code)
 	}
-	good := postApp(mux, "/jobs/1/handoff", url.Values{"confirm": {"yes"}, "resume_id": {strconv.FormatInt(correct.ID, 10)}, "resume_hash": {correct.SHA256}}, "wails://localhost", "1")
+	good := postApp(mux, "/jobs/1/handoff", url.Values{"confirm": {"yes"}, "resume_id": {strconv.FormatInt(correct.ID, 10)}, "destination": {testAshbyPosting}, "resume_hash": {correct.SHA256}}, "wails://localhost", "1")
 	if good.Code != 200 || !strings.Contains(good.Body.String(), `window.location.replace("/jobs/1/inspection")`) {
 		t.Fatalf("bad Wails handoff %d %s", good.Code, good.Body.String())
 	}
@@ -303,6 +304,9 @@ func TestResumeHandoffPinsSelectedFileAcrossSteps(t *testing.T) {
 	f.attachMu.Lock()
 	attachedPath := f.paths[0]
 	f.attachMu.Unlock()
+	if filepath.Base(attachedPath) != "Resume_Support_Engineer.pdf" {
+		t.Fatalf("unexpected employer filename: %q", attachedPath)
+	}
 	if _, err := os.Stat(attachedPath); !os.IsNotExist(err) {
 		t.Fatalf("temporary approved resume still on disk: %v", err)
 	}
@@ -360,7 +364,7 @@ func TestResumeHandoffHTTPRespectsEligibility(t *testing.T) {
 			}
 
 			if tt.applied {
-				if err := a.recordSubmission(1, "confirmed", mustToken(t)); err != nil {
+				if err := a.recordSubmission(1, "confirmed", reviewedSubmissionToken(t, a, 1)); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -373,7 +377,7 @@ func TestResumeHandoffHTTPRespectsEligibility(t *testing.T) {
 			form := url.Values{
 				"confirm":     {"yes"},
 				"resume_id":   {strconv.FormatInt(resume.ID, 10)},
-				"resume_hash": {resume.SHA256},
+				"destination": {testAshbyPosting}, "resume_hash": {resume.SHA256},
 			}
 
 			got := postApp(newMux(a), "/jobs/1/handoff", form, "", "")
@@ -382,5 +386,98 @@ func TestResumeHandoffHTTPRespectsEligibility(t *testing.T) {
 					got.Code, tt.status, got.Body.String())
 			}
 		})
+	}
+}
+
+// Contact approval uses the existing handoff; read-only sessions grant no writes.
+type contactFakeBrowser struct {
+	preflightFakeBrowser
+	contactCalls int
+	approved     browser.ContactValues
+}
+
+func (f *contactFakeBrowser) FillContacts(_ context.Context, values browser.ContactValues) (browser.ContactResult, error) {
+	f.contactCalls++
+	f.approved = values
+	return browser.ContactResult{Ready: true, Fields: []browser.ContactOutcome{{Key: "email", Status: "filled", Detail: "Filled and verified in the live form."}}}, nil
+}
+func TestContactHandoffApprovalAndNoReplay(t *testing.T) {
+	a, _ := testWorkspace(t)
+	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com", Title: "Contact fixture"}); err != nil {
+		t.Fatal(err)
+	}
+	resume, err := a.importResume("contact.pdf", strings.NewReader("%PDF-1.4\ncontact fixture"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.assignResume(1, resume.ID); err != nil {
+		t.Fatal(err)
+	}
+	p := CandidateProfile{FirstName: "Casey", LastName: "Fixture", Email: "casey@example.test", Phone: "202-555-0104", Approved: true}
+	if err := a.saveCandidateProfile(p); err != nil {
+		t.Fatal(err)
+	}
+	profile, _ := a.candidateProfile()
+	fake := &contactFakeBrowser{}
+	launches := 0
+	a.browsers.factory = func(context.Context, string) (readOnlySession, error) { launches++; return fake, nil }
+	defer a.browsers.closeAll()
+	form := url.Values{"confirm": {"yes"}, "resume_id": {strconv.FormatInt(resume.ID, 10)}, "destination": {testAshbyPosting}, "resume_hash": {resume.SHA256}, "transfer_contacts": {"yes"}, "profile_revision": {strconv.FormatInt(profile.Revision, 10)}, "return_to": {"prepare"}}
+	if err := a.saveCandidateProfile(p); err != nil {
+		t.Fatal(err)
+	}
+	stale := postApp(newMux(a), "/jobs/1/handoff", form, "", "")
+	if stale.Code != http.StatusConflict || launches != 0 {
+		t.Fatalf("stale approval=%d launches=%d", stale.Code, launches)
+	}
+
+	p.Approved = false
+	if err := a.saveCandidateProfile(p); err != nil {
+		t.Fatal(err)
+	}
+	unapprovedProfile, _ := a.candidateProfile()
+	form.Set("profile_revision", strconv.FormatInt(unapprovedProfile.Revision, 10))
+	rejected := postApp(newMux(a), "/jobs/1/handoff", form, "", "")
+	if rejected.Code != http.StatusConflict || launches != 0 {
+		t.Fatalf("unapproved contacts allowed=%d launches=%d", rejected.Code, launches)
+	}
+	p.Approved = true
+	if err := a.saveCandidateProfile(p); err != nil {
+		t.Fatal(err)
+	}
+	profile, _ = a.candidateProfile()
+	form.Set("profile_revision", strconv.FormatInt(profile.Revision, 10))
+	response := postApp(newDesktopMux(a), "/jobs/1/handoff", form, "wails://localhost", "1")
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `window.location.replace("/jobs/1#prepare")`) {
+		t.Fatalf("desktop handoff=%d %s", response.Code, response.Body.String())
+	}
+	p.Email = "changed@example.test"
+	if err := a.saveCandidateProfile(p); err != nil {
+		t.Fatal(err)
+	}
+	a.browsers.tryContacts(context.Background(), 1)
+	a.browsers.tryContacts(context.Background(), 1)
+	if fake.contactCalls != 1 || fake.approved.Email != "casey@example.test" || fake.approved.Revision != profile.Revision {
+		t.Fatalf("approval changed or replayed: calls=%d approved=%+v", fake.contactCalls, fake.approved)
+	}
+	status := httptest.NewRecorder()
+	newMux(a).ServeHTTP(status, httptest.NewRequest("GET", "http://localhost/jobs/1/browser-status", nil))
+	if strings.Contains(status.Body.String(), "casey@example.test") || strings.Contains(status.Body.String(), "202-555") {
+		t.Fatal("browser status exposed candidate facts")
+	}
+	if !strings.Contains(status.Body.String(), `"contact_status":"complete"`) {
+		t.Fatalf("status=%s", status.Body.String())
+	}
+}
+func TestReadOnlyBrowserNeverFillsContacts(t *testing.T) {
+	fake := &contactFakeBrowser{}
+	h := sessionHost{factory: func(context.Context, string) (readOnlySession, error) { return fake, nil }}
+	if err := h.start(context.Background(), 1, testAshbyPosting); err != nil {
+		t.Fatal(err)
+	}
+	defer h.closeAll()
+	h.tryContacts(context.Background(), 1)
+	if fake.contactCalls != 0 {
+		t.Fatal("read-only browser received contact information")
 	}
 }

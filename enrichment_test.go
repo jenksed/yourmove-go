@@ -37,7 +37,7 @@ func TestEnrichmentEligibilityAndManualOverrides(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := a.recordSubmission(3, "test", mustToken(t)); err != nil {
+	if err := a.recordSubmission(3, "test", reviewedSubmissionToken(t, a, 3)); err != nil {
 		t.Fatal(err)
 	}
 	if err := a.updateJob(Job{ID: 4, Title: "Closed", Stage: StageClosed, Priority: PriorityNormal}); err != nil {
@@ -178,7 +178,7 @@ func TestEnrichmentHTTPDesktopNavigationAndNoAutomaticFetch(t *testing.T) {
 		return platforms.Metadata{}, "failed", ""
 	}
 	get := httptest.NewRecorder()
-	newMux(a).ServeHTTP(get, httptest.NewRequest(http.MethodGet, "/enrichment", nil))
+	newMux(a).ServeHTTP(get, httptest.NewRequest(http.MethodGet, "http://localhost/enrichment", nil))
 	if get.Code != 200 || !strings.Contains(get.Body.String(), "Fill in the details") {
 		t.Fatalf("render: %d %s", get.Code, get.Body.String())
 	}

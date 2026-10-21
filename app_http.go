@@ -6,6 +6,8 @@ import (
 	"example.com/yourmove-lite/internal/application/schema"
 	"net/http"
 	"net/url"
+	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -17,7 +19,8 @@ type App struct {
 	db                  *sql.DB
 	resumeDir           string
 	pickResume          func() (string, error)
-	openPosting         func(string) error // desktop-only native default-browser action
+	chooseExportPath    func(string) (string, error) // trusted desktop Save dialog only
+	openPosting         func(string) error           // desktop-only native default-browser action
 	inspectApplication  func(context.Context, string) (schema.Result, error)
 	browsers            sessionHost
 	coverLetterGenerate func(context.Context, string) (string, error) // test override; production uses local Ollama
@@ -50,6 +53,7 @@ func newMux(app *App) http.Handler {
 	mux.HandleFunc("GET /jobs/{id}", app.jobDetail)
 	mux.HandleFunc("GET /jobs/{id}/inspection", app.inspectionPage)
 	mux.HandleFunc("POST /jobs/{id}/inspect", app.inspectJob)
+	mux.HandleFunc("POST /jobs/{id}/continue", app.continueApplication)
 	mux.HandleFunc("POST /jobs/{id}/handoff", app.startResumeHandoff)
 	mux.HandleFunc("POST /jobs/{id}/browser/{action}", app.browserOperation)
 	mux.HandleFunc("GET /jobs/{id}/browser-status", app.browserStatus)
@@ -59,6 +63,10 @@ func newMux(app *App) http.Handler {
 	mux.HandleFunc("POST /jobs/{id}/refresh", app.refreshJob)
 	mux.HandleFunc("POST /jobs/{id}/cover-letter/generate", app.generateCoverLetterHandler)
 	mux.HandleFunc("POST /jobs/{id}/cover-letter/save", app.saveCoverLetterHandler)
+	mux.HandleFunc("GET /jobs/{id}/cover-letter/{draft}/download", app.downloadCoverLetter)
+	mux.HandleFunc("POST /jobs/{id}/cover-letter/transfer", app.transferCoverLetter)
+	mux.HandleFunc("POST /jobs/{id}/answers/save", app.saveApplicationAnswer)
+	mux.HandleFunc("POST /jobs/{id}/answers/transfer", app.transferApplicationAnswers)
 	mux.HandleFunc("GET /resumes", app.resumeLibrary)
 	mux.HandleFunc("GET /applications", app.applicationsPage)
 	mux.HandleFunc("POST /resumes/import", app.uploadResume)
@@ -70,26 +78,48 @@ func newMux(app *App) http.Handler {
 	mux.HandleFunc("POST /resumes/{id}/revise", app.reviseResumeBrowser)
 	mux.HandleFunc("POST /resumes/{id}/revise-native", app.reviseResumeNative)
 
-	return protectLocalWrites(mux)
+	return protectLocalRequests(mux)
 }
 
-// Reject browser-initiated cross-origin writes to the local application.
-// All mutation routes pass through this shared boundary.
-func protectLocalWrites(next http.Handler) http.Handler {
+// Protect reads as well as writes against unexpected hosts and browser origins.
+// Comparing Origin to Host alone does not stop DNS rebinding: both can name
+// the attacker's domain while the connection reaches our loopback listener.
+func protectLocalRequests(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			if r.Header.Get("Sec-Fetch-Site") == "cross-site" {
-				http.Error(w, "Cross-origin writes are not allowed", http.StatusForbidden)
-				return
-			}
-			if origin := r.Header.Get("Origin"); origin != "" {
-				u, err := url.Parse(origin)
-				if err != nil || u.Scheme != "http" || u.Host != r.Host || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
-					http.Error(w, "Cross-origin writes are not allowed", http.StatusForbidden)
-					return
-				}
-			}
+		if !localRequestHost(r.Host) || r.Header.Get("Sec-Fetch-Site") == "cross-site" ||
+			len(r.Header.Values("Origin")) > 1 {
+			http.Error(w, "Local application request required", http.StatusForbidden)
+			return
+		}
+		if origin := r.Header.Get("Origin"); origin != "" && origin != "http://"+r.Host {
+			http.Error(w, "Cross-origin requests are not allowed", http.StatusForbidden)
+			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func localRequestHost(host string) bool {
+	u, err := url.Parse("http://" + host)
+	if err != nil || u.Host != host || u.User != nil || u.Path != "" ||
+		u.RawQuery != "" || u.Fragment != "" || strings.HasSuffix(host, ":") {
+		return false
+	}
+	hostname := strings.ToLower(u.Hostname())
+	switch hostname {
+	case "localhost", "127.0.0.1", "::1":
+	default:
+		return false
+	}
+	if hostname == "::1" {
+		hostname = "[::1]"
+	}
+	if port := u.Port(); port != "" {
+		n, err := strconv.Atoi(port)
+		if err != nil || n <= 0 || n > 65535 {
+			return false
+		}
+		hostname += ":" + port
+	}
+	return strings.EqualFold(host, hostname)
 }

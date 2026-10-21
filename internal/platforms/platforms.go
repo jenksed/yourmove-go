@@ -9,6 +9,9 @@ import (
 
 var ErrUnsupported = errors.New("unsupported job platform")
 
+// ErrClosed means the source confirms that the saved posting is no longer available.
+var ErrClosed = errors.New("job closed; no longer hiring")
+
 type Metadata struct {
 	Title       string
 	Company     string
@@ -18,6 +21,9 @@ type Metadata struct {
 }
 
 func FetchJob(ctx context.Context, jobURL string) (Metadata, error) {
+	if isGreenhouseErrorBoard(jobURL) {
+		return Metadata{}, ErrClosed
+	}
 	// An incomplete Ashby UUID is an invalid source URL, not an
 	// unsupported platform and not proof a posting has closed.
 	if u, err := url.Parse(jobURL); err == nil && u.Hostname() == "jobs.ashbyhq.com" {

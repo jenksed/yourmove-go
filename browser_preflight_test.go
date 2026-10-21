@@ -37,7 +37,7 @@ func TestResumePreflightRetriesOnlyBeforeFileSelection(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer h.closeAll()
-	if err := h.armResume(12, t.TempDir(), "/tmp/mock.pdf", "mock.pdf"); err != nil {
+	if err := h.armResume(12, t.TempDir(), "/tmp/mock.pdf", "mock.pdf", nil); err != nil {
 		t.Fatal(err)
 	}
 	for i := 1; i <= 3; i++ {
@@ -74,7 +74,7 @@ func TestAmbiguousAttachmentOutcomeNeverRetransmits(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer h.closeAll()
-	if err := h.armResume(14, t.TempDir(), "/tmp/mock.pdf", "mock.pdf"); err != nil {
+	if err := h.armResume(14, t.TempDir(), "/tmp/mock.pdf", "mock.pdf", nil); err != nil {
 		t.Fatal(err)
 	}
 	h.tryResume(context.Background(), 14)

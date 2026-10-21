@@ -226,4 +226,103 @@ func TestControlledApplicationHandoff(t *testing.T) {
 	if state.Cover || state.Submitted {
 		t.Fatalf("cover letter touched or final submission triggered: %+v", state)
 	}
+	// Increment B: continue in the same session, touching only the cover control.
+	letterPath := filepath.Join(t.TempDir(), "controlled-letter.pdf")
+	letterBytes := []byte("%PDF-1.4\ncontrolled saved cover letter\n%%EOF")
+	if err := os.WriteFile(letterPath, letterBytes, 0600); err != nil {
+		t.Fatal(err)
+	}
+	letterHash := fmt.Sprintf("%x", sha256.Sum256(letterBytes))
+	began := time.Now()
+	letter, err := s.AttachCoverLetter(ctx, letterPath, letterHash)
+	if err != nil || !letter.Selected || !letter.Verified {
+		t.Fatalf("cover transfer: %+v %v", letter, err)
+	}
+	if _, err := s.AttachCoverLetter(ctx, letterPath, letterHash); err == nil {
+		t.Fatal("duplicate cover selection allowed")
+	}
+	var continuation struct {
+		Resume, Cover string
+		Submitted     bool
+	}
+	if err := evaluateRead(ctx, verify, 45, `({Resume:document.querySelector('input[name=resume]').files[0]?.name,Cover:document.querySelector('input[name=cover]').files[0]?.name,Submitted:document.body.dataset.submitted==='yes'})`, &continuation); err != nil {
+		t.Fatal(err)
+	}
+	if continuation.Resume != name || continuation.Cover != "controlled-letter.pdf" || continuation.Submitted {
+		t.Fatalf("continuation damaged: %+v", continuation)
+	}
+	// Exact text transfer is an explicit alternative, never an automatic retry of
+	// an uncertain upload. The fixture replaces just the cover control.
+	if err := cdpCall(ctx, verify, 46, "Runtime.evaluate", map[string]any{"expression": `document.querySelector('[data-field-entry-id=cover]').innerHTML='<label>Cover Letter<textarea name="cover-text"></textarea></label>';document.querySelector('textarea').addEventListener('input',()=>{const old=document.querySelector('textarea');const next=old.cloneNode();next.value=old.value;old.replaceWith(next)})`}, nil); err != nil {
+		t.Fatal(err)
+	}
+	const savedText = "Dear Hiring Team,\n\nThis exact saved letter includes Unicode: 世界."
+	textResult, err := s.FillCoverLetter(ctx, savedText)
+	if err != nil || !textResult.Verified {
+		t.Fatalf("rerender text transfer: %+v %v", textResult, err)
+	}
+	if err := cdpCall(ctx, verify, 47, "Runtime.evaluate", map[string]any{"expression": `document.querySelector('textarea').value='My manual correction'`}, nil); err != nil {
+		t.Fatal(err)
+	}
+	preserved, err := s.FillCoverLetter(ctx, savedText)
+	if err != nil || preserved.Selected {
+		t.Fatalf("manual letter overwritten: %+v %v", preserved, err)
+	}
+	var final struct {
+		Text, Resume string
+		Submitted    bool
+	}
+	if err := evaluateRead(ctx, verify, 48, `({Text:document.querySelector('textarea').value,Resume:document.querySelector('input[name=resume]').files[0]?.name,Submitted:document.body.dataset.submitted==='yes'})`, &final); err != nil {
+		t.Fatal(err)
+	}
+	if final.Text != "My manual correction" || final.Resume != name || final.Submitted {
+		t.Fatalf("final state: %+v", final)
+	}
+	t.Logf("Cover PDF + rerendered Unicode text + manual preservation: %s; one resume selection, one cover selection, zero submissions", time.Since(began))
+
+}
+
+// Explicit read-only live qualification. It never receives candidate values or
+// calls a mutation. A URL must be supplied for each invocation.
+func TestLiveContactStructure(t *testing.T) {
+	raw := os.Getenv("YOURMOVE_LIVE_OBSERVE_URL")
+	if raw == "" {
+		t.Skip("explicit live read-only URL required")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
+	defer cancel()
+	s, err := Launch(ctx, strings.TrimRight(raw, "/"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	deadline := time.Now().Add(22 * time.Second)
+	for time.Now().Before(deadline) {
+		observation, err := s.Observe(ctx)
+		if err == nil && len(observation.Controls) > 0 {
+			t.Logf("Read-only live form: URL=%s forms=%d controls=%+v", observation.URL, observation.Forms, observation.Controls)
+			target, err := s.target(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ws, err := dialCDP(ctx, target.WebSocketURL)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer ws.Close(websocket.StatusNormalClosure, "")
+			var structure any
+			err = evaluateRead(ctx, ws, 1, `[...document.querySelectorAll('input')].map(e=>({type:e.type,name:e.name,id:e.id,autocomplete:e.autocomplete,parents:[e.parentElement,e.parentElement?.parentElement,e.parentElement?.parentElement?.parentElement,e.closest('[class*=application-form]')].filter(Boolean).map(p=>({tag:p.tagName,class:p.className,field:p.getAttribute('data-field-entry-id')}))}))`, &structure)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Logf("Read-only contact structure: %+v", structure)
+			return
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
+	t.Fatal("live application controls were not observed")
 }

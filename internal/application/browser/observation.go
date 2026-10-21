@@ -60,8 +60,8 @@ func OwnsAshbyURL(saved, observed string) bool {
 // AsResult records only structural evidence from the currently rendered page.
 // Never persist control values, cookies, request bodies, HTML, or resume bytes.
 func AsResult(jobURL string, o Observation) (schema.Result, error) {
-	if !OwnsAshbyURL(jobURL, o.URL) {
-		return schema.Result{}, errors.New("browser moved outside the saved Ashby job; no fields were collected")
+	if !OwnsPostingURL(jobURL, o.URL) {
+		return schema.Result{}, errors.New("browser moved outside the saved job; no fields were collected")
 	}
 	if len(o.Controls) > 200 || len(o.Actions) > 60 || len(o.Frames) > 20 {
 		return schema.Result{}, fmt.Errorf("browser inspection exceeds limits")
@@ -101,5 +101,5 @@ func AsResult(jobURL string, o Observation) (schema.Result, error) {
 	if o.Truncated {
 		note += " Observation exceeded a limit; additional controls may exist."
 	}
-	return schema.Result{Platform: "ashby", Source: "browser", Completeness: "rendered_partial", ApplicationURL: o.URL, Note: note, Fields: fields, Steps: steps}, nil
+	return schema.Result{Platform: PostingPlatform(jobURL), Source: "browser", Completeness: "rendered_partial", ApplicationURL: o.URL, Note: note, Fields: fields, Steps: steps}, nil
 }

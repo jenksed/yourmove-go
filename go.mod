@@ -3,8 +3,9 @@ module example.com/yourmove-lite
 go 1.27.2
 
 require (
-	github.com/wailsapp/wails/v3 v3.0.0-beta.32
 	github.com/coder/websocket v1.8.14
+	github.com/ledongthuc/pdf v0.0.0-20260907135840-6c8c28e0e8a0
+	github.com/wailsapp/wails/v3 v3.0.0-beta.32
 	golang.org/x/net v0.61.0
 	modernc.org/sqlite v1.60.1
 )

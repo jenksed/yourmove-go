@@ -1,6 +1,6 @@
-// Package chromium owns one isolated visible Chromium process for read-only
-// employer-form inspection and separately approved resume attachment. Form
-// navigation, freeform answers, consent, and final submission stay manual.
+// Package chromium owns one isolated visible Chromium process for inspection
+// and explicitly approved field/document transfers. Navigation, authentication,
+// sensitive disclosures, consent, and final submission stay manual.
 package chromium
 
 import (
@@ -26,7 +26,7 @@ import (
 
 // These errors distinguish a closed application tab from temporary navigation
 // (such as an employer login page in the managed browser).
-var ErrNoMatchingTab = errors.New("saved Ashby application is not the current browser page")
+var ErrNoMatchingTab = errors.New("saved application is not the current browser page")
 var ErrNoPageTargets = errors.New("the managed browser has no open pages")
 var ErrBrowserUnavailable = errors.New("the managed browser is no longer reachable")
 
@@ -36,14 +36,14 @@ type Session struct {
 	dir        string
 	port       int
 	postingURL string
-	// Test-only ownership seam; production always uses the strict Ashby identity check.
+	// Test-only ownership seam; production always uses exact supported posting identity.
 	fixtureOwner func(string) bool
 	closed       bool
 }
 
 func Launch(ctx context.Context, posting string) (*Session, error) {
-	if !browser.OwnsAshbyURL(posting, posting) {
-		return nil, errors.New("managed inspection currently supports saved Ashby postings only")
+	if !browser.OwnsPostingURL(posting, posting) {
+		return nil, errors.New("managed inspection supports saved Ashby, Greenhouse, and Lever postings")
 	}
 	exe, err := executable()
 	if err != nil {
@@ -61,10 +61,17 @@ func Launch(ctx context.Context, posting string) (*Session, error) {
 	// browser launch. The adapter falls back to this posting's /application
 	// route if the public lookup is unavailable or returns an unsafe URL.
 	// The original posting URL remains the session identity for popup/step checks.
-	landing, err := ashby.New(nil).ApplicationDestination(ctx, posting)
-	if err != nil {
-		os.RemoveAll(dir)
-		return nil, fmt.Errorf("resolve Ashby application: %w", err)
+	landing := posting
+	if browser.PostingPlatform(posting) == "ashby" {
+		landing, err = ashby.New(nil).ApplicationDestination(ctx, posting)
+		if err != nil {
+			os.RemoveAll(dir)
+			return nil, fmt.Errorf("resolve Ashby application: %w", err)
+		}
+	} else if browser.PostingPlatform(posting) == "lever" {
+		u, _ := url.Parse(posting)
+		u.Path = strings.TrimSuffix(u.Path, "/") + "/apply"
+		landing = u.String()
 	}
 	args := launchArguments(dir, landing)
 	// Root-only container testing opt-in. Never disable the sandbox by default.
@@ -163,7 +170,7 @@ func (s *Session) target(ctx context.Context) (target, error) {
 // application popup to its still-open job posting, without trusting any other job.
 func selectTarget(saved string, port int, targets []target) (target, error) {
 	return selectTargetOwned(port, targets, func(candidate string) bool {
-		return browser.OwnsAshbyURL(saved, candidate)
+		return browser.OwnsPostingURL(saved, candidate)
 	})
 }
 
@@ -204,13 +211,16 @@ func selectTargetOwned(port int, targets []target, owns func(string) bool) (targ
 }
 
 func (s *Session) Observe(ctx context.Context) (browser.Observation, error) {
-	s.mu.Lock()
+	c, cancel := context.WithTimeout(ctx, 12*time.Second)
+	defer cancel()
+	if err := s.lockContext(c); err != nil {
+		return browser.Observation{}, err
+	}
 	defer s.mu.Unlock()
 	if s.closed {
 		return browser.Observation{}, errors.New("inspection browser is closed")
 	}
-	c, cancel := context.WithTimeout(ctx, 12*time.Second)
-	defer cancel()
+
 	t, err := s.target(c)
 	if err != nil {
 		return browser.Observation{}, err
@@ -262,7 +272,7 @@ func (s *Session) Observe(ctx context.Context) (browser.Observation, error) {
 		if err := json.Unmarshal(response.Result.Result.Value, &snapshot); err != nil {
 			return browser.Observation{}, err
 		}
-		owns := func(candidate string) bool { return browser.OwnsAshbyURL(s.postingURL, candidate) }
+		owns := func(candidate string) bool { return browser.OwnsPostingURL(s.postingURL, candidate) }
 		if s.fixtureOwner != nil {
 			owns = s.fixtureOwner
 		}
@@ -271,4 +281,23 @@ func (s *Session) Observe(ctx context.Context) (browser.Observation, error) {
 		}
 		return snapshot, nil
 	}
+}
+
+// lockContext serializes live observation and mutation without making callers
+// wait past cancellation. A canceled operation never acquires write authority.
+func (s *Session) lockContext(ctx context.Context) error {
+	tick := time.NewTicker(10 * time.Millisecond)
+	defer tick.Stop()
+	for !s.mu.TryLock() {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-tick.C:
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		s.mu.Unlock()
+		return err
+	}
+	return nil
 }
