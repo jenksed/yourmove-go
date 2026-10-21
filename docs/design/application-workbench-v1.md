@@ -1,5 +1,7 @@
 # Application Workbench v1
 
+> **Historical design proposal — authored 2026-10-20.** This document preserves the proposal and its review status from that date; it is not current implementation guidance. The current Prepare flow uses one scoped continuation form and submit action for eligible resume/contact, saved-letter, and saved-answer material. Included transfers remain independently guarded and reported.
+
 **Status:** proposed design, ready for engineering review. Source review: 2026-10-20, including the existing uncommitted continuity work. This document is the only product artifact created in this session. No redesign is implemented or visually qualified by this review.
 
 ## 1. Executive design assessment
