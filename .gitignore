@@ -11,3 +11,20 @@ jobs.db-shm
 
 # graft's local graph cache — regenerable, not committed (run `graft build`).
 /graft/
+
+# Machine-local development tools
+/.serena/
+
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+
+# macOS artifacts
+.DS_Store
+
+# Local SQLite workspaces
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
