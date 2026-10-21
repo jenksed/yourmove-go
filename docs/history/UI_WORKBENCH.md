@@ -1,3 +1,5 @@
+> **Historical reference:** Historical UI implementation notes. For current design guidance, see [the design system](../design/DESIGN_SYSTEM.md) and [interaction rules](../design/RULES.md).
+
 # YourMove Workbench — UI iteration
 
 This note began as a presentation-only iteration. The current workbench also supports saved cover letters, application-specific answers, managed browser transfers, and desktop document export. Existing routes, Go `html/template` rendering, Wails POST/303 compatibility, storage paths, and explicit submission confirmation remain authoritative. `/applications` lists jobs that have manual submission records.

@@ -1,3 +1,5 @@
+> **Historical reference:** Historical Wails compatibility notes. For current instructions, see [the quickstart](../TRY_IT.md) and [macOS release guide](../../release/macos/README.md).
+
 # Wails v3 native WebView compatibility spike
 
 This is **not** a packaged application. Run from the repository root so the

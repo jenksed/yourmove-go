@@ -1,3 +1,5 @@
+> **Historical reference:** Historical visual planning notes. The current README artwork and documentation supersede the proposed image placeholders in this document.
+
 # YourMove v0.1 visual direction and image slots
 
 Use YourMove's **existing brand assets**, not a new AI-generated logo:
