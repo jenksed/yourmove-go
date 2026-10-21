@@ -178,7 +178,7 @@ Check for accidentally tracked `.db`, `.db-wal`, document files, cached browser 
 - `docs/design/application-workbench-v1.md` is a proposal, not an implementation contract. Keep that status visible if the design is retained.
 - Keep date-stamped implementation and qualification reports under `docs/implementation/` as historical records. Use this guide and `docs/RELEASE_CHECKLIST.md` for current architecture and release status; do not treat an old report as a current site-compatibility claim.
 - Keep current-user and developer entry points clear: `README.md`, `docs/TRY_IT.md`, `docs/FEEDBACK.md`, `docs/RELEASE_CHECKLIST.md`, and this guide. Keep dated implementation records separate from current instructions.
-- `AGENTS.md` requires Graft context before code exploration. When the CLI is unavailable, use `graft/INDEX.md` and the relevant graph cards before opening source. This human guide remains usable on its own for orientation.
+- Graft is an optional navigation accelerator. This guide, ordinary Go tooling, `rg`, and direct source inspection are sufficient for development without it.
 
 ### Pass 3: Improve file hygiene, not package count
 
