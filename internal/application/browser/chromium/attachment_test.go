@@ -40,3 +40,27 @@ func TestChooseResumeInput(t *testing.T) {
 		})
 	}
 }
+
+func TestChooseCoverLetterInput(t *testing.T) {
+	cases := []struct {
+		name   string
+		inputs []fileInput
+		want   int
+	}{
+		{"cover beside resume", []fileInput{{Label: "Resume"}, {Label: "Cover Letter (optional)", Accept: "application/pdf"}}, 1},
+		{"no letter", []fileInput{{Label: "Resume"}}, -1},
+		{"ambiguous", []fileInput{{Label: "Cover Letter"}, {Label: "Cover Letter"}}, -1},
+		{"combined purpose", []fileInput{{Label: "Resume or cover letter"}}, -1},
+		{"unsupported format", []fileInput{{Label: "Cover Letter", Accept: ".docx"}}, -1},
+		{"existing", []fileInput{{Label: "Cover Letter", Existing: true}}, -1},
+		{"disabled", []fileInput{{Label: "Cover Letter", Unsafe: true}}, -1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := chooseDocumentInput(tc.inputs, ".pdf", true)
+			if got != tc.want || (err == nil) != (tc.want >= 0) {
+				t.Fatalf("got %d %v", got, err)
+			}
+		})
+	}
+}

@@ -39,3 +39,7 @@ re-read whole files.
 After big code changes, refresh the graph with `graft build` (deterministic,
 no API key, $0).
 <!-- graft:end -->
+
+## Application UI design decisions
+
+Before changing a user-facing template or its styles, read `docs/design/DESIGN_SYSTEM.md` and `docs/design/RULES.md`. Start with R1 (the current decision) and R6 (existing artifacts before their generators); apply R7–R10 where control parity, prose width, duplicated copy, or overcrowded object lists are relevant. Prefer scoped composition changes over a new component library. Preserve the existing Go POST handlers, Wails redirect behavior, consent boundaries, and explicit submission confirmation.

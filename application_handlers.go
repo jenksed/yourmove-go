@@ -8,6 +8,7 @@ import (
 	"io"
 
 	"log"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,20 +18,34 @@ import (
 	browser "example.com/yourmove-lite/internal/application/browser"
 )
 
-var resumesTemplate = template.Must(template.ParseFiles("templates/resumes.html", "templates/partials.html"))
+var resumesTemplate = template.Must(template.ParseFS(templateFiles, "templates/resumes.html", "templates/partials.html"))
 
 type jobWorkspace struct {
+	Preparation    HandoffPresentation
+	TransferNotice string
+	Questions      questionPreparation
 	Job
-	Resumes         []Resume
-	ResumeOptions   []documentRow
-	Submissions     []Submission
-	Desktop         bool
-	SubmissionToken string
-	SelectedResume  *Resume
-	Handoff         HandoffEligibility
-	Sources         coverLetterSourcePreview
-	Match           MatchRecommendation
-	HasFamilies     bool
+	Resumes              []Resume
+	ResumeOptions        []documentRow
+	Submissions          []Submission
+	Desktop              bool
+	SubmissionToken      string
+	SelectedResume       *Resume
+	ResumeSelectionValid bool // Presentation only; commands still validate the file and hash.
+	Handoff              HandoffEligibility
+	Profile              CandidateProfile
+	BrowserState         browserRunState
+	Sources              coverLetterSourcePreview
+	Letter               CoverLetter
+	Letters              []CoverLetterSummary
+	LetterNotice         string
+	LetterSaved          bool
+	LetterOpen           bool // Expand when entering from generation, editing, or a specific draft.
+	LetterModel          string
+	ProviderReady        map[string]bool
+	LetterResumes        []documentRow
+	Match                MatchRecommendation
+	HasFamilies          bool
 }
 
 type HandoffEligibility struct {
@@ -64,9 +79,9 @@ func assessResumeHandoff(job Job, resume *Resume) HandoffEligibility {
 			Reason: "This resume is archived. Select its current version before starting another handoff.",
 		}
 
-	case !browser.OwnsAshbyURL(job.URL, job.URL):
+	case !browser.OwnsPostingURL(job.URL, job.URL):
 		return HandoffEligibility{
-			Reason: "Managed resume handoff currently supports Ashby applications.",
+			Reason: "Automatic filling supports Ashby, Greenhouse, and Lever postings. Use Open application for other sites.",
 		}
 
 	default:
@@ -107,9 +122,9 @@ func (a *App) previewResumeSource(resume Resume) resumeSourcePreview {
 		// Show a useful explanation without revealing filesystem paths or
 		// unexpected internal errors in the desktop application.
 		if resume.Kind == ".pdf" {
-			out.Message = "PDF text extraction isn't supported yet. Import a DOCX version for cover letter evidence."
+			out.Message = "This PDF has no readable text or could not be parsed. Choose a DOCX resume below for this letter."
 		} else {
-			out.Message = "Text could not be read from this document. Verify the DOCX and try a new revision."
+			out.Message = "This document's text could not be read. Use another DOCX or PDF for this letter."
 		}
 		return out
 	}
@@ -175,7 +190,7 @@ func (a *App) resumeLibrary(w http.ResponseWriter, r *http.Request) {
 		rows = append(rows, documentRow{Resume: r, FamilyName: names[r.RoleFamilyID]})
 	}
 	notice := map[string]string{
-		"in-use":    "This resume is referenced by a job or submission. Archive it to remove it from active choices without losing application evidence.",
+		"in-use":    "This resume is referenced by a job, submission, or saved cover letter. Archive it to remove it from active choices without losing application evidence.",
 		"master":    "Remove the master designation or upload a new master revision before deleting this document.",
 		"archived":  "Resume archived. Existing job assignments and submission history are unchanged.",
 		"restored":  "Resume restored. Assign it to a role family or designate it as master if needed.",
@@ -222,7 +237,7 @@ func (a *App) nativeResumeImport(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if r.Host != "localhost" || r.Header.Get("X-Wails-Window-Id") == "" || r.Header.Get("Origin") != "http://localhost" {
+	if !isDesktopRequest(r) {
 		http.Error(w, "Desktop window required", http.StatusForbidden)
 		return
 	}
@@ -375,8 +390,7 @@ func (a *App) reviseResumeNative(w http.ResponseWriter, r *http.Request) {
 	if !parseLocalForm(w, r, 4<<10) {
 		return
 	}
-	if a.pickResume == nil || r.Host != "localhost" ||
-		r.Header.Get("X-Wails-Window-Id") == "" || r.Header.Get("Origin") != "http://localhost" {
+	if a.pickResume == nil || !isDesktopRequest(r) {
 		http.Error(w, "Desktop window required", http.StatusForbidden)
 		return
 	}
@@ -448,8 +462,42 @@ func (a *App) downloadResume(w http.ResponseWriter, r *http.Request) {
 	if resume.Kind == ".docx" {
 		typ = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 	}
+	profile, err := a.candidateProfile()
+	if err != nil {
+		http.Error(w, "Unable to read candidate information", 500)
+		return
+	}
+	var attachmentJob Job
+	if rawJobID := r.URL.Query().Get("job_id"); rawJobID != "" {
+		jobID, parseErr := strconv.ParseInt(rawJobID, 10, 64)
+		if parseErr != nil || jobID <= 0 {
+			http.NotFound(w, r)
+			return
+		}
+		attachmentJob, err = a.jobByID(jobID)
+		if err != nil || attachmentJob.SelectedResumeID != resume.ID {
+			http.NotFound(w, r)
+			return
+		}
+	} else if resume.RoleFamilyID != 0 {
+		families, err := a.allFamilies()
+		if err != nil {
+			http.Error(w, "Unable to read resume role", 500)
+			return
+		}
+		for _, family := range families {
+			if family.ID == resume.RoleFamilyID {
+				attachmentJob.Title = family.Name
+				break
+			}
+		}
+	}
+	filename := attachmentFilename(profile, attachmentJob, "Resume", resume.Kind)
+	if a.exportDesktopDocument(w, r, filename, body, "/resumes") {
+		return
+	}
 	w.Header().Set("Content-Type", typ)
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", resume.Name))
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filename}))
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Cache-Control", "private, no-store")
 	_, _ = w.Write(body)
@@ -507,6 +555,10 @@ func (a *App) submitJob(w http.ResponseWriter, r *http.Request) {
 	}
 	token := r.PostForm.Get("submission_token")
 	if err := a.recordSubmission(id, notes, token); err != nil {
+		if errors.Is(err, ErrSubmissionReviewStale) {
+			http.Error(w, "The reviewed resume changed or is unavailable, or the selected resume changed. Review the application and resume again before confirming.", http.StatusConflict)
+			return
+		}
 		if errors.Is(err, sql.ErrNoRows) {
 			http.NotFound(w, r)
 			return

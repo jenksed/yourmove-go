@@ -40,6 +40,9 @@ func getPostingJSONLimited(ctx context.Context, client *http.Client, endpoint st
 		return nil, fmt.Errorf("fetch posting: %w", err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusGone {
+		return nil, fmt.Errorf("%w: posting API returned HTTP %d", ErrClosed, resp.StatusCode)
+	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("posting API returned HTTP %d", resp.StatusCode)
 	}

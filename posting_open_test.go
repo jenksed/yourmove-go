@@ -18,12 +18,12 @@ func TestPostingOpensInSystemBrowserOnlyFromDesktop(t *testing.T) {
 	a.openPosting = func(link string) error { opened = append(opened, link); return nil }
 	desktop := newDesktopMux(a)
 	page := httptest.NewRecorder()
-	desktop.ServeHTTP(page, httptest.NewRequest("GET", "/jobs/1", nil))
+	desktop.ServeHTTP(page, httptest.NewRequest("GET", "http://localhost/jobs/1", nil))
 	if page.Code != 200 || !strings.Contains(page.Body.String(), `action="/jobs/1/open"`) || strings.Contains(page.Body.String(), `href="https://example.org/job?id=24#details"`) {
 		t.Fatalf("desktop posting controls not native: status=%d", page.Code)
 	}
 	list := httptest.NewRecorder()
-	desktop.ServeHTTP(list, httptest.NewRequest("GET", "/jobs", nil))
+	desktop.ServeHTTP(list, httptest.NewRequest("GET", "http://localhost/jobs", nil))
 	if list.Code != 200 || !strings.Contains(list.Body.String(), `form="open-posting-1"`) || !strings.Contains(list.Body.String(), `id="open-posting-1"`) {
 		t.Fatalf("desktop list posting control missing")
 	}
@@ -48,7 +48,7 @@ func TestPostingOpensInSystemBrowserOnlyFromDesktop(t *testing.T) {
 		t.Fatalf("browser action unexpectedly enabled: %d", w.Code)
 	}
 	browser := httptest.NewRecorder()
-	newMux(a).ServeHTTP(browser, httptest.NewRequest("GET", "/jobs/1", nil))
+	newMux(a).ServeHTTP(browser, httptest.NewRequest("GET", "http://localhost/jobs/1", nil))
 	if browser.Code != 200 || !strings.Contains(browser.Body.String(), `href="https://example.org/job?id=24#details"`) {
 		t.Fatalf("browser's regular external anchors changed")
 	}

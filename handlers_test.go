@@ -27,7 +27,7 @@ func TestJobHTTP(t *testing.T) {
 	handler := newMux(app)
 
 	t.Run("detail renders escaped content", func(t *testing.T) {
-		r := httptest.NewRequest(http.MethodGet, "/jobs/1", nil)
+		r := httptest.NewRequest(http.MethodGet, "http://localhost/jobs/1", nil)
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, r)
 		body := w.Body.String()
@@ -44,7 +44,7 @@ func TestJobHTTP(t *testing.T) {
 
 	t.Run("list links to details", func(t *testing.T) {
 		w := httptest.NewRecorder()
-		handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/jobs", nil))
+		handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "http://localhost/jobs", nil))
 		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `href="/jobs/1"`) {
 			t.Fatalf("unexpected jobs list: status=%d body=%s", w.Code, w.Body.String())
 		}
@@ -53,7 +53,7 @@ func TestJobHTTP(t *testing.T) {
 	t.Run("unknown IDs are 404", func(t *testing.T) {
 		for _, path := range []string{"/jobs/999", "/jobs/0", "/jobs/not-a-number"} {
 			w := httptest.NewRecorder()
-			handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+			handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "http://localhost"+path, nil))
 			if w.Code != http.StatusNotFound {
 				t.Errorf("%s: status = %d", path, w.Code)
 			}
@@ -65,7 +65,7 @@ func TestJobHTTP(t *testing.T) {
 			"job_url":   {"https://example.com/another"},
 			"job_title": {"Manual title"},
 		}
-		r := httptest.NewRequest(http.MethodPost, "/jobs", strings.NewReader(form.Encode()))
+		r := httptest.NewRequest(http.MethodPost, "http://localhost/jobs", strings.NewReader(form.Encode()))
 		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, r)
@@ -83,7 +83,7 @@ func TestJobHTTP(t *testing.T) {
 
 	t.Run("CSS is served", func(t *testing.T) {
 		w := httptest.NewRecorder()
-		handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/static/styles.css", nil))
+		handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "http://localhost/static/styles.css", nil))
 		if w.Code != http.StatusOK {
 			t.Fatalf("status = %d", w.Code)
 		}
@@ -116,7 +116,7 @@ func TestEditJobHTTP(t *testing.T) {
 		"stage":       {StageReady}, "priority": {PriorityHigh},
 	}
 	post := func(values url.Values) *httptest.ResponseRecorder {
-		r := httptest.NewRequest(http.MethodPost, "/jobs/1/edit", strings.NewReader(values.Encode()))
+		r := httptest.NewRequest(http.MethodPost, "http://localhost/jobs/1/edit", strings.NewReader(values.Encode()))
 		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		w := httptest.NewRecorder()
 		mux.ServeHTTP(w, r)
@@ -133,7 +133,7 @@ func TestEditJobHTTP(t *testing.T) {
 		t.Fatalf("edited job = %+v", job)
 	}
 	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/jobs/1", nil))
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "http://localhost/jobs/1", nil))
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Example &amp; Co") || strings.Contains(w.Body.String(), "<script>alert(1)</script>") {
 		t.Fatalf("rendered job: %d %s", w.Code, w.Body.String())
 	}
@@ -175,7 +175,7 @@ func TestCrossOriginPOSTBlocked(t *testing.T) {
 	defer db.Close()
 	mux := newMux(&App{db: db})
 	form := url.Values{"job_url": {"https://example.com/job"}}
-	r := httptest.NewRequest(http.MethodPost, "/jobs", strings.NewReader(form.Encode()))
+	r := httptest.NewRequest(http.MethodPost, "http://localhost/jobs", strings.NewReader(form.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	r.Header.Set("Origin", "https://untrusted.example")
 	w := httptest.NewRecorder()
@@ -202,7 +202,7 @@ func TestRefreshUnsupportedSourceIsNonDestructive(t *testing.T) {
 	if err := app.saveJob(Job{URL: "https://example.com/job", Host: "example.com", Title: "Manual role", SalaryText: "$85,000 (manual)", SalaryOrigin: "manual"}); err != nil {
 		t.Fatal(err)
 	}
-	req := httptest.NewRequest(http.MethodPost, "/jobs/1/refresh", nil)
+	req := httptest.NewRequest(http.MethodPost, "http://localhost/jobs/1/refresh", nil)
 	rec := httptest.NewRecorder()
 	newMux(app).ServeHTTP(rec, req)
 	if rec.Code != http.StatusSeeOther {

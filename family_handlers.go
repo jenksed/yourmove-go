@@ -10,8 +10,8 @@ import (
 	"strings"
 )
 
-var familiesTemplate = template.Must(template.ParseFiles("templates/families.html", "templates/partials.html"))
-var utilitiesTemplate = template.Must(template.ParseFiles("templates/utilities.html", "templates/partials.html"))
+var familiesTemplate = template.Must(template.ParseFS(templateFiles, "templates/families.html", "templates/partials.html"))
+var utilitiesTemplate = template.Must(template.ParseFS(templateFiles, "templates/utilities.html", "templates/partials.html"))
 
 type familyPageData struct {
 	Families           []RoleFamily

@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f7f7f4"><title>{{if .Title}}{{.Title}}{{else}}Saved Job{{end}} · YourMove</title><link rel="stylesheet" href="/static/styles.css"><script defer src="/static/ui.js"></script></head><body>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f7f7f4"><title>{{if .Title}}{{.Title}}{{else}}Saved Job{{end}} · YourMove</title><link rel="stylesheet" href="/static/styles.css"><script defer src="/static/ui.js"></script><script defer src="/static/inspection.js"></script></head><body>
 {{template "shell-open" "jobs"}}
 <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/jobs">Opportunities</a><span aria-hidden="true">/</span><span>{{if .Company}}{{.Company}}{{else}}{{.Host}}{{end}}</span></nav>
-<header class="job-hero"><div class="job-hero-main"><p class="eyebrow">JOB WORKSPACE</p><h1>{{if .Title}}{{.Title}}{{else}}Untitled job{{end}}</h1><p class="page-description">{{if .Company}}{{.Company}}{{else}}{{.Host}}{{end}} <span class="dot-sep">·</span> {{.Host}}</p><div class="hero-tags">{{template "status-badge" .}}{{template "priority-badge" .}}{{if .SalaryText}}<span class="salary-tag">{{.SalaryText}}</span>{{end}}</div></div><div class="heading-actions">{{if .Desktop}}<form method="POST" action="/jobs/{{.ID}}/open"><button class="button button-secondary" type="submit">Open employer site ↗</button></form>{{else}}<a class="button button-secondary" href="{{.URL}}" target="_blank" rel="noopener noreferrer">Open employer site ↗</a>{{end}}{{if eq .Stage "applied"}}<a class="button button-primary" href="#history" data-tab-target="history">View history →</a>{{else}}<a class="button button-primary" href="#prepare" data-tab-target="prepare">Prepare application →</a>{{end}}</div></header>
+<header class="job-hero"><div class="job-hero-main"><p class="eyebrow">JOB WORKSPACE</p><h1>{{if .Title}}{{.Title}}{{else}}Untitled job{{end}}</h1><p class="page-description">{{if .Company}}{{.Company}}{{else}}{{.Host}}{{end}} <span class="dot-sep">·</span> {{.Host}}</p><div class="hero-tags">{{template "status-badge" .}}{{template "priority-badge" .}}{{if .SalaryText}}<span class="salary-tag">{{.SalaryText}}</span>{{end}}</div></div><div class="heading-actions">{{if .Desktop}}<form method="POST" action="/jobs/{{.ID}}/open"><button class="button button-secondary" type="submit">Open employer site ↗</button></form>{{else}}<a class="button button-secondary" href="{{.URL}}" target="_blank" rel="noopener noreferrer">Open employer site ↗</a>{{end}}{{if eq .Stage "applied"}}<a class="button button-primary" href="#history" data-tab-target="history">View history →</a>{{else}}<a class="text-link" href="#prepare" data-tab-target="prepare">Prepare application →</a>{{end}}</div></header>
 <div class="workspace-tabs" data-workspace-tabs aria-label="Job workspace sections"><a href="#overview" class="workspace-tab" data-tab-target="overview">Overview</a><a href="#prepare" class="workspace-tab" data-tab-target="prepare">Prepare</a><a href="#history" class="workspace-tab" data-tab-target="history">History {{if .SubmissionCount}}<span class="tab-count">{{.SubmissionCount}}</span>{{end}}</a></div>
 <div class="workspace-panel" id="overview" data-workspace-panel="overview" tabindex="-1">
   <div class="workspace-grid"><div class="workspace-column">
@@ -33,10 +33,51 @@
       </div></details>
   </aside></div>
 </div>
-<div class="workspace-panel" id="prepare" data-workspace-panel="prepare" tabindex="-1"><div class="workspace-grid"><div class="workspace-column">
-  <section class="panel preparation-panel" aria-labelledby="preparation-title"><div class="section-heading"><div><p class="eyebrow">YOUR APPLICATION PACKET</p><h2 id="preparation-title">Application preparation</h2></div>{{if .SelectedResume}}<span class="status status-ready">Resume selected</span>{{else}}<span class="status status-review">Needs a resume</span>{{end}}</div>
-    <div class="preparation-steps"><div class="preparation-step"><div class="step-number">01</div><div><h3>Choose your resume</h3><p>Select the document you intend to use for this role.</p></div></div>
-    <form method="POST" action="/jobs/{{.ID}}/resume" class="resume-select-form"><div class="field"><label for="resume_id">Resume for this job</label><select id="resume_id" name="resume_id"><option value="0">No resume selected</option>{{range .ResumeOptions}}<option value="{{.ID}}" {{if eq .ID $.SelectedResumeID}}selected{{end}}>{{if .FamilyName}}{{.FamilyName}} · {{end}}{{.Name}} ({{.Kind}}){{if .IsPrimary}} · Primary{{end}}{{if .ArchivedAt}} · Archived (select a newer version){{end}}</option>{{end}}</select><small>Need a different resume? <a href="/resumes">Open resume library</a>.</small></div><button type="submit" class="button button-secondary">Save selection</button></form>
+<div class="workspace-panel prepare-workspace" id="prepare" data-workspace-panel="prepare" tabindex="-1"><div class="workspace-grid prepare-layout"><div class="workspace-column">
+  <section class="preparation-panel" aria-label="Application preparation">
+    <section class="prepare-handoff" id="application-action" tabindex="-1" aria-labelledby="prepare-handoff-title" {{if .BrowserState.Active}}data-browser-watch data-preparation-watch data-job-id="{{.ID}}" data-observed-id="{{.Questions.InspectionID}}" data-resume-status="{{.BrowserState.ResumeStatus}}" data-contact-status="{{.BrowserState.ContactStatus}}" data-letter-status="{{.BrowserState.LetterStatus}}" data-answer-status="{{.BrowserState.AnswerStatus}}"{{end}}>
+      {{if .LetterSaved}}<p class="local-save-confirmation" role="status"><strong>Saved locally</strong> · Draft {{.Letter.ID}} · {{.Letter.EditedAt}}<br><span class="small-muted">{{.LetterNotice}} Saved content {{printf "%.12s" .Letter.ContentHash}}.</span></p>{{end}}
+      <h2 id="prepare-handoff-title">{{.Preparation.Title}}</h2>
+      <p>{{.Preparation.Detail}}</p>
+      <p class="scope-destination"><strong>Employer destination</strong><br>{{if .Company}}{{.Company}} · {{end}}{{.Title}}<br><span class="small-muted">{{.URL}}</span></p>
+      {{if eq .BrowserState.Phase "attention"}}<p role="status" class="inline-hint">{{.BrowserState.Message}}</p>{{end}}
+      {{if .TransferNotice}}<p role="alert" class="inline-hint">{{.TransferNotice}}</p>{{end}}
+      {{if eq .BrowserState.Phase "interrupted"}}<p role="status">{{.BrowserState.Message}}</p><p><a href="/jobs/{{.ID}}/inspection">Reopen application deliberately; browser-only work may be lost →</a></p>{{end}}
+      {{if eq .BrowserState.ResumeStatus "attention"}}<p role="status" class="inline-hint"><strong>Resume needs attention</strong> · {{.BrowserState.ResumeMessage}}</p>{{end}}
+      {{if eq .BrowserState.ContactStatus "attention"}}<p role="status" class="inline-hint">{{.BrowserState.ContactSummary}}</p>{{end}}
+      {{range .BrowserState.ContactOutcomes}}{{if eq .Status "uncertain"}}<p role="status" class="inline-hint"><strong>{{.Label}} · Uncertain transfer</strong> · {{.Detail}}</p>{{end}}{{end}}
+      {{if or (eq .BrowserState.LetterStatus "attention") (eq .BrowserState.LetterStatus "review")}}<p role="status" class="inline-hint"><strong>Cover letter needs manual inspection</strong> · {{.BrowserState.LetterMessage}} Saving locally does not authorize replacement of an existing or uncertain employer attachment.</p>{{end}}
+      {{range .BrowserState.AnswerOutcomes}}{{if eq .Status "uncertain"}}<p role="status" class="inline-hint"><strong>{{.Label}} · Uncertain transfer</strong> · {{.Detail}}</p>{{end}}{{end}}
+      {{if .Preparation.OpenExternally}}
+      {{if .Desktop}}<form method="POST" action="/jobs/{{.ID}}/open" class="external-application-action"><button class="button button-primary" type="submit">Open application ↗</button></form>{{else}}<a class="button button-primary" href="{{.URL}}" target="_blank" rel="noopener noreferrer">Open application ↗</a>{{end}}
+      {{else if .Preparation.Action}}
+      <form method="POST" action="/jobs/{{.ID}}/continue" class="g55-handoff-form">
+        <input type="hidden" name="destination" value="{{.URL}}"><input type="hidden" name="return_to" value="prepare">
+        {{if .Preparation.IncludeResume}}
+        <input type="hidden" name="include_resume" value="yes"><input type="hidden" name="resume_id" value="{{.SelectedResume.ID}}"><input type="hidden" name="resume_hash" value="{{.SelectedResume.SHA256}}">
+        <p><strong>Resume to attach:</strong> {{.SelectedResume.Name}}<br><span class="small-muted">Document {{.SelectedResume.ID}} · revision {{.SelectedResume.Version}} · content {{printf "%.12s" .SelectedResume.SHA256}}</span></p>
+        {{if .Profile.Approved}}<input type="hidden" name="transfer_contacts" value="yes"><input type="hidden" name="profile_revision" value="{{.Profile.Revision}}"><p><strong>Contact information to fill</strong></p>{{template "contact-facts" .Profile}}{{else}}<p>Contacts are excluded until you <a href="/candidate">approve candidate information</a>.</p>{{end}}
+        {{end}}
+        {{if .Preparation.IncludeLetter}}
+        <input type="hidden" name="include_letter" value="yes"><input type="hidden" name="draft_id" value="{{.Letter.ID}}"><input type="hidden" name="body_hash" value="{{.Letter.ContentHash}}">
+        <p id="letter-scope-label"><strong>Saved cover letter · Draft {{.Letter.ID}}</strong><br><span class="small-muted">{{if .Letter.EditedAt}}Saved {{.Letter.EditedAt}}{{else}}Created {{.Letter.CreatedAt}}{{end}} · content {{printf "%.12s" .Letter.ContentHash}}. Unsaved edits are excluded.</span></p>
+        <pre class="evidence-text transfer-letter-scope" tabindex="0" role="region" aria-labelledby="letter-scope-label">{{.Letter.Body}}</pre>
+        <div class="field"><label for="letter-destination">Employer cover-letter control</label><select id="letter-destination" name="mode"><option value="file">Attach saved letter as PDF</option><option value="text">Fill an explicitly labeled cover-letter text field</option></select></div>
+        {{end}}
+        {{if .Preparation.IncludeAnswers}}
+        <input type="hidden" name="include_answers" value="yes"><input type="hidden" name="review_hash" value="{{.Preparation.AnswerReviewHash}}">
+        <p><strong>Saved answers to fill</strong></p><dl class="contact-facts pending-answer-scope">{{range .Preparation.PendingAnswers}}<dt>{{.Field.Label}}</dt><dd>{{.Value}}</dd>{{end}}</dl>
+        {{end}}
+        <p class="small-muted">The employer may receive this material immediately. Existing manual entries and attachments are preserved. You review and submit personally.</p>
+        <button type="submit" class="button button-primary">{{.Preparation.Action}}</button>
+      </form>
+      {{else if and (not .BrowserState.Active) (not .Handoff.Allowed)}}<p class="inline-hint">{{.Handoff.Reason}}</p>{{end}}
+    </section>
+    {{if .Letter.ID}}<p class="letter-material-actions"><a href="/jobs/{{.ID}}?draft={{.Letter.ID}}#prepare">Edit letter</a> · <a href="/jobs/{{.ID}}/cover-letter/{{.Letter.ID}}/download">Download saved letter PDF ↧</a></p>{{end}}
+    <section class="prepare-resume-block" aria-labelledby="prepare-resume-heading"><div class="prepare-block-heading"><div><h3 id="prepare-resume-heading">Resume</h3><p>{{if .SelectedResume}}{{.SelectedResume.Name}} · Document {{.SelectedResume.ID}}, revision {{.SelectedResume.Version}}{{else}}Choose the document for this employer.{{end}}</p></div>{{if .SelectedResume}}<a class="text-link" href="/resumes/{{.SelectedResume.ID}}/download?job_id={{.ID}}">Download selected ↧</a>{{end}}</div>
+    {{if .ResumeSelectionValid}}<details class="resume-change"><summary>Change resume</summary>{{else}}<p class="inline-hint">Select and save an available resume for this application.</p>{{end}}
+    <form method="POST" action="/jobs/{{.ID}}/resume" class="resume-select-form"><div class="field"><label for="resume_id">Document to use</label><select id="resume_id" name="resume_id"><option value="0">No resume selected</option>{{range .ResumeOptions}}<option value="{{.ID}}" {{if eq .ID $.SelectedResumeID}}selected{{end}}>{{if .FamilyName}}{{.FamilyName}} · {{end}}{{.Name}} ({{.Kind}}){{if .IsPrimary}} · Primary{{end}}{{if .ArchivedAt}} · Archived (select a newer version){{end}}</option>{{end}}</select><small><a href="/resumes">Manage documents</a>. Your choice is saved only when you select Save resume.</small></div><button type="submit" class="button button-secondary">Save resume</button></form>
+    {{if .ResumeSelectionValid}}</details>{{end}}
     {{if and (not .SelectedResume) .HasFamilies}}<div class="match-suggestion">
       {{if eq .Match.Status "matched"}}<div><p class="eyebrow">LOCAL RESUME MATCH</p><h3>Suggested: {{.Match.ResumeName}}</h3><p class="small-muted">Family: {{.Match.FamilyName}} · Job title phrase “{{.Match.TitleEvidence}}”{{if .Match.ContextEvidence}} · Description phrase “{{.Match.ContextEvidence}}”{{end}}. A suggestion does not change your saved selection.</p></div>
       <form method="POST" action="/jobs/{{.ID}}/resume"><input type="hidden" name="resume_id" value="{{.Match.ResumeID}}"><button class="button button-primary" type="submit">Use suggested resume</button></form>
@@ -45,38 +86,122 @@
       {{else if eq .Match.Status "ambiguous"}}<p class="small-muted">Several role families matched equally. <a href="/families">Refine the title rules</a> or select a resume manually.</p>
       {{else}}<p class="small-muted">No confident resume match yet. <a href="/families">Adjust role-family rules</a> or select a document manually.</p>{{end}}
     </div>{{end}}
-    {{if .SelectedResume}}<div class="selected-file"><span class="selected-file-icon">{{if eq .SelectedResume.Kind ".pdf"}}PDF{{else}}DOCX{{end}}</span><div><strong>{{.SelectedResume.Name}}</strong><small>Selected document</small></div><a class="text-link" href="/resumes/{{.SelectedResume.ID}}/download">Download ↓</a></div>{{else}}<p class="inline-hint">No resume selected yet. You can still open the employer application and choose a document there.</p>{{end}}
-    <section class="evidence-panel" aria-labelledby="cover-sources-title">
-      <div class="section-heading"><div><p class="eyebrow">COVER LETTER STUDIO · SOURCE REVIEW</p><h2 id="cover-sources-title">Career evidence</h2></div>{{if .Sources.Ready}}<span class="status status-ready">Sources readable</span>{{else}}<span class="status status-review">Needs source review</span>{{end}}</div>
-      <p class="small-muted">Inspect the exact master and role-specific resume versions that will inform a future cover letter. This preview does not generate a letter or send your documents to an AI provider.</p>
-      {{if not .Sources.JobDescriptionReady}}<p class="inline-hint">Save a job description before generating a tailored letter.</p>{{end}}
-      <details class="evidence-document"><summary><span class="evidence-document-label"><strong>Master resume</strong>{{if .Sources.Master.Name}}<span class="evidence-document-name">{{.Sources.Master.Name}} · v{{.Sources.Master.Version}}</span>{{end}}</span></summary><div class="editor-content">
-        {{if .Sources.Master.Ready}}<p class="small-muted">{{.Sources.Master.Characters}} characters extracted from verified DOCX bytes{{if .Sources.Master.Truncated}} · first 32,000 displayed{{end}}</p><pre class="evidence-text">{{.Sources.Master.Excerpt}}</pre>{{else}}<p class="inline-hint">{{.Sources.Master.Message}}</p>{{end}}
-      </div></details>
-      <details class="evidence-document"><summary><span class="evidence-document-label"><strong>Role-specific resume</strong>{{if .Sources.Role.Name}}<span class="evidence-document-name">{{.Sources.Role.Name}} · v{{.Sources.Role.Version}}</span>{{end}}</span></summary><div class="editor-content">
-        {{if .Sources.Role.Ready}}<p class="small-muted">{{.Sources.Role.Characters}} characters extracted from verified DOCX bytes{{if .Sources.Role.Truncated}} · first 32,000 displayed{{end}}</p><pre class="evidence-text">{{.Sources.Role.Excerpt}}</pre>{{else}}<p class="inline-hint">{{.Sources.Role.Message}}</p>{{end}}
-      </div></details>
-      <p class="small-muted">The full extracted text remains available to the future generator; only this on-screen preview is shortened. <a href="/resumes">Manage source documents →</a></p>
+    {{if not .SelectedResume}}<p class="inline-hint">You can still open the employer site and select a file manually.</p>{{end}}
     </section>
-    <div class="preparation-step"><div class="step-number">02</div><div><h3>Prepare resume and hand off</h3><p>Use the selected document in a separate employer browser. YourMove waits for the resume control as you move through Ashby's application pages; you complete the rest.</p></div></div>
-    {{if .Handoff.Allowed}}
-    <form method="POST" action="/jobs/{{.ID}}/handoff" class="g55-handoff-form">
-      <input type="hidden" name="resume_id" value="{{.SelectedResume.ID}}"><input type="hidden" name="resume_hash" value="{{.SelectedResume.SHA256}}">
-      <label class="confirm-row"><input type="checkbox" name="confirm" value="yes" required><span>Use <strong>{{.SelectedResume.Name}}</strong> for this job. Allow YourMove to attach it on the matching Ashby form, which may upload it immediately to the employer. I will review and submit manually.</span></label>
-      <button type="submit" class="button button-primary">Prepare resume handoff ↗</button>
-    </form>
-    {{else}}<p class="inline-hint">{{.Handoff.Reason}}</p>{{end}}
-    <p class="small-muted"><a href="/jobs/{{.ID}}/inspection">View application inspection and browser status →</a></p>{{if .Desktop}}<form method="POST" action="/jobs/{{.ID}}/open" class="external-application-action"><button class="button button-primary" type="submit">Open employer application ↗</button></form>{{else}}<a class="button button-primary step-cta" href="{{.URL}}" target="_blank" rel="noopener noreferrer">Open employer application ↗</a>{{end}}
-    <div class="preparation-step"><div class="step-number">03</div><div><h3>Record a completed submission</h3><p>Only confirm this after actually submitting at the employer's website.</p></div></div>
+    {{if .Questions.WorkbenchQuestions}}
+    <section class="prepare-handoff application-questions" id="application-questions" aria-labelledby="application-questions-title" data-question-workbench data-selected-question="{{.Questions.SelectedKey}}">
+      <div class="question-heading"><h3 id="application-questions-title">Application questions</h3><a href="#prepare" data-review-ready>Review ready material ↑</a></div>
+      <p class="small-muted">Save answers locally; filling the employer form is a separate action. Later steps may add questions.</p>
+      {{if .Questions.ReturnNotice}}<p role="status">{{.Questions.ReturnNotice}}</p>{{end}}
+      <p class="small-muted" data-question-summary></p>
+      <div class="question-layout">
+        <nav class="question-index" aria-label="Observed questions" data-question-index hidden></nav>
+        <div class="field question-chooser" hidden><label for="question-chooser">Observed questions</label><select id="question-chooser" data-question-chooser></select></div>
+        <div class="question-editors">
+          <p class="question-position small-muted" data-question-position aria-live="polite" hidden></p>
+          {{range .Questions.WorkbenchQuestions}}
+          <div class="question-panel" id="question-{{.Key}}" role="group" aria-label="{{.Field.Label}}" data-question-panel data-question-key="{{.Key}}" data-question-label="{{.Field.Label}}" data-question-status="{{.LocalStatus}}" tabindex="-1">
+            {{if .Editable}}
+              {{if eq .Source "Approved candidate information"}}<p><strong>{{.Field.Label}}</strong> · {{.Value}}</p><p class="small-muted">Approved candidate information · <a href="/candidate">Edit candidate profile</a></p><details class="question-override"><summary>Edit answer for this application</summary><p class="small-muted">Saving creates an application-specific override. Your approved profile stays unchanged.</p>{{end}}
+              {{template "application-question" .}}
+              {{if eq .Source "Approved candidate information"}}</details>{{end}}
+            {{else}}<h4>{{.Field.Label}}{{if .Field.Required}} (required){{end}}</h4><p>Requires manual completion in Chromium.</p><p class="small-muted">This control is sensitive, unsupported, or cannot be identified safely. Complete it in the employer browser.</p>{{end}}
+          </div>
+          {{end}}
+          <div class="question-navigation" hidden><button type="button" class="button button-secondary" data-question-previous>← Previous</button><button type="button" class="button button-secondary" data-question-next>Next →</button></div>
+        </div>
+      </div>
+      {{if .Questions.Previous}}<details><summary>Earlier saved answers needing review</summary>{{range .Questions.Previous}}<p><strong>{{.Label}}</strong></p><pre class="evidence-text">{{.Value}}</pre>{{end}}<p class="small-muted">These answers are preserved, but the current form has different question identities. They will not be transferred.</p></details>{{end}}
+    </section>
+    {{end}}
+    <details class="prepare-writer" id="letter-editor" {{if .LetterOpen}}open{{end}}><summary><span><strong>{{if .Letter.ID}}Edit letter{{else}}Cover letter{{end}}</strong><small>{{if .Letter.ID}}Draft {{.Letter.ID}} · Saved locally · {{if .Letter.EditedAt}}{{.Letter.EditedAt}}{{else}}{{.Letter.CreatedAt}}{{end}}{{else}}Optional · Generate a draft for review.{{end}}</small></span><span class="prepare-writer-state">{{if .Letter.ID}}Draft saved{{else if .Sources.Ready}}Ready to write{{else}}Sources incomplete{{end}} <span class="summary-chevron" aria-hidden="true">⌄</span></span></summary>
+    {{if .Letter.ID}}<p class="letter-material-actions"><a href="#prepare" data-review-ready>Review current scope ↑</a></p>{{end}}
+    <section class="letter-studio ai-writer" aria-labelledby="letter-studio-title">
+      <div class="writer-heading">
+        <div>
+          <h3 id="letter-studio-title">{{if .Letter.ID}}Edit your letter{{else}}Generate a cover letter{{end}}</h3>
+          {{if .Letter.ID}}<p class="writer-meta">Saved version · {{.Letter.Provider}} / {{.Letter.Model}} · Editing this draft does not change its source evidence.</p>{{else}}<p class="writer-meta">Uses your saved job description and career evidence. You review every draft.</p>{{end}}
+        </div>
+        <a class="text-link" href="/ai">AI connections ↗</a>
+      </div>
+      {{if and .LetterNotice .LetterOpen}}<p class="letter-notice" role="status">{{.LetterNotice}}</p>{{end}}
+      {{if .Letter.ID}}
+      <form method="POST" action="/jobs/{{.ID}}/cover-letter/save" class="letter-form" data-ai-draft>
+        <input type="hidden" name="draft_id" value="{{.Letter.ID}}"><div class="field"><label for="letter-body" class="ai-draft-label">Letter text</label><textarea id="letter-body" name="body" rows="15" minlength="30" maxlength="12000" required spellcheck="true">{{.Letter.Body}}</textarea></div>
+        <p class="small-muted" data-answer-status role="status">Saved locally · unsaved edits are excluded from transfer and download.</p>
+        <div class="ai-draft-toolbar"><span data-ai-word-count aria-live="polite"></span><a class="text-link" href="/jobs/{{.ID}}/cover-letter/{{.Letter.ID}}/download">Download saved letter PDF ↧</a><button class="button button-secondary" type="submit">Save my edits</button></div>
+      </form>
+
+      <details class="writer-revision">
+        <summary><span><strong>Write another version</strong><small>Change the model or evidence without replacing this draft.</small></span><span class="summary-chevron" aria-hidden="true">⌄</span></summary>
+        <div class="writer-revision-body">
+      {{end}}
+      <div class="ai-readiness" aria-label="Writing inputs">
+        <span class="ai-readiness-item {{if .Sources.JobDescriptionReady}}is-ready{{else}}is-missing{{end}}"><span aria-hidden="true">{{if .Sources.JobDescriptionReady}}✓{{else}}!{{end}}</span> Job description</span>
+        <span class="ai-readiness-item {{if .Sources.Master.Ready}}is-ready{{else}}is-missing{{end}}" aria-label="{{if .Sources.Master.Ready}}Master resume readable{{else}}Master resume unavailable{{end}}"><span aria-hidden="true">{{if .Sources.Master.Ready}}✓{{else}}!{{end}}</span> Master resume</span>
+        <span class="ai-readiness-item {{if .Sources.Role.Ready}}is-ready{{else}}is-missing{{end}}" data-ai-role-check aria-label="{{if .Sources.Role.Ready}}Selected resume readable{{else}}Selected resume unavailable{{end}}"><span aria-hidden="true">{{if .Sources.Role.Ready}}✓{{else}}!{{end}}</span> Application resume</span>
+      </div>
+      {{if not .Sources.JobDescriptionReady}}<p class="letter-help">Add a job description in <a href="#overview" data-tab-target="overview">Overview → Edit job and tracking</a>.</p>{{end}}
+      {{if not .Sources.Master.Ready}}<p class="letter-help">{{.Sources.Master.Message}} <a href="/resumes">Open documents</a></p>{{end}}
+      {{if and .SelectedResume (not .Sources.Role.Ready)}}<p class="letter-help" data-ai-role-warning>{{.Sources.Role.Message}} You can choose a different readable resume below.</p>{{end}}
+      <form method="POST" action="/jobs/{{.ID}}/cover-letter/generate" class="letter-generate-form" data-ai-generate>
+        <div class="writer-settings-heading"><strong>Generation settings</strong><small>Choose a provider and model. No automatic fallback.</small></div>
+        <div class="letter-inputs">
+          <div class="field"><label for="letter_provider">Write with</label><select id="letter_provider" name="provider" data-ai-provider>
+            <optgroup label="YOUR SUBSCRIPTIONS">
+              <option value="codex" data-default-model="default">ChatGPT · Codex CLI{{if not (index .ProviderReady "codex")}} · install CLI{{end}}</option>
+              <option value="claude-cli" data-default-model="sonnet">Claude · Claude Code CLI{{if not (index .ProviderReady "claude-cli")}} · install CLI{{end}}</option>
+            </optgroup>
+            <optgroup label="LOCAL">
+              <option value="ollama" selected data-default-model="{{.LetterModel}}">Ollama · on your Mac</option>
+            </optgroup>
+            <optgroup label="API · SEPARATE BILLING">
+              <option value="openai" data-default-model="gpt-4.1-mini">OpenAI API{{if not (index .ProviderReady "openai")}} · key needed{{end}}</option>
+              <option value="anthropic" data-default-model="claude-sonnet-4-5">Anthropic API{{if not (index .ProviderReady "anthropic")}} · key needed{{end}}</option>
+              <option value="openrouter" data-default-model="openai/gpt-4o-mini">OpenRouter{{if not (index .ProviderReady "openrouter")}} · key needed{{end}}</option>
+              <option value="compatible" data-default-model="">OpenAI-compatible endpoint</option>
+            </optgroup>
+          </select></div>
+          <div class="field"><label for="letter_model">Model</label><input id="letter_model" name="model" value="{{.LetterModel}}" maxlength="120" required spellcheck="false"><small id="letter_model_hint">Choose a model installed in Ollama.</small></div>
+          <div class="field field-full"><label for="letter_resume_id">Resume to emphasize</label><select id="letter_resume_id" name="letter_resume_id" required data-application-resume="{{.SelectedResumeID}}">
+            {{if not .SelectedResumeID}}<option value="" selected>Choose a resume</option>{{end}}
+            {{range .LetterResumes}}<option value="{{.ID}}" {{if eq .ID $.SelectedResumeID}}selected{{end}}>{{.Name}}{{if .IsPrimary}} · Primary{{end}}</option>{{end}}
+          </select><small>You can choose a different writing source without changing the resume sent to the employer.</small></div>
+        </div>
+        <div class="ai-generation-footer">
+          <label class="confirm-row letter-consent"><input type="checkbox" name="confirm_external" value="yes" required><span>Use my saved job description and resume evidence to write this draft. Nonlocal providers receive the text outside my device.</span></label>
+          <div class="ai-generate-actions"><button class="button button-primary letter-generate-button" type="submit" data-ai-submit>{{if .Letter.ID}}Write another version →{{else}}Generate my letter →{{end}}</button><small data-ai-progress role="status" aria-live="polite">No application is submitted.</small></div>
+        </div>
+      </form>
+
+      {{if .Letter.ID}}</div></details>{{end}}
+      <div class="ai-writer-details">
+        <details class="letter-source-details"><summary>Review the source evidence</summary><div class="letter-source-detail-body">
+          <p class="small-muted">YourMove sends bounded, verified text. A document preview never contacts a model.</p>
+          <div class="letter-source-title"><strong>Master resume</strong> <span>{{.Sources.Master.Name}}</span></div>
+          {{if .Sources.Master.Ready}}<pre class="evidence-text">{{.Sources.Master.Excerpt}}</pre>{{else}}<p class="small-muted">{{.Sources.Master.Message}}</p>{{end}}
+          <div class="letter-source-title"><strong>Job-selected resume</strong> <span>{{.Sources.Role.Name}}</span></div>
+          {{if .Sources.Role.Ready}}<pre class="evidence-text">{{.Sources.Role.Excerpt}}</pre>{{else}}<p class="small-muted">{{.Sources.Role.Message}}</p>{{end}}
+          <p class="small-muted">If you chose another resume in the dropdown, that version will be used for generation. <a href="/resumes">Manage documents →</a></p>
+        </div></details>
+        {{if .Letters}}<details class="letter-source-details"><summary>Earlier versions ({{len .Letters}})</summary><div class="letter-source-detail-body draft-history">{{range .Letters}}<a class="text-link" href="/jobs/{{$.ID}}?draft={{.ID}}#prepare">Draft {{.ID}} · {{.Provider}} / {{.Model}} · {{.CreatedAt}}{{if .EditedAt}} · edited{{end}}</a>{{end}}</div></details>{{end}}
+      </div>
+    </section></details>
+    <section class="prepare-handoff observed-results" aria-labelledby="observed-results-title">
+      <h3 id="observed-results-title">{{if .BrowserState.Active}}Observed in Chromium{{else}}Last observed browser results{{end}}</h3>
+      {{if .BrowserState.ResumeStatus}}<p><strong>Resume · Browser selection result</strong><br>{{.BrowserState.ResumeName}} · {{.BrowserState.ResumeMessage}}</p>{{end}}
+      {{if .BrowserState.ContactSummary}}<p>{{.BrowserState.ContactSummary}}</p>{{template "contact-outcomes" .BrowserState.ContactOutcomes}}{{end}}
+      {{if .BrowserState.LetterStatus}}<p><strong>Cover letter · {{.BrowserState.LetterStatus}}</strong> · {{.BrowserState.LetterMessage}}</p>{{if or (eq .BrowserState.LetterStatus "complete") (eq .BrowserState.LetterStatus "attention")}}<p class="small-muted">The saved local draft may differ from the letter previously sent. Inspect the existing employer attachment or text manually; local edits do not authorize automatic replacement.</p>{{end}}{{end}}
+      {{if .BrowserState.AnswerStatus}}<details><summary>Answer transfer results · {{.BrowserState.AnswerStatus}}</summary>{{if eq .BrowserState.AnswerStatus "complete"}}<p>Review the results below and continue in Chromium.</p>{{end}}<ul class="transfer-contact-outcomes">{{range .BrowserState.AnswerOutcomes}}<li><strong>{{.Label}}</strong><span>{{.Detail}}</span></li>{{end}}</ul></details>{{end}}
+      <p class="small-muted">Employer acceptance not established. Review attachments, filled text and manual fields in the employer browser; submit personally.</p>
+      {{if not .Preparation.OpenExternally}}<div class="prepare-handoff-links"><a class="text-link" href="/jobs/{{.ID}}/inspection">Browser details and troubleshooting →</a>{{if not .BrowserState.Active}}{{if .Desktop}}<form method="POST" action="/jobs/{{.ID}}/open" class="external-application-action"><button class="button button-secondary" type="submit">Open employer site ↗</button></form>{{else}}<a class="text-link" href="{{.URL}}" target="_blank" rel="noopener noreferrer">Open employer site ↗</a>{{end}}{{end}}</div>{{end}}
+    </section>
     <details class="submission-disclosure" id="record-submission"><summary><span>Record completed application</span><span class="summary-chevron" aria-hidden="true">⌄</span></summary><div class="submission-disclosure-body"><div class="confirmation-note">This action records your confirmation. It does not submit an application or prove receipt by the employer.</div><form method="POST" action="/jobs/{{.ID}}/submit" class="submission-form"><input type="hidden" name="submission_token" value="{{.SubmissionToken}}"><div class="field"><label for="notes">Submission notes <span class="muted">(optional)</span></label><input id="notes" name="notes" maxlength="1000" placeholder="Confirmation number or follow-up"></div><label class="confirm-row"><input type="checkbox" name="confirm" value="yes" required><span>I confirm that I submitted this application on the employer website.</span></label><button type="submit" class="button button-primary">Record completed application</button></form></div></details>
-    </div>
   </section>
   </div>
 
-<aside class="workspace-aside">
-  <div class="panel guidance-panel">
-    <p class="eyebrow">JOB BRIEF</p>
-    <h2>{{.ActionLabel}}</h2>
+<aside class="workspace-aside prepare-aside">
+  <details class="prepare-context"><summary>Job brief <span class="prepare-context-label">{{.ActionLabel}}</span><span class="summary-chevron" aria-hidden="true">⌄</span></summary><div class="prepare-context-body">
     <p>{{.ActionReason}}</p>
 
     <dl class="fact-list">
@@ -96,17 +221,6 @@
             {{end}}
           {{else}}
             Not recorded
-          {{end}}
-        </dd>
-      </div>
-
-      <div>
-        <dt>Resume</dt>
-        <dd>
-          {{if .SelectedResume}}
-            {{.SelectedResume.Name}} · Selected
-          {{else}}
-            Not selected
           {{end}}
         </dd>
       </div>
@@ -134,13 +248,8 @@
          href="#overview" data-tab-target="overview">
         Review opportunity →
       </a>
-    {{else if .SelectedResume}}
-      <a class="button button-primary"
-         href="/jobs/{{.ID}}/inspection">
-        Review application →
-      </a>
     {{end}}
-  </div>
+  </div></details>
 </aside>
 
 </div>
@@ -150,3 +259,41 @@
 </section></div>
 {{template "shell-close" .}}
 </body></html>
+
+{{define "application-question"}}{{$answer := .Value}}
+      <form method="POST" action="/jobs/{{.JobID}}/answers/save" class="application-question-form">
+        <input type="hidden" name="question_key" value="{{.Key}}"><input type="hidden" name="revision" value="{{.Revision}}"><input type="hidden" name="destination" value="{{.Destination}}">
+        <div class="field"><label for="answer-{{.Key}}">{{.Field.Label}}{{if .Field.Required}} (required){{end}}</label>
+        {{if or (eq .Field.Kind "select") (eq .Field.Kind "radio")}}
+        <select name="answer" id="answer-{{.Key}}"><option value="">Choose an answer</option>{{range .Field.Options}}<option value="{{.}}" {{if eq . $answer}}selected{{end}}>{{.}}</option>{{end}}</select>
+        {{else if eq .Field.Kind "checkbox"}}
+        <select name="answer" id="answer-{{.Key}}"><option value="">Unanswered</option><option value="true" {{if eq .Value "true"}}selected{{end}}>Yes</option><option value="false" {{if eq .Value "false"}}selected{{end}}>No</option></select>
+        {{else}}<textarea name="answer" id="answer-{{.Key}}" rows="3" maxlength="12000">{{.Value}}</textarea>{{end}}
+        </div>
+        <p class="question-save-status small-muted" data-answer-status role="status">{{if .Revision}}Saved locally{{if eq .Value ""}} · empty; needs local answer{{end}}{{else if .Source}}{{.Source}}{{else}}Needs local answer{{end}}</p>
+        {{if and .ReusableKey (ne .Source "Approved candidate information")}}<input type="hidden" name="reusable_revision" value="{{.ReusableRevision}}"><details class="question-reuse"><summary>Reuse at this employer</summary><label class="confirm-row"><input type="checkbox" name="reusable" value="yes"><span>Reuse this answer for the exact same question at this employer. Application-specific edits keep the reusable original unless I select this again.</span></label></details>{{end}}
+        <button type="submit" class="button button-primary">Save answer locally</button>
+      </form>
+{{end}}
+
+{{define "answer-save-error"}}
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Answer not saved · YourMove</title><link rel="stylesheet" href="/static/styles.css"><script defer src="/static/ui.js"></script></head><body>
+{{template "shell-open" "jobs"}}
+<section class="panel answer-save-error" data-answer-recovery>
+<h1>Answer not saved</h1><p role="alert">{{.Message}}</p>
+<p>Your submitted value is below as unsaved work. Copy it before reviewing the current question. It is excluded from ready material.</p>
+<div class="field"><label for="unsaved-answer">Unsaved submitted answer</label><textarea id="unsaved-answer" rows="8">{{.Value}}</textarea></div>
+<p><a href="/jobs/{{.ID}}#prepare">Review current Prepare and questions →</a></p>
+</section>{{template "shell-close" .}}</body></html>
+{{end}}
+
+{{define "letter-save-error"}}
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Letter not saved · YourMove</title><link rel="stylesheet" href="/static/styles.css"><script defer src="/static/ui.js"></script></head><body>
+{{template "shell-open" "jobs"}}
+<section class="panel answer-save-error" data-letter-recovery>
+<h1>Letter not saved</h1><p role="alert">{{.Message}}</p>
+<p>Your submitted text is below as unsaved work. Copy it before reopening the saved draft. It is excluded from transfer and download.</p>
+<div class="field"><label for="unsaved-letter">Unsaved submitted letter</label><textarea id="unsaved-letter" rows="15">{{.Value}}</textarea></div>
+<p><a href="/jobs/{{.ID}}{{if .DraftID}}?draft={{.DraftID}}{{end}}#prepare">Reopen saved letter in Prepare →</a></p>
+</section>{{template "shell-close" .}}</body></html>
+{{end}}

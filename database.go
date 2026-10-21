@@ -137,6 +137,14 @@ func initJobsSchema(db *sql.DB) error {
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS submissions_by_job ON submissions(job_id,id DESC)`); err != nil {
 		return fmt.Errorf("index job submissions: %w", err)
 	}
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS submission_reviews (
+		token TEXT PRIMARY KEY,
+		job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+		resume_id INTEGER,
+		resume_sha256 TEXT NOT NULL DEFAULT ''
+	)`); err != nil {
+		return fmt.Errorf("create submission reviews table: %w", err)
+	}
 	// Role rules are user-owned configuration. Resume contents and job history remain intact.
 	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS role_families (
         id INTEGER PRIMARY KEY,
@@ -199,6 +207,36 @@ func initJobsSchema(db *sql.DB) error {
 		}
 	}
 
+	// Cover letters are saved text drafts tied to immutable resume file hashes.
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS cover_letters (
+        id INTEGER PRIMARY KEY,
+        job_id INTEGER NOT NULL REFERENCES jobs(id),
+        body TEXT NOT NULL,
+        model TEXT NOT NULL,
+        provider TEXT NOT NULL DEFAULT 'ollama',
+        master_resume_id INTEGER NOT NULL REFERENCES resumes(id),
+        master_sha256 TEXT NOT NULL,
+        role_resume_id INTEGER NOT NULL REFERENCES resumes(id),
+        role_sha256 TEXT NOT NULL,
+        job_description_sha256 TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        edited_at TEXT NOT NULL DEFAULT ''
+    )`); err != nil {
+		return fmt.Errorf("create cover letters table: %w", err)
+	}
+	var hasProvider bool
+	if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM pragma_table_info('cover_letters') WHERE name='provider')`).Scan(&hasProvider); err != nil {
+		return fmt.Errorf("inspect cover letter provider schema: %w", err)
+	}
+	if !hasProvider {
+		if _, err := db.Exec(`ALTER TABLE cover_letters ADD COLUMN provider TEXT NOT NULL DEFAULT 'ollama'`); err != nil {
+			return fmt.Errorf("migrate cover letter provider schema: %w", err)
+		}
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS cover_letters_by_job ON cover_letters(job_id,id DESC)`); err != nil {
+		return fmt.Errorf("index cover letters: %w", err)
+	}
+
 	// G5: read-only application requirements and a single locally approved profile.
 	for _, statement := range []string{
 		`CREATE TABLE IF NOT EXISTS candidate_profile (
@@ -218,6 +256,13 @@ func initJobsSchema(db *sql.DB) error {
 		 field_id TEXT NOT NULL, label TEXT NOT NULL, kind TEXT NOT NULL, required INTEGER NOT NULL,
 		 sensitive INTEGER NOT NULL, group_name TEXT NOT NULL, options_json TEXT NOT NULL,
 		 PRIMARY KEY(inspection_id,ordinal))`,
+		`CREATE TABLE IF NOT EXISTS reusable_answers (
+ question_key TEXT PRIMARY KEY, employer_scope TEXT NOT NULL, label TEXT NOT NULL,
+ answer TEXT NOT NULL, revision INTEGER NOT NULL)`,
+		`CREATE TABLE IF NOT EXISTS application_answers (
+ job_id INTEGER NOT NULL REFERENCES jobs(id), destination TEXT NOT NULL, provider TEXT NOT NULL,
+ question_key TEXT NOT NULL, label TEXT NOT NULL, answer TEXT NOT NULL, revision INTEGER NOT NULL,
+ PRIMARY KEY(job_id,destination,provider,question_key))`,
 		`CREATE TABLE IF NOT EXISTS application_steps (
 		 inspection_id INTEGER NOT NULL REFERENCES application_inspections(id), ordinal INTEGER NOT NULL,
 		 step_key TEXT NOT NULL, label TEXT NOT NULL, state TEXT NOT NULL, action TEXT NOT NULL,

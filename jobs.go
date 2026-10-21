@@ -92,6 +92,8 @@ func (j Job) SalaryOriginLabel() string {
 
 func (j Job) SourceStatusLabel() string {
 	switch j.SourceStatus {
+	case "closed":
+		return "Closed — no longer hiring"
 	case "retrieved":
 		return "Source details retrieved"
 	case "unsupported":
@@ -132,13 +134,17 @@ type jobInserter interface {
 }
 
 func insertJob(db jobInserter, job Job) (sql.Result, error) {
+	stage := StageReview
+	if job.SourceStatus == "closed" {
+		stage = StageClosed
+	}
 	result, err := db.Exec(
 		`INSERT INTO jobs (url, host, title, description, company, stage, priority,
             salary_text, salary_origin, title_manual, description_manual, company_manual, salary_manual,
             source_status, source_note, source_checked_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		job.URL, job.Host, job.Title, job.Description, job.Company,
-		StageReview, PriorityNormal, job.SalaryText, job.SalaryOrigin,
+		stage, PriorityNormal, job.SalaryText, job.SalaryOrigin,
 		job.TitleManual, job.DescriptionManual, job.CompanyManual, job.SalaryManual,
 		job.SourceStatus, job.SourceNote, job.SourceCheckedAt,
 	)
@@ -224,6 +230,7 @@ func (a *App) updateJob(job Job) error {
 // edited values. A failed lookup updates evidence only, never the saved job content.
 func (a *App) applyPostingRefresh(id int64, metadata platforms.Metadata, status, note, checkedAt string) error {
 	result, err := a.db.Exec(`UPDATE jobs SET
+			stage = CASE WHEN ? = 'closed' THEN 'closed' ELSE stage END,
             title = CASE WHEN ? = 'retrieved' AND title_manual = 0 AND ? <> '' THEN ? ELSE title END,
             company = CASE WHEN ? = 'retrieved' AND company_manual = 0 AND ? <> '' THEN ? ELSE company END,
             description = CASE WHEN ? = 'retrieved' AND description_manual = 0 AND ? <> '' THEN ? ELSE description END,
@@ -231,6 +238,7 @@ func (a *App) applyPostingRefresh(id int64, metadata platforms.Metadata, status,
             salary_origin = CASE WHEN ? = 'retrieved' AND salary_manual = 0 AND ? <> '' THEN 'employer' ELSE salary_origin END,
             source_status = ?, source_note = ?, source_checked_at = ?
             WHERE id = ?`,
+		status,
 		status, metadata.Title, metadata.Title,
 		status, metadata.Company, metadata.Company,
 		status, metadata.Description, metadata.Description,

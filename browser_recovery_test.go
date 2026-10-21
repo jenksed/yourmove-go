@@ -68,7 +68,7 @@ func TestClosedAshbyTabRecoversWithoutDeadEnd(t *testing.T) {
 		t.Fatalf("lost browser not retired: %+v closed=%d", state, lost.closedCount())
 	}
 	page := httptest.NewRecorder()
-	native.ServeHTTP(page, httptest.NewRequest("GET", "/jobs/1/inspection", nil))
+	native.ServeHTTP(page, httptest.NewRequest("GET", "http://localhost/jobs/1/inspection", nil))
 	for _, fragment := range []string{"Application browser closed", "Open application (no automatic upload)", "Selected.pdf", "Start a new authorized resume handoff"} {
 		if !strings.Contains(page.Body.String(), fragment) {
 			t.Errorf("missing recovery control %q", fragment)
@@ -151,7 +151,7 @@ func TestLostTabDiscardsStagedResumeAndDoesNotAttemptUpload(t *testing.T) {
 	if err := h.start(context.Background(), 7, testAshbyPosting); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.armResume(7, dir, path, "Resume.pdf"); err != nil {
+	if err := h.armResume(7, dir, path, "Resume.pdf", nil); err != nil {
 		t.Fatal(err)
 	}
 	h.watch(7, testAshbyPosting, func(browser.Observation) (int64, error) { return 0, errors.New("unexpected save") })

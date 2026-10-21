@@ -105,7 +105,7 @@ func TestRoleFamilyExampleRoutingAndPersistence(t *testing.T) {
 	if err := a.assignResume(1, linux.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.recordSubmission(1, "confirmed", mustToken(t)); err != nil {
+	if err := a.recordSubmission(1, "confirmed", reviewedSubmissionToken(t, a, 1)); err != nil {
 		t.Fatal(err)
 	}
 	if err := a.deleteFamily(techID); err != nil {
@@ -180,7 +180,7 @@ func TestRoleFamilyHTTPAndWailsRouting(t *testing.T) {
 	desktop := newDesktopMux(a)
 	for _, target := range []string{"/utilities", "/families", "/resumes"} {
 		w := httptest.NewRecorder()
-		ordinary.ServeHTTP(w, httptest.NewRequest(http.MethodGet, target, nil))
+		ordinary.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "http://localhost"+target, nil))
 		if w.Code != http.StatusOK {
 			t.Fatalf("GET %s: %d %s", target, w.Code, w.Body.String())
 		}
@@ -218,12 +218,12 @@ func TestRoleFamilyHTTPAndWailsRouting(t *testing.T) {
 	}
 	a.saveJob(Job{URL: "https://example.com/eng", Host: "example.com", Title: "Technical Support Engineer"})
 	w := httptest.NewRecorder()
-	ordinary.ServeHTTP(w, httptest.NewRequest("GET", "/jobs/1", nil))
+	ordinary.ServeHTTP(w, httptest.NewRequest("GET", "http://localhost/jobs/1", nil))
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "Use suggested resume") {
 		t.Fatalf("job suggestion: %d %s", w.Code, w.Body.String())
 	}
 	w = httptest.NewRecorder()
-	ordinary.ServeHTTP(w, httptest.NewRequest("GET", "/jobs", nil))
+	ordinary.ServeHTTP(w, httptest.NewRequest("GET", "http://localhost/jobs", nil))
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "Suggested: cv.pdf") {
 		t.Fatalf("list suggestion: %d %s", w.Code, w.Body.String())
 	}

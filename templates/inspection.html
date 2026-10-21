@@ -3,23 +3,24 @@
 <body>
 {{template "shell-open" "jobs"}}
 <nav class="breadcrumbs"><a href="/jobs">Opportunities</a><span>/</span><a href="/jobs/{{.Job.ID}}#prepare">{{if .Job.Title}}{{.Job.Title}}{{else}}Saved job{{end}}</a><span>/</span>Inspection</nav>
-<header class="page-heading g53-heading"><div><p class="eyebrow">APPLICATION WORKSPACE · EMPLOYER BROWSER</p><h1>Prepare the resume. Finish the application.</h1><p class="page-description">{{if .Job.Title}}{{.Job.Title}}{{else}}{{.Job.Host}}{{end}} · YourMove monitors the employer form and attaches the selected document when it can identify the right control.</p></div></header>
-<section class="panel g53-panel" aria-labelledby="inspection-live-title">
-  <div class="section-heading"><div><p class="eyebrow">STEP 1 · EMPLOYER BROWSER</p><h2 id="inspection-live-title">Employer application</h2><p class="section-subtitle">YourMove opens the Ashby application form directly. Continue manually only if the employer requires more steps. YourMove only attaches the resume you explicitly approved. It does not fill questions, click Continue, or submit.</p></div></div>
+<header class="page-heading g53-heading"><div><p class="eyebrow">APPLICATION WORKSPACE</p><h1>Employer application</h1><p class="page-description">{{if .Job.Title}}{{.Job.Title}}{{else}}{{.Job.Host}}{{end}} · You review and submit the employer form.</p></div></header>
+<section class="panel g53-panel inspection-primary" aria-labelledby="inspection-live-title">
+  <div class="section-heading"><div><h2 id="inspection-live-title">Resume handoff</h2><p class="section-subtitle">YourMove transfers only the contacts and resume approved for this handoff. Complete other questions, advance steps, and submit personally.</p></div></div>
   {{if .BrowserSupported}}
-  <div class="g53-state" role="status" {{if .BrowserOpen}}data-browser-watch data-job-id="{{.Job.ID}}" data-observed-id="{{.BrowserState.LatestID}}" data-resume-status="{{.BrowserState.ResumeStatus}}" data-phase="{{.BrowserState.Phase}}"{{end}}>
+  <div class="g53-state" role="status" {{if .BrowserOpen}}data-browser-watch data-job-id="{{.Job.ID}}" data-observed-id="{{.BrowserState.LatestID}}" data-contact-status="{{.BrowserState.ContactStatus}}" data-resume-status="{{.BrowserState.ResumeStatus}}" data-phase="{{.BrowserState.Phase}}"{{end}}>
     <div><strong data-handoff-title>{{.BrowserState.HandoffTitle}}</strong><p data-handoff-detail aria-live="polite">{{.BrowserState.HandoffDetail}}</p></div>
   </div>
   {{if and .Handoff.Allowed (or (eq .BrowserState.ResumeStatus "") (and (not .BrowserOpen) (eq .BrowserState.ResumeStatus "waiting")))}}
   <form method="POST" action="/jobs/{{.Job.ID}}/handoff" class="g55-handoff-form">
-    <input type="hidden" name="resume_id" value="{{.SelectedResume.ID}}"><input type="hidden" name="resume_hash" value="{{.SelectedResume.SHA256}}">
-    <label class="confirm-row"><input type="checkbox" required name="confirm" value="yes"><span>Attach the selected <strong>{{.SelectedResume.Name}}</strong> to this Ashby application if a unique resume field is found. Ashby may receive the file immediately. I will review and submit personally.</span></label>
+    <input type="hidden" name="destination" value="{{.Job.URL}}"><input type="hidden" name="resume_id" value="{{.SelectedResume.ID}}"><input type="hidden" name="resume_hash" value="{{.SelectedResume.SHA256}}">
+    <p>Attach the selected <strong>{{.SelectedResume.Name}}</strong> to this employer application if a unique resume field is found. The employer may receive the file immediately. I will review and submit personally.</p>
     <button type="submit" class="button button-primary">{{if eq .BrowserState.Phase "interrupted"}}Start a new authorized resume handoff ↗{{else}}Prepare resume handoff ↗{{end}}</button>
   </form>
   {{end}}
   {{if and (eq .BrowserState.Phase "interrupted") (or (eq .BrowserState.ResumeStatus "selected") (eq .BrowserState.ResumeStatus "checking") (eq .BrowserState.ResumeStatus "attention"))}}<p class="small-muted">A previous resume attachment may have been attempted. It will not be automatically replayed. Reopen the application and check the employer form; if needed, attach the selected resume manually.</p>{{end}}
   {{if not .Handoff.Allowed}}<p class="small-muted">{{.Handoff.Reason}} <a href="/jobs/{{.Job.ID}}#prepare">Review preparation</a>.</p>{{end}}
   {{if .BrowserOpen}}
+  {{if .BrowserState.ContactSummary}}<p><strong>{{.BrowserState.ContactSummary}}</strong></p>{{template "contact-outcomes" .BrowserState.ContactOutcomes}}{{end}}
   {{if .BrowserState.ResumeName}}<div class="g55-resume-status" data-resume-state="{{.BrowserState.ResumeStatus}}"><strong>Selected document: {{.BrowserState.ResumeName}}</strong><p>{{.BrowserState.ResumeMessage}}</p></div>{{else}}<p class="small-muted">Read-only browser session: no resume has been authorized for upload.</p>{{end}}
   {{if .BrowserState.ResumeRetryable}}
   <form method="POST" action="/jobs/{{.Job.ID}}/browser/retry-resume" class="g55-retry-form"><button type="submit" class="button button-primary">Retry resume check (no file sent yet)</button></form>
@@ -35,10 +36,10 @@
       <button type="submit" class="button button-secondary">Reopen application ↗</button>
     </form>
   {{if eq .BrowserState.Phase "attention"}}</div>{{else}}</details>{{end}}
-  <p class="small-muted">Keep Chromium open to finish the employer form yourself. When the resume is selected, check Ashby’s upload or acceptance message before submitting. If automatic attachment is uncertain, choose the file manually in Chromium. Use Recheck this page if automatic observation is unavailable.</p>
+  <p class="small-muted">Keep Chromium open to finish the employer form yourself. When the resume is selected, check the employer’s upload or acceptance message before submitting. If automatic attachment is uncertain, choose the file manually in Chromium. Use Recheck this page if automatic observation is unavailable.</p>
   {{else}}
-  <div class="g53-button-row"><form method="POST" action="/jobs/{{.Job.ID}}/browser/start"><button class="button {{if eq .BrowserState.Phase "interrupted"}}button-secondary{{else}}button-primary{{end}}" type="submit">{{if eq .BrowserState.Phase "interrupted"}}Open application (no automatic upload) ↗{{else}}Open browser (read-only) ↗{{end}}</button></form></div>
-  <p class="small-muted">Opens an isolated Chromium window directly at this Ashby application. Keep it open while completing the application's pages. Inspection snapshots remain saved after the window closes.</p>
+  <div class="g53-button-row"><form method="POST" action="/jobs/{{.Job.ID}}/browser/start"><button class="button {{if or .Handoff.Allowed (eq .BrowserState.Phase "interrupted")}}button-secondary{{else}}button-primary{{end}}" type="submit">{{if eq .BrowserState.Phase "interrupted"}}Open application (no automatic upload) ↗{{else}}Open browser (read-only) ↗{{end}}</button></form></div>
+  <p class="small-muted">Opens an isolated Chromium window directly at this employer application. Keep it open while completing the application's pages. Inspection snapshots remain saved after the window closes.</p>
   {{end}}
   <details class="g53-detail"><summary>Form observations and troubleshooting (optional)</summary>
   {{if .BrowserItem}}
@@ -51,16 +52,17 @@
   {{end}}
   {{if .BrowserHistory}}<details class="g53-detail"><summary>Earlier snapshots ({{len .BrowserHistory}})</summary><ol class="g53-history">{{range .BrowserHistory}}<li><a href="/jobs/{{$.Job.ID}}/inspection?browser={{.ID}}">{{.CheckedAt}}</a> · {{.FieldCount}} fields</li>{{end}}</ol></details>{{end}}
   </details>
-  {{else}}<p class="small-muted">Managed rendered-form inspection currently supports Ashby. Public question discovery below is available for other compatible providers.</p>{{end}}
+  {{else}}<p class="small-muted">Managed rendered-form inspection supports Ashby, Greenhouse, and Lever. Public question discovery below is available for other compatible providers.</p>{{end}}
 </section>
-<section class="panel g53-panel" aria-labelledby="public-title">
-  <div class="section-heading"><div><p class="eyebrow">OPTIONAL · DIAGNOSTICS</p><h2 id="public-title">Published requirements</h2><p class="section-subtitle">API results are distinct from fields observed in the browser. Neither implies all steps are known.</p></div><form method="POST" action="/jobs/{{.Job.ID}}/inspect"><button type="submit" class="button button-secondary">{{if .Item}}Refresh public requirements{{else}}Check public requirements{{end}} ↻</button></form></div>
+<details class="inspection-optional"><summary>Published requirements <span class="small-muted">Optional diagnostics</span><span class="summary-chevron" aria-hidden="true">⌄</span></summary>
+<section class="g53-panel" aria-labelledby="public-title">
+  <div class="section-heading"><div><h2 id="public-title">Published requirements</h2><p class="section-subtitle">Public API results differ from observed browser fields; neither proves all steps are known.</p></div><form method="POST" action="/jobs/{{.Job.ID}}/inspect"><button type="submit" class="button button-secondary">{{if .Item}}Refresh public requirements{{else}}Check public requirements{{end}} ↻</button></form></div>
   {{if .Item}}
     <p class="small-muted">{{.Item.Platform}} · {{.Item.Source}} · {{.Item.Completeness}} · {{.Item.CheckedAt}}</p><p>{{.Item.Note}}</p>
     {{if .Item.Fields}}<div class="g5-fields">{{range .Item.Fields}}<div class="g5-field"><div><strong>{{.Label}}</strong><p class="small-muted">{{.Kind}}{{if .Required}} · Required{{end}}{{if .Options}} · {{len .Options}} choices{{end}}</p></div><span class="status {{if eq .Mapping "approved profile"}}status-ready{{else}}status-review{{end}}">{{if .Sensitive}}Manual review{{else if eq .Mapping "approved profile"}}Profile match possible{{else}}Unmapped{{end}}</span></div>{{end}}</div>{{else}}<p class="small-muted">No public form questions are exposed by this platform. Use the rendered inspector when supported.</p>{{end}}
     {{if .Item.Steps}}<details class="g53-detail"><summary>Publicly known and anticipated steps</summary><ol class="g5-step-list">{{range .Item.Steps}}<li><strong>{{.Label}}</strong><p class="small-muted">{{.State}} · {{.Action}}</p></li>{{end}}</ol></details>{{end}}
   {{else}}<p class="small-muted">No published requirements have been checked yet. This is optional; a rendered inspection can be more complete.</p>{{end}}
-</section>
-<section class="panel g53-panel"><h2>Candidate information remains yours</h2><p class="small-muted">{{if .Profile.Approved}}Your approved profile is available for future, separately authorized preparation.{{else}}No candidate profile has been approved.{{end}} Read-only inspection does not transmit profile information. The separate authorized handoff may transmit the exact selected resume; YourMove cannot submit the application. Questions inside cross-origin frames and unvisited later steps remain unknown.</p><a class="button button-secondary" href="/candidate">Candidate profile →</a></section>
+</section></details>
+<section class="inspection-privacy"><h2>Candidate information remains yours</h2><p class="small-muted">{{if .Profile.Approved}}Your approved profile is available for future, separately authorized preparation.{{else}}No candidate profile has been approved.{{end}} Read-only inspection does not transmit profile information. The separate authorized handoff may transmit the exact selected resume; YourMove cannot submit the application. Questions inside cross-origin frames and unvisited later steps remain unknown.</p><a class="button button-secondary" href="/candidate">Candidate profile →</a></section>
 {{template "shell-close" .}}
 </body></html>

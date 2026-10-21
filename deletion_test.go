@@ -24,7 +24,7 @@ func TestDeleteJobsAtomicPreservesResumeLibraryAndDuplicatesCanBeReimported(t *t
 	if err := a.assignResume(1, resume.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.recordSubmission(3, "real application", mustToken(t)); err != nil {
+	if err := a.recordSubmission(3, "real application", reviewedSubmissionToken(t, a, 3)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := a.deleteJobs([]int64{1, 3}, false); !errors.Is(err, ErrJobHasHistory) {
@@ -73,7 +73,7 @@ func TestDeleteFormsExplicitConfirmationAndWailsNavigation(t *testing.T) {
 	if good.Code != http.StatusOK || !strings.Contains(good.Body.String(), `window.location.replace("/jobs")`) {
 		t.Fatalf("Wails navigation %d %s", good.Code, good.Body.String())
 	}
-	if err := a.recordSubmission(2, "real", mustToken(t)); err != nil {
+	if err := a.recordSubmission(2, "real", reviewedSubmissionToken(t, a, 2)); err != nil {
 		t.Fatal(err)
 	}
 	weak := postApp(newMux(a), "/jobs/2/delete", url.Values{"confirm": {"yes"}, "confirm_phrase": {"DELETE"}}, "", "")
@@ -93,7 +93,7 @@ func TestBulkDeleteRejectsHistoryAndCrossSiteRequests(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := a.recordSubmission(2, "actual", mustToken(t)); err != nil {
+	if err := a.recordSubmission(2, "actual", reviewedSubmissionToken(t, a, 2)); err != nil {
 		t.Fatal(err)
 	}
 	form := url.Values{"job_ids": {"1", "2"}, "confirm": {"yes"}, "confirm_phrase": {"DELETE"}}

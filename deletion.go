@@ -41,7 +41,10 @@ func (a *App) deleteJobs(ids []int64, allowHistory bool) (int64, error) {
 		}
 	}
 	for _, id := range ids {
-		// Inspections are job-local evidence; remove dependents before the job.
+		// Answers and inspections are job-local; remove dependents before the job.
+		if _, err := tx.Exec(`DELETE FROM application_answers WHERE job_id=?`, id); err != nil {
+			return 0, err
+		}
 		if _, err := tx.Exec(`DELETE FROM application_fields WHERE inspection_id IN (SELECT id FROM application_inspections WHERE job_id=?)`, id); err != nil {
 			return 0, err
 		}
@@ -55,6 +58,9 @@ func (a *App) deleteJobs(ids []int64, allowHistory bool) (int64, error) {
 			if _, err := tx.Exec(`DELETE FROM submissions WHERE job_id=?`, id); err != nil {
 				return 0, err
 			}
+		}
+		if _, err := tx.Exec(`DELETE FROM cover_letters WHERE job_id=?`, id); err != nil {
+			return 0, err
 		}
 		if _, err := tx.Exec(`DELETE FROM jobs WHERE id=?`, id); err != nil {
 			return 0, err

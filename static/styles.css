@@ -428,3 +428,313 @@ small,.small-muted{font-size:12px;line-height:1.55;color:var(--color-muted)}
   .job-hero .heading-actions > * {max-width:100%}
   .g55-handoff-form .button {width:100%;white-space:normal}
 }
+
+/* Cover Letter Studio: an editable letter that stays within the Prepare column. */
+.letter-studio {min-width:0}
+.letter-form, .letter-generate-form {display:grid;min-width:0;gap:12px;margin:13px 0}
+.letter-form textarea {min-height:250px;max-width:100%;white-space:pre-wrap;line-height:1.65}
+.letter-studio .form-actions {display:flex;justify-content:flex-start;flex-wrap:wrap;gap:10px}
+.letter-studio .confirm-row {overflow-wrap:anywhere}
+.letter-studio .inline-hint {margin:9px 0}
+@media(max-width:480px){.letter-studio{padding:13px}.letter-form textarea{min-height:260px}}
+
+.draft-history {display:flex;flex-direction:column;gap:9px;min-width:0}
+.draft-history a {overflow-wrap:anywhere}
+
+/* Cover Letter Studio: one writing surface, no duplicated source-review panels. */
+.letter-studio{padding:24px;min-width:0;margin:22px 0;border:1px solid var(--color-border);border-radius:10px;background:var(--color-surface)}
+.letter-studio>.section-heading{padding:0 0 6px;align-items:center}
+.letter-studio>.small-muted{margin:3px 0 15px}
+.letter-checks{display:flex;flex-wrap:wrap;gap:7px;margin:15px 0}
+.letter-check{font-size:11px;font-weight:650;line-height:1.4;border:1px solid var(--color-border);border-radius:6px;padding:7px 9px;background:var(--color-surface-muted);color:var(--color-muted)}
+.letter-check.is-ready{color:var(--color-text)}
+.letter-check.is-missing{color:var(--color-attention);border-color:var(--color-attention)}
+.letter-inputs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.letter-inputs .field,.letter-inputs input,.letter-inputs select{min-width:0;width:100%}
+.letter-inputs small{color:var(--color-muted);overflow-wrap:anywhere}
+.letter-consent{margin:6px 0 0;line-height:1.5}
+.letter-generate-button{justify-self:start;min-height:42px}
+.letter-notice,.letter-help{padding:10px 12px;border-radius:6px;border:1px solid var(--color-border);background:var(--color-surface-muted);font-size:12px;overflow-wrap:anywhere}
+.letter-source-details{margin:16px 0 0;border-top:1px solid var(--color-border);min-width:0}
+.letter-source-details>summary{cursor:pointer;padding:14px 0 9px;font-size:12px;font-weight:700;color:var(--color-muted)}
+.letter-source-detail-body{padding:3px 0 15px;min-width:0}
+.letter-source-title{display:flex;flex-wrap:wrap;gap:5px 8px;font-size:12px;min-width:0;margin-top:14px}
+.letter-source-title span{overflow-wrap:anywhere;color:var(--color-muted)}
+.letter-studio .evidence-text{max-height:14rem}
+.letter-meta{margin:15px 0 5px}
+@media(max-width:760px){.letter-studio{padding:18px}.letter-inputs{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:480px){.letter-studio{padding:15px}.letter-generate-button{width:100%;white-space:normal}}
+
+/* AI connections and writing share the same functional typography as other workspaces. */
+.ai-hub {min-width:0}
+.ai-hub-header {align-items:flex-start}
+.ai-hub-header .page-description {max-width:650px}
+.ai-mode-heading {display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:12px;margin:24px 0 15px}
+.ai-mode-heading h2 {font-size:18px;margin:0}
+.ai-muted-inline {color:var(--color-muted);font-size:12px}
+.ai-connection-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.ai-connection-card {min-width:0;background:var(--color-surface);border:1px solid var(--color-border);border-radius:9px;padding:19px 20px}
+.ai-connection-top {display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.ai-connection-top h3 {font-size:15px;margin:0;line-height:1.45}
+.ai-state {display:inline-block;flex-shrink:0;font-size:11px;font-weight:700;color:var(--color-muted)}
+.ai-state-ready {color:var(--color-primary)}
+.ai-state-signin,.ai-state-setup {color:var(--color-attention)}
+.ai-connection-access {font-size:12px;color:var(--color-muted);margin:4px 0 13px}
+.ai-connection-detail {font-size:13px;font-weight:650;margin:0 0 5px}
+.ai-connection-setup {font-size:12px;line-height:1.55;color:var(--color-muted);margin:0;overflow-wrap:anywhere}
+.ai-hub-footer {margin-top:24px;border-top:1px solid var(--color-border);padding-top:20px;color:var(--color-muted);max-width:830px}
+.ai-hub-footer h2 {font-size:16px;color:var(--color-text)}
+.ai-hub-footer p {max-width:760px;font-size:12px;line-height:1.65}
+
+/* The cover-letter editor is a document first, generation controls second. */
+.letter-studio.ai-writer {padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;max-width:780px;margin:0}
+.writer-heading {display:flex;align-items:start;justify-content:space-between;gap:14px;margin:7px 0 17px}
+.writer-heading h3 {font-size:16px;margin:0 0 4px;letter-spacing:-.012em}
+.writer-heading .text-link {white-space:nowrap;font-size:12px}
+.writer-meta {margin:0;color:var(--color-muted);font-size:12px;line-height:1.6}
+.ai-writer>.letter-notice,.ai-writer>.letter-help {margin:10px 0}
+.ai-readiness {display:flex;flex-wrap:wrap;gap:9px 20px;margin:16px 0 12px}
+.ai-readiness-item {display:inline-flex;gap:7px;align-items:center;color:var(--color-muted);font-size:12px;line-height:1.4}
+.ai-readiness-item>span {display:grid;place-items:center;width:17px;height:17px;border-radius:50%;background:var(--color-primary-soft);color:var(--color-primary);font-size:11px;font-weight:800;flex:0 0 17px}
+.ai-readiness-item.is-missing>span {background:var(--color-attention-soft);color:var(--color-attention)}
+.ai-writer .letter-form {display:grid;gap:12px;margin:0 0 14px;padding:0}
+.ai-writer .letter-form textarea {border:1px solid var(--color-border-strong);border-radius:7px;min-height:360px;padding:17px 19px;line-height:1.7;font-size:14px;background:var(--color-surface);resize:vertical}
+.ai-draft-toolbar {display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
+.ai-draft-toolbar span {font-size:12px;color:var(--color-muted)}
+.writer-revision {border-top:1px solid var(--color-border);margin-top:24px}
+.writer-revision>summary {display:flex;align-items:center;gap:14px;list-style:none;padding:17px 0;cursor:pointer}
+.writer-revision>summary::-webkit-details-marker {display:none}
+.writer-revision>summary strong {font-size:13px;display:block}
+.writer-revision>summary small {font-size:12px;display:block;margin-top:3px}
+.writer-revision-body {padding:0 0 19px}
+.writer-settings-heading {display:grid;gap:3px}
+.writer-settings-heading strong {font-size:13px}
+.writer-settings-heading small {font-size:12px;color:var(--color-muted)}
+.ai-writer .letter-generate-form {display:grid;gap:15px;margin:14px 0 0;padding:0}
+.ai-writer .letter-inputs {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 14px}
+.ai-writer .letter-inputs .field-full {grid-column:1/-1}
+.ai-generation-footer {border-top:1px solid var(--color-border);padding-top:18px;display:grid;gap:14px}
+.ai-generation-footer .letter-consent {margin:0;max-width:690px;line-height:1.6;font-size:13px}
+.ai-generate-actions {display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+.ai-generate-actions .button {box-shadow:none}
+.ai-generate-actions small {color:var(--color-muted)}
+.ai-writer-details {padding:0 0 8px;max-width:780px}
+.ai-writer-details .letter-source-details {margin:0}
+.ai-writer-details .letter-source-details>summary {padding:15px 0;color:var(--color-muted)}
+.ai-writer .evidence-text {max-height:15rem;overflow:auto}
+@media(max-width:760px) {
+  .ai-connection-grid {grid-template-columns:minmax(0,1fr)}
+  .writer-heading {flex-wrap:wrap}
+  .ai-writer .letter-inputs {grid-template-columns:minmax(0,1fr)}
+}
+@media(max-width:480px) {
+  .ai-generate-actions .button {width:100%}
+  .ai-connection-top {align-items:flex-start}
+}
+
+/* Design rule R1: decisions first. Application surfaces only.
+   Keep server POSTs, authorizations, and Wails redirects untouched. */
+.prepare-layout {grid-template-columns:minmax(0,1fr);gap:16px}
+.prepare-layout .workspace-column,.prepare-layout .workspace-aside {width:100%;max-width:920px}
+.preparation-panel {border:0;background:transparent;box-shadow:none;padding:0;margin:0}
+.prepare-intro {display:flex;justify-content:space-between;align-items:start;gap:20px;padding:0 0 22px;border-bottom:1px solid var(--color-border)}
+.prepare-intro h2 {font-size:clamp(23px,2.5vw,29px);letter-spacing:-.03em;margin:0 0 5px}
+.prepare-intro .eyebrow {margin-bottom:7px}
+.prepare-intro p {margin:0}
+.prepare-intro .status {flex-shrink:0;margin-top:7px}
+.prepare-resume-block,.prepare-handoff {padding:24px 0;border-bottom:1px solid var(--color-border)}
+.prepare-block-heading {display:flex;justify-content:space-between;align-items:start;gap:12px;margin:0 0 15px}
+.prepare-block-heading h3 {font-size:17px;letter-spacing:-.015em;margin:0 0 4px}
+.prepare-block-heading p {font-size:12px;color:var(--color-muted);margin:0;line-height:1.5}
+.prepare-block-heading .text-link {flex-shrink:0;font-size:12px}
+.prepare-workspace .resume-select-form {margin:0;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:end;justify-items:stretch}
+.prepare-workspace .resume-select-form .button {min-height:42px}
+.prepare-workspace .match-suggestion {margin:15px 0 0}
+.prepare-workspace .inline-hint {margin:10px 0 0}
+.prepare-writer {border-bottom:1px solid var(--color-border);min-width:0}
+.prepare-writer>summary {list-style:none;display:flex;align-items:center;justify-content:space-between;gap:20px;padding:20px 0;cursor:pointer}
+.prepare-writer>summary::-webkit-details-marker,.prepare-context>summary::-webkit-details-marker,.inspection-optional>summary::-webkit-details-marker {display:none}
+.prepare-writer>summary strong {font-size:17px;display:block;line-height:1.3}
+.prepare-writer>summary small {font-size:12px;display:block;margin-top:4px;line-height:1.5}
+.prepare-writer-state {font-size:12px;color:var(--color-muted);white-space:nowrap;display:flex;align-items:center;gap:10px}
+.prepare-writer .letter-studio.ai-writer {margin:0 0 21px;border:0;border-radius:0;box-shadow:none;overflow:visible}
+.prepare-writer .ai-writer-header {background:none;border:0;padding:8px 0 15px}
+.prepare-writer .ai-writer-header h2 {font-size:23px}
+.prepare-writer .ai-readiness {padding:12px 0 3px}
+.prepare-writer .ai-writer>.letter-notice,.prepare-writer .ai-writer>.letter-help {margin:10px 0}
+.prepare-writer .ai-writer .letter-generate-form {padding:15px 0 22px}
+.prepare-writer .ai-draft-heading {padding:20px 0 0}
+.prepare-writer .ai-writer .letter-form {padding:10px 0 22px}
+.prepare-writer .ai-writer-details {padding:0 0 8px}
+.prepare-writer .ai-empty-draft {padding:15px 0;background:transparent}
+.prepare-handoff {padding-top:24px;min-width:0;overflow-wrap:anywhere}
+.prepare-workspace #application-action {padding-top:0}
+.prepare-workspace #prepare-handoff-title {font-size:21px;letter-spacing:-.025em;margin:0 0 8px}
+.local-save-confirmation {margin:0 0 16px;padding:8px 0 10px;border-bottom:1px solid var(--color-border);font-size:13px}
+.scope-destination {font-size:13px;line-height:1.5}
+.pending-answer-scope dt {font-weight:650}
+.pending-answer-scope dd {white-space:pre-wrap;overflow-wrap:anywhere;margin:0 0 8px}
+.prepare-workspace .transfer-letter-scope {max-height:240px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6;margin-block:0}
+.prepare-workspace .prepare-resume-block {padding-block:16px;overflow-wrap:anywhere;min-width:0}
+.prepare-resume-block .prepare-block-heading {margin-bottom:8px}
+.resume-change>summary {cursor:pointer;font-size:12px;font-weight:650;color:var(--color-primary);width:fit-content}
+.resume-change[open]>summary {margin-bottom:12px}
+.letter-material-actions {font-size:12px;margin:0 0 12px}
+.observed-results h3 {font-size:16px;margin:0 0 10px}
+.observed-results p {max-width:85ch}
+.prepare-handoff .g55-handoff-form {margin:14px 0 10px;border:0;padding:0;border-radius:0;max-width:740px}
+.prepare-handoff .g55-handoff-form>p,
+.prepare-handoff .g55-handoff-form .transfer-contact-facts,
+.prepare-handoff .g55-handoff-form .pending-answer-scope {margin:0}
+.prepare-handoff-links {display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:15px}
+.prepare-handoff-links .external-application-action {margin:0}
+.prepare-handoff-links .text-link {font-size:12px}
+.prepare-workspace .submission-disclosure {margin:18px 0 0;border:1px solid var(--color-border);background:var(--color-surface);max-width:920px}
+.prepare-context {border-top:1px solid var(--color-border);padding:15px 0 0}
+.prepare-context>summary {display:flex;gap:11px;align-items:center;cursor:pointer;list-style:none;font-size:12px;font-weight:700}
+.prepare-context-label {font-size:12px;color:var(--color-muted);font-weight:500}
+.prepare-context-body {padding:13px 0;color:var(--color-muted);font-size:12px}
+.prepare-context-body>.button {margin-top:14px}
+.prepare-context .fact-list {margin-top:10px}
+.prepare-context .fact-list div {padding:8px 0}
+.application-heading {margin-bottom:8px}
+.application-evidence-note {color:var(--color-muted);font-size:12px;margin:0 0 20px;max-width:700px}
+.application-records .job-row {padding-block:18px}
+.application-row-hint {font-size:12px;color:var(--color-primary);font-weight:650;white-space:nowrap}
+.inspection-primary {max-width:960px}
+.inspection-optional {border-top:1px solid var(--color-border);padding:0;max-width:960px;margin:22px 0}
+.inspection-optional>summary {list-style:none;display:flex;align-items:center;gap:12px;padding:14px 0;font-weight:700;font-size:13px;cursor:pointer}
+.inspection-optional>summary .summary-chevron {margin-left:auto}
+.inspection-optional>section {padding:15px 0}
+.inspection-privacy {max-width:960px;border-top:1px solid var(--color-border);padding:18px 0;margin-top:20px}
+.inspection-privacy h2 {font-size:14px}
+.inspection-privacy .button {margin-top:8px}
+@media(max-width:760px) {
+  .prepare-intro {flex-wrap:wrap;gap:10px}
+  .prepare-block-heading {flex-wrap:wrap}
+  .prepare-workspace .resume-select-form {grid-template-columns:minmax(0,1fr)}
+  .prepare-workspace .resume-select-form .button {justify-self:start}
+  .prepare-writer>summary {align-items:flex-start}
+  .prepare-writer-state {font-size:11px}
+  .prepare-handoff-links {align-items:flex-start}
+  .application-row-hint {white-space:normal}
+}
+@media(max-width:480px) {
+  .prepare-writer>summary {flex-direction:column;gap:8px}
+  .prepare-workspace .resume-select-form .button {width:100%}
+  .prepare-handoff-links .external-application-action,.prepare-handoff-links .external-application-action button {width:100%}
+  .prepare-handoff-links>a.button {width:100%}
+  .application-row-hint {display:none}
+}
+
+/* R2: control parity, reading measure, and document lifecycle disclosure. */
+.field input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.field select {height:42px;min-height:42px;line-height:20px;max-width:100%;border-radius:7px}
+.field select {
+  appearance:none;-webkit-appearance:none;
+  padding:9px 36px 9px 11px;
+  background-color:var(--color-surface);
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23626b67' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 11px center;background-size:16px;
+}
+.field textarea {height:auto}
+.field small {max-width:72ch;line-height:1.5}
+.prepare-writer .letter-studio.ai-writer {max-width:780px}
+.prepare-writer .ai-writer .letter-form,
+.prepare-writer .ai-writer .letter-generate-form {padding:0;margin:0 0 14px}
+.prepare-writer .writer-revision-body .letter-generate-form {margin:14px 0 0}
+.prepare-writer .ai-writer-details {padding:0 0 8px}
+.prepare-writer .ai-readiness {margin:16px 0 12px;padding:0}
+.prepare-writer .ai-writer>.letter-notice,.prepare-writer .ai-writer>.letter-help {margin:10px 0}
+.prepare-writer .ai-writer .letter-form textarea {line-height:1.7;padding:17px 19px;border-radius:7px}
+.prepare-writer .ai-writer .letter-inputs .field input,
+.prepare-writer .ai-writer .letter-inputs .field select {height:42px;min-height:42px;border-radius:7px}
+.prepare-writer .ai-writer .letter-inputs .field-full {grid-column:1/-1}
+.prepare-writer .confirm-row {align-items:flex-start}
+.prepare-writer .letter-consent input {margin-top:3px}
+
+.library-import {display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap;border-top:1px solid var(--color-border);border-bottom:1px solid var(--color-border);padding:17px 0;margin:0 0 24px}
+.library-import-heading {min-width:0}
+.library-import-heading h2 {font-size:16px;margin:0 0 3px}
+.library-import-heading p {margin:0}
+.library-import .import-action {margin:0;gap:10px}
+.library-import .import-action .muted {font-size:12px}
+.document-row > .document-manage {grid-column:1/-1;width:100%;min-width:0;border-top:1px solid var(--color-border);margin-top:2px}
+.document-manage > summary {display:flex;align-items:center;gap:12px;list-style:none;cursor:pointer;padding:11px 0;color:var(--color-muted);font-weight:700;font-size:12px}
+.document-manage > summary::-webkit-details-marker {display:none}
+.document-manage-body {display:grid;gap:12px;padding:10px 0 14px;min-width:0}
+.document-manage-body > .document-routing-form {display:flex;align-items:end;flex-wrap:wrap;gap:12px 16px;border:0;padding:0;margin:0;min-width:0;width:100%}
+.document-manage-body > .document-routing-form > .field {flex:1 1 220px;min-width:0}
+.document-manage-body > .document-routing-form > .confirm-row {flex:0 1 250px}
+.document-manage-body > .danger-zone {margin:0;padding:7px 0;border-top:1px solid var(--color-border);min-width:0}
+.document-manage-body > .danger-zone > summary {list-style:none;display:flex;align-items:center;min-height:32px;font-size:12px;font-weight:680;color:var(--color-muted);cursor:pointer}
+.document-manage-body > .danger-zone > summary::-webkit-details-marker {display:none}
+.document-manage-body > .danger-zone > summary:after {content:'⌄';margin-left:auto;font-size:18px}
+.document-manage-body > .danger-zone[open] > summary:after {transform:rotate(180deg)}
+.document-manage-body > .danger-zone .danger-zone-body {padding:12px 0;min-width:0}
+.document-manage-body > .danger-zone .document-routing-form {display:flex;flex-wrap:wrap;gap:12px;align-items:end}
+.document-manage-body > .danger-zone .job-form {grid-template-columns:minmax(0,1fr);max-width:500px;gap:12px}
+.document-manage-body > .danger-zone .job-form > .field {grid-column:1}
+.document-manage-body > .danger-zone .job-form > .button {justify-self:start}
+@media(max-width:800px) {.library-import {align-items:flex-start}.document-row > .document-manage {grid-column:1/-1}}
+@media(max-width:480px) {
+  .library-import .import-action,.library-import .import-action .button {width:100%}
+  .document-manage-body > .document-routing-form {flex-direction:column;align-items:stretch}
+  .document-manage-body > .document-routing-form .field,.document-manage-body > .document-routing-form .confirm-row {width:100%;flex:auto}
+  .document-manage-body > .document-routing-form .button,.document-manage-body > .danger-zone .button {width:100%;white-space:normal}
+  .document-manage-body > .danger-zone .job-form {max-width:100%}
+}
+
+/* Approved facts and per-field results stay within the current Prepare decision. */
+.transfer-contact-facts { max-width: 48rem; margin-block: 12px 20px; }
+.transfer-contact-facts dd { overflow-wrap: anywhere; }
+.transfer-contact-outcomes { list-style: none; padding: 0; margin: 12px 0; }
+.transfer-contact-outcomes li { display: flex; gap: 12px; padding-block: 6px; }
+.transfer-contact-outcomes strong { flex: 0 0 6rem; }
+.transfer-contact-outcomes span { min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 480px) { .transfer-contact-outcomes li { display: block; } .transfer-contact-outcomes strong { display: block; } }
+
+.transfer-contact-outcomes:empty { display: none; }
+
+/* One bounded editor per discovered application question. */
+.application-questions { max-width: 780px; }
+.application-question-form { display: grid; gap: 8px; margin-block: 20px; min-width: 0; }
+.application-question-form .field { min-width: 0; }
+.application-question-form button { justify-self: start; }
+.application-question-form textarea { width: 100%; box-sizing: border-box; resize: vertical; }
+
+/* Focused question preparation; all forms remain in ordinary flow without JS. */
+.application-questions { max-width:none; scroll-margin-top:16px; }
+.question-heading { display:flex; align-items:baseline; justify-content:space-between; gap:8px 16px; flex-wrap:wrap; }
+.question-heading a { font-size:12px; font-weight:650; }
+.question-heading + p { margin:6px 0; max-width:70ch; }
+.question-layout,.question-editors,.question-panel { min-width:0; }
+.question-panel { overflow-wrap:anywhere; }
+.question-panel h4 { margin:8px 0; font-size:14px; }
+.question-panel .application-question-form { margin:0; max-width:780px; }
+.question-panel + .question-panel { border-top:1px solid var(--color-border); padding-top:16px; margin-top:16px; }
+.question-save-status { margin:0; }
+.question-reuse summary,.question-override summary { cursor:pointer; font-size:12px; padding:6px 0; color:var(--color-muted); }
+.question-reuse .confirm-row { margin:8px 0; }
+.question-navigation { display:flex; justify-content:space-between; gap:12px; margin-top:16px; padding-top:12px; border-top:1px solid var(--color-border); }
+.question-navigation button:disabled { opacity:.45; cursor:default; }
+.question-position { margin-bottom:10px; }
+.questions-enabled .question-panel { margin:0; border:0; padding:0; }
+.questions-enabled .question-layout { display:grid; gap:16px; }
+.questions-enabled .question-index { display:none; }
+.questions-enabled .question-chooser { display:flex; min-width:0; }
+.question-index h4 { font-size:11px; line-height:1.45; font-weight:650; color:var(--color-muted); margin:0 0 6px; }
+.question-index > div + div { margin-top:18px; }
+.question-index a { display:block; font-size:12px; text-decoration:none; padding:7px 8px; border-left:2px solid transparent; overflow-wrap:anywhere; }
+.question-index a[aria-current] { border-color:var(--color-primary); background:var(--color-primary-soft); font-weight:650; }
+.answer-save-error { max-width:780px; }
+.answer-save-error textarea { width:100%; }
+@media(min-width:1150px) {
+  .questions-enabled .question-layout { grid-template-columns:220px minmax(0,1fr); gap:24px; }
+  .questions-enabled .question-index { display:block; border-right:1px solid var(--color-border); padding-right:16px; }
+  .questions-enabled .question-chooser { display:none; }
+}
+@media(max-width:480px) {
+  .question-panel button { white-space:normal; max-width:100%; }
+  .question-heading { align-items:flex-start; }
+}

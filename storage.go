@@ -85,6 +85,28 @@ func migrateLegacyJobs(destination, legacy string) error {
 	if _, err := db.Exec("VACUUM INTO ?", stage); err != nil {
 		return fmt.Errorf("copy existing jobs with SQLite snapshot: %w", err)
 	}
+	// Inspect the consistent snapshot, not the live source. A database-only
+	// migration cannot carry the document files referenced by a modern workspace.
+	defer os.Remove(stage)
+	snapshot, err := sql.Open("sqlite", stage)
+	if err != nil {
+		return err
+	}
+	var tables, documents int
+	err = snapshot.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='resumes'").Scan(&tables)
+	if err == nil && tables > 0 {
+		err = snapshot.QueryRow("SELECT count(*) FROM resumes").Scan(&documents)
+	}
+	closeErr := snapshot.Close()
+	if err != nil {
+		return fmt.Errorf("inspect migration snapshot: %w", err)
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	if documents > 0 {
+		return fmt.Errorf("legacy workspace at %s contains resume documents; automatic database-only migration refused. Quit YourMove and back up and restore the entire workspace (jobs.db and resumes directory) together; the original has been preserved", legacy)
+	}
 	if err := os.Chmod(stage, 0600); err != nil {
 		return err
 	}

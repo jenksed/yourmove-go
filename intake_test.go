@@ -189,7 +189,7 @@ func TestTriageRouteAndTemplate(t *testing.T) {
 		t.Fatal(err)
 	}
 	rec := httptest.NewRecorder()
-	newMux(a).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/jobs", nil))
+	newMux(a).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "http://localhost/jobs", nil))
 	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "SUGGESTED NEXT MOVE") || !strings.Contains(rec.Body.String(), "Import multiple job URLs") || !strings.Contains(rec.Body.String(), "Choose a resume") {
 		t.Fatalf("missing triage or import: %d %s", rec.Code, rec.Body.String())
 	}

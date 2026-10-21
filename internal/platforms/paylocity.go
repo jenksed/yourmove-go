@@ -53,6 +53,9 @@ func fetchJobMetadata(ctx context.Context, jobURL string) (Metadata, error) {
 		return Metadata{}, fmt.Errorf("fetch job metadata: %w", err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusGone {
+		return Metadata{}, fmt.Errorf("%w: job page returned HTTP %d", ErrClosed, resp.StatusCode)
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		return Metadata{}, fmt.Errorf("job page returned HTTP %d", resp.StatusCode)

@@ -1,6 +1,6 @@
 # YourMove Workbench — UI iteration
 
-This is a **presentation-only** iteration. The existing routes, Go `html/template` rendering, Wails asset handler, POST/303 compatibility adapter, storage paths, resume picker, submission semantics and document bytes remain authoritative and unchanged. A new read-only `/applications` route lists jobs that have manual submission records.
+This note began as a presentation-only iteration. The current workbench also supports saved cover letters, application-specific answers, managed browser transfers, and desktop document export. Existing routes, Go `html/template` rendering, Wails POST/303 compatibility, storage paths, and explicit submission confirmation remain authoritative. `/applications` lists jobs that have manual submission records.
 
 ## Adopted from the TypeScript application
 
@@ -35,6 +35,10 @@ Test `/jobs`, `/jobs/{id}`, `/resumes`, `/applications`, job add/edit/refresh, r
 
 ## Known limitations
 
-- HTML and CSS are still loaded relative to the repository working directory, so this is **not** a packaged macOS app.
+- Production builds embed HTML, CSS, JavaScript, and images; the release recipe and native acceptance limits are documented in `release/macos/README.md`.
 - The Wails `wails://localhost` body/303 adaptation is still required; do not replace it with a native 303 unless separately verified.
-- This iteration doesn't include application automation, authenticated sessions or AI-generated documents.
+- Managed form transfer currently covers qualified Ashby, Greenhouse, and Lever controls. Unsupported, authenticated, custom, ambiguous, and cross-origin controls remain manual; the applicant reviews and submits personally. Cover-letter generation uses configured providers and explicit consent.
+
+## R2 visual composition pass
+
+See `docs/design/RULES.md` R6–R10. A saved cover letter is now edited before showing generation controls, provider input controls share the same dimensions, AI Connections uses a direct settings layout, and saved resumes expose lower-frequency operations under `Manage document`. These are template/CSS changes; server POST routes, consent, and document provenance remain unchanged. Verify form POSTs, source selection, draft edits, and document revisions in the real Wails window before accepting the visual pass.

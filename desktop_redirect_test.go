@@ -55,7 +55,7 @@ func TestDesktopPOSTRedirectsToGetNavigation(t *testing.T) {
 	}
 
 	// The browser route continues to issue a real 303 for PRG.
-	r := httptest.NewRequest(http.MethodPost, "/jobs/1/refresh", nil)
+	r := httptest.NewRequest(http.MethodPost, "http://localhost/jobs/1/refresh", nil)
 	w = httptest.NewRecorder()
 	newMux(app).ServeHTTP(w, r)
 	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/jobs/1" {
@@ -73,6 +73,10 @@ func TestDesktopRedirectShimLeavesOtherResponsesUntouched(t *testing.T) {
 		{"non numeric job", "/jobs/bad", http.StatusSeeOther},
 		{"query", "/jobs/1?next=bad", http.StatusSeeOther},
 		{"valid job", "/jobs/1", http.StatusOK},
+		{"prepare", "/jobs/1#prepare", http.StatusOK},
+		{"prepare noncanonical id", "/jobs/01#prepare", http.StatusSeeOther},
+		{"prepare query", "/jobs/1?next=bad#prepare", http.StatusSeeOther},
+		{"inspection prepare", "/jobs/1/inspection#prepare", http.StatusSeeOther},
 		{"inspection", "/jobs/1/inspection", http.StatusOK},
 		{"inspection external suffix", "/jobs/1/inspection/more", http.StatusSeeOther},
 		{"inspection query", "/jobs/1/inspection?redirect=x", http.StatusSeeOther},
@@ -83,10 +87,23 @@ func TestDesktopRedirectShimLeavesOtherResponsesUntouched(t *testing.T) {
 				http.Redirect(w, r, tc.target, http.StatusSeeOther)
 			}))
 			w := httptest.NewRecorder()
-			h.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/jobs", nil))
+			h.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "http://localhost/jobs", nil))
 			if w.Code != tc.status {
 				t.Fatalf("status=%d want=%d", w.Code, tc.status)
 			}
 		})
+	}
+}
+
+func TestContinuationRedirectTargetsStayLocalAndCanonical(t *testing.T) {
+	for _, target := range []string{"/jobs/1?draft=2#prepare", "/jobs/1?transfer_notice=Cover+letter%3A+changed#prepare", "/jobs/1?draft=2&transfer_notice=Review+the+letter#prepare"} {
+		if !safeDesktopRedirectTarget(target) {
+			t.Fatal("rejected continuation", target)
+		}
+	}
+	for _, target := range []string{"//evil.test/jobs/1?draft=2#prepare", "https://evil.test/jobs/1?draft=2#prepare", "/jobs/01?draft=2#prepare", "/jobs/1?draft=0#prepare", "/jobs/1?draft=2&draft=3#prepare", "/jobs/1?transfer_notice=one&transfer_notice=two#prepare", "/jobs/1?next=https%3A%2F%2Fevil.test#prepare", "/jobs/1?draft=2#other"} {
+		if safeDesktopRedirectTarget(target) {
+			t.Fatal("accepted unsafe target", target)
+		}
 	}
 }

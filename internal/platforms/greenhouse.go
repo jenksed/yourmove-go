@@ -10,6 +10,18 @@ import (
 	"strings"
 )
 
+// Greenhouse redirects removed postings to the employer's board with error=true.
+// Other jobs listed on that page do not mean the original posting is still open.
+func isGreenhouseErrorBoard(rawURL string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Scheme != "https" || u.User != nil || u.Port() != "" ||
+		(u.Hostname() != "job-boards.greenhouse.io" && u.Hostname() != "boards.greenhouse.io") {
+		return false
+	}
+	parts := pathSegments(u.Path)
+	return len(parts) == 1 && safeToken(parts[0]) && u.Query().Get("error") == "true"
+}
+
 func parseGreenhouseURL(rawURL string) (board, jobID string, err error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
@@ -51,6 +63,7 @@ func fetchGreenhouse(ctx context.Context, client *http.Client, board, jobID stri
 	}
 	return Metadata{
 		Title:       strings.TrimSpace(posting.Title),
+		Company:     boardNameSuggestion(board),
 		Description: descriptionText(posting.Content),
 	}, nil
 }

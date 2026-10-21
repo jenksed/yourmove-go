@@ -11,8 +11,7 @@ import (
 )
 
 // Wails is a host for the same Go App and HTTP routes as browser mode.
-// Run from the repository directory for this compatibility experiment.
-// The templates and static assets still load from the repository working directory.
+// Templates and static assets are embedded; no repository working directory is needed.
 func main() {
 	dbPath, resumeDir, err := applicationStorage()
 	if err != nil {
@@ -26,6 +25,10 @@ func main() {
 
 	app := &App{db: db, resumeDir: resumeDir, pickResume: func() (string, error) {
 		return application.Get().Dialog.OpenFile().SetTitle("Select a resume (PDF or DOCX)").AddFilter("Resumes", "*.pdf;*.docx").PromptForSingleSelection()
+	}, chooseExportPath: func(name string) (string, error) {
+		return application.Get().Dialog.SaveFileWithOptions(&application.SaveFileDialogOptions{
+			Title: "Save a copy", Filename: name, CanCreateDirectories: true,
+		}).PromptForSingleSelection()
 	}, openPosting: func(url string) error {
 		return application.Get().Browser.OpenURL(url)
 	}}

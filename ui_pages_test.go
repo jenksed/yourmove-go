@@ -27,7 +27,7 @@ func TestWorkbenchUISharedViewsAndSubmissionSemantics(t *testing.T) {
 	mux := newMux(app)
 	get := func(path string) *httptest.ResponseRecorder {
 		w := httptest.NewRecorder()
-		mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "http://localhost"+path, nil))
 		return w
 	}
 	opportunities := get("/jobs")
@@ -43,10 +43,7 @@ func TestWorkbenchUISharedViewsAndSubmissionSemantics(t *testing.T) {
 	if empty.Code != 200 || !strings.Contains(empty.Body.String(), "No applications recorded yet") {
 		t.Fatalf("unexpected history before confirmation: %d %s", empty.Code, empty.Body.String())
 	}
-	token, err := newSubmissionToken()
-	if err != nil {
-		t.Fatal(err)
-	}
+	token := reviewedSubmissionToken(t, app, 2)
 	if err := app.recordSubmission(2, "Manual confirmation", token); err != nil {
 		t.Fatal(err)
 	}

@@ -11,7 +11,7 @@ func TestHandoffPresentationPrioritizesResumeAndRecovery(t *testing.T) {
 	}{
 		{"idle", browserRunState{}, "Ready to prepare", false},
 		{"lost tab", browserRunState{Phase: "interrupted"}, "Application browser closed", true},
-		{"selected even if inspection failed", browserRunState{Active: true, Phase: "attention", ResumeStatus: "selected"}, "Resume selected — verify in Ashby", false},
+		{"selected even if inspection failed", browserRunState{Active: true, Phase: "attention", ResumeStatus: "selected"}, "Resume selected — verify with the employer", false},
 		{"uncertain upload", browserRunState{Active: true, ResumeStatus: "attention"}, "Resume needs your attention", true},
 		{"preflight", browserRunState{Active: true, ResumeStatus: "attention", ResumeRetryable: true}, "Resume check needs a retry", true},
 		{"waiting", browserRunState{Active: true, ResumeStatus: "waiting"}, "Waiting for resume field", false},

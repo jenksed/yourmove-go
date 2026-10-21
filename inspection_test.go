@@ -73,7 +73,7 @@ func TestInspectionPersistenceAndNoTransmission(t *testing.T) {
 		t.Fatalf("load %+v %v", item, err)
 	}
 	get := httptest.NewRecorder()
-	handler.ServeHTTP(get, httptest.NewRequest("GET", "/jobs/1/inspection", nil))
+	handler.ServeHTTP(get, httptest.NewRequest("GET", "http://localhost/jobs/1/inspection", nil))
 	if get.Code != 200 || !strings.Contains(get.Body.String(), "First Name") || !strings.Contains(get.Body.String(), "Consent") {
 		t.Fatalf("render %d %s", get.Code, get.Body.String())
 	}
@@ -115,7 +115,7 @@ func TestRequirementsInventoryRendersLatestOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := httptest.NewRecorder()
-	newMux(a).ServeHTTP(w, httptest.NewRequest("GET", "/requirements", nil))
+	newMux(a).ServeHTTP(w, httptest.NewRequest("GET", "http://localhost/requirements", nil))
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "Why this company?") || strings.Contains(w.Body.String(), "Why this role?") {
 		t.Fatalf("requirements %d %s", w.Code, w.Body.String())
 	}
