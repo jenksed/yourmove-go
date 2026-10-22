@@ -80,9 +80,9 @@ Passed:
 - Focused question status/identity/save-return/error/empty-answer/no-JS markup and Wails redirect regressions.
 - `go test ./...`
 - `go test -tags desktop ./...`
-- `YOURMOVE_QUALIFY_QUESTIONS=1 go test -tags qualification . -run TestControlledQuestionWorkbench -count=1 -v`
+- `YOURMOVE_QUALIFY_QUESTIONS=1 go test -tags qualification ./internal/app -run TestControlledQuestionWorkbench -count=1 -v`
 - Baseline UI replay using the temporary overlay and `YOURMOVE_QUESTION_BASELINE=1`.
-- `YOURMOVE_QUALIFY_BROWSER=1 go test -tags qualification . -run 'TestControlled(ContactJourney|CombinedContinuation)' -count=1 -v`
+- `YOURMOVE_QUALIFY_BROWSER=1 go test -tags qualification ./internal/app -run 'TestControlled(ContactJourney|CombinedContinuation)' -count=1 -v`
 - `git diff --check`
 - `graft build`
 

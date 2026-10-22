@@ -9,6 +9,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"github.com/jenksed/yourmove-go/internal/app"
 	"github.com/jenksed/yourmove-go/internal/storage"
 )
 
@@ -25,17 +26,23 @@ func main() {
 	}
 	defer db.Close()
 
-	app := &App{db: db, resumeDir: resumeDir, pickResume: func() (string, error) {
-		return application.Get().Dialog.OpenFile().SetTitle("Select a resume (PDF or DOCX)").AddFilter("Resumes", "*.pdf;*.docx").PromptForSingleSelection()
-	}, chooseExportPath: func(name string) (string, error) {
-		return application.Get().Dialog.SaveFileWithOptions(&application.SaveFileDialogOptions{
-			Title: "Save a copy", Filename: name, CanCreateDirectories: true,
-		}).PromptForSingleSelection()
-	}, openPosting: func(url string) error {
-		return application.Get().Browser.OpenURL(url)
-	}}
-	defer app.browsers.closeAll()
-	handler := newDesktopMux(app)
+	a, err := app.New(app.Config{
+		DB: db, ResumeDir: resumeDir, TemplateFiles: templateFiles,
+		StaticFiles: staticFiles, CoverLetterInstructions: coverLetterInstructions,
+		PickResume: func() (string, error) {
+			return application.Get().Dialog.OpenFile().SetTitle("Select a resume (PDF or DOCX)").AddFilter("Resumes", "*.pdf;*.docx").PromptForSingleSelection()
+		}, ChooseExportPath: func(name string) (string, error) {
+			return application.Get().Dialog.SaveFileWithOptions(&application.SaveFileDialogOptions{
+				Title: "Save a copy", Filename: name, CanCreateDirectories: true,
+			}).PromptForSingleSelection()
+		}, OpenPosting: func(url string) error {
+			return application.Get().Browser.OpenURL(url)
+		}})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer a.Close()
+	handler := a.DesktopHandler()
 	start := "/jobs"
 	if os.Getenv("YOURMOVE_WAILS_PROBE") == "1" {
 		handler = probeMux(handler)

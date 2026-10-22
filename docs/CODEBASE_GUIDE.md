@@ -1,6 +1,6 @@
 # YourMove Go — Codebase Field Guide and Repository Cleanup Plan
 
-**Source basis:** verified against baseline commit `2345d3157eb61e8ed7633a7ad8d8d5c318b50227` on October 21, 2026. Paths and architecture below were checked against that checkout. This is not a claim of universal employer-site compatibility or release qualification; dated reports in `docs/implementation/` remain historical.
+**Source basis:** application relocation from `7aac82d38d68039ffb57391508eccd7efdd58a5b` on October 21, 2026. Paths and inventory below reflect the resulting `internal/app` layout. This is not a claim of universal employer-site compatibility or release qualification; dated reports in `docs/implementation/` remain historical.
 
 ## What this guide is for
 
@@ -10,7 +10,7 @@ Find the smallest correct set of files for a change; understand how a user actio
 
 ```text
 Browser main.go ────────┐
-                       ├── App + routes (app_http.go)
+                       ├── app.New(Config) → internal/app.App
 macOS Wails desktop.go ─┘           │
                          HTTP handlers + HTML templates
                                     │
@@ -25,8 +25,10 @@ macOS Wails desktop.go ─┘           │
 
 - `main.go` (`!desktop`) runs a local HTTP server on `127.0.0.1:3000`.
 - `desktop.go` (`desktop && darwin`) embeds that same HTTP application in Wails and supplies native file dialogs and browser launching.
-- `app_http.go` defines `App`, routes, and local request-host/origin checks.
-- The top-level `package main` implements most application logic with feature-oriented files. This flat package is not inherently unidiomatic; it makes internal access straightforward but needs clear naming and navigation.
+- `internal/app/app_http.go` defines `App`, routes, and local request-host/origin checks.
+- `internal/app` owns application implementation and its tests. Root Go files only bootstrap browser/Wails execution and embed resources; the established internal packages remain dependencies of the application.
+- Both entry points call `app.New(app.Config{…})`, then `Handler()` for browser mode or `DesktopHandler()` for Wails. `Close()` terminates managed browser sessions; the entry point closes its database afterward. Only Wails receives the native file-dialog/browser callbacks.
+- Root `assets.go` embeds `templates/`, `static/`, and the single editable `prompts/cover_letter.md`. Entry points pass those filesystems and instructions to `app.New`; construction parses each page with its shared partials once and returns an error for invalid templates. Production needs no repository working directory. Tests initialize the same resources explicitly from repository fixtures in `internal/app/resources_test.go`.
 - `templates/*.html` are **server-rendered**; `static/ui.js` and `static/inspection.js` add enhancement and polling. Go POST handlers remain the mutation authority.
 - SQLite and document bytes are durable; an open employer `sessionHost`/Chromium state is not durable across process exit.
 - `internal/platforms` fetches *job-posting metadata*. `internal/application/providers` retrieves *public application requirements*. `internal/application/browser` observes the *live employer page*. `internal/application/browser/chromium` launches Chromium and performs CDP reads/writes. These are four different purposes.
@@ -35,21 +37,21 @@ macOS Wails desktop.go ─┘           │
 
 ### Opening the Prepare workspace
 
-1. `GET /jobs/{id}` is registered in `app_http.go`.
-2. `handlers.go: jobDetail` loads the job and related records for the workspace.
-3. `application_handlers.go` defines the `jobWorkspace` view data; `application_continuation.go: summarizePreparation` derives the next action without transferring anything.
+1. `GET /jobs/{id}` is registered in `internal/app/app_http.go`.
+2. `internal/app/handlers.go: jobDetail` loads the job and related records for the workspace.
+3. `internal/app/application_handlers.go` defines the `jobWorkspace` view data; `internal/app/application_continuation.go: summarizePreparation` derives the next action without transferring anything.
 4. `templates/job.html` renders the existing state, including exact transfer scope and the appropriate form.
 5. `static/ui.js` controls tabs, question focus, dirty editing and other browser-side conveniences; `static/inspection.js` polls for new observations without silently discarding unsaved changes.
 
 ### Clicking Fill application / Continue application
 
-1. Form POST to `/jobs/{id}/continue` → `application_continuation.go: continueApplication`.
+1. Form POST to `/jobs/{id}/continue` → `internal/app/application_continuation.go: continueApplication`.
 2. It validates the saved destination, parses the displayed `include_resume`, `include_letter` and `include_answers` flags, and independently calls:
-   - `browser_handlers.go: resumeHandoffCommand`;
-   - `cover_letter_transfer.go: coverLetterCommand`;
-   - `application_answer_transfer.go: answerTransferCommand`.
+   - `internal/app/browser_handlers.go: resumeHandoffCommand`;
+   - `internal/app/cover_letter_transfer.go: coverLetterCommand`;
+   - `internal/app/application_answer_transfer.go: answerTransferCommand`.
 3. Each subcommand rechecks its own material identities, hashes/revisions, destination, current eligibility and active session; it **arms** its operation, not a blanket application submission.
-4. `browser_session.go: sessionHost` starts/owns the browser and its polling watcher. The watcher invokes `tryResume`, `tryContacts`, `tryCoverLetter` and `tryAnswers` as eligible.
+4. `internal/app/browser_session.go: sessionHost` starts/owns the browser and its polling watcher. The watcher invokes `tryResume`, `tryContacts`, `tryCoverLetter` and `tryAnswers` as eligible.
 5. `internal/application/browser/chromium/*` evaluates the current employer page and performs the actual CDP operation while preserving manual values and avoiding unsafe replay.
 6. Individual observed results flow back to `browserRunState` and the Prepare UI. **Selecting a document or filling a field is not proof the employer accepted or submitted the application.**
 7. `POST /jobs/{id}/submit` is a distinct user-confirmed *local record*; no YourMove operation automatically submits the employer application.
@@ -58,7 +60,7 @@ macOS Wails desktop.go ─┘           │
 
 - `internal/storage/paths.go: storage.ApplicationStorage` selects an absolute workspace location, normally `~/Library/Application Support/YourMove` on macOS, or the `YOURMOVE_DATA_DIR` override, and handles legacy database migration.
 - `internal/storage/sqlite.go: storage.OpenDB` uses one SQLite connection and creates/upgrades the schema through private initialization logic.
-- `jobs.go`, `resumes.go`, `candidate_profile.go`, `cover_letters.go`, `application_answers.go`, `reusable_answers.go`, and `application_inspections.go` read/write their durable records.
+- `internal/app/jobs.go`, `internal/app/resumes.go`, `internal/app/candidate_profile.go`, `internal/app/cover_letters.go`, `internal/app/application_answers.go`, `internal/app/reusable_answers.go`, and `internal/app/application_inspections.go` read/write their durable records.
 - Stored resumes live in a separate `resumes/` directory within the workspace. Back up the database **and** that directory together, with the app stopped.
 
 The main persisted records map to these tables and files:
@@ -78,42 +80,42 @@ The main persisted records map to these tables and files:
 
 | You want to change… | First file to inspect | Follow into… | Minimal verification |
 | --- | --- | --- | --- |
-| Opportunity list appearance | `templates/jobs.html` | `ui_pages.go`, `static/styles.css`, `static/ui.js` | render test + open `/jobs` |
-| A field on a job | `templates/job.html` | `handlers.go: editJob`, `jobs.go`, `internal/storage/sqlite.go` if persisted | add/edit/restart on isolated data |
-| Batch URL import limits/duplicates | `intake.go` | `intake_handlers.go`, `intake_test.go` | repeated/invalid URL import |
-| Posting title/company/description fetch | `internal/platforms/*` | `handlers.go: fetchPostingDetails`, `enrichment.go` | platform tests + actual supported posting if safe |
-| Queue / next-job ordering | `triage.go` | `ui_pages.go`, `application_continuation.go: nextApplication` | synthetic mix of ready/closed/applied jobs |
-| Role-family suggestion | `role_families.go: matchResume` | `family_handlers.go`, `templates/families.html` | family match tests; no silent resume reassignment |
-| Resume import/change | `resumes.go` | `application_handlers.go`, `templates/resumes.html`, `templates/job.html` | stored bytes/hash, selection and restart |
-| Candidate facts / approval | `candidate_profile.go` | `inspection_handlers.go`, `application_answers.go` | approval and resolution tests |
-| Cover-letter prompt/provider | `prompts/cover_letter.md`, `cover_letters.go`, `cover_providers.go` | `cover_subscription.go`, `templates/job.html` | provider test + saved draft untouched on error |
-| Letter editing or save behavior | `cover_letters.go` | `templates/job.html`, `static/ui.js`, `desktop_redirect.go` | save/reopen/Unicode/error recovery |
-| Letter attachment/text fill | `cover_letter_transfer.go` | `browser_session.go`, `chromium/cover_letter.go`, `chromium/attachment.go` | controlled fixture checks exact content and repeat-upload suppression |
-| Employer question preparation | `application_answers.go` | `reusable_answers.go`, `templates/job.html`, `static/ui.js` | identity/revision/option/explicit override checks |
-| Employer answer transfer | `application_answer_transfer.go` | `browser_session.go`, `chromium/answer.go` | controlled fixture controls, manual value preservation |
-| How one-click continuation is composed | `application_continuation.go` | `handoff_state.go`, `application_handlers.go`, `templates/job.html` | exact flags and independent partial failures |
-| Browser start/stop/recovery | `browser_handlers.go` | `browser_session.go`, `chromium/chromium.go` | isolated browser session and recovery checks |
-| Employer field detection | `internal/application/browser/inspect.js` | `observation.go`, `application_inspections.go`, `schema/schema.go` | browser observation fixtures |
+| Opportunity list appearance | `templates/jobs.html` | `internal/app/ui_pages.go`, `static/styles.css`, `static/ui.js` | render test + open `/jobs` |
+| A field on a job | `templates/job.html` | `internal/app/handlers.go: editJob`, `internal/app/jobs.go`, `internal/storage/sqlite.go` if persisted | add/edit/restart on isolated data |
+| Batch URL import limits/duplicates | `internal/app/intake.go` | `internal/app/intake_handlers.go`, `internal/app/intake_test.go` | repeated/invalid URL import |
+| Posting title/company/description fetch | `internal/platforms/*` | `internal/app/handlers.go: fetchPostingDetails`, `internal/app/enrichment.go` | platform tests + actual supported posting if safe |
+| Queue / next-job ordering | `internal/app/triage.go` | `internal/app/ui_pages.go`, `internal/app/application_continuation.go: nextApplication` | synthetic mix of ready/closed/applied jobs |
+| Role-family suggestion | `internal/app/role_families.go: matchResume` | `internal/app/family_handlers.go`, `templates/families.html` | family match tests; no silent resume reassignment |
+| Resume import/change | `internal/app/resumes.go` | `internal/app/application_handlers.go`, `templates/resumes.html`, `templates/job.html` | stored bytes/hash, selection and restart |
+| Candidate facts / approval | `internal/app/candidate_profile.go` | `internal/app/inspection_handlers.go`, `internal/app/application_answers.go` | approval and resolution tests |
+| Cover-letter prompt/provider | `prompts/cover_letter.md`, `internal/app/cover_letters.go`, `internal/coverletter/provider/providers.go` | `internal/coverletter/provider/subscription.go`, `templates/job.html` | provider test + saved draft untouched on error |
+| Letter editing or save behavior | `internal/app/cover_letters.go` | `templates/job.html`, `static/ui.js`, `internal/app/desktop_redirect.go` | save/reopen/Unicode/error recovery |
+| Letter attachment/text fill | `internal/app/cover_letter_transfer.go` | `internal/app/browser_session.go`, `chromium/cover_letter.go`, `chromium/attachment.go` | controlled fixture checks exact content and repeat-upload suppression |
+| Employer question preparation | `internal/app/application_answers.go` | `internal/app/reusable_answers.go`, `templates/job.html`, `static/ui.js` | identity/revision/option/explicit override checks |
+| Employer answer transfer | `internal/app/application_answer_transfer.go` | `internal/app/browser_session.go`, `chromium/answer.go` | controlled fixture controls, manual value preservation |
+| How one-click continuation is composed | `internal/app/application_continuation.go` | `internal/app/handoff_state.go`, `internal/app/application_handlers.go`, `templates/job.html` | exact flags and independent partial failures |
+| Browser start/stop/recovery | `internal/app/browser_handlers.go` | `internal/app/browser_session.go`, `chromium/chromium.go` | isolated browser session and recovery checks |
+| Employer field detection | `internal/application/browser/inspect.js` | `observation.go`, `internal/app/application_inspections.go`, `schema/schema.go` | browser observation fixtures |
 | ATS field-mutation logic | `internal/application/browser/chromium/answer.go`, `contact.go`, `attachment.go` | `chromium.go`, `posting.go` | controlled browser fixture; never use a live submission as a test |
-| Desktop-only navigation or origin handling | `desktop_redirect.go` | `desktop.go`, `app_http.go` | desktop-tagged tests + macOS manual route |
-| Native file save/export | `desktop_export.go` | `attachment_downloads.go`, `application_handlers.go`, `desktop.go` | native Save/Cancel and exact exported bytes |
-| App data directory / legacy import | `internal/storage/paths.go` | `internal/storage/sqlite.go`, `resumes.go` | synthetic workspace; confirm normal data untouched |
+| Desktop-only navigation or origin handling | `internal/app/desktop_redirect.go` | `desktop.go`, `internal/app/app_http.go` | desktop-tagged tests + macOS manual route |
+| Native file save/export | `internal/app/desktop_export.go` | `internal/app/attachment_downloads.go`, `internal/app/application_handlers.go`, `desktop.go` | native Save/Cancel and exact exported bytes |
+| App data directory / legacy import | `internal/storage/paths.go` | `internal/storage/sqlite.go`, `internal/app/resumes.go` | synthetic workspace; confirm normal data untouched |
 
 ## How to make one manual change without getting lost
 
 1. **Choose an observable behavior.** Example: after saving a resume, stay on Prepare.
 2. **Find the UI control.** Search `templates/job.html` for `action="/jobs/` or `Save resume`; identify the exact HTTP method/path and field `name=` attributes.
-3. **Find its registration.** Search `app_http.go` for that route; open the handler, not the entire repository.
-4. **Find where the decision is made.** For a redirect, start in `application_handlers.go: setJobResume`. For a presentation label, start in `application_continuation.go` or `handoff_state.go` rather than modifying browser logic.
+3. **Find its registration.** Search `internal/app/app_http.go` for that route; open the handler, not the entire repository.
+4. **Find where the decision is made.** For a redirect, start in `internal/app/application_handlers.go: setJobResume`. For a presentation label, start in `internal/app/application_continuation.go` or `internal/app/handoff_state.go` rather than modifying browser logic.
 5. **Check the state owner.** Does it change SQLite data, a temporary `sessionHost` operation, or a view-only projection? Make the change in the owner, not in three duplicated displays.
-6. **Make the smallest edit; preserve posted field names and identity/revision checks.** Native Wails GET redirects are specially adapted; changing redirect destinations can affect `desktop_redirect.go`.
+6. **Make the smallest edit; preserve posted field names and identity/revision checks.** Native Wails GET redirects are specially adapted; changing redirect destinations can affect `internal/app/desktop_redirect.go`.
 7. **Run targeted tests, then broader tests if needed.** Exercise the real browser/desktop path for visual or host-sensitive behavior, with isolated data.
 8. **Read the diff.** Confirm no incidental changes, private data or build artifacts. Commit only the intended unit.
 
 Useful commands from the repo root:
 
 ```sh
-rg -n 'Save resume|/jobs/\{id\}/resume' templates app_http.go application_handlers.go
+rg -n 'Save resume|/jobs/\{id\}/resume' templates internal/app/app_http.go internal/app/application_handlers.go
 rg -n '^func .*setJobResume|^func .*jobDetail' --glob '*.go'
 git diff --check
 git diff --stat
@@ -185,8 +187,8 @@ Check for accidentally tracked `.db`, `.db-wal`, document files, cached browser 
 - Add focused ignores for local `.env` files, SQLite sidecars/DBs, private resume data directories, platform junk, logs, temporary exports, test output and `.app` build artifacts. Don't blanket-ignore test fixtures, deliberately checked-in assets, PDFs or DOCX files that tests need.
 - Verify `.github/ISSUE_TEMPLATE` privacy warnings and add a minimal issue/feedback entry point if the repository expects reports.
 - Add a small CI job running `go test ./...` when the declared Go version is available on the runner. Run desktop-tagged tests on an appropriate macOS runner only if it is a maintained supported path. The goal is a reliable signal, not a large matrix.
-- Leave the flat `package main` alone unless you encounter **specific edit friction** that would be fixed by extracting a small focused package. Existing `internal/*` packages already provide real abstraction boundaries.
-- If you do split a large file, split **by responsibility and caller workflow**, initially within the same package. Example: `resumes.go` currently mixes document parsing/identity, registry operations and confirmed submission history. `submissions.go` is a credible low-risk separation within `package main`, but only if you're actually editing that area. Avoid broad file moves while stabilizing application throughput.
+- Keep the root entry points small and application implementation in `internal/app`. Established `internal/*` packages already provide focused boundaries; add packages only for a concrete need.
+- If you do split a large file, split **by responsibility and caller workflow**, initially within the same package. Example: `internal/app/resumes.go` currently mixes document parsing/identity, registry operations and confirmed submission history. `submissions.go` is a credible low-risk separation within `internal/app`, but only if you're actually editing that area. Avoid broad file moves while stabilizing application throughput.
 
 ### Pass 4: Validate the public result
 
@@ -202,7 +204,7 @@ Review rendered README links, issue templates, sample commands, release claims, 
 
 ## What not to do
 
-- Do not move 68 production Go files into a new `internal/app/*` hierarchy just to shorten the root directory.
+- Do not expand the application relocation into speculative domain-package extractions.
 - Do not rename route paths, form `name=` attributes or Wails redirect targets during cosmetic cleanup.
 - Do not merge `internal/platforms` and `internal/application/providers`; they serve different information boundaries.
 - Do not replace SQLite with a repository abstraction or introduce a general state machine because there are several status fields.
@@ -215,64 +217,68 @@ Review rendered README links, issue templates, sample commands, release claims, 
 Use this path to follow one visible control through the application:
 
 1. Find the rendered answer form in `templates/job.html` and its `POST /jobs/{id}/answers/save` action.
-2. Find that route in `app_http.go` and the handler `application_answers.go: saveApplicationAnswer`.
-3. Follow answer preparation and source selection through `prepareQuestions` and `resolveApplicationAnswer` in the same file, with approved profile fields in `candidate_profile.go` and reusable answers in `reusable_answers.go`.
-4. Confirm the per-job answer is written to `application_answers` in SQLite. Employer transfer is a separate action handled by `application_answer_transfer.go` and the browser session.
-5. Use `application_answers_test.go` or `question_workbench_test.go` for focused local verification, then run the broader suite when appropriate.
+2. Find that route in `internal/app/app_http.go` and the handler `internal/app/application_answers.go: saveApplicationAnswer`.
+3. Follow answer preparation and source selection through `prepareQuestions` and `resolveApplicationAnswer` in the same file, with approved profile fields in `internal/app/candidate_profile.go` and reusable answers in `internal/app/reusable_answers.go`.
+4. Confirm the per-job answer is written to `application_answers` in SQLite. Employer transfer is a separate action handled by `internal/app/application_answer_transfer.go` and the browser session.
+5. Use `internal/app/application_answers_test.go` or `internal/app/question_workbench_test.go` for focused local verification, then run the broader suite when appropriate.
 
 ---
 
-## File index for the verified baseline
+## File index after application relocation
 
-These descriptions are navigation hints checked against the baseline commit above; refer to source before editing. Files suffixed `_test.go` verify behavior and should normally be changed only when the intended behavior or fixtures change.
+These descriptions are navigation hints checked against the relocated source; refer to source before editing. Files suffixed `_test.go` verify behavior and should normally be changed only when the intended behavior or fixtures change.
 
-### Root Go application files (43 files)
+### Root Go bootstrap and resources (4 production files; 0 test files)
 
 | File | Role |
 | --- | --- |
-| `ai_handlers.go` | AI connection/setup presentation |
-| `app_http.go` | App composition, HTTP routes and local-request defenses |
-| `application_answer_transfer.go` | Scoped prepared-answer authorization and session transfer |
-| `application_answers.go` | Observed question identity, answer resolution, local editor and saving |
-| `application_continuation.go` | Exact scoped continuation composition and next-application action |
-| `application_handlers.go` | Job workspace view structs; documents, resume selection and submission endpoints |
-| `application_inspections.go` | Persistent definitions-only application inspection records |
-| `assets.go` | Embed templates and static files in the binary |
-| `attachment_downloads.go` | Saved cover-letter HTTP download |
-| `attachment_names.go` | File naming for saved downloaded documents |
-| `browser_handlers.go` | Managed browser actions, status, start/recheck/close and resume command |
-| `browser_session.go` | Active browser ownership, session watcher and transfer execution |
-| `candidate_profile.go` | Candidate profile model and persistence |
-| `cover_letter_document.go` | Saved-letter PDF creation and content hash |
-| `cover_letter_transfer.go` | Letter transfer authorization, staging and session execution |
-| `cover_letters.go` | Cover-letter draft persistence, source evidence, generate/save handlers |
-| `cover_providers.go` | Cover-letter provider configuration and API adapters |
-| `cover_subscription.go` | CLI-based subscription provider connection and execution |
-| `deletion.go` | Job deletion with history integrity |
-| `deletion_handlers.go` | Single and batch delete HTTP actions |
+| `assets.go` | Embed templates, static files and cover-letter writing instructions |
 | `desktop.go` | macOS/Wails desktop entry, native window and file dialogs |
-| `desktop_export.go` | Trusted Wails Save dialog and exact file export |
 | `desktop_probe.go` | Opt-in diagnostic probe for Wails request bodies |
-| `desktop_redirect.go` | Trusted Wails request origin and safe POST-to-GET redirect adapter |
-| `enrichment.go` | Background (in-process) posting-metadata enrichment worker |
-| `enrichment_handlers.go` | Enrichment page and actions |
-| `family_handlers.go` | Role-family and utilities HTTP endpoints; local form helper |
-| `handlers.go` | Jobs pages, job workspace assembly, job edits and posting refresh |
-| `handoff_state.go` | Browser result summary for presentation |
-| `inspection_handlers.go` | Candidate page plus inspection page/HTTP actions |
-| `intake.go` | URL normalization, deduplication and batch import logic |
-| `intake_handlers.go` | HTTP entry for batch URL import |
-| `jobs.go` | Job model, stage/priority labels and SQLite queries/updates |
 | `main.go` | Non-desktop entry point and localhost HTTP server |
-| `posting_open.go` | Native/HTTP action to open an employer posting |
-| `requirements_handlers.go` | Read-only application requirements summary |
-| `resumes.go` | Resume import/verification/extraction, assignment, review tokens and submissions |
-| `reusable_answers.go` | Exact employer/question-scoped approved answer reuse |
-| `role_families.go` | Role-family storage and deterministic resume suggestion |
-| `triage.go` | Queue next-action and next-job recommendation |
-| `ui_pages.go` | Opportunity dashboard summary and recorded-applications page |
 
-### Internal Go packages and browser assets (49 files)
+### Application implementation (36 production files)
+
+| File | Role |
+| --- | --- |
+| `internal/app/ai_handlers.go` | AI connection/setup presentation |
+| `internal/app/app.go` | Application configuration, template initialization, handler API and session cleanup |
+| `internal/app/app_http.go` | App composition, HTTP routes and local-request defenses |
+| `internal/app/application_answer_transfer.go` | Scoped prepared-answer authorization and session transfer |
+| `internal/app/application_answers.go` | Observed question identity, answer resolution, local editor and saving |
+| `internal/app/application_continuation.go` | Exact scoped continuation composition and next-application action |
+| `internal/app/application_handlers.go` | Job workspace view structs; documents, resume selection and submission endpoints |
+| `internal/app/application_inspections.go` | Persistent definitions-only application inspection records |
+| `internal/app/attachment_downloads.go` | Saved cover-letter HTTP download |
+| `internal/app/attachment_names.go` | File naming for saved downloaded documents |
+| `internal/app/browser_handlers.go` | Managed browser actions, status, start/recheck/close and resume command |
+| `internal/app/browser_session.go` | Active browser ownership, session watcher and transfer execution |
+| `internal/app/candidate_profile.go` | Candidate profile model and persistence |
+| `internal/app/cover_letter_document.go` | Saved-letter PDF creation and content hash |
+| `internal/app/cover_letter_transfer.go` | Letter transfer authorization, staging and session execution |
+| `internal/app/cover_letters.go` | Cover-letter draft persistence, source evidence, generate/save handlers |
+| `internal/app/deletion.go` | Job deletion with history integrity |
+| `internal/app/deletion_handlers.go` | Single and batch delete HTTP actions |
+| `internal/app/desktop_export.go` | Trusted Wails Save dialog and exact file export |
+| `internal/app/desktop_redirect.go` | Trusted Wails request origin and safe POST-to-GET redirect adapter |
+| `internal/app/enrichment.go` | Background (in-process) posting-metadata enrichment worker |
+| `internal/app/enrichment_handlers.go` | Enrichment page and actions |
+| `internal/app/family_handlers.go` | Role-family and utilities HTTP endpoints; local form helper |
+| `internal/app/handlers.go` | Jobs pages, job workspace assembly, job edits and posting refresh |
+| `internal/app/handoff_state.go` | Browser result summary for presentation |
+| `internal/app/inspection_handlers.go` | Candidate page plus inspection page/HTTP actions |
+| `internal/app/intake.go` | URL normalization, deduplication and batch import logic |
+| `internal/app/intake_handlers.go` | HTTP entry for batch URL import |
+| `internal/app/jobs.go` | Job model, stage/priority labels and SQLite queries/updates |
+| `internal/app/posting_open.go` | Native/HTTP action to open an employer posting |
+| `internal/app/requirements_handlers.go` | Read-only application requirements summary |
+| `internal/app/resumes.go` | Resume import/verification/extraction, assignment, review tokens and submissions |
+| `internal/app/reusable_answers.go` | Exact employer/question-scoped approved answer reuse |
+| `internal/app/role_families.go` | Role-family storage and deterministic resume suggestion |
+| `internal/app/triage.go` | Queue next-action and next-job recommendation |
+| `internal/app/ui_pages.go` | Opportunity dashboard summary and recorded-applications page |
+
+### Established internal packages and browser assets (55 files)
 
 | File | Role |
 | --- | --- |
@@ -288,9 +294,9 @@ These descriptions are navigation hints checked against the baseline commit abov
 | `internal/application/browser/chromium/handoff_integration_test.go` | Tests for handoff integration |
 | `internal/application/browser/chromium/platform_forms_test.go` | Tests for platform forms |
 | `internal/application/browser/chromium/qualification.go` | Test/qualification-only Chromium fixture helpers |
-| `internal/application/browser/chromium/trial_run_test.go` | Controlled local Chromium fixture test |
 | `internal/application/browser/chromium/transport.go` | CDP WebSocket dial helper |
 | `internal/application/browser/chromium/transport_test.go` | Tests for transport |
+| `internal/application/browser/chromium/trial_run_test.go` | Controlled local Chromium fixture test |
 | `internal/application/browser/contact.go` | Contact/answer values and field outcome types |
 | `internal/application/browser/inspect.js` | JavaScript payload injected for read-only employer form observation |
 | `internal/application/browser/observation.go` | Live structural observation representation and schema conversion |
@@ -309,6 +315,12 @@ These descriptions are navigation hints checked against the baseline commit abov
 | `internal/application/providers/greenhouse/greenhouse_test.go` | Tests for greenhouse |
 | `internal/application/schema/schema.go` | Provider-neutral application field/result schema and fingerprint |
 | `internal/application/schema/schema_test.go` | Tests for schema |
+| `internal/coverletter/provider/providers.go` | Cover-letter provider configuration and API adapters |
+| `internal/coverletter/provider/providers_test.go` | Provider transport and configuration tests |
+| `internal/coverletter/provider/subscription.go` | CLI subscription provider connection and execution |
+| `internal/coverletter/provider/subscription_test.go` | Subscription provider tests |
+| `internal/documents/documents.go` | Document extraction, preview and byte identity |
+| `internal/documents/documents_test.go` | Document parsing and identity tests |
 | `internal/platforms/api.go` | Bounded provider HTTP fetch and parsing helpers |
 | `internal/platforms/api_test.go` | Tests for api |
 | `internal/platforms/ashby.go` | Ashby job metadata retrieval |
@@ -356,55 +368,55 @@ These descriptions are navigation hints checked against the baseline commit abov
 | `static/yourmove-logo.png` | Raster application logo asset |
 | `static/yourmove-wordmark-reverse.svg` | Reverse YourMove wordmark |
 
-### Root-level tests / qualification (45 files)
+### Application tests / qualification (45 files)
 
 | File | Role |
 | --- | --- |
-| `application_answer_transfer_test.go` | Tests for application answer transfer |
-| `application_answers_test.go` | Tests for application answers |
-| `application_continuation_test.go` | Tests for application continuation |
-| `application_runtime_qualification_test.go` | Opt-in/controlled qualification for application runtime |
-| `application_test.go` | Tests for application |
-| `application_throughput_test.go` | Tests for application throughput |
-| `attachment_names_test.go` | Tests for attachment names |
-| `browser_handlers_test.go` | Tests for browser handlers |
-| `browser_preflight_test.go` | Tests for browser preflight |
-| `browser_recovery_test.go` | Tests for browser recovery |
-| `candidate_profile_autofill_test.go` | Tests for candidate profile autofill |
-| `closed_posting_test.go` | Tests for closed posting |
-| `contact_qualification_test.go` | Opt-in/controlled qualification for contact |
-| `cover_letter_independence_qualification_test.go` | Opt-in/controlled qualification for cover letter independence |
-| `cover_letter_transfer_test.go` | Tests for cover letter transfer |
-| `cover_letter_workbench_qualification_test.go` | Opt-in/controlled qualification for cover letter workbench |
-| `cover_letter_workbench_test.go` | Tests for cover letter workbench |
-| `cover_letters_test.go` | Tests for cover letters |
-| `cover_source_errors_test.go` | Tests for cover source errors |
-| `cover_subscription_test.go` | Tests for cover subscription |
-| `database_test.go` | Tests for database |
-| `deletion_test.go` | Tests for deletion |
-| `desktop_export_test.go` | Tests for desktop export |
-| `desktop_http_test.go` | Tests for desktop http |
-| `desktop_redirect_test.go` | Tests for desktop redirect |
-| `enrichment_test.go` | Tests for enrichment |
-| `handlers_test.go` | Tests for handlers |
-| `handoff_state_test.go` | Tests for handoff state |
-| `inspection_markup_test.go` | Tests for inspection markup |
-| `inspection_test.go` | Tests for inspection |
-| `intake_test.go` | Tests for intake |
-| `job_brief_test.go` | Tests for job brief |
-| `opportunity_queue_qualification_test.go` | Opt-in/controlled qualification for opportunity queue |
-| `posting_open_test.go` | Tests for posting open |
-| `profile_completion_qualification_test.go` | Opt-in/controlled qualification for profile completion |
-| `profile_question_presentation_test.go` | Tests for profile question presentation |
-| `question_workbench_qualification_test.go` | Opt-in/controlled qualification for question workbench |
-| `question_workbench_test.go` | Tests for question workbench |
-| `release_data_test.go` | Tests for release data |
-| `resume_continuity_test.go` | Tests for resume continuity |
-| `resume_selector_test.go` | Tests for resume selector |
-| `reusable_answers_test.go` | Tests for reusable answers |
-| `trial_profile_test.go` | Tests for approved profile field mapping |
-| `role_families_test.go` | Tests for role families |
-| `ui_pages_test.go` | Tests for ui pages |
+| `internal/app/application_answer_transfer_test.go` | Tests for application answer transfer |
+| `internal/app/application_answers_test.go` | Tests for application answers |
+| `internal/app/application_continuation_test.go` | Tests for application continuation |
+| `internal/app/application_runtime_qualification_test.go` | Opt-in/controlled qualification for application runtime |
+| `internal/app/application_test.go` | Tests for application |
+| `internal/app/application_throughput_test.go` | Tests for application throughput |
+| `internal/app/attachment_names_test.go` | Tests for attachment names |
+| `internal/app/browser_handlers_test.go` | Tests for browser handlers |
+| `internal/app/browser_preflight_test.go` | Tests for browser preflight |
+| `internal/app/browser_recovery_test.go` | Tests for browser recovery |
+| `internal/app/candidate_profile_autofill_test.go` | Tests for candidate profile autofill |
+| `internal/app/closed_posting_test.go` | Tests for closed posting |
+| `internal/app/contact_qualification_test.go` | Opt-in/controlled qualification for contact |
+| `internal/app/cover_letter_independence_qualification_test.go` | Opt-in/controlled qualification for cover letter independence |
+| `internal/app/cover_letter_transfer_test.go` | Tests for cover letter transfer |
+| `internal/app/cover_letter_workbench_qualification_test.go` | Opt-in/controlled qualification for cover letter workbench |
+| `internal/app/cover_letter_workbench_test.go` | Tests for cover letter workbench |
+| `internal/app/cover_letters_test.go` | Tests for cover letters |
+| `internal/app/cover_source_errors_test.go` | Tests for cover source errors |
+| `internal/app/database_test.go` | Tests for database |
+| `internal/app/deletion_test.go` | Tests for deletion |
+| `internal/app/desktop_export_test.go` | Tests for desktop export |
+| `internal/app/desktop_http_test.go` | Tests for desktop http |
+| `internal/app/desktop_redirect_test.go` | Tests for desktop redirect |
+| `internal/app/enrichment_test.go` | Tests for enrichment |
+| `internal/app/handlers_test.go` | Tests for handlers |
+| `internal/app/handoff_state_test.go` | Tests for handoff state |
+| `internal/app/inspection_markup_test.go` | Tests for inspection markup |
+| `internal/app/inspection_test.go` | Tests for inspection |
+| `internal/app/intake_test.go` | Tests for intake |
+| `internal/app/job_brief_test.go` | Tests for job brief |
+| `internal/app/opportunity_queue_qualification_test.go` | Opt-in/controlled qualification for opportunity queue |
+| `internal/app/posting_open_test.go` | Tests for posting open |
+| `internal/app/profile_completion_qualification_test.go` | Opt-in/controlled qualification for profile completion |
+| `internal/app/profile_question_presentation_test.go` | Tests for profile question presentation |
+| `internal/app/question_workbench_qualification_test.go` | Opt-in/controlled qualification for question workbench |
+| `internal/app/question_workbench_test.go` | Tests for question workbench |
+| `internal/app/release_data_test.go` | Tests for release data |
+| `internal/app/resources_test.go` | Shared fixture initialization, invalid-template failures and independent application resources |
+| `internal/app/resume_continuity_test.go` | Tests for resume continuity |
+| `internal/app/resume_selector_test.go` | Tests for resume selector |
+| `internal/app/reusable_answers_test.go` | Tests for reusable answers |
+| `internal/app/role_families_test.go` | Tests for role families |
+| `internal/app/trial_profile_test.go` | Tests for approved profile field mapping |
+| `internal/app/ui_pages_test.go` | Tests for ui pages |
 
 ### Repository root configuration and documentation (7 files)
 
@@ -423,7 +435,7 @@ These descriptions are navigation hints checked against the baseline commit abov
 | File | Role |
 | --- | --- |
 | `prompts/README.md` | Contributor workflow for the cover-letter instruction source |
-| `prompts/cover_letter.md` | Version-controlled instructions embedded by `cover_letters.go` |
+| `prompts/cover_letter.md` | Single version-controlled instruction source embedded by root `assets.go` and passed through `app.Config` |
 
 ### Repository presentation asset (1 file)
 
@@ -494,4 +506,4 @@ These descriptions are navigation hints checked against the baseline commit abov
 
 ---
 
-**Maintenance:** This guide was checked against the baseline commit identified above. Reconfirm source and route signatures after code changes; dated implementation notes are historical evidence, not current release or compatibility claims.
+**Maintenance:** This guide was updated for the application relocation from the source commit identified above. Reconfirm source and route signatures after code changes; dated implementation notes are historical evidence, not current release or compatibility claims.

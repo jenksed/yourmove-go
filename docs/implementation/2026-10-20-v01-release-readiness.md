@@ -52,7 +52,7 @@ The synthetic native database ended with one job, one imported document, the sav
 
 [applicationStorage](../../storage.go#L15) automatically considers CWD `jobs.db` when the destination is absent, even with an explicit data-directory override. [migrateLegacyJobs](../../storage.go#L63) snapshots the database only. If that database contains resume records, their stored files are not copied to the destination's new `resumes` directory.
 
-The isolated probe created a synthetic workspace with an imported DOCX, migrated its database, and loaded the copied resume row successfully. `readResumeBytes` then failed because the destination lacked the file. The original file remained intact. Reimporting the identical DOCX returned the existing row through [importResume's hash deduplication](../../resumes.go#L119), reported success, and still did not repair the missing file.
+The isolated probe created a synthetic workspace with an imported DOCX, migrated its database, and loaded the copied resume row successfully. `readResumeBytes` then failed because the destination lacked the file. The original file remained intact. Reimporting the identical DOCX returned the existing row through [importResume's hash deduplication](../../internal/app/resumes.go#L119), reported success, and still did not repair the missing file.
 
 **Impact:** affected migrated workspaces cannot use their recorded documents for download, generation evidence, or authorized filling. This is not proof that ordinary current App Support workspaces lose documents on every launch. A genuine old jobs-only database has no document bytes to copy. The defect is that automatic migration accepts a document-bearing database without completing or explicitly refusing that migration.
 
@@ -60,13 +60,13 @@ The isolated probe created a synthetic workspace with an imported DOCX, migrated
 
 ### B. P1 investigation — native file export has no observed completion
 
-The native DOCX download observation above is repeatable at the UI boundary, but the request/destination failure mechanism is not established. [downloadResume](../../application_handlers.go#L432) and [downloadCoverLetter](../../attachment_downloads.go#L10) currently return HTTP attachment responses; [desktop.go](../../desktop.go#L27) configures an import picker, without a corresponding application save-file seam.
+The native DOCX download observation above is repeatable at the UI boundary, but the request/destination failure mechanism is not established. [downloadResume](../../internal/app/application_handlers.go#L432) and [downloadCoverLetter](../../internal/app/attachment_downloads.go#L10) currently return HTTP attachment responses; [desktop.go](../../desktop.go#L27) configures an import picker, without a corresponding application save-file seam.
 
 **Release gate:** establish an observable native Save/Cancel path and compare the exported bytes with the exact selected saved document. Test resume PDF/DOCX and saved-letter PDF independently. A native export failure blocks the manual fallback for unsupported employer forms. Do not label all exports broken or select a dependency upgrade from this limited observation.
 
 ### C. P1 for the advertised input range — valid letter text can exceed the encoded request limit
 
-The isolated handler probe submitted 5,000 `é` characters: **10,000 UTF-8 bytes**, accepted by `saveCoverLetterBody`'s 12,000-byte body validator. URL encoding produces **30,016 request bytes**, exceeding the **24 KiB** limit at [saveCoverLetterHandler](../../cover_letters.go#L300). The response was generic HTTP 400, without the submitted-text recovery editor. The previously saved revision remained unchanged. Browser Back recovery was not established by this probe.
+The isolated handler probe submitted 5,000 `é` characters: **10,000 UTF-8 bytes**, accepted by `saveCoverLetterBody`'s 12,000-byte body validator. URL encoding produces **30,016 request bytes**, exceeding the **24 KiB** limit at [saveCoverLetterHandler](../../internal/app/cover_letters.go#L300). The response was generic HTTP 400, without the submitted-text recovery editor. The previously saved revision remained unchanged. Browser Back recovery was not established by this probe.
 
 This is a bounded save/error-path defect, not evidence of premature transfer or overwritten persisted data. Align accepted body size, form encoding limits, and recovery behavior before advertising the full input range. General multilingual PDF support is a separate capability and can be deferred; valid local text saving should not depend on PDF glyph support.
 

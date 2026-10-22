@@ -174,8 +174,8 @@ Passed using `GOCACHE=/private/tmp/yourmove-go-build`:
 ```sh
 go test ./...
 go test -tags desktop ./...
-go test -race . ./internal/application/browser/chromium
-YOURMOVE_QUALIFY_BROWSER=1 go test -tags qualification . -run 'TestControlled(ContactJourney|CombinedContinuation)' -v -count=1
+go test -race ./internal/app ./internal/application/browser/chromium
+YOURMOVE_QUALIFY_BROWSER=1 go test -tags qualification ./internal/app -run 'TestControlled(ContactJourney|CombinedContinuation)' -v -count=1
 YOURMOVE_QUALIFY_BROWSER=1 go test ./internal/application/browser/chromium -run TestControlledApplicationHandoff -v -count=1
 git diff --check
 graft build

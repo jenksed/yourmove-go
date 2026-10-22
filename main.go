@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jenksed/yourmove-go/internal/app"
 	"github.com/jenksed/yourmove-go/internal/storage"
 )
 
@@ -26,11 +27,17 @@ func main() {
 	}
 	defer db.Close()
 
-	app := &App{db: db, resumeDir: resumeDir}
-	defer app.browsers.closeAll()
+	application, err := app.New(app.Config{
+		DB: db, ResumeDir: resumeDir, TemplateFiles: templateFiles,
+		StaticFiles: staticFiles, CoverLetterInstructions: coverLetterInstructions,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer application.Close()
 
 	fmt.Println("Open http://127.0.0.1:3000")
-	server := &http.Server{Addr: "127.0.0.1:3000", Handler: newMux(app)}
+	server := &http.Server{Addr: "127.0.0.1:3000", Handler: application.Handler()}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	done := make(chan error, 1)

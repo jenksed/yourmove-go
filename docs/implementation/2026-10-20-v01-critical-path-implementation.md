@@ -73,7 +73,7 @@ The controlled command used `YOURMOVE_QUALIFY_BROWSER=1`,
 `YOURMOVE_QUALIFY_QUESTIONS=1` and isolated evidence directories, then:
 
 ```sh
-go test -tags qualification . \
+go test -tags qualification ./internal/app \
   -run '^TestControlled(ContactJourney|CombinedContinuation|ScopeFirstWorkbench|QuestionWorkbench)$' \
   -count=1 -v
 ```

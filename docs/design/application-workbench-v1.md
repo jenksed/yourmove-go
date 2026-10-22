@@ -33,45 +33,45 @@ Source links identify exact reviewed spans. Ranges describe the current checkout
 | Ref | Verified source and responsibility |
 | --- | --- |
 | S1 | [templates/job.html:4–85](../../templates/job.html#L4-L85): job hero, tabs, resume picker, handoff status, exact scoped continuation form and links. |
-| S2 | [application_continuation.go:23–96](../../application_continuation.go#L23-L96): independent included commands, partial-failure notices, Prepare redirect and pending key/value filtering. |
-| S3 | [application_continuation.go:99–172](../../application_continuation.go#L99-L172), [handoff_state.go:6–40](../../handoff_state.go#L6-L40): action/title/detail, inclusion flags, pending-answer hash and recovery presentation. |
+| S2 | [application_continuation.go:23–96](../../internal/app/application_continuation.go#L23-L96): independent included commands, partial-failure notices, Prepare redirect and pending key/value filtering. |
+| S3 | [application_continuation.go:99–172](../../internal/app/application_continuation.go#L99-L172), [handoff_state.go:6–40](../../internal/app/handoff_state.go#L6-L40): action/title/detail, inclusion flags, pending-answer hash and recovery presentation. |
 | S4 | [templates/job.html:87–168](../../templates/job.html#L87-L168), [237–250](../../templates/job.html#L237-L250): writing disclosure, saved editor, generator, questions, reuse and submission confirmation. |
-| S5 | [handlers.go:125–204](../../handlers.go#L125-L204), [205–276](../../handlers.go#L205-L276): resume filtering, submission review token, selected/latest draft, notices, profile, questions and presentation assembly. |
-| S6 | [application_handlers.go:54–91](../../application_handlers.go#L54-L91), [500–565](../../application_handlers.go#L500-L565): handoff eligibility, explicit resume save and redirect, confirmed submission recording. |
-| S7 | [application_answers.go:19–172](../../application_answers.go#L19-L172), [174–281](../../application_answers.go#L174-L281): identity, editability, answer source precedence, current browser inspection and optimistic save/reuse validation. |
-| S8 | [application_answer_transfer.go:15–32](../../application_answer_transfer.go#L15-L32), [59–132](../../application_answer_transfer.go#L59-L132): ready answers, review hash, current-value guards and attempted-answer suppression. |
-| S9 | [cover_letters.go:28–97](../../cover_letters.go#L28-L97), [182–317](../../cover_letters.go#L182-L317): latest/specific draft, edit-in-place save, generation consent/insertion and redirects. |
-| S10 | [cover_letter_transfer.go:46–192](../../cover_letter_transfer.go#L46-L192): exact body/destination/mode, same-browser arming, duplicate prevention and result distinctions. |
-| S11 | [browser_session.go:44–126](../../browser_session.go#L44-L126), [249–291](../../browser_session.go#L249-L291), [344–369](../../browser_session.go#L344-L369), [372–509](../../browser_session.go#L372-L509), [510–535](../../browser_session.go#L510-L535): session results, selection uncertainty, interrupted state, stable observations, independent operations and cleanup. |
-| S12 | [templates/inspection.html:5–66](../../templates/inspection.html#L5-L66), [inspection_handlers.go:61–125](../../inspection_handlers.go#L61-L125), [browser_handlers.go:33–135](../../browser_handlers.go#L33-L135): inspection presentation, public/browser snapshots, recheck, start, restart consent, stop and redirects. |
+| S5 | [handlers.go:125–204](../../internal/app/handlers.go#L125-L204), [205–276](../../internal/app/handlers.go#L205-L276): resume filtering, submission review token, selected/latest draft, notices, profile, questions and presentation assembly. |
+| S6 | [application_handlers.go:54–91](../../internal/app/application_handlers.go#L54-L91), [500–565](../../internal/app/application_handlers.go#L500-L565): handoff eligibility, explicit resume save and redirect, confirmed submission recording. |
+| S7 | [application_answers.go:19–172](../../internal/app/application_answers.go#L19-L172), [174–281](../../internal/app/application_answers.go#L174-L281): identity, editability, answer source precedence, current browser inspection and optimistic save/reuse validation. |
+| S8 | [application_answer_transfer.go:15–32](../../internal/app/application_answer_transfer.go#L15-L32), [59–132](../../internal/app/application_answer_transfer.go#L59-L132): ready answers, review hash, current-value guards and attempted-answer suppression. |
+| S9 | [cover_letters.go:28–97](../../internal/app/cover_letters.go#L28-L97), [182–317](../../internal/app/cover_letters.go#L182-L317): latest/specific draft, edit-in-place save, generation consent/insertion and redirects. |
+| S10 | [cover_letter_transfer.go:46–192](../../internal/app/cover_letter_transfer.go#L46-L192): exact body/destination/mode, same-browser arming, duplicate prevention and result distinctions. |
+| S11 | [browser_session.go:44–126](../../internal/app/browser_session.go#L44-L126), [249–291](../../internal/app/browser_session.go#L249-L291), [344–369](../../internal/app/browser_session.go#L344-L369), [372–509](../../internal/app/browser_session.go#L372-L509), [510–535](../../internal/app/browser_session.go#L510-L535): session results, selection uncertainty, interrupted state, stable observations, independent operations and cleanup. |
+| S12 | [templates/inspection.html:5–66](../../templates/inspection.html#L5-L66), [inspection_handlers.go:61–125](../../internal/app/inspection_handlers.go#L61-L125), [browser_handlers.go:33–135](../../internal/app/browser_handlers.go#L33-L135): inspection presentation, public/browser snapshots, recheck, start, restart consent, stop and redirects. |
 | S13 | [static/ui.js:90–148](../../static/ui.js#L90-L148), [151–217](../../static/ui.js#L151-L217): local hash tabs, submit-button guard, provider preferences, generation progress and word count. |
 | S14 | [static/inspection.js:1–64](../../static/inspection.js#L1-L64): first watch host, polling, reload, dirty-editor detection and refresh offer. |
 | S15 | [templates/partials.html:1–31](../../templates/partials.html#L1-L31), [static/styles.css:385–400](../../static/styles.css#L385-L400), [490–535](../../static/styles.css#L490-L535), [537–609](../../static/styles.css#L537-L609), [625–637](../../static/styles.css#L625-L637), [674–687](../../static/styles.css#L674-L687): shell, facts/outcomes, bounded prose, Prepare composition and responsive rules. |
 | S16 | [internal/application/browser/observation.go:62–105](../../internal/application/browser/observation.go#L62-L105), [internal/application/browser/chromium/answer.go:18–120](../../internal/application/browser/chromium/answer.go#L18-L120): definitions-only observations and guarded answer outcomes, including manual values and uncertain readback. |
-| S17 | [browser_handlers.go:153–246](../../browser_handlers.go#L153-L246), [desktop_redirect.go:63–92](../../desktop_redirect.go#L63-L92), [103–174](../../desktop_redirect.go#L103-L174), [app_http.go:48–81](../../app_http.go#L48-L81): command guards, Wails POST-to-GET adapter, redirect allowlist and actual routes. |
-| S18 | [application_handlers.go:141–156](../../application_handlers.go#L141-L156), [cover_letter_document.go:15–95](../../cover_letter_document.go#L15-L95): generation-source readiness and existing PDF limitations. |
+| S17 | [browser_handlers.go:153–246](../../internal/app/browser_handlers.go#L153-L246), [desktop_redirect.go:63–92](../../internal/app/desktop_redirect.go#L63-L92), [103–174](../../internal/app/desktop_redirect.go#L103-L174), [app_http.go:48–81](../../internal/app/app_http.go#L48-L81): command guards, Wails POST-to-GET adapter, redirect allowlist and actual routes. |
+| S18 | [application_handlers.go:141–156](../../internal/app/application_handlers.go#L141-L156), [cover_letter_document.go:15–95](../../internal/app/cover_letter_document.go#L15-L95): generation-source readiness and existing PDF limitations. |
 | S19 | [templates/job.html:173–233](../../templates/job.html#L173-L233): job brief, competing review link and submission-only History. [desktop.go:43–49](../../desktop.go#L43-L49): native window size/minimum. |
-| S20 | [database.go:211–237](../../database.go#L211-L237), [attachment_downloads.go:10–50](../../attachment_downloads.go#L10-L50), [resumes.go:485–492](../../resumes.go#L485-L492): mandatory draft resume references, body-only export and referenced-document deletion protection. |
+| S20 | [database.go:211–237](../../database.go#L211-L237), [attachment_downloads.go:10–50](../../internal/app/attachment_downloads.go#L10-L50), [resumes.go:485–492](../../internal/app/resumes.go#L485-L492): mandatory draft resume references, body-only export and referenced-document deletion protection. |
 | Q1 | [2026-10-20 application-continuity handoff](../implementation/2026-10-20-application-continuity.md): latest BLOCKED qualification supersedes earlier historical evidence. |
 
 [S1]: ../../templates/job.html#L4-L85
-[S2]: ../../application_continuation.go#L23-L96
-[S3]: ../../application_continuation.go#L99-L172
+[S2]: ../../internal/app/application_continuation.go#L23-L96
+[S3]: ../../internal/app/application_continuation.go#L99-L172
 [S4]: ../../templates/job.html#L87-L250
-[S5]: ../../handlers.go#L125-L276
-[S6]: ../../application_handlers.go#L500-L565
-[S7]: ../../application_answers.go#L19-L281
-[S8]: ../../application_answer_transfer.go#L15-L132
-[S9]: ../../cover_letters.go#L28-L317
-[S10]: ../../cover_letter_transfer.go#L46-L192
-[S11]: ../../browser_session.go#L44-L535
+[S5]: ../../internal/app/handlers.go#L125-L276
+[S6]: ../../internal/app/application_handlers.go#L500-L565
+[S7]: ../../internal/app/application_answers.go#L19-L281
+[S8]: ../../internal/app/application_answer_transfer.go#L15-L132
+[S9]: ../../internal/app/cover_letters.go#L28-L317
+[S10]: ../../internal/app/cover_letter_transfer.go#L46-L192
+[S11]: ../../internal/app/browser_session.go#L44-L535
 [S12]: ../../templates/inspection.html#L5-L66
 [S13]: ../../static/ui.js#L90-L217
 [S14]: ../../static/inspection.js#L1-L64
 [S15]: ../../static/styles.css#L490-L687
 [S16]: ../../internal/application/browser/observation.go#L62-L105
-[S17]: ../../desktop_redirect.go#L63-L174
-[S18]: ../../application_handlers.go#L141-L156
+[S17]: ../../internal/app/desktop_redirect.go#L63-L174
+[S18]: ../../internal/app/application_handlers.go#L141-L156
 [S19]: ../../templates/job.html#L173-L233
 [S20]: ../../database.go#L211-L237
 [Q1]: ../implementation/2026-10-20-application-continuity.md
@@ -100,7 +100,7 @@ Source links identify exact reviewed spans. Ranges describe the current checkout
 - Browser transfer statuses and attempted values belong to the current in-memory session. SQLite holds local preparation and inspection definitions. Closing clears session operations; interruption preserves only the explicitly copied resume/snapshot context. Do not promise durable transfer receipts, letter results after interruption, or a complete outcome history after relaunch. [S11]
 - A letter in `review` may be eligible again after a nonselection/review result. `attention` means an uncertain attempt and blocks automatic duplicate transfer. A completed letter also blocks another automatic letter operation in that session, even if the local draft is subsequently edited or a different draft is opened. Saving is not permission to replace the employer attachment. [S3][S10]
 - Definitions-only browser snapshots contain no employer values. Unanswered locally means no local prepared answer, not an empty employer control. Transfer outcomes can report “Existing user answer preserved”; their labels/details do not provide the value itself. Answer outcomes have labels, not stable question keys: keep them in an outcome list; do not join them to editors by fuzzy or duplicate label. [S7][S16]
-- Answer operation `complete` means its batch finished, including manual or uncertain per-field outcomes; it does not mean every answer succeeded. [application_answer_transfer.go:133–170](../../application_answer_transfer.go#L133-L170)
+- Answer operation `complete` means its batch finished, including manual or uncertain per-field outcomes; it does not mean every answer succeeded. [application_answer_transfer.go:133–170](../../internal/app/application_answer_transfer.go#L133-L170)
 
 ### Navigation and refresh boundaries
 
