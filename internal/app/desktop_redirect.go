@@ -117,7 +117,12 @@ func safeDesktopRedirectTarget(target string) bool {
 			return true
 		}
 	}
-	if target == "/jobs" || target == "/resumes" || target == "/enrichment" || target == "/families" || target == "/utilities" || target == "/candidate" || target == "/ai" {
+	for _, notice := range []string{"saved", "existing", "edited", "deleted"} {
+		if target == "/answer-library?notice="+notice {
+			return true
+		}
+	}
+	if target == "/jobs" || target == "/resumes" || target == "/answer-library" || target == "/enrichment" || target == "/families" || target == "/utilities" || target == "/candidate" || target == "/ai" {
 		return true
 	}
 	// Question saves use one exact hash-shaped presentation key. The save handler

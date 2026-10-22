@@ -100,32 +100,39 @@
     </section>
     {{if .Questions.WorkbenchQuestions}}
     <section class="prepare-handoff application-questions" id="application-questions" aria-labelledby="application-questions-title" data-question-workbench data-selected-question="{{.Questions.SelectedKey}}">
-      <div class="question-heading"><h3 id="application-questions-title">Application questions</h3><a href="#prepare" data-review-ready>Review ready material ↑</a></div>
-      {{if not .Questions.EmployerQuestions}}<p class="small-muted">No additional questions to answer in this observed form.</p>{{end}}
-      <p class="small-muted">Save answers locally; filling the employer form is a separate action. Later steps may add questions.</p>
-      {{if .Questions.ReturnNotice}}<p role="status">{{.Questions.ReturnNotice}}</p>{{end}}
-      <p class="small-muted" data-question-summary></p>
-      <div class="question-layout">
-        <nav class="question-index" aria-label="Observed questions" data-question-index hidden></nav>
-        <div class="field question-chooser" hidden><label for="question-chooser">Observed questions</label><select id="question-chooser" data-question-chooser></select></div>
-        <div class="question-editors">
-          <p class="question-position small-muted" data-question-position aria-live="polite" hidden></p>
-          {{range .Questions.EmployerQuestions}}
-          <div class="question-panel" id="question-{{.Key}}" role="group" aria-label="{{.Field.Label}}" data-question-panel data-question-key="{{.Key}}" data-question-label="{{.Field.Label}}" data-question-status="{{.LocalStatus}}" tabindex="-1">
-            {{if .Editable}}
-              {{if eq .Source "Approved candidate information"}}<p><strong>{{.Field.Label}}</strong> · {{.Value}}</p><p class="small-muted">Prepared locally — Approved candidate profile · <a href="/candidate">Edit candidate profile</a></p><details class="question-override"><summary>Edit answer for this application</summary><p class="small-muted">Saving creates an application-specific override. Your approved profile stays unchanged.</p>{{end}}
-              {{template "application-question" .}}
-              {{if eq .Source "Approved candidate information"}}</details>{{end}}
-            {{else}}<h4>{{.Field.Label}}{{if .Field.Required}} (required){{end}}</h4><p>Requires manual completion in Chromium.</p><p class="small-muted">This control is sensitive, unsupported, or cannot be identified safely. Complete it in the employer browser.</p>{{end}}
+      <div class="question-heading"><h3 id="application-questions-title">Application questions</h3>{{if .AnswerEditingAllowed}}<a href="#prepare" data-review-ready>Review ready material ↑</a>{{end}}</div>
+      {{if .AnswerEditingAllowed}}
+        {{if not .Questions.EmployerQuestions}}<p class="small-muted">No additional questions to answer in this observed form.</p>{{end}}
+        <p class="small-muted">Save answers locally; filling the employer form is a separate action. Later steps may add questions.</p>
+        {{if .Questions.ReturnNotice}}<p role="status">{{.Questions.ReturnNotice}}</p>{{end}}
+        <p class="small-muted" data-question-summary></p>
+        <div class="question-layout">
+          <nav class="question-index" aria-label="Observed questions" data-question-index hidden></nav>
+          <div class="field question-chooser" hidden><label for="question-chooser">Observed questions</label><select id="question-chooser" data-question-chooser></select></div>
+          <div class="question-editors">
+            <p class="question-position small-muted" data-question-position aria-live="polite" hidden></p>
+            {{range .Questions.EmployerQuestions}}
+            <div class="question-panel" id="question-{{.Key}}" role="group" aria-label="{{.Field.Label}}" data-question-panel data-question-key="{{.Key}}" data-question-label="{{.Field.Label}}" data-question-status="{{.LocalStatus}}" tabindex="-1">
+              {{if .Editable}}
+                {{if eq .Source "Approved candidate information"}}<p><strong>{{.Field.Label}}</strong> · {{.Value}}</p><p class="small-muted">Prepared locally — Approved candidate profile · <a href="/candidate">Edit candidate profile</a></p><details class="question-override"><summary>Edit answer for this application</summary><p class="small-muted">Saving creates an application-specific override. Your approved profile stays unchanged.</p>{{end}}
+                {{template "application-question" .}}
+                {{if eq .Source "Approved candidate information"}}</details>{{end}}
+              {{else}}<h4>{{.Field.Label}}{{if .Field.Required}} (required){{end}}</h4><p>Requires manual completion in Chromium.</p><p class="small-muted">This control is sensitive, unsupported, or cannot be identified safely. Complete it in the employer browser.</p>{{end}}
+            </div>
+            {{end}}
+            <div class="question-navigation" hidden><button type="button" class="button button-secondary" data-question-previous>← Previous</button><button type="button" class="button button-secondary" data-question-next>Next →</button></div>
           </div>
-          {{end}}
-          <div class="question-navigation" hidden><button type="button" class="button button-secondary" data-question-previous>← Previous</button><button type="button" class="button button-secondary" data-question-next>Next →</button></div>
         </div>
-      </div>
-      {{if .Questions.Previous}}<details><summary>Earlier saved answers needing review</summary>{{range .Questions.Previous}}<p><strong>{{.Label}}</strong></p><pre class="evidence-text">{{.Value}}</pre>{{end}}<p class="small-muted">These answers are preserved, but the current form has different question identities. They will not be transferred.</p></details>{{end}}
+        {{if .Questions.Previous}}<details><summary>Earlier saved answers needing review</summary>{{range .Questions.Previous}}<p><strong>{{.Label}}</strong></p><pre class="evidence-text">{{.Value}}</pre>{{end}}<p class="small-muted">These answers are preserved, but the current form has different question identities. They will not be transferred.</p></details>{{end}}
+      {{else}}
+        <p class="small-muted">This application is completed. Its saved answers are read-only; eligible narrative examples can be copied into your Answer Library.</p>
+        {{range .Questions.EmployerQuestions}}{{if and .Revision .LibraryEligible}}
+        <div class="question-panel completed-answer-example"><h4>Original question</h4><p>{{.Field.Label}}</p><p class="small-muted">Saved application answer · revision {{.Revision}}</p><pre class="evidence-text">{{.Value}}</pre>{{template "answer-library-promotion" .}}</div>
+        {{end}}{{end}}
+      {{end}}
     </section>
     {{end}}
-    {{if .Questions.ProfileQuestions}}
+    {{if and .Questions.ProfileQuestions .AnswerEditingAllowed}}
     <details class="prepare-handoff profile-question-summary">
       <summary><strong>From your profile</strong> · {{len .Questions.ProfileQuestions}} ready {{range .Questions.ProfileQuestions}}<span> · {{.Field.Label}}</span>{{end}}</summary>
       <p class="small-muted">Prepared from your approved profile. Filled only when you approve transfer. <a href="/candidate">Edit candidate profile</a></p>
@@ -311,6 +318,20 @@
         {{if and .ReusableKey (ne .Source "Approved candidate information")}}<input type="hidden" name="reusable_revision" value="{{.ReusableRevision}}"><details class="question-reuse"><summary>Reuse at this employer</summary><label class="confirm-row"><input type="checkbox" name="reusable" value="yes"><span>Reuse this answer for the exact same question at this employer. Application-specific edits keep the reusable original unless I select this again.</span></label></details>{{end}}
         <button type="submit" class="button button-primary">Save answer locally</button>
       </form>
+      {{if and .Revision .LibraryEligible}}{{template "answer-library-promotion" .}}{{end}}
+{{end}}
+
+{{define "answer-library-promotion"}}
+      <details class="answer-library-promotion">
+        <summary>Save to Answer Library</summary>
+        <p class="small-muted">Keep a separate copy for future writing. This is different from <strong>Reuse at this employer</strong>; it does not approve transfer or change this application answer.</p>
+        <h5>Original question</h5><p class="answer-library-prompt-preview">{{.Field.Label}}</p>
+        <h5>Saved answer to retain</h5><pre class="evidence-text answer-library-answer-preview">{{.Value}}</pre>
+        <form method="POST" action="/jobs/{{.JobID}}/answers/library" class="answer-library-promote-form">
+          <input type="hidden" name="question_key" value="{{.Key}}"><input type="hidden" name="revision" value="{{.Revision}}">
+          <button type="submit" class="button button-secondary">Save this example</button>
+        </form>
+      </details>
 {{end}}
 
 {{define "answer-save-error"}}

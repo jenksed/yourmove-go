@@ -37,6 +37,7 @@ type appResources struct {
 	familiesTemplate        *template.Template
 	utilitiesTemplate       *template.Template
 	enrichmentTemplate      *template.Template
+	answerLibraryTemplate   *template.Template
 }
 
 // New parses each page with the shared partials once, before serving requests.
@@ -65,6 +66,7 @@ func New(config Config) (*App, error) {
 		{"templates/families.html", &resources.familiesTemplate},
 		{"templates/utilities.html", &resources.utilitiesTemplate},
 		{"templates/enrichment.html", &resources.enrichmentTemplate},
+		{"templates/answer_library.html", &resources.answerLibraryTemplate},
 	} {
 		parsed, err := template.ParseFS(config.TemplateFiles, page.path, "templates/partials.html")
 		if err != nil {

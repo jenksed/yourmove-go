@@ -2,11 +2,61 @@ package storage
 
 import (
 	"bytes"
+	"database/sql"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestAnswerLibrarySchemaMigratesLegacyAnswersWithoutPromotion(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy-answers.db")
+	legacy, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		`CREATE TABLE jobs (id INTEGER PRIMARY KEY,url TEXT NOT NULL,host TEXT NOT NULL)`,
+		`CREATE TABLE application_answers (job_id INTEGER NOT NULL,destination TEXT NOT NULL,provider TEXT NOT NULL,question_key TEXT NOT NULL,label TEXT NOT NULL,answer TEXT NOT NULL,revision INTEGER NOT NULL,PRIMARY KEY(job_id,destination,provider,question_key))`,
+		`INSERT INTO jobs(id,url,host) VALUES(1,'https://jobs.example.test/role','jobs.example.test')`,
+		`INSERT INTO application_answers(job_id,destination,provider,question_key,label,answer,revision) VALUES(1,'https://jobs.example.test/role','fixture','stable-question-key','Describe a technical issue','Synthetic legacy answer',3)`,
+	} {
+		if _, err := legacy.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := legacy.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	for attempt := 0; attempt < 2; attempt++ {
+		db, err := OpenDB(path)
+		if err != nil {
+			t.Fatalf("open migrated legacy database (attempt %d): %v", attempt, err)
+		}
+		var answer string
+		var revision int64
+		if err := db.QueryRow(`SELECT answer,revision FROM application_answers WHERE job_id=1`).Scan(&answer, &revision); err != nil {
+			t.Fatal(err)
+		}
+		if answer != "Synthetic legacy answer" || revision != 3 {
+			t.Fatalf("legacy application answer changed: %q revision=%d", answer, revision)
+		}
+		var libraryCount, foreignKeys int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM answer_library`).Scan(&libraryCount); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_foreign_key_list('answer_library')`).Scan(&foreignKeys); err != nil {
+			t.Fatal(err)
+		}
+		if libraryCount != 0 || foreignKeys != 0 {
+			t.Fatalf("startup auto-promoted content or tied snapshots to jobs: entries=%d foreign_keys=%d", libraryCount, foreignKeys)
+		}
+		if err := db.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
 
 func TestApplicationStorageMigratesLegacyDatabase(t *testing.T) {
 	root := t.TempDir()

@@ -28,6 +28,7 @@ type preparedQuestion struct {
 	Key, Value, Source string
 	Revision           int64
 	Editable           bool
+	LibraryEligible    bool
 }
 type questionPreparation struct {
 	InspectionID int64
@@ -187,7 +188,8 @@ func (a *App) prepareQuestions(job Job, p CandidateProfile) (questionPreparation
 			value = ""
 			source = ""
 		}
-		out.Questions = append(out.Questions, preparedQuestion{ReusableKey: memoryKey, ReusableRevision: reusable.Revision, JobID: job.ID, Destination: job.URL, Field: f.Field, Key: key, Value: value, Source: source, Revision: answer.Revision, Editable: editable})
+		libraryEligible := exists && answer.Revision > 0 && strings.TrimSpace(answer.Value) != "" && validAnswerLibraryText(answer.Value) && answerLibraryEligible(f.Field, counts[f.ID] == 1)
+		out.Questions = append(out.Questions, preparedQuestion{ReusableKey: memoryKey, ReusableRevision: reusable.Revision, JobID: job.ID, Destination: job.URL, Field: f.Field, Key: key, Value: value, Source: source, Revision: answer.Revision, Editable: editable, LibraryEligible: libraryEligible})
 		if exists && editable {
 			used[key] = true
 		}

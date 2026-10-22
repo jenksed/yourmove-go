@@ -35,6 +35,7 @@ type jobWorkspace struct {
 	SubmissionToken      string
 	SelectedResume       *Resume
 	ResumeSelectionValid bool // Presentation only; commands still validate the file and hash.
+	AnswerEditingAllowed bool
 	Handoff              HandoffEligibility
 	Profile              CandidateProfile
 	BrowserState         browserRunState

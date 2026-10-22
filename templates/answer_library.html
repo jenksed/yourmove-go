@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f7f7f4"><title>Answer Library · YourMove</title><link rel="stylesheet" href="/static/styles.css"><script defer src="/static/ui.js"></script></head><body>
+{{template "shell-open" "answer-library"}}
+<nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/jobs">Opportunities</a><span aria-hidden="true">/</span><span>Answer Library</span></nav>
+<div class="page-heading"><div><p class="eyebrow">PREVIOUS WRITING</p><h1>Answer Library</h1><p class="page-description">Examples you chose to keep. Each stays with the question and application it came from; review and adapt it before using it elsewhere.</p></div></div>
+{{if .Notice}}<p class="local-save-confirmation" role="status">{{.Notice}}</p>{{end}}
+{{if .Entries}}
+<section class="answer-library-list" aria-label="Saved writing examples">
+  {{range .Entries}}
+  <article class="answer-library-entry" id="library-entry-{{.ID}}">
+    <div class="answer-library-context"><strong>{{if .SourceJobTitle}}{{.SourceJobTitle}}{{else}}Untitled job{{end}}</strong><span>{{if .SourceEmployer}}{{.SourceEmployer}}{{else}}{{.SourceHost}}{{end}}</span></div>
+    <h2>Original question</h2><p class="answer-library-question">{{.OriginalQuestion}}</p>
+    <details class="answer-library-full-answer"><summary>Read the complete saved answer</summary><pre class="evidence-text">{{.Answer}}</pre></details>
+    <p class="small-muted">Previous writing from {{if .SourceEmployer}}{{.SourceEmployer}}{{else}}{{.SourceHost}}{{end}} · saved {{.CreatedAt}}{{if ne .UpdatedAt .CreatedAt}} · library copy edited {{.UpdatedAt}}{{end}}</p>
+    <details class="answer-library-manage"><summary>Edit or delete this library copy</summary>
+      <p class="small-muted">The original question and source context stay attached. Editing or deleting this copy does not change application history.</p>
+      <form method="POST" action="/answer-library/{{.ID}}/edit" class="answer-library-edit">
+        <input type="hidden" name="revision" value="{{.Revision}}">
+        <div class="field"><label for="library-answer-{{.ID}}">Saved answer</label><textarea id="library-answer-{{.ID}}" name="answer" rows="8" maxlength="12000" required>{{.Answer}}</textarea><small>Up to 12,000 bytes. Keep line breaks as needed.</small></div>
+        <button type="submit" class="button button-secondary">Save library copy</button>
+      </form>
+      <form method="POST" action="/answer-library/{{.ID}}/delete" class="answer-library-delete">
+        <label class="confirm-row"><input type="checkbox" name="confirm" value="yes" required><span>Delete this saved example from the Answer Library.</span></label>
+        <button type="submit" class="button button-danger">Delete example</button>
+      </form>
+    </details>
+  </article>
+  {{end}}
+</section>
+{{else}}
+<section class="inline-empty answer-library-empty"><h2>No saved examples yet</h2><p>After saving an eligible narrative answer in Prepare, choose <strong>Save to Answer Library</strong> to keep a separate copy for future writing.</p><a class="button button-secondary" href="/jobs">Open opportunities</a></section>
+{{end}}
+{{template "shell-close" .}}</body></html>
