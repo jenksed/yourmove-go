@@ -1026,3 +1026,33 @@ a.progress-metric:hover span {text-decoration:underline;color:var(--color-primar
   .question-navigation { gap:8px; }
   .question-navigation .button-secondary { min-width:0; flex:1; }
 }
+
+/* One writing workspace with native, exclusive activity disclosures. */
+.writing-workspace { min-width:0; margin-top:26px; border-top:1px solid var(--color-border); }
+.writing-workspace-heading { padding:17px 0 5px; }
+.writing-workspace-heading .eyebrow { margin:0 0 4px; }
+.writing-workspace-heading h2 { margin:0; font-size:20px; letter-spacing:-.025em; }
+.writing-activity { min-width:0; border-bottom:1px solid var(--color-border); scroll-margin-top:14px; }
+.writing-activity>summary { display:flex; align-items:center; justify-content:space-between; gap:14px; min-height:58px; padding:12px 8px 12px 0; list-style:none; cursor:pointer; }
+.writing-activity>summary::-webkit-details-marker { display:none; }
+.writing-activity>summary>span:first-child { min-width:0; }
+.writing-activity>summary strong { display:block; font-size:16px; line-height:1.35; }
+.writing-activity>summary small { display:block; margin-top:3px; color:var(--color-muted); font-size:11px; line-height:1.5; overflow-wrap:anywhere; }
+.writing-activity>summary:focus-visible { outline:2px solid var(--color-primary); outline-offset:2px; border-radius:4px; }
+.writing-activity[open]>summary { border-left:3px solid var(--color-primary); padding-left:10px; }
+.writing-activity[open]>summary strong { color:var(--color-primary); }
+.writing-activity-state { flex:0 0 auto; display:flex; align-items:center; gap:8px; color:var(--color-muted); font-size:11px; }
+.writing-activity-body { min-width:0; padding:0 0 8px; }
+.writing-activity-body>.prepare-handoff:first-child { padding-top:8px; }
+.writing-context-alternate { min-width:0; border-bottom:1px solid var(--color-border); padding:0 0 5px; }
+.writing-context-alternate>summary { padding:11px 0 7px; list-style:none; cursor:pointer; color:var(--color-muted); font-size:12px; font-weight:650; }
+.writing-context-alternate>summary::-webkit-details-marker { display:none; }
+.writing-context-alternate>summary:focus-visible { outline:2px solid var(--color-primary); outline-offset:2px; border-radius:4px; }
+.writing-context-alternate>p { max-width:76ch; margin:0 0 12px; }
+.writing-answers .question-editors,.writing-answers .question-panel .application-question-form { max-width:780px; }
+.writing-answers .question-panel,.writing-answers .question-editors,.writing-answers .question-layout { min-width:0; }
+@media(max-width:600px) {
+  .writing-activity>summary { align-items:flex-start; gap:9px; }
+  .writing-activity-state { padding-top:2px; }
+  .writing-workspace-heading h2 { font-size:19px; }
+}

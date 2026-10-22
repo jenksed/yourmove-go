@@ -120,6 +120,33 @@ func TestControlledScopeFirstWorkbench(t *testing.T) {
 		wait(`!window.scopePreviousDocument && document.readyState==='complete' && !!document.querySelector('#letter-editor')`)
 	}
 	wait(`document.readyState==='complete' && !!document.querySelector('#letter-body')`)
+	evidenceDir := os.Getenv("YOURMOVE_WRITING_EVIDENCE")
+	if evidenceDir == "" {
+		evidenceDir = "/private/tmp/yourmove-writing-workspace-evidence"
+	}
+	if err := os.MkdirAll(evidenceDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	savedLetterShot, err := chrome.FixtureScreenshotViewport(ctx, page, 900, 700, "#letter-editor", "dark")
+	if err != nil {
+		t.Fatal(err)
+	}
+	savedLetterImage, err := base64.StdEncoding.DecodeString(savedLetterShot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(evidenceDir, "saved-letter-900x700-dark.png"), savedLetterImage, 0600); err != nil {
+		t.Fatal(err)
+	}
+	// Switching activities keeps a dirty saved letter in its original form.
+	run(`(()=>{const e=document.querySelector('#letter-body');window.originalSavedLetter=e.defaultValue;e.value+=' Unsaved cover-letter text stays local.';e.dispatchEvent(new Event('input',{bubbles:true}))})()`)
+	assert(`document.querySelector('#letter-editor').open && document.querySelector('[data-ai-draft] [data-answer-status]').textContent==='Unsaved changes'`)
+	run(`document.querySelector('#application-answers-workspace > summary').click()`)
+	assert(`document.querySelector('#application-answers-workspace').open && !document.querySelector('#letter-editor').open && document.querySelector('#letter-body').value.includes('Unsaved cover-letter text stays local.') && document.querySelector('[data-ai-draft] [data-answer-status]').textContent==='Unsaved changes'`)
+	run(`document.querySelector('#letter-editor > summary').click()`)
+	assert(`document.querySelector('#letter-editor').open && !document.querySelector('#application-answers-workspace').open && document.querySelector('#letter-body').value.includes('Unsaved cover-letter text stays local.')`)
+	run(`(()=>{const e=document.querySelector('#letter-body');e.value=window.originalSavedLetter;e.dispatchEvent(new Event('input',{bubbles:true}))})()`)
+	assert(`document.querySelector('[data-ai-draft] [data-answer-status]').textContent==='Saved locally · unsaved edits are excluded from transfer and download.'`)
 	// Word guidance remains editorial and never constrains edits.
 	assert(`document.querySelector('[data-ai-word-count]').textContent.includes('target 120–160; ceiling 180')`)
 	run(`(()=>{const e=document.querySelector('#letter-body');e.value=('word ').repeat(185);e.dispatchEvent(new Event('input',{bubbles:true}))})()`)

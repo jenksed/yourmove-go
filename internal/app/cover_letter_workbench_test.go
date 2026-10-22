@@ -180,7 +180,13 @@ func TestLetterSaveReturnsToExactScopeWithoutBrowserAuthority(t *testing.T) {
 			}
 			// Deliberate reopening and downloading use this draft, not the latest.
 			reopened := workbenchPage(t, a, "/jobs/1?draft=1#prepare")
-			if !strings.Contains(reopened, `id="letter-editor" open`) || !strings.Contains(reopened, body) {
+			letterStart := strings.Index(reopened, `id="letter-editor"`)
+			letterEnd := -1
+			if letterStart >= 0 {
+				letterEnd = strings.Index(reopened[letterStart:], ">")
+			}
+			letterOpen := letterStart >= 0 && letterEnd >= 0 && strings.Contains(reopened[letterStart:letterStart+letterEnd], " open")
+			if !letterOpen || !strings.Contains(reopened, body) {
 				t.Fatal("cannot reopen selected draft")
 			}
 			download := httptest.NewRecorder()

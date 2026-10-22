@@ -370,6 +370,9 @@ func TestControlledQuestionWorkbench(t *testing.T) {
 	mustEvaluate(`window.confirm=()=>true;document.querySelector('.answer-save-error a').click();true`, nil)
 	page = server.URL + "/jobs/1"
 	waitJS(`document.readyState==='complete' && document.querySelectorAll('.application-question-form').length===6`)
+	assertJS(`document.querySelector('.writing-context-alternate') && !document.querySelector('.writing-context-alternate').open && document.querySelector('.writing-context-alternate').textContent.includes('Recheck the employer form')`)
+	click(`.writing-context-alternate > summary`)
+	assertJS(`document.querySelector('.writing-context-alternate').open`)
 	click(`.employer-site-summary > summary`)
 	assertJS(`document.querySelector('.employer-site-summary').open && document.querySelector('.employer-site-summary').textContent.includes('Work authorization') && !document.querySelector('.employer-site-summary form')`)
 	click(`.manual-review-summary > summary`)

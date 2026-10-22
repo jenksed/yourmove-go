@@ -27,6 +27,9 @@ func TestPrepareWritingEntryPointsUseCurrentQuestionSourceAndExplainLetterSource
 
 	page := get()
 	for _, want := range []string{
+		`<section class="writing-workspace" id="application-materials"`,
+		`id="application-answers-workspace" name="application-writing" data-writing-activity data-writing-activity-key="answers" open`,
+		`id="letter-editor" name="application-writing" data-writing-activity data-writing-activity-key="letter"`,
 		`<nav class="prepare-entry-actions" aria-label="Writing tasks">`,
 		`href="#early-application-questions" data-prepare-question-entry`,
 		`<strong>Prepare answers</strong>`,
@@ -56,5 +59,31 @@ func TestPrepareWritingEntryPointsUseCurrentQuestionSourceAndExplainLetterSource
 		if !strings.Contains(page, want) {
 			t.Errorf("discovered-question Prepare page omitted %q", want)
 		}
+	}
+}
+
+func TestWritingAnswerContextFollowsReturnSourceAndCurrentSnapshot(t *testing.T) {
+	live := applicationQuestionSnapshot{Available: true, Anchor: "#application-questions"}
+	early := applicationQuestionSnapshot{Available: true, Anchor: "#early-application-questions"}
+	cases := []struct {
+		name, url, want string
+		snapshot        applicationQuestionSnapshot
+	}{
+		{name: "current live inventory", snapshot: live, want: "live"},
+		{name: "early inventory fallback", snapshot: early, want: "early"},
+		{name: "live save return", url: "http://localhost/jobs/1?question=exact-key#prepare", snapshot: early, want: "live"},
+		{name: "early save return", url: "http://localhost/jobs/1?early_question=exact-key#prepare", snapshot: live, want: "early"},
+		{name: "no inventory", want: "early"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var request *http.Request
+			if tc.url != "" {
+				request = httptest.NewRequest(http.MethodGet, tc.url, nil)
+			}
+			if got := writingAnswerContext(request, tc.snapshot); got != tc.want {
+				t.Fatalf("writingAnswerContext() = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }

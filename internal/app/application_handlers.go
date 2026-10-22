@@ -47,7 +47,8 @@ type jobWorkspace struct {
 	Letters              []CoverLetterSummary
 	LetterNotice         string
 	LetterSaved          bool
-	LetterOpen           bool // Expand when entering from generation, editing, or a specific draft.
+	LetterOpen           bool   // Expand when entering from generation, editing, or a specific draft.
+	WritingAnswerContext string // Presentation context: "early" or "live"; does not change answer authority.
 	LetterModel          string
 	ProviderReady        map[string]bool
 	LetterResumes        []documentRow

@@ -306,6 +306,7 @@ func (a *App) jobDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	workspace.Preparation = summarizePreparation(workspace)
 	workspace.QuestionSnapshot = chooseApplicationQuestionSnapshot(job, workspace.BrowserState, workspace.Questions, workspace.EarlyQuestions)
+	workspace.WritingAnswerContext = writingAnswerContext(r, workspace.QuestionSnapshot)
 	workspace.Readiness = prepareReadiness(workspace.ResumeSelectionValid, profile, workspace.BrowserState, workspace.QuestionSnapshot, letter)
 	if err := a.resources.jobDetailTemplate.Execute(w, workspace); err != nil {
 		log.Printf("render job detail: %v", err)

@@ -47,9 +47,15 @@ func TestControlledNarrativeAnswerWorkbench(t *testing.T) {
 		schema.Field{ID: "browser:story-second", Label: "Describe how you support a second technical customer", Kind: "textarea"},
 		schema.Field{ID: "browser:story-third", Label: "Describe how you prioritized competing commitments while coordinating a cross-functional product launch, keeping stakeholders informed, and resolving delays that affected several teams", Kind: "textarea"},
 	)
-	if _, err := a.saveInspection(job.ID, schema.Result{Platform: observed.Platform, Source: observed.Source, ApplicationURL: observed.ApplicationURL, Fields: fields}); err != nil {
+	liveInspectionID, err := a.saveInspection(job.ID, schema.Result{Platform: observed.Platform, Source: observed.Source, ApplicationURL: observed.ApplicationURL, Fields: fields})
+	if err != nil {
 		t.Fatal(err)
 	}
+	// This scenario represents a current live application, so the synthetic
+	// managed session must remain active for the snapshot to be primary.
+	activeBrowser := &fakeBrowser{url: observed.ApplicationURL}
+	a.browsers.sessions = map[int64]readOnlySession{job.ID: activeBrowser}
+	a.browsers.states = map[int64]browserRunState{job.ID: {Destination: job.URL, LatestID: liveInspectionID, Active: true, Phase: "watching", Message: "synthetic current live application"}}
 	addCareerEvidenceForSearch(t, a, careerEvidenceContent{Title: "Enterprise production incident response", Situation: "An enterprise customer reported a production database incident.", Actions: "I reviewed service and database logs, coordinated the investigation, and explained the recovery steps to the customer.", OutcomeState: "not_recorded"}, true)
 	saveLibrarySourceAnswer(t, a, job, v.Get("question_key"), "I reviewed synthetic database logs.", 0)
 	if r := promoteLibrarySource(t, a, 1, v.Get("question_key"), 1); r.Code != 303 {
@@ -180,6 +186,20 @@ func TestControlledNarrativeAnswerWorkbench(t *testing.T) {
 			t.Fatalf("write screenshot %s: %v", name, err)
 		}
 	}
+	captureViewport := func(name string, width, height int, selector, theme string) {
+		t.Helper()
+		shot, err := chrome.FixtureScreenshotViewport(ctx, page, width, height, selector, theme)
+		if err != nil {
+			t.Fatalf("capture %s: %v", name, err)
+		}
+		data, err := base64.StdEncoding.DecodeString(shot)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(evidenceRoot, name+".png"), data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	wait(`document.readyState==='complete'&&!!document.querySelector('[data-question-workbench]')`)
 	run(`document.querySelector('[data-tab-target=prepare]').click()`)
 	var activationTimes []time.Duration
@@ -277,7 +297,18 @@ func TestControlledNarrativeAnswerWorkbench(t *testing.T) {
 	run(`find('another').open=true`)
 	run(`([...ai.querySelectorAll('[name=career_evidence]')].find(input=>input.value.startsWith(` + fmt.Sprintf("%q", fmt.Sprintf("%d:", evidenceID)) + `))).focus()`)
 	press(" ", "Space", 32)
-	assert(`[...ai.querySelectorAll('[name=career_evidence]')].find(input=>input.value.startsWith(` + fmt.Sprintf("%q", fmt.Sprintf("%d:", evidenceID)) + `)).checked`)
+	var keyboardEvidence struct {
+		Checked bool   `json:"checked"`
+		Focused bool   `json:"focused"`
+		Details bool   `json:"details"`
+		Active  string `json:"active"`
+	}
+	if err := eval(`(()=>{const e=[...ai.querySelectorAll('[name=career_evidence]')].find(input=>input.value.startsWith(`+fmt.Sprintf("%q", fmt.Sprintf("%d:", evidenceID))+`));return {checked:e?.checked,focused:document.activeElement===e,details:find('another').open,active:document.activeElement?.outerHTML.slice(0,160)}})()`, &keyboardEvidence); err != nil {
+		t.Fatal(err)
+	}
+	if !keyboardEvidence.Checked {
+		t.Fatalf("Space did not select the reviewed career evidence: %+v", keyboardEvidence)
+	}
 	run(`ai.querySelector('[name=library_entry]').value=ai.querySelector('[name=library_entry]').options[1].value;ai.querySelector('[name=library_entry]').dispatchEvent(new Event('change',{bubbles:true}))`)
 	run(`ai.querySelector('[name=model]').focus()`)
 	run(`ai.querySelector('[name=model]').select()`)
@@ -344,6 +375,17 @@ func TestControlledNarrativeAnswerWorkbench(t *testing.T) {
 	if calls.Load() != 1 {
 		t.Fatal("reload generated")
 	}
+	// A proposal awaiting adoption remains bound to its selected live question
+	// while the saved-letter activity is opened and closed.
+	run(`document.querySelector('#letter-editor > summary').click()`)
+	assert(`document.querySelector('#letter-editor').open && !document.querySelector('#application-answers-workspace').open && !document.querySelector('[data-answer-ai-preview]').hidden`)
+	run(`document.querySelector('#application-answers-workspace > summary').click()`)
+	assert(`document.querySelector('#application-answers-workspace').open && !document.querySelector('#letter-editor').open && document.querySelector('[data-question-panel]:not([hidden])').dataset.questionKey===ai.dataset.key && document.querySelector('[data-question-help]').open && !find('preview').hidden && ed.value===''`)
+	if calls.Load() != 1 {
+		t.Fatalf("switching writing activities invoked the AI provider again: %d calls", calls.Load())
+	}
+	captureViewport("live-answers-1100x800-dark", 1100, 800, "#application-materials", "dark")
+	captureViewport("live-answers-900x700-dark", 900, 700, "#application-materials", "dark")
 	run(`ed.value='My dirty answer';ed.dispatchEvent(new Event('input',{bubbles:true}));window.confirm=()=>false;find('adopt').click()`)
 	wait(`!find('adopt').disabled`)
 	assert(`ed.value==='My dirty answer'`)
@@ -436,6 +478,7 @@ func TestControlledNarrativeAnswerWorkbench(t *testing.T) {
 	run(`ed.value+=' I documented my recommendation.';ed.dispatchEvent(new Event('input',{bubbles:true}));ed.closest('form').querySelector('button[type=submit]').click()`)
 	page = server.URL + "/jobs/1?question=" + v.Get("question_key")
 	wait(`document.readyState==='complete'&&document.querySelector('.application-question-form [name=revision]').value==='1'`)
+	assert(`document.querySelector('#application-answers-workspace').open && !document.querySelector('#letter-editor').open && document.querySelector('#application-answers-workspace').innerText.includes('Current browser-observed questions')`)
 	run(`document.querySelector('.application-question-form').scrollIntoView({block:'center'})`)
 	capture("saved-answer-confirmation-1280-light", 1280, ".application-question-form", "light")
 	capture("saved-answer-confirmation-1280-dark", 1280, ".application-question-form", "dark")
@@ -474,8 +517,8 @@ func TestControlledNarrativeAnswerWorkbench(t *testing.T) {
 	if err := a.db.QueryRow(`SELECT COUNT(*) FROM submissions`).Scan(&submissions); err != nil || submissions != 0 {
 		t.Fatal("automatic submission", submissions, err)
 	}
-	if a.browsers.state(1).Destination != "" {
-		t.Fatal("AI opened employer browser")
+	if state := a.browsers.state(1); !a.browsers.has(1) || state.Destination != job.URL || state.LatestID != liveInspectionID || activeBrowser.observes != 0 || activeBrowser.timesClosed() != 0 {
+		t.Fatalf("writing or AI activity changed the existing managed browser state: state=%+v observes=%d closes=%d", state, activeBrowser.observes, activeBrowser.timesClosed())
 	}
 	dir := filepath.Dir(a.resumeDir)
 	server.Close()

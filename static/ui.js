@@ -133,6 +133,75 @@
     }
   }));
 
+  // Writing activities are native exclusive disclosures. This small bridge
+  // restores the last activity in this tab and reveals existing deep links.
+  const writingActivities = Array.from(document.querySelectorAll('[data-writing-activity]'));
+  if (writingActivities.length) {
+    const activityStorageKey = `yourmove:writing-activity:${location.pathname}`;
+    const activityByKey = key => writingActivities.find(activity => activity.dataset.writingActivityKey === key);
+    const activityForTarget = target => target?.closest?.('[data-writing-activity]') || null;
+    const fragmentTarget = () => {
+      if (!location.hash) return null;
+      try { return document.getElementById(decodeURIComponent(location.hash.slice(1))); }
+      catch (_) { return null; }
+    };
+    const routeActivity = () => {
+      const query = new URLSearchParams(location.search);
+      const coverResult = query.get('cover');
+      if (coverResult === 'saved' || coverResult === 'transferring') return activityByKey('answers');
+      if (query.has('early_question') || query.has('question')) return activityByKey('answers');
+      if (coverResult || query.has('draft')) return activityByKey('letter');
+      return activityForTarget(fragmentTarget());
+    };
+    const openActivity = (activity, target = activity) => {
+      if (!activity) return;
+      for (let node = target; node && node !== activity.parentElement; node = node.parentElement) {
+        if (node.matches?.('details')) node.open = true;
+      }
+      activity.open = true;
+      try { sessionStorage.setItem(activityStorageKey, activity.dataset.writingActivityKey); } catch (_) {}
+    };
+    const revealFragment = () => {
+      const target = fragmentTarget();
+      const activity = activityForTarget(target);
+      if (!activity) return;
+      const panel = activity.closest('[data-workspace-panel]');
+      if (panel?.hidden) {
+        document.querySelector('.workspace-tab[data-tab-target="prepare"]')?.click();
+        try { history.replaceState(null, '', location.pathname + location.search + location.hash); } catch (_) {}
+      }
+      openActivity(activity, target);
+    };
+    const requested = routeActivity();
+    let remembered = null;
+    try { remembered = activityByKey(sessionStorage.getItem(activityStorageKey)); } catch (_) {}
+    const selected = requested || remembered || writingActivities.find(activity => activity.open) || activityByKey('answers') || writingActivities[0];
+    openActivity(selected);
+    document.addEventListener('toggle', event => {
+      const activity = event.target;
+      if (activity?.matches?.('[data-writing-activity]') && activity.open) {
+        try { sessionStorage.setItem(activityStorageKey, activity.dataset.writingActivityKey); } catch (_) {}
+      }
+    }, true);
+    writingActivities.forEach(activity => {
+      const summary = activity.querySelector(':scope > summary');
+      summary?.addEventListener('click', event => {
+        if (!event.isTrusted) return;
+        requestAnimationFrame(() => {
+          if (!activity.open) return;
+          const hash = `#${activity.id}`;
+          if (location.hash !== hash) {
+            try { history.pushState(history.state, '', location.pathname + location.search + hash); } catch (_) {}
+          }
+          try { sessionStorage.setItem(activityStorageKey, activity.dataset.writingActivityKey); } catch (_) {}
+        });
+      });
+    });
+    window.addEventListener('hashchange', revealFragment);
+    window.addEventListener('popstate', revealFragment);
+    revealFragment();
+  }
+
   // Client-side presentation filtering. Server output stays complete without JS.
   const list = document.querySelector('[data-job-list]');
   if (list) {
@@ -429,6 +498,9 @@
       const target = document.getElementById(link.hash.slice(1));
       if (!target) return;
       event.preventDefault();
+      for (let parent = target; parent; parent = parent.parentElement) {
+        if (parent.matches?.('details')) parent.open = true;
+      }
       try { history.replaceState(null, '', link.hash); } catch (_) {}
       requestAnimationFrame(() => {
         const selected = target.querySelector('[data-question-panel]:not([hidden])');

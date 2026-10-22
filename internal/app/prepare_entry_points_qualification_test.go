@@ -12,6 +12,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -43,7 +45,18 @@ func TestControlledPrepareEntryPoints(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := &httptest.Server{Listener: listener, Config: &http.Server{Handler: newMux(a)}}
+	var noScripts atomic.Bool
+	var noScriptRequests atomic.Int32
+	mux := newMux(a)
+	server := &httptest.Server{Listener: listener, Config: &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if noScripts.Load() && (r.URL.Path == "/static/ui.js" || r.URL.Path == "/static/inspection.js") {
+			noScriptRequests.Add(1)
+			w.Header().Set("Content-Type", "text/javascript")
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	})}}
 	server.Start()
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
@@ -108,6 +121,21 @@ func TestControlledPrepareEntryPoints(t *testing.T) {
 	}
 	if err := os.MkdirAll(prefix, 0700); err != nil {
 		t.Fatal(err)
+	}
+	captureWorkspace := func(name string, width, height int, selector, theme string) {
+		t.Helper()
+		shot, err := session.FixtureScreenshotViewport(ctx, page, width, height, selector, theme)
+		if err != nil {
+			t.Fatalf("capture %s: %v", name, err)
+		}
+		data, err := base64.StdEncoding.DecodeString(shot)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(prefix, name+".png"), data, 0600); err != nil {
+			t.Fatal(err)
+		}
+		t.Log("writing workspace screenshot", filepath.Join(prefix, name+".png"))
 	}
 	for _, viewport := range []struct{ width, height int }{{1100, 800}, {900, 700}} {
 		if err := connection.Call(ctx, "Emulation.setDeviceMetricsOverride", map[string]any{
@@ -198,6 +226,9 @@ func TestControlledPrepareEntryPoints(t *testing.T) {
 	if questionState.Hash != "#early-application-questions" || questionState.Top < 0 || !questionState.Dirty {
 		t.Fatalf("question action missed the selected editor or changed unsaved state: %+v", questionState)
 	}
+	captureWorkspace("answers-1100x800-dark", 1100, 800, "#application-materials", "dark")
+	captureWorkspace("answers-900x700-dark", 900, 700, "#application-materials", "dark")
+	captureWorkspace("answers-750x650-dark", 750, 650, "#application-materials", "dark")
 
 	evaluate(`window.scrollTo(0,0);true`, nil)
 	click(`[data-open-details="letter-editor"]`)
@@ -213,4 +244,132 @@ func TestControlledPrepareEntryPoints(t *testing.T) {
 	if letterState.Hash != "#letter-editor" || letterState.Top < 0 || letterState.Top >= 700 || !letterState.MissingText {
 		t.Fatalf("cover-letter action did not reveal the editor and its source prerequisite: %+v", letterState)
 	}
+	captureWorkspace("generation-1100x800-dark", 1100, 800, "#letter-editor", "dark")
+	captureWorkspace("selection-900x700-light", 900, 700, "#letter-editor", "light")
+	click(`#application-answers-workspace > summary`)
+	wait(`document.querySelector('#application-answers-workspace')?.open===true && document.querySelector('#letter-editor')?.open===false && document.querySelector('[data-question-panel]:not([hidden]) textarea')?.value==='Unsaved answer stays in this editor.'`)
+	var switchedState struct {
+		Key   string `json:"key"`
+		Dirty bool   `json:"dirty"`
+		Help  bool   `json:"help"`
+	}
+	if err := evaluate(`(()=>{const q=document.querySelector('[data-question-panel]:not([hidden])'),f=q?.querySelector('form'),h=q?.querySelector('[data-question-help]');return {key:q?.dataset.questionKey,dirty:f?.dataset.dirty==='true',help:!!h&&h.open}})()`, &switchedState); err != nil {
+		t.Fatal(err)
+	}
+	if switchedState.Key == "" || !switchedState.Dirty {
+		t.Fatalf("switching activities lost the selected dirty answer: %+v", switchedState)
+	}
+	wait(`location.hash==='#application-answers-workspace'`)
+	captureWorkspace("answers-return-900x700-light", 900, 700, "#application-materials", "light")
+	var navigation struct {
+		Entries []struct {
+			ID  int64  `json:"id"`
+			URL string `json:"url"`
+		} `json:"entries"`
+	}
+	if err := connection.Call(ctx, "Page.getNavigationHistory", map[string]any{}, &navigation); err != nil {
+		t.Fatal(err)
+	}
+	findHistoryEntry := func(suffix string) int64 {
+		t.Helper()
+		for _, entry := range navigation.Entries {
+			if strings.HasSuffix(entry.URL, suffix) {
+				return entry.ID
+			}
+		}
+		t.Fatalf("history entry %q not found in %+v", suffix, navigation)
+		return 0
+	}
+	letterEntry := findHistoryEntry("#letter-editor")
+	if err := connection.Call(ctx, "Page.navigateToHistoryEntry", map[string]any{"entryId": letterEntry}, nil); err != nil {
+		t.Fatal(err)
+	}
+	wait(`location.hash==='#letter-editor' && document.querySelector('#letter-editor').open && !document.querySelector('#application-answers-workspace').open && document.querySelector('[data-question-panel]:not([hidden]) textarea').value==='Unsaved answer stays in this editor.'`)
+	if err := connection.Call(ctx, "Page.getNavigationHistory", map[string]any{}, &navigation); err != nil {
+		t.Fatal(err)
+	}
+	answerEntry := findHistoryEntry("#application-answers-workspace")
+	if err := connection.Call(ctx, "Page.navigateToHistoryEntry", map[string]any{"entryId": answerEntry}, nil); err != nil {
+		t.Fatal(err)
+	}
+	wait(`location.hash==='#application-answers-workspace' && document.querySelector('#application-answers-workspace').open && !document.querySelector('#letter-editor').open && document.querySelector('[data-question-panel]:not([hidden]) textarea').value==='Unsaved answer stays in this editor.'`)
+	if err := evaluate(`(()=>{const e=document.querySelector('[data-question-panel]:not([hidden]) textarea');e.value='';e.dispatchEvent(new Event('input',{bubbles:true}));return true})()`, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := connection.Call(ctx, "Page.reload", map[string]any{"ignoreCache": true}, nil); err != nil {
+		t.Fatal(err)
+	}
+	wait(`document.readyState==='complete' && location.hash==='#application-answers-workspace' && document.querySelector('#application-answers-workspace').open && !document.querySelector('#letter-editor').open`)
+	noScripts.Store(true)
+	noJSPage := server.URL + "/jobs/1?qualification=nojs"
+	noJSChrome, err := chromium.LaunchFixture(ctx, noJSPage+"#application-materials")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer noJSChrome.Close()
+	noJSConnection, err := noJSChrome.FixturePage(ctx, noJSPage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer noJSConnection.Close()
+	evaluateNoJS := func(script string, out any) error {
+		var result struct {
+			Result struct {
+				Value json.RawMessage `json:"value"`
+			} `json:"result"`
+			Exception any `json:"exceptionDetails"`
+		}
+		if err := noJSConnection.Call(ctx, "Runtime.evaluate", map[string]any{"expression": script, "returnByValue": true}, &result); err != nil {
+			return err
+		}
+		if result.Exception != nil {
+			return fmt.Errorf("script-free browser assertion failed: %v", result.Exception)
+		}
+		if out != nil {
+			return json.Unmarshal(result.Result.Value, out)
+		}
+		return nil
+	}
+	waitNoJS := func(script string) {
+		t.Helper()
+		for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); {
+			var ok bool
+			if evaluateNoJS("Boolean("+script+")", &ok) == nil && ok {
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		t.Fatalf("script-free browser timed out waiting for %s", script)
+	}
+	waitNoJS(`document.readyState==='complete' && !!document.querySelector('[data-writing-activity]')`)
+	if noScriptRequests.Load() < 2 {
+		t.Fatalf("expected the UI scripts to be withheld, received %d script requests", noScriptRequests.Load())
+	}
+	assertNoJS := func(script string) {
+		t.Helper()
+		var ok bool
+		if err := evaluateNoJS(script, &ok); err != nil || !ok {
+			t.Fatalf("script-free writing activity assertion failed: %s (%v)", script, err)
+		}
+	}
+	assertNoJS(`document.querySelector('#application-answers-workspace').open && !document.querySelector('#letter-editor').open`)
+	noJSShot, err := noJSChrome.FixtureScreenshotViewport(ctx, noJSPage, 900, 700, "#application-materials", "light")
+	if err != nil {
+		t.Fatal(err)
+	}
+	noJSImage, err := base64.StdEncoding.DecodeString(noJSShot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(prefix, "no-js-900x700-light.png"), noJSImage, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := evaluateNoJS(`document.querySelector('#letter-editor > summary').click()`, nil); err != nil {
+		t.Fatal(err)
+	}
+	assertNoJS(`document.querySelector('#letter-editor').open && !document.querySelector('#application-answers-workspace').open`)
+	if err := evaluateNoJS(`document.querySelector('#application-answers-workspace > summary').click()`, nil); err != nil {
+		t.Fatal(err)
+	}
+	assertNoJS(`document.querySelector('#application-answers-workspace').open && !document.querySelector('#letter-editor').open`)
 }

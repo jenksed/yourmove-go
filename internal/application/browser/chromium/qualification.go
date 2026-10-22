@@ -183,20 +183,29 @@ func (s *Session) FixtureScreenshot(ctx context.Context, page string, width int)
 
 // FixtureScreenshotAt captures a real local UI at a named editing surface.
 func (s *Session) FixtureScreenshotAt(ctx context.Context, page string, width int, selector, theme string) (string, error) {
+	return s.FixtureScreenshotViewport(ctx, page, width, 900, selector, theme)
+}
+
+// FixtureScreenshotViewport captures a real local UI at an exact viewport size
+// and a named editing surface. Keep the height explicit for desktop layout QA.
+func (s *Session) FixtureScreenshotViewport(ctx context.Context, page string, width, height int, selector, theme string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if width < 1 || height < 1 {
+		return "", fmt.Errorf("invalid fixture viewport %dx%d", width, height)
+	}
 	ws, err := s.fixtureConnection(ctx, page)
 	if err != nil {
 		return "", err
 	}
 	defer ws.Close(websocket.StatusNormalClosure, "")
-	if err := cdpCall(ctx, ws, 1, "Emulation.setDeviceMetricsOverride", map[string]any{"width": width, "height": 900, "deviceScaleFactor": 1, "mobile": false}, nil); err != nil {
+	if err := cdpCall(ctx, ws, 1, "Emulation.setDeviceMetricsOverride", map[string]any{"width": width, "height": height, "deviceScaleFactor": 1, "mobile": false}, nil); err != nil {
 		return "", err
 	}
 	var overflow bool
 	selection, _ := json.Marshal(selector)
 	appearance, _ := json.Marshal(theme)
-	if err := evaluateRead(ctx, ws, 2, `(()=>{document.documentElement.style.scrollBehavior='auto';if (`+string(appearance)+`) document.documentElement.dataset.theme=`+string(appearance)+`;document.querySelector(`+string(selection)+`).scrollIntoView({behavior:'instant',block:'start'});document.getAnimations().forEach(animation=>animation.finish());return document.documentElement.scrollWidth>innerWidth})()`, &overflow); err != nil || overflow {
+	if err := evaluateRead(ctx, ws, 2, `(()=>{document.documentElement.style.scrollBehavior='auto';if (`+string(appearance)+`) document.documentElement.dataset.theme=`+string(appearance)+`;document.querySelector(`+string(selection)+`).scrollIntoView({behavior:'instant',block:'start'});window.scrollBy(0,-18);document.getAnimations().forEach(animation=>animation.finish());return document.documentElement.scrollWidth>innerWidth})()`, &overflow); err != nil || overflow {
 		var elements []string
 		if overflow {
 			_ = evaluateRead(ctx, ws, 4, `[...document.querySelectorAll('.prepare-workspace *')].filter(e=>e.getBoundingClientRect().right>innerWidth).slice(0,8).map(e=>e.tagName+'.'+e.className+' width='+Math.round(e.getBoundingClientRect().width))`, &elements)

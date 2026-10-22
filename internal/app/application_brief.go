@@ -98,6 +98,26 @@ func chooseApplicationQuestionSnapshot(job Job, state browserRunState, live ques
 	return applicationQuestionSnapshot{}
 }
 
+// writingAnswerContext keeps the answer activity on the context the user just
+// saved or selected. Otherwise it follows the same current-live-versus-early
+// snapshot choice used by Prepare readiness. This only chooses presentation;
+// question identity and save/transfer checks remain server-owned.
+func writingAnswerContext(r *http.Request, snapshot applicationQuestionSnapshot) string {
+	if r != nil {
+		query := r.URL.Query()
+		if query.Has("early_question") {
+			return "early"
+		}
+		if query.Has("question") {
+			return "live"
+		}
+	}
+	if snapshot.Anchor == "#application-questions" {
+		return "live"
+	}
+	return "early"
+}
+
 func briefQuestionFromLive(q preparedQuestion) briefQuestion {
 	return briefQuestion{
 		Label: q.Field.Label, Required: q.Field.Required,
