@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/jenksed/yourmove-go/internal/storage"
 )
 
 func TestCoverLetterStudioGeneratesSavesAndPinsSources(t *testing.T) {
@@ -247,7 +249,7 @@ func TestCoverProviderMigrationPreservesOldDrafts(t *testing.T) {
 	if err := raw.Close(); err != nil {
 		t.Fatal(err)
 	}
-	db, err := openDB(path)
+	db, err := storage.OpenDB(path)
 	if err != nil {
 		t.Fatal(err)
 	}

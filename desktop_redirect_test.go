@@ -7,10 +7,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/jenksed/yourmove-go/internal/storage"
 )
 
 func TestDesktopPOSTRedirectsToGetNavigation(t *testing.T) {
-	db, err := openDB(filepath.Join(t.TempDir(), "jobs.db"))
+	db, err := storage.OpenDB(filepath.Join(t.TempDir(), "jobs.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

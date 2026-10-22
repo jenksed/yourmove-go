@@ -5,13 +5,14 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/jenksed/yourmove-go/internal/platforms"
-
 	_ "modernc.org/sqlite"
+
+	"github.com/jenksed/yourmove-go/internal/platforms"
+	"github.com/jenksed/yourmove-go/internal/storage"
 )
 
 func TestOpenDBFresh(t *testing.T) {
-	db, err := openDB(filepath.Join(t.TempDir(), "jobs.db"))
+	db, err := storage.OpenDB(filepath.Join(t.TempDir(), "jobs.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +70,7 @@ func TestOpenDBMigrations(t *testing.T) {
 
 			// Opening twice proves schema changes are safe to repeat.
 			for i := 0; i < 2; i++ {
-				db, err := openDB(path)
+				db, err := storage.OpenDB(path)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -90,7 +91,7 @@ func TestOpenDBMigrations(t *testing.T) {
 
 func TestSourceRefreshPreservesManualEdits(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "jobs.db")
-	db, err := openDB(path)
+	db, err := storage.OpenDB(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +138,7 @@ func TestSourceRefreshPreservesManualEdits(t *testing.T) {
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := openDB(path)
+	reopened, err := storage.OpenDB(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +153,7 @@ func TestSourceRefreshPreservesManualEdits(t *testing.T) {
 }
 
 func TestRefreshPreservesManualCompany(t *testing.T) {
-	db, err := openDB(filepath.Join(t.TempDir(), "jobs.db"))
+	db, err := storage.OpenDB(filepath.Join(t.TempDir(), "jobs.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +183,7 @@ func TestRefreshPreservesManualCompany(t *testing.T) {
 }
 
 func TestRefreshDoesNotEraseUnreturnedSalary(t *testing.T) {
-	db, err := openDB(filepath.Join(t.TempDir(), "jobs.db"))
+	db, err := storage.OpenDB(filepath.Join(t.TempDir(), "jobs.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

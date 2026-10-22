@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/jenksed/yourmove-go/internal/application/schema"
+	"github.com/jenksed/yourmove-go/internal/storage"
 )
 
 func TestCandidatePronounsMigrationAndRestart(t *testing.T) {
@@ -26,7 +27,7 @@ func TestCandidatePronounsMigrationAndRestart(t *testing.T) {
 	db.Close()
 	want := CandidateProfile{FirstName: "Casey", LastName: "Fixture", Email: "casey@example.test", Phone: "555-0100", City: "Detroit", Region: "Michigan", Country: "US", LinkedIn: "https://linkedin.example.test", GitHub: "https://github.example.test", Portfolio: "https://portfolio.example.test", Approved: true, Revision: 7, UpdatedAt: "legacy timestamp"}
 	for i := 0; i < 2; i++ {
-		db, err = openDB(path)
+		db, err = storage.OpenDB(path)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -37,7 +38,7 @@ func TestCandidatePronounsMigrationAndRestart(t *testing.T) {
 		}
 		db.Close()
 	}
-	db, err = openDB(path)
+	db, err = storage.OpenDB(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +60,7 @@ func TestCandidatePronounsMigrationAndRestart(t *testing.T) {
 	}
 	approved, _ := a.candidateProfile()
 	db.Close()
-	db, err = openDB(path)
+	db, err = storage.OpenDB(path)
 	if err != nil {
 		t.Fatal(err)
 	}

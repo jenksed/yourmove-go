@@ -11,14 +11,16 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/jenksed/yourmove-go/internal/storage"
 )
 
 func main() {
-	dbPath, resumeDir, err := applicationStorage()
+	dbPath, resumeDir, err := storage.ApplicationStorage()
 	if err != nil {
 		log.Fatal(err)
 	}
-	db, err := openDB(dbPath)
+	db, err := storage.OpenDB(dbPath)
 	if err != nil {
 		log.Fatal(err)
 	}

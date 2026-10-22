@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/jenksed/yourmove-go/internal/storage"
 )
 
 func TestNormalizePostingURL(t *testing.T) {
@@ -179,7 +181,7 @@ func TestDeterministicTriageExcludesCompletedAndClosed(t *testing.T) {
 }
 
 func TestTriageRouteAndTemplate(t *testing.T) {
-	db, err := openDB(filepath.Join(t.TempDir(), "jobs.db"))
+	db, err := storage.OpenDB(filepath.Join(t.TempDir(), "jobs.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

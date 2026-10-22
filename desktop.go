@@ -8,16 +8,18 @@ import (
 	"os"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+
+	"github.com/jenksed/yourmove-go/internal/storage"
 )
 
 // Wails is a host for the same Go App and HTTP routes as browser mode.
 // Templates and static assets are embedded; no repository working directory is needed.
 func main() {
-	dbPath, resumeDir, err := applicationStorage()
+	dbPath, resumeDir, err := storage.ApplicationStorage()
 	if err != nil {
 		log.Fatal(err)
 	}
-	db, err := openDB(dbPath)
+	db, err := storage.OpenDB(dbPath)
 	if err != nil {
 		log.Fatal(err)
 	}

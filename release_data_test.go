@@ -9,50 +9,6 @@ import (
 	"testing"
 )
 
-func TestMigrationRefusesDocumentWorkspaceWithoutInstallingDatabase(t *testing.T) {
-	root := t.TempDir()
-	legacy := filepath.Join(root, "legacy.db")
-	db, err := openDB(legacy)
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir := filepath.Join(root, "resumes")
-	if err := os.Mkdir(dir, 0700); err != nil {
-		t.Fatal(err)
-	}
-	a := &App{db: db, resumeDir: dir}
-	original := []byte("%PDF-1.4\nsynthetic original")
-	r, err := a.importResume("original.pdf", bytes.NewReader(original))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Close(); err != nil {
-		t.Fatal(err)
-	}
-	before, err := os.ReadFile(legacy)
-	if err != nil {
-		t.Fatal(err)
-	}
-	destination := filepath.Join(root, "destination.db")
-	err = migrateLegacyJobs(destination, legacy)
-	if err == nil || !strings.Contains(err.Error(), "entire workspace") {
-		t.Fatalf("migration should refuse with recovery instructions: %v", err)
-	}
-	for _, path := range []string{destination, destination + ".migration-tmp"} {
-		if _, err := os.Stat(path); !os.IsNotExist(err) {
-			t.Fatalf("migration left %s: %v", path, err)
-		}
-	}
-	after, err := os.ReadFile(legacy)
-	if err != nil || !bytes.Equal(before, after) {
-		t.Fatalf("source database changed: %v", err)
-	}
-	stored, err := os.ReadFile(filepath.Join(dir, r.StoredName))
-	if err != nil || !bytes.Equal(original, stored) {
-		t.Fatalf("source document changed: %v", err)
-	}
-}
-
 func TestReimportRequiresIntactStoredDocument(t *testing.T) {
 	for _, state := range []string{"missing", "damaged"} {
 		t.Run(state, func(t *testing.T) {

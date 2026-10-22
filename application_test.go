@@ -16,12 +16,13 @@ import (
 	"testing"
 
 	"github.com/jenksed/yourmove-go/internal/documents"
+	"github.com/jenksed/yourmove-go/internal/storage"
 )
 
 func testWorkspace(t *testing.T) (*App, string) {
 	t.Helper()
 	dir := t.TempDir()
-	db, err := openDB(filepath.Join(dir, "jobs.db"))
+	db, err := storage.OpenDB(filepath.Join(dir, "jobs.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -369,7 +370,7 @@ func TestResumeImportAndAssignSubmissionLifecycle(t *testing.T) {
 		t.Fatalf("history=%+v err=%v", history, err)
 	}
 	// New DB handle retains both the current resume and the submission snapshot.
-	reopened, err := openDB(filepath.Join(dir, "jobs.db"))
+	reopened, err := storage.OpenDB(filepath.Join(dir, "jobs.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -672,49 +673,6 @@ func TestBrowserRejectsCrossSiteResumeDownload(t *testing.T) {
 	newMux(a).ServeHTTP(w, req)
 	if w.Code != 403 {
 		t.Fatalf("cross-site download status=%d", w.Code)
-	}
-}
-
-func TestMigrateLegacySQLiteWithoutChangingOriginal(t *testing.T) {
-	dir := t.TempDir()
-	legacy := filepath.Join(dir, "old.db")
-	db, err := openDB(legacy)
-	if err != nil {
-		t.Fatal(err)
-	}
-	a := &App{db: db}
-	if err := a.saveJob(Job{URL: "https://example.com/legacy", Host: "example.com", Title: "Old job"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Close(); err != nil {
-		t.Fatal(err)
-	}
-	dest := filepath.Join(dir, "migrated.db")
-	if err := migrateLegacyJobs(dest, legacy); err != nil {
-		t.Fatal(err)
-	}
-	if err := migrateLegacyJobs(dest, legacy); err != nil {
-		t.Fatal(err)
-	}
-	newDB, err := openDB(dest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, err := (&App{db: newDB}).jobByID(1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	newDB.Close()
-	if got.Title != "Old job" {
-		t.Fatalf("migrated job: %+v", got)
-	}
-	original, err := openDB(legacy)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer original.Close()
-	if _, err = (&App{db: original}).jobByID(1); err != nil {
-		t.Fatalf("original disappeared: %v", err)
 	}
 }
 

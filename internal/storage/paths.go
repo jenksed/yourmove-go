@@ -1,4 +1,4 @@
-package main
+package storage
 
 import (
 	"database/sql"
@@ -10,9 +10,9 @@ import (
 	"strings"
 )
 
-// applicationStorage keeps both desktop and browser mode on the same database.
+// ApplicationStorage keeps both desktop and browser mode on the same database.
 // The legacy working-directory database is left untouched after a consistent copy.
-func applicationStorage() (dbPath, resumeDir string, err error) {
+func ApplicationStorage() (dbPath, resumeDir string, err error) {
 	root := os.Getenv("YOURMOVE_DATA_DIR")
 	if root == "" {
 		if runtime.GOOS == "darwin" {

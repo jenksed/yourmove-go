@@ -56,8 +56,8 @@ macOS Wails desktop.go ─┘           │
 
 ### Persistence and restarting
 
-- `storage.go: applicationStorage` selects an absolute workspace location, normally `~/Library/Application Support/YourMove` on macOS, or the `YOURMOVE_DATA_DIR` override.
-- `database.go: openDB` uses one SQLite connection and creates/upgrades the schema in `initJobsSchema`.
+- `internal/storage/paths.go: storage.ApplicationStorage` selects an absolute workspace location, normally `~/Library/Application Support/YourMove` on macOS, or the `YOURMOVE_DATA_DIR` override, and handles legacy database migration.
+- `internal/storage/sqlite.go: storage.OpenDB` uses one SQLite connection and creates/upgrades the schema through private initialization logic.
 - `jobs.go`, `resumes.go`, `candidate_profile.go`, `cover_letters.go`, `application_answers.go`, `reusable_answers.go`, and `application_inspections.go` read/write their durable records.
 - Stored resumes live in a separate `resumes/` directory within the workspace. Back up the database **and** that directory together, with the app stopped.
 
@@ -79,7 +79,7 @@ The main persisted records map to these tables and files:
 | You want to change… | First file to inspect | Follow into… | Minimal verification |
 | --- | --- | --- | --- |
 | Opportunity list appearance | `templates/jobs.html` | `ui_pages.go`, `static/styles.css`, `static/ui.js` | render test + open `/jobs` |
-| A field on a job | `templates/job.html` | `handlers.go: editJob`, `jobs.go`, `database.go` if persisted | add/edit/restart on isolated data |
+| A field on a job | `templates/job.html` | `handlers.go: editJob`, `jobs.go`, `internal/storage/sqlite.go` if persisted | add/edit/restart on isolated data |
 | Batch URL import limits/duplicates | `intake.go` | `intake_handlers.go`, `intake_test.go` | repeated/invalid URL import |
 | Posting title/company/description fetch | `internal/platforms/*` | `handlers.go: fetchPostingDetails`, `enrichment.go` | platform tests + actual supported posting if safe |
 | Queue / next-job ordering | `triage.go` | `ui_pages.go`, `application_continuation.go: nextApplication` | synthetic mix of ready/closed/applied jobs |
@@ -97,7 +97,7 @@ The main persisted records map to these tables and files:
 | ATS field-mutation logic | `internal/application/browser/chromium/answer.go`, `contact.go`, `attachment.go` | `chromium.go`, `posting.go` | controlled browser fixture; never use a live submission as a test |
 | Desktop-only navigation or origin handling | `desktop_redirect.go` | `desktop.go`, `app_http.go` | desktop-tagged tests + macOS manual route |
 | Native file save/export | `desktop_export.go` | `attachment_downloads.go`, `application_handlers.go`, `desktop.go` | native Save/Cancel and exact exported bytes |
-| App data directory / legacy import | `storage.go` | `database.go`, `resumes.go` | synthetic workspace; confirm normal data untouched |
+| App data directory / legacy import | `internal/storage/paths.go` | `internal/storage/sqlite.go`, `resumes.go` | synthetic workspace; confirm normal data untouched |
 
 ## How to make one manual change without getting lost
 
@@ -248,7 +248,6 @@ These descriptions are navigation hints checked against the baseline commit abov
 | `cover_letters.go` | Cover-letter draft persistence, source evidence, generate/save handlers |
 | `cover_providers.go` | Cover-letter provider configuration and API adapters |
 | `cover_subscription.go` | CLI-based subscription provider connection and execution |
-| `database.go` | SQLite open, connection policy and schema upgrades |
 | `deletion.go` | Job deletion with history integrity |
 | `deletion_handlers.go` | Single and batch delete HTTP actions |
 | `desktop.go` | macOS/Wails desktop entry, native window and file dialogs |
@@ -270,11 +269,10 @@ These descriptions are navigation hints checked against the baseline commit abov
 | `resumes.go` | Resume import/verification/extraction, assignment, review tokens and submissions |
 | `reusable_answers.go` | Exact employer/question-scoped approved answer reuse |
 | `role_families.go` | Role-family storage and deterministic resume suggestion |
-| `storage.go` | Data-directory selection and legacy database migration |
 | `triage.go` | Queue next-action and next-job recommendation |
 | `ui_pages.go` | Opportunity dashboard summary and recorded-applications page |
 
-### Internal Go packages and browser assets (46 files)
+### Internal Go packages and browser assets (49 files)
 
 | File | Role |
 | --- | --- |
@@ -324,6 +322,9 @@ These descriptions are navigation hints checked against the baseline commit abov
 | `internal/platforms/paylocity.go` | Other supported posting-metadata path |
 | `internal/platforms/paylocity_test.go` | Tests for paylocity |
 | `internal/platforms/platforms.go` | Job-posting metadata dispatcher and errors |
+| `internal/storage/paths.go` | Application workspace paths, permissions and legacy database migration |
+| `internal/storage/sqlite.go` | SQLite opening, connection policy, schema creation and additive migrations |
+| `internal/storage/sqlite_test.go` | Isolated storage path and legacy migration coverage |
 
 ### HTML templates (13 files)
 

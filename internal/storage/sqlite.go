@@ -1,4 +1,4 @@
-package main
+package storage
 
 import (
 	"database/sql"
@@ -7,8 +7,8 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// openDB opens the database and makes sure the jobs schema is usable.
-func openDB(path string) (*sql.DB, error) {
+// OpenDB opens the database and makes sure the jobs schema is usable.
+func OpenDB(path string) (*sql.DB, error) {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)

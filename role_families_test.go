@@ -12,6 +12,8 @@ import (
 	"testing"
 
 	_ "modernc.org/sqlite"
+
+	"github.com/jenksed/yourmove-go/internal/storage"
 )
 
 func TestRoleFamilyExampleRoutingAndPersistence(t *testing.T) {
@@ -116,7 +118,7 @@ func TestRoleFamilyExampleRoutingAndPersistence(t *testing.T) {
 	if job.SelectedResumeID != linux.ID || len(record) != 1 || record[0].ResumeID != linux.ID {
 		t.Fatalf("family cleanup touched application records: %+v %+v", job, record)
 	}
-	reread, err := openDB(filepath.Join(dir, "jobs.db"))
+	reread, err := storage.OpenDB(filepath.Join(dir, "jobs.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +243,7 @@ func TestFamilyMigrationFromExistingDocumentSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	db.Close()
-	migrated, err := openDB(path)
+	migrated, err := storage.OpenDB(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +252,7 @@ func TestFamilyMigrationFromExistingDocumentSchema(t *testing.T) {
 		t.Fatalf("legacy resume lost: %+v %v", r, err)
 	}
 	migrated.Close()
-	reopened, err := openDB(path)
+	reopened, err := storage.OpenDB(path)
 	if err != nil {
 		t.Fatalf("migration not idempotent: %v", err)
 	}
