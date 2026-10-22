@@ -173,8 +173,8 @@ Check for accidentally tracked `.db`, `.db-wal`, document files, cached browser 
 
 ### Pass 2: Reduce contradictory documentation
 
-- `WAILS_COMPAT.md` at repository root includes historical claims about repository-relative templates, `go.mod tidy`, and missing packaging/export features. **Archive as a historical spike or remove after verifying every still-relevant instruction migrated to an accurate developer guide.**
-- `UI_WORKBENCH.md` is a blend of history, layout rules, and outdated patch-application workflow. Move historical parts to `docs/history/`, retaining active guidance in `docs/design/` or the developer guide.
+- `docs/history/WAILS_COMPAT.md` retains the historical Wails compatibility spike; verify any actionable claims against current source and developer guidance before reusing them.
+- `docs/history/UI_WORKBENCH.md` retains the historical workbench notes. Active design guidance lives in `docs/design/`, with repository navigation in this guide.
 - `docs/design/application-workbench-v1.md` is a proposal, not an implementation contract. Keep that status visible if the design is retained.
 - Keep date-stamped implementation and qualification reports under `docs/implementation/` as historical records. Use this guide and `docs/RELEASE_CHECKLIST.md` for current architecture and release status; do not treat an old report as a current site-compatibility claim.
 - Keep current-user and developer entry points clear: `README.md`, `docs/TRY_IT.md`, `docs/FEEDBACK.md`, `docs/RELEASE_CHECKLIST.md`, and this guide. Keep dated implementation records separate from current instructions.
@@ -405,7 +405,7 @@ These descriptions are navigation hints checked against the baseline commit abov
 | `role_families_test.go` | Tests for role families |
 | `ui_pages_test.go` | Tests for ui pages |
 
-### Repository root configuration and documentation (9 files)
+### Repository root configuration and documentation (7 files)
 
 | File | Role |
 | --- | --- |
@@ -413,8 +413,6 @@ These descriptions are navigation hints checked against the baseline commit abov
 | `.ignore` | Ripgrep search exceptions for ignored graph |
 | `AGENTS.md` | Agent-specific navigation and design rules |
 | `README.md` | Public project introduction and source-run instructions |
-| `UI_WORKBENCH.md` | Historical/current mixed UI design and verification notes |
-| `WAILS_COMPAT.md` | Historical Wails compatibility spike (partly stale) |
 | `go.mod` | Go module identity, language/toolchain and dependencies |
 | `go.sum` | Go dependency checksums |
 | `opencode.json` | Local developer-agent Graft MCP configuration |
@@ -432,14 +430,13 @@ These descriptions are navigation hints checked against the baseline commit abov
 | --- | --- |
 | `docs/images/yourmove-hero.png` | README marketing illustration; not an application screenshot |
 
-### Current and reference documentation (8 files)
+### Current and reference documentation (7 files)
 
 | File | Role |
 | --- | --- |
 | `docs/FEEDBACK.md` | How to report user experience safely |
 | `docs/RELEASE_CHECKLIST.md` | Current/historical release readiness checklist |
 | `docs/TRY_IT.md` | User-friendly source preview walkthrough and storage warnings |
-| `docs/VISUALS.md` | Screenshot capture/art direction notes |
 | `docs/design/DESIGN_SYSTEM.md` | UI design foundations |
 | `docs/design/RULES.md` | Additional UI composition rules |
 | `docs/design/application-workbench-v1.md` | Earlier proposed workbench design; not the implementation contract |
@@ -457,7 +454,7 @@ These descriptions are navigation hints checked against the baseline commit abov
 | `docs/implementation/2026-10-21-trial-run-fixes.md` | Dated local-fixture trial notes; not universal employer-site qualification |
 | `docs/implementation/ats-platform-integration-notes.md` | Dated engineering handoff or qualification notes; not necessarily current |
 
-### Historical documents (11 files)
+### Historical documents (14 files)
 
 | File | Role |
 | --- | --- |
@@ -472,6 +469,9 @@ These descriptions are navigation hints checked against the baseline commit abov
 | `docs/history/G5_7_TRANSPORT_RELIABILITY.md` | Superseded milestone/history note; preserve only as reference |
 | `docs/history/G5_9_HANDOFF_QUALIFICATION.md` | Superseded milestone/history note; preserve only as reference |
 | `docs/history/G5_INSPECTION.md` | Superseded milestone/history note; preserve only as reference |
+| `docs/history/UI_WORKBENCH.md` | Historical workbench design and workflow notes |
+| `docs/history/VISUALS.md` | Historical screenshot capture and art-direction notes |
+| `docs/history/WAILS_COMPAT.md` | Historical Wails compatibility spike; verify before reusing |
 
 ### Release tooling (5 files)
 
