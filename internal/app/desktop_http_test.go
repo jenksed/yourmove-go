@@ -115,7 +115,7 @@ func TestUnexpectedHostsCannotReadOrWriteWorkspace(t *testing.T) {
 		{"desktop", newDesktopMux(a)},
 	} {
 		for _, method := range []string{http.MethodGet, http.MethodHead, http.MethodPost} {
-			for _, path := range []string{"/jobs", "/candidate", "/resumes", "/resumes/1/download", "/jobs/1", "/jobs/1/browser-status", "/applications"} {
+			for _, path := range []string{"/jobs", "/candidate", "/resumes", "/resumes/1/download", "/jobs/1", "/jobs/1/brief", "/jobs/1/browser-status", "/applications"} {
 				t.Run(mode.name+"/"+method+path, func(t *testing.T) {
 					form := url.Values{"job_url": {"https://example.com/injected"}, "job_title": {"Injected"}}
 					req := httptest.NewRequest(method, "http://evil.example:3000"+path, strings.NewReader(form.Encode()))

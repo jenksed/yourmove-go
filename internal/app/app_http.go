@@ -68,6 +68,7 @@ func newMux(app *App) http.Handler {
 	mux.HandleFunc("GET /enrichment", app.enrichmentPage)
 	mux.HandleFunc("POST /enrichment/{action}", app.enrichmentAction)
 	mux.HandleFunc("GET /jobs/{id}", app.jobDetail)
+	mux.HandleFunc("GET /jobs/{id}/brief", app.applicationBriefHandler)
 	mux.HandleFunc("GET /jobs/{id}/inspection", app.inspectionPage)
 	mux.HandleFunc("POST /jobs/{id}/inspect", app.inspectJob)
 	mux.HandleFunc("POST /jobs/{id}/answers/preview", app.previewEarlyQuestions)

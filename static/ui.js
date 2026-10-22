@@ -1,6 +1,28 @@
 /* Small progressive enhancements only; every mutating form remains server-owned. */
 (() => {
   'use strict';
+  const writeClipboardText = async (text) => {
+    let clipboardError;
+    if (navigator.clipboard?.writeText) {
+      try { await navigator.clipboard.writeText(text); return; }
+      catch (error) { clipboardError = error; }
+    }
+    if (document.execCommand) {
+      const field = document.createElement('textarea');
+      field.value = text;
+      field.setAttribute('readonly', '');
+      field.style.position = 'fixed';
+      field.style.insetInlineStart = '-9999px';
+      document.body.append(field);
+      field.select();
+      let copied = false;
+      try { copied = document.execCommand('copy'); }
+      finally { field.remove(); }
+      if (copied) return;
+    }
+    throw clipboardError || new Error('Clipboard unavailable');
+  };
+
   const copyDescription = document.querySelector('[data-copy-description]');
   if (copyDescription) {
     copyDescription.hidden = false;
@@ -8,21 +30,59 @@
       const status = document.querySelector('[data-copy-description-status]');
       const text = document.getElementById('job-description').innerText.trim();
       try {
-        if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
-        else {
-          const field = document.createElement('textarea');
-          field.value = text;
-          field.style.position = 'fixed';
-          field.style.opacity = '0';
-          document.body.append(field);
-          field.select();
-          const copied = document.execCommand('copy');
-          field.remove();
-          copyDescription.focus();
-          if (!copied) throw new Error('Clipboard unavailable');
-        }
+        await writeClipboardText(text);
         status.textContent = 'Job description copied.';
       } catch (_) { status.textContent = 'Could not copy. Select the description and copy it manually.'; }
+    });
+  }
+
+  const exportButtons = document.querySelectorAll('[data-copy-export]');
+  const exportStatus = document.querySelector('[data-copy-export-status]');
+  const exportFallback = document.querySelector('[data-copy-export-fallback]');
+  const exportText = document.querySelector('[data-copy-export-text]');
+  const exportScope = document.querySelector('[data-brief-scope]');
+  const exportViewLink = document.querySelector('[data-brief-view]');
+  const updateExportViewLink = () => {
+    if (!exportViewLink) return;
+    const endpoint = new URL(exportViewLink.dataset.briefViewUrl, window.location.origin);
+    endpoint.searchParams.set('scope', exportScope?.value || 'unanswered');
+    exportViewLink.href = endpoint.pathname + endpoint.search;
+  };
+  exportScope?.addEventListener('change', updateExportViewLink);
+  updateExportViewLink();
+  for (const button of exportButtons) {
+    button.hidden = false;
+    button.addEventListener('click', async () => {
+      const format = button.dataset.exportFormat;
+      const scope = document.querySelector('[data-brief-scope]')?.value || 'unanswered';
+      const endpoint = new URL(button.dataset.exportUrl, window.location.origin);
+      endpoint.searchParams.set('format', format);
+      endpoint.searchParams.set('scope', scope);
+      let value;
+      try {
+        const response = await fetch(endpoint, { credentials: 'same-origin', headers: { Accept: 'text/plain' } });
+        if (!response.ok) throw new Error('Brief unavailable');
+        value = await response.text();
+      } catch (_) {
+        if (exportStatus) exportStatus.textContent = 'Could not prepare the text. Use the plain-text brief below.';
+        return;
+      }
+      try {
+        await writeClipboardText(value);
+        if (exportStatus) exportStatus.textContent = format === 'brief' ? 'Application brief copied.' : format === 'questions' ? 'Questions copied.' : 'Job details copied.';
+        if (exportFallback) { exportFallback.hidden = true; exportFallback.open = false; }
+        if (exportText) exportText.value = '';
+      } catch (_) {
+        if (exportStatus) exportStatus.textContent = 'Clipboard unavailable. Select and copy the text below.';
+        if (exportText) {
+          exportText.value = value;
+          if (exportFallback) { exportFallback.hidden = false; exportFallback.open = true; }
+          const options = exportFallback?.closest('.brief-export-options');
+          if (options) options.open = true;
+          exportText.focus();
+          exportText.select();
+        }
+      }
     });
   }
   const key = 'yourmove:theme';

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jenksed/yourmove-go/internal/application/browser"
 	"github.com/jenksed/yourmove-go/internal/application/schema"
 )
 
@@ -125,6 +126,39 @@ func (a *App) latestInspectionBySource(jobID int64, source string) (Inspection, 
 		return Inspection{}, err
 	}
 	return a.inspectionByID(id)
+}
+
+// latestValidInspectionForPosting selects one source inventory for this saved
+// posting. A newer unrelated observation does not hide an older valid snapshot.
+func (a *App) latestValidInspectionForPosting(jobID int64, source, postingURL string) (Inspection, error) {
+	rows, err := a.db.Query(`SELECT id,application_url FROM application_inspections WHERE job_id=? AND source=? ORDER BY checked_at DESC,id DESC`, jobID, source)
+	if err != nil {
+		return Inspection{}, err
+	}
+	var selectedID int64
+	for rows.Next() {
+		var id int64
+		var applicationURL string
+		if err := rows.Scan(&id, &applicationURL); err != nil {
+			rows.Close()
+			return Inspection{}, err
+		}
+		if browser.OwnsPostingURL(postingURL, applicationURL) {
+			selectedID = id
+			break
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return Inspection{}, err
+	}
+	if err := rows.Close(); err != nil {
+		return Inspection{}, err
+	}
+	if selectedID == 0 {
+		return Inspection{}, sql.ErrNoRows
+	}
+	return a.inspectionByID(selectedID)
 }
 func (a *App) inspectionByID(id int64) (Inspection, error) {
 	var item Inspection

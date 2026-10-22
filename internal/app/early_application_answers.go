@@ -325,11 +325,11 @@ func (a *App) prepareEarlyQuestions(job Job, r *http.Request) (earlyQuestionPrep
 	if !out.PublicDiscoveryAllowed && out.PreviewDiscoveryAllowed {
 		discoverySource = "preview"
 	}
-	item, err := a.latestInspectionBySource(job.ID, discoverySource)
+	item, err := a.latestValidInspectionForPosting(job.ID, discoverySource, job.URL)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return out, err
 	}
-	if err != nil || !browser.OwnsPostingURL(job.URL, item.ApplicationURL) {
+	if err != nil {
 		history, historyErr := a.earlyAnswerHistory(job.ID)
 		if historyErr != nil {
 			return out, historyErr

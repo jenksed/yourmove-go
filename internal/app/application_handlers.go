@@ -23,6 +23,8 @@ type jobWorkspace struct {
 	SavedBrowser        *Inspection
 	NextJob             *NextAction
 	Preparation         HandoffPresentation
+	QuestionSnapshot    applicationQuestionSnapshot
+	Readiness           applicationReadiness
 	TransferNotice      string
 	SubmissionNotice    string
 	SubmissionUncertain bool

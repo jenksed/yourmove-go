@@ -614,6 +614,61 @@ small,.small-muted{font-size:12px;line-height:1.55;color:var(--color-muted)}
 .inspection-privacy {max-width:960px;border-top:1px solid var(--color-border);padding:18px 0;margin-top:20px}
 .inspection-privacy h2 {font-size:14px}
 .inspection-privacy .button {margin-top:8px}
+
+/* Checkpoint 3: one compact readiness summary above the existing workbenches. */
+.prepare-readiness {padding:0 0 18px;margin:0 0 2px;border-bottom:1px solid var(--color-border)}
+.readiness-heading {display:flex;justify-content:space-between;align-items:center;gap:14px;margin:0 0 10px}
+.readiness-heading h2 {font-size:20px;letter-spacing:-.025em;margin:0}
+.readiness-heading .button {min-height:40px;white-space:nowrap}
+.brief-copy-status {font-size:12px;color:var(--color-primary);min-height:0;margin:3px 0 0}
+.readiness-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:28px;margin:0}
+.readiness-grid>div {min-width:0;padding:10px 0;border-top:1px solid var(--color-border)}
+.readiness-grid dt {font-size:11px;color:var(--color-muted);margin-bottom:3px}
+.readiness-grid dd {margin:0;font-size:13px;font-weight:620;line-height:1.5;overflow-wrap:anywhere}
+.readiness-grid small {display:block;margin-top:4px;font-size:11px;color:var(--color-muted);line-height:1.45}
+.readiness-finish-link {font-size:11px;color:var(--color-muted);margin:12px 0 0}
+.brief-export-options {margin:12px 0 0;padding-top:10px;border-top:1px solid var(--color-border)}
+.brief-export-options>summary,.transfer-letter-review>summary {cursor:pointer;color:var(--color-muted);font-size:12px;font-weight:650;padding:4px 0}
+.brief-export-options>p {max-width:76ch}
+.brief-scope-field {display:grid;gap:5px;max-width:420px;font-size:11px;color:var(--color-muted);margin:10px 0}
+.brief-scope-field select,.brief-no-script-form select {height:40px;min-height:40px;max-width:100%;padding:8px 34px 8px 10px;border:1px solid var(--color-border-strong);border-radius:7px;background-color:var(--color-surface);color:var(--color-text);font:inherit}
+.brief-secondary-actions {display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:10px 0}
+.brief-secondary-actions .button {min-height:38px}
+.brief-export-options [data-copy-export-status] {min-height:0;margin:7px 0;font-size:12px}
+.brief-export-options [data-copy-export-fallback] {margin:12px 0;padding:10px;border:1px solid var(--color-border);border-radius:7px}
+.brief-export-options [data-copy-export-fallback] textarea {width:100%;max-width:100%;box-sizing:border-box;margin-top:8px;font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre;overflow:auto}
+.brief-no-script-form {margin:12px 0;max-width:650px}
+.brief-no-script-form>label {display:block;font-size:11px;color:var(--color-muted);margin:10px 0 5px}
+.brief-export-options noscript p {max-width:75ch}
+.transfer-letter-review {margin:0}
+.transfer-letter-review[open]>summary {margin-bottom:7px}
+.prepare-group-title {font-size:19px;letter-spacing:-.02em;margin:27px 0 0;padding:18px 0 0;border-top:1px solid var(--color-border)}
+.prepare-workspace .g55-handoff-form {max-width:900px}
+.prepare-workspace .g55-handoff-form>.button-primary {justify-self:start;margin-top:3px;min-height:45px}
+.prepare-workspace .g55-handoff-form .transfer-contact-facts {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0 16px;max-width:900px}
+.prepare-workspace .g55-handoff-form .transfer-contact-facts>div {padding:5px 0;border:0;min-width:0}
+.prepare-workspace .g55-handoff-form .transfer-contact-facts dt {font-size:10px}
+.prepare-workspace .g55-handoff-form .transfer-contact-facts dd {font-size:12px;overflow-wrap:anywhere}
+.prepare-workspace .g55-handoff-form .contact-facts {margin:0}
+.prepare-workspace .pending-answer-scope dd {max-width:82ch}
+.prepare-workspace .prepare-handoff.observed-results {max-width:900px}
+@media(max-width:760px) {
+  .readiness-grid {grid-template-columns:minmax(0,1fr);column-gap:0}
+  .readiness-heading {align-items:flex-start;flex-wrap:wrap}
+  .readiness-heading .button {width:100%}
+  .readiness-grid>div {padding:9px 0}
+  .prepare-group-title {margin-top:22px}
+  .brief-secondary-actions .button {flex:1 1 160px}
+}
+@media(max-width:480px) {
+  .prepare-readiness {padding-bottom:15px}
+  .readiness-heading h2 {font-size:19px}
+  .brief-secondary-actions {align-items:stretch}
+  .brief-secondary-actions .button {width:100%;flex:1 1 100%}
+  .prepare-workspace .g55-handoff-form>.button-primary {width:100%}
+  .prepare-workspace .g55-handoff-form .transfer-contact-facts {grid-template-columns:minmax(0,1fr)}
+  .transfer-letter-review>summary {line-height:1.5}
+}
 @media(max-width:760px) {
   .prepare-intro {flex-wrap:wrap;gap:10px}
   .prepare-block-heading {flex-wrap:wrap}

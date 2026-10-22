@@ -41,11 +41,14 @@ type preparedQuestion struct {
 	CareerEvidenceSuggestions []careerEvidenceSuggestion
 }
 type questionPreparation struct {
-	InspectionID int64
-	Questions    []preparedQuestion
-	Previous     []savedApplicationAnswer
-	SelectedKey  string // Presentation only; never used as save/transfer authority.
-	ReturnNotice string
+	InspectionID           int64
+	InspectionSource       string
+	InspectionCompleteness string
+	InspectionURL          string
+	Questions              []preparedQuestion
+	Previous               []savedApplicationAnswer
+	SelectedKey            string // Presentation only; never used as save/transfer authority.
+	ReturnNotice           string
 }
 type savedApplicationAnswer struct {
 	Key, Label, Value string
@@ -193,17 +196,17 @@ func (a *App) prepareQuestions(job Job, p CandidateProfile) (questionPreparation
 	if !browser.OwnsPostingURL(job.URL, job.URL) {
 		return out, nil
 	}
-	item, err := a.latestInspectionBySource(job.ID, "browser")
+	item, err := a.latestValidInspectionForPosting(job.ID, "browser", job.URL)
 	if errors.Is(err, sql.ErrNoRows) {
 		return out, nil
 	}
 	if err != nil {
 		return out, err
 	}
-	if !browser.OwnsPostingURL(job.URL, item.ApplicationURL) {
-		return out, nil
-	}
 	out.InspectionID = item.ID
+	out.InspectionSource = item.Source
+	out.InspectionCompleteness = item.Completeness
+	out.InspectionURL = item.ApplicationURL
 	rows, err := a.db.Query(`SELECT question_key,label,answer,revision FROM application_answers WHERE job_id=? AND destination=? AND provider=? ORDER BY question_key`, job.ID, job.URL, item.Platform)
 	if err != nil {
 		return out, err
