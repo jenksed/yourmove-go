@@ -490,6 +490,23 @@
     }
     return false;
   };
+  const completionForm = document.querySelector('form[data-record-completion]');
+  const completionNotes = completionForm?.querySelector('[name="notes"]');
+  const completionKey = completionForm && `yourmove:submission-note:${completionForm.dataset.jobId}`;
+  if (completionForm && completionKey) {
+    try {
+      if (document.querySelector('#history .submission-success')) {
+        sessionStorage.removeItem(completionKey);
+      } else {
+        const savedNotes = sessionStorage.getItem(completionKey);
+        if (savedNotes !== null && completionNotes && !completionNotes.value) {
+          completionNotes.value = savedNotes;
+          const restored = completionForm.querySelector('[data-submission-note-restored]');
+          if (restored) restored.hidden = false;
+        }
+      }
+    } catch (_) {}
+  }
   document.addEventListener('click', event => {
     const link = event.target.closest('a[href]');
     if (!link || event.defaultPrevented || link.target === '_blank' || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -510,7 +527,16 @@
       ? (!(dirtyForms().length || recovery()) || window.confirm('You have unsaved answer or letter edits. Record completion anyway? Choose OK to record your confirmed employer submission and leave these unsaved edits behind; they will be lost. Choose Cancel to stay and save or copy them first.'))
       : allowLeaving(event.target);
     if (!allowed) { event.preventDefault(); event.stopImmediatePropagation(); }
-    else leaving = true;
+    else {
+      if (recording) {
+        try {
+          const note = event.target.querySelector('[name="notes"]')?.value || '';
+          if (note) sessionStorage.setItem(`yourmove:submission-note:${event.target.dataset.jobId}`, note);
+          else sessionStorage.removeItem(`yourmove:submission-note:${event.target.dataset.jobId}`);
+        } catch (_) {}
+      }
+      leaving = true;
+    }
   }, true);
   window.addEventListener('beforeunload', event => {
     if (!leaving && (dirtyForms().length || recovery())) { event.preventDefault(); event.returnValue = ''; }

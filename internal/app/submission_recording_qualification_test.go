@@ -23,7 +23,29 @@ import (
 // Chromium. It drives the rendered completion form instead of submitting a
 // constructed POST, and keeps all employer actions in synthetic fixtures.
 func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
-	a, _ := testWorkspace(t)
+	a, workspaceRoot := testWorkspace(t)
+	var sequence int
+	var databaseName, databasePath string
+	if err := a.db.QueryRow(`PRAGMA database_list`).Scan(&sequence, &databaseName, &databasePath); err != nil {
+		t.Fatal(err)
+	}
+	canonicalWorkspace, workspaceErr := filepath.EvalSymlinks(workspaceRoot)
+	canonicalDB, databaseErr := filepath.EvalSymlinks(databasePath)
+	canonicalResumes, resumesErr := filepath.EvalSymlinks(a.resumeDir)
+	withinWorkspace := func(path string) bool {
+		relative, err := filepath.Rel(canonicalWorkspace, path)
+		return err == nil && relative != "." && relative != ".." && !strings.HasPrefix(relative, ".."+string(os.PathSeparator))
+	}
+	if databaseName != "main" || workspaceErr != nil || databaseErr != nil || resumesErr != nil ||
+		!withinWorkspace(canonicalDB) || !withinWorkspace(canonicalResumes) {
+		t.Fatalf("qualification storage escaped isolated workspace: db=%q resumes=%q workspace=%q", databasePath, a.resumeDir, workspaceRoot)
+	}
+	t.Logf("isolated SQLite: %s; resumes: %s; workspace: %s", canonicalDB, canonicalResumes, canonicalWorkspace)
+	evidenceRoot, err := os.MkdirTemp("/private/tmp", "yourmove-checkpoint1-submission-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("isolated submission screenshots: %s", evidenceRoot)
 	for _, job := range []Job{
 		{URL: testAshbyPosting, Title: "Synthetic reviewed application", Company: "Fixture Employer"},
 		{URL: "https://jobs.ashbyhq.com/fixture/second", Title: "Synthetic next opportunity", Stage: StageReady},
@@ -45,6 +67,10 @@ func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
 	}
 	field := schema.Field{ID: "browser:why", Label: "Why this synthetic team?", Kind: "textarea"}
 	if _, err = a.saveInspection(1, schema.Result{Platform: "ashby", Source: "browser", ApplicationURL: testAshbyPosting + "/application", Fields: []schema.Field{field}}); err != nil {
+		t.Fatal(err)
+	}
+	const savedLetter = "A synthetic saved cover letter that remains available as the original local draft."
+	if _, err = a.db.Exec(`INSERT INTO cover_letters(job_id,body,provider,model,master_resume_id,master_sha256,role_resume_id,role_sha256,job_description_sha256,created_at) VALUES(1,?,'ollama','fixture-model',?,?,?,?,'fixture-job-description','2026-10-22T00:00:00Z')`, savedLetter, resume.ID, resume.SHA256, resume.ID, resume.SHA256); err != nil {
 		t.Fatal(err)
 	}
 
@@ -172,11 +198,7 @@ func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		root := filepath.Join("/private/tmp", "yourmove-submission-evidence")
-		if err := os.MkdirAll(root, 0700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(root, name), data, 0600); err != nil {
+		if err := os.WriteFile(filepath.Join(evidenceRoot, name), data, 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -198,9 +220,9 @@ func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
 		}
 	}()
 	basePage := desktopServer.URL + "/application"
-	page := desktopServer.URL + "/jobs/1"
+	page := desktopServer.URL + "/jobs/1?draft=1"
 	navigate(chrome, basePage, page+"#prepare")
-	waitFor(chrome, page, `document.readyState==='complete'&&!!document.querySelector('[data-record-completion]')&&!!document.querySelector('form.application-question-form textarea')`)
+	waitFor(chrome, page, `document.readyState==='complete'&&!!document.querySelector('[data-record-completion]')&&!!document.querySelector('form.application-question-form textarea')&&!!document.querySelector('form[action$="/cover-letter/save"] textarea')`)
 	setViewport(chrome, page, 1100, 800)
 	var ignored bool
 	evaluate(chrome, page, `(()=>{const c=document.querySelector('[data-theme-choice]');if(c){c.value='light';c.dispatchEvent(new Event('change'))}return true})()`, &ignored)
@@ -219,6 +241,14 @@ func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
 	evaluate(chrome, page, `document.querySelector('form.application-question-form').dataset.dirty==='true'`, &dirty)
 	if !dirty {
 		t.Fatal("synthetic question edit did not enter the unsaved state")
+	}
+	const unsavedLetter = "Synthetic unsaved cover-letter edits remain recoverable after cancellation."
+	evaluate(chrome, page, `(()=>{const e=document.querySelector('form[action$="/cover-letter/save"] textarea');e.focus({preventScroll:true});e.select();return true})()`, &ignored)
+	call(chrome, page, "Input.insertText", map[string]any{"text": unsavedLetter}, nil)
+	var dirtyLetter bool
+	evaluate(chrome, page, `document.querySelector('form[action$="/cover-letter/save"]').dataset.dirty==='true'`, &dirtyLetter)
+	if !dirtyLetter {
+		t.Fatal("synthetic cover-letter edit did not enter the unsaved state")
 	}
 	focusVisible(chrome, page, `a[data-open-details="record-submission"]`)
 	press(chrome, page, "Enter", "Enter", 13)
@@ -297,13 +327,16 @@ func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
 	press(chrome, page, " ", "Space", 32)
 	waitFor(chrome, page, `window.__recordConfirmMessages.length===1`)
 	var cancelledState struct {
-		OnPrepare bool
-		Dirty     bool
-		Note      string
-		Prompt    string
+		OnPrepare   bool
+		DirtyAnswer bool
+		DirtyLetter bool
+		Answer      string
+		Letter      string
+		Note        string
+		Prompt      string
 	}
-	evaluate(chrome, page, `({OnPrepare:location.pathname==='/jobs/1',Dirty:document.querySelector('form.application-question-form').dataset.dirty==='true',Note:document.querySelector('#notes').value,Prompt:window.__recordConfirmMessages[0]})`, &cancelledState)
-	if !cancelledState.OnPrepare || !cancelledState.Dirty || cancelledState.Note != "Synthetic confirmation SG-1100" || !strings.Contains(cancelledState.Prompt, "unsaved answer or letter edits") {
+	evaluate(chrome, page, `({OnPrepare:location.pathname==='/jobs/1',DirtyAnswer:document.querySelector('form.application-question-form').dataset.dirty==='true',DirtyLetter:document.querySelector('form[action$="/cover-letter/save"]').dataset.dirty==='true',Answer:document.querySelector('form.application-question-form textarea').value,Letter:document.querySelector('form[action$="/cover-letter/save"] textarea').value,Note:document.querySelector('#notes').value,Prompt:window.__recordConfirmMessages[0]})`, &cancelledState)
+	if !cancelledState.OnPrepare || !cancelledState.DirtyAnswer || !cancelledState.DirtyLetter || !strings.Contains(cancelledState.Answer, "Synthetic unsaved question edit") || cancelledState.Letter != unsavedLetter || cancelledState.Note != "Synthetic confirmation SG-1100" || !strings.Contains(cancelledState.Prompt, "unsaved answer or letter edits") {
 		t.Fatalf("cancel did not preserve the recoverable unsaved form: %+v", cancelledState)
 	}
 	evaluate(chrome, page, `(()=>{window.confirm=()=>true;return true})()`, &dirty)
@@ -312,6 +345,10 @@ func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
 	job, err := a.jobByID(1)
 	if err != nil || job.Stage != StageApplied {
 		t.Fatalf("desktop submission did not advance to Applied: %+v %v", job, err)
+	}
+	persistedLetter, err := a.coverLetterByID(1, 1)
+	if err != nil || persistedLetter.Body != savedLetter {
+		t.Fatalf("recording unexpectedly changed the saved cover letter: %+v %v", persistedLetter, err)
 	}
 	history, err := a.jobSubmissions(1)
 	if err != nil || len(history) != 1 || history[0].ResumeID != resume.ID || history[0].ResumeSHA256 != resume.SHA256 || history[0].Notes != "Synthetic confirmation SG-1100" {
@@ -389,16 +426,26 @@ func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
 		t.Fatal(err)
 	}
 	activateVisible(recovery, page, `a[data-open-details="record-submission"]`)
+	focusVisible(recovery, page, `#record-submission #notes`)
+	call(recovery, page, "Input.insertText", map[string]any{"text": "Synthetic stale-recovery note"}, nil)
+	var typedNote string
+	evaluate(recovery, page, `document.querySelector('#record-submission #notes').value`, &typedNote)
+	if typedNote != "Synthetic stale-recovery note" {
+		t.Fatalf("controlled note entry failed: %q", typedNote)
+	}
 	activateVisible(recovery, page, `#record-submission [name=confirm]`)
 	activateVisible(recovery, page, `#record-submission button[type=submit]`)
 	stalePage := desktopServer.URL + "/jobs/3?submission=stale"
 	waitFor(recovery, stalePage, `location.search==='?submission=stale'&&!!document.querySelector('.submission-recovery[role=alert]')`)
 	var recoveryCopy struct {
-		Notice, ResumeLink, FormLink string
+		Notice, ResumeLink, FormLink, Notes, StoredNotes string
 	}
-	evaluate(recovery, stalePage, `({Notice:document.querySelector('.submission-recovery').textContent,ResumeLink:document.querySelector('.submission-recovery a[href="#prepare-resume-heading"]')?.textContent,FormLink:document.querySelector('.submission-recovery a[data-open-details="record-submission"]')?.textContent})`, &recoveryCopy)
+	evaluate(recovery, stalePage, `({Notice:document.querySelector('.submission-recovery').textContent,ResumeLink:document.querySelector('.submission-recovery a[href="#prepare-resume-heading"]')?.textContent,FormLink:document.querySelector('.submission-recovery a[data-open-details="record-submission"]')?.textContent,Notes:document.querySelector('#record-submission #notes')?.value,StoredNotes:sessionStorage.getItem('yourmove:submission-note:3')})`, &recoveryCopy)
 	if !strings.Contains(recoveryCopy.Notice, "Your confirmation was not recorded") || recoveryCopy.ResumeLink == "" || recoveryCopy.FormLink == "" {
 		t.Fatalf("stale recording has no direct recovery path: %+v", recoveryCopy)
+	}
+	if recoveryCopy.Notes != "Synthetic stale-recovery note" {
+		t.Fatalf("stale recording discarded optional notes: %+v", recoveryCopy)
 	}
 	if history, err := a.jobSubmissions(3); err != nil || len(history) != 0 {
 		t.Fatalf("stale resume was recorded: %+v %v", history, err)
@@ -416,7 +463,7 @@ func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
 	activateVisible(recovery, page, `#record-submission button[type=submit]`)
 	waitFor(recovery, page, `location.hash==='#history'&&document.body.textContent.includes('Application recorded as Applied.')`)
 	history, err = a.jobSubmissions(3)
-	if err != nil || len(history) != 1 || history[0].ResumeID != 0 {
+	if err != nil || len(history) != 1 || history[0].ResumeID != 0 || history[0].Notes != "Synthetic stale-recovery note" {
 		t.Fatalf("resume recovery did not permit a valid no-resume submission: %+v %v", history, err)
 	}
 
@@ -434,14 +481,19 @@ func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
 	page = failedPage
 	waitFor(recovery, page, `document.readyState==='complete'&&!!document.querySelector('[data-record-completion]')`)
 	activateVisible(recovery, page, `a[data-open-details="record-submission"]`)
+	focusVisible(recovery, page, `#record-submission #notes`)
+	call(recovery, page, "Input.insertText", map[string]any{"text": "Synthetic database-recovery note"}, nil)
 	activateVisible(recovery, page, `#record-submission [name=confirm]`)
 	activateVisible(recovery, page, `#record-submission button[type=submit]`)
 	failedRecoveryPage := desktopServer.URL + "/jobs/4?submission=failed"
 	waitFor(recovery, failedRecoveryPage, `location.search==='?submission=failed'&&!!document.querySelector('.submission-recovery[role=alert]')`)
-	var failedCopy struct{ Notice, HistoryLink, RetryLink string }
-	evaluate(recovery, failedRecoveryPage, `({Notice:document.querySelector('.submission-recovery').textContent,HistoryLink:document.querySelector('.submission-recovery a[href="#history"]')?.textContent,RetryLink:document.querySelector('.submission-recovery a[data-open-details="record-submission"]')?.textContent})`, &failedCopy)
+	var failedCopy struct{ Notice, HistoryLink, RetryLink, Notes string }
+	evaluate(recovery, failedRecoveryPage, `({Notice:document.querySelector('.submission-recovery').textContent,HistoryLink:document.querySelector('.submission-recovery a[href="#history"]')?.textContent,RetryLink:document.querySelector('.submission-recovery a[data-open-details="record-submission"]')?.textContent,Notes:document.querySelector('#record-submission #notes')?.value})`, &failedCopy)
 	if !strings.Contains(failedCopy.Notice, "Check submission history") || failedCopy.HistoryLink == "" || failedCopy.RetryLink == "" {
 		t.Fatalf("failed recording did not preserve a user recovery path: %+v", failedCopy)
+	}
+	if failedCopy.Notes != "Synthetic database-recovery note" {
+		t.Fatalf("failed recording discarded optional notes: %+v", failedCopy)
 	}
 	capture(recovery, failedRecoveryPage, "submission-recording-failure-recovery.png")
 	failedJob, err := a.jobByID(4)
@@ -459,8 +511,8 @@ func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
 	activateVisible(recovery, page, `#record-submission [name=confirm]`)
 	activateVisible(recovery, page, `#record-submission button[type=submit]`)
 	waitFor(recovery, page, `location.hash==='#history'&&document.body.textContent.includes('Application recorded as Applied.')`)
-	if history, err := a.jobSubmissions(4); err != nil || len(history) != 1 || history[0].ResumeID != 0 {
+	if history, err := a.jobSubmissions(4); err != nil || len(history) != 1 || history[0].ResumeID != 0 || history[0].Notes != "Synthetic database-recovery note" {
 		t.Fatalf("retry after transaction recovery failed: %+v %v", history, err)
 	}
-	t.Log("Real Chromium showed the completion action at 1100x800 and 700x550, exercised keyboard submission in Wails, verified no-JavaScript browser submission, unsaved-edit cancellation, applied history and next-job navigation, updated the Opportunities scoreboard, and recovered from missing-resume and transaction failures.")
+	t.Log("Real Chromium showed the completion action at 1100x800 and 700x550, exercised keyboard submission in Wails, verified no-JavaScript browser submission, preserved dirty answer and cover-letter edits on cancellation, applied history and next-job navigation, updated the Opportunities scoreboard, and recovered from missing-resume and transaction failures.")
 }
