@@ -266,6 +266,7 @@ func (a *App) jobDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	questions.selectQuestion(r)
 	workspace := jobWorkspace{Questions: questions, Job: job, Profile: profile, BrowserState: a.browsers.state(id), Resumes: resumes, ResumeOptions: resumeOptions, LetterResumes: letterResumes, Submissions: history, Desktop: a.openPosting != nil, SubmissionToken: token, SelectedResume: selected, Handoff: assessResumeHandoff(job, selected), Sources: a.coverLetterSources(job, selected), Letter: letter, Letters: letters, LetterNotice: notice, LetterOpen: notice != "" || r.URL.Query().Has("draft"), LetterModel: letterModel, ProviderReady: providerReady, Match: match, HasFamilies: showMatch}
+	workspace.SubmissionNotice, workspace.SubmissionUncertain = submissionRecoveryNotice(r.URL.Query().Get("submission"))
 	workspace.TransferNotice = r.URL.Query().Get("transfer_notice")
 	workspace.LetterSaved = r.URL.Query().Get("cover") == "saved" && letter.ID > 0
 	// Keep the canonical saved-draft URL, but return to the action rather than

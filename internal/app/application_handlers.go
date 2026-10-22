@@ -19,12 +19,14 @@ import (
 )
 
 type jobWorkspace struct {
-	OtherBrowser   *Job
-	SavedBrowser   *Inspection
-	NextJob        *NextAction
-	Preparation    HandoffPresentation
-	TransferNotice string
-	Questions      questionPreparation
+	OtherBrowser        *Job
+	SavedBrowser        *Inspection
+	NextJob             *NextAction
+	Preparation         HandoffPresentation
+	TransferNotice      string
+	SubmissionNotice    string
+	SubmissionUncertain bool
+	Questions           questionPreparation
 	Job
 	Resumes              []Resume
 	ResumeOptions        []documentRow
@@ -531,7 +533,7 @@ func (a *App) setJobResume(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unable to assign resume", 500)
 		return
 	}
-	http.Redirect(w, r, fmt.Sprintf("/jobs/%d", id), http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/jobs/%d#prepare", id), http.StatusSeeOther)
 }
 
 func parseJobID(r *http.Request) (int64, error) {

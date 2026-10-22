@@ -56,12 +56,24 @@ func TestDesktopPOSTRedirectsToGetNavigation(t *testing.T) {
 		t.Fatalf("refresh navigation response: status=%d body=%s", w.Code, w.Body.String())
 	}
 
+	w = post("/jobs/1/resume", url.Values{"resume_id": {"0"}})
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `window.location.replace("/jobs/1#prepare")`) {
+		t.Fatalf("resume recovery should return to Prepare: status=%d body=%s", w.Code, w.Body.String())
+	}
+
 	// The browser route continues to issue a real 303 for PRG.
 	r := httptest.NewRequest(http.MethodPost, "http://localhost/jobs/1/refresh", nil)
 	w = httptest.NewRecorder()
 	newMux(app).ServeHTTP(w, r)
 	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/jobs/1" {
 		t.Fatalf("browser redirect changed: status=%d location=%s", w.Code, w.Header().Get("Location"))
+	}
+	r = httptest.NewRequest(http.MethodPost, "http://localhost/jobs/1/resume", strings.NewReader(url.Values{"resume_id": {"0"}}.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w = httptest.NewRecorder()
+	newMux(app).ServeHTTP(w, r)
+	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/jobs/1#prepare" {
+		t.Fatalf("browser resume recovery redirect changed: status=%d location=%s", w.Code, w.Header().Get("Location"))
 	}
 }
 

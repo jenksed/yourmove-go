@@ -32,7 +32,7 @@ func (a *App) submitJob(w http.ResponseWriter, r *http.Request) {
 	token := r.PostForm.Get("submission_token")
 	if err := a.recordSubmission(id, notes, token); err != nil {
 		if errors.Is(err, ErrSubmissionReviewStale) {
-			http.Error(w, "The reviewed resume changed or is unavailable, or the selected resume changed. Review the application and resume again before confirming.", http.StatusConflict)
+			http.Redirect(w, r, fmt.Sprintf("/jobs/%d?submission=stale#prepare", id), http.StatusSeeOther)
 			return
 		}
 		if errors.Is(err, sql.ErrNoRows) {
@@ -40,8 +40,19 @@ func (a *App) submitJob(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		log.Printf("record application: %v", err)
-		http.Error(w, "Unable to record application", 500)
+		http.Redirect(w, r, fmt.Sprintf("/jobs/%d?submission=failed#prepare", id), http.StatusSeeOther)
 		return
 	}
 	http.Redirect(w, r, fmt.Sprintf("/jobs/%d#history", id), http.StatusSeeOther)
+}
+
+func submissionRecoveryNotice(code string) (string, bool) {
+	switch code {
+	case "stale":
+		return "Your confirmation was not recorded. This review expired, or the selected resume changed or is unavailable. Review the current resume, then confirm again.", false
+	case "failed":
+		return "YourMove could not confirm whether this recording completed. Check submission history before retrying. If no record appears, return to Prepare and try again.", true
+	default:
+		return "", false
+	}
 }

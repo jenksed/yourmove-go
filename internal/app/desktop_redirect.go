@@ -102,6 +102,16 @@ func (w *desktopRedirectWriter) Write(p []byte) (int, error) {
 }
 
 func safeDesktopRedirectTarget(target string) bool {
+	for _, code := range []string{"stale", "failed"} {
+		suffix := "?submission=" + code + "#prepare"
+		if strings.HasPrefix(target, "/jobs/") && strings.HasSuffix(target, suffix) {
+			rawID := strings.TrimSuffix(strings.TrimPrefix(target, "/jobs/"), suffix)
+			id, err := strconv.ParseInt(rawID, 10, 64)
+			if err == nil && id > 0 && rawID == strconv.FormatInt(id, 10) && target == "/jobs/"+rawID+suffix {
+				return true
+			}
+		}
+	}
 	for _, notice := range []string{"in-use", "master", "archived", "restored", "revised", "duplicate", "failed"} {
 		if target == "/resumes?notice="+notice {
 			return true

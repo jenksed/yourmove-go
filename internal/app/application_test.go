@@ -468,7 +468,7 @@ func TestApplicationHTTPBrowserAndDesktop(t *testing.T) {
 	a.pickResume = func() (string, error) { return selectedPath, nil }
 	native := newDesktopMux(a)
 	rec = postApp(native, "/jobs/1/resume", idForm, "wails://localhost", "1")
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `window.location.replace("/jobs/1")`) {
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `window.location.replace("/jobs/1#prepare")`) {
 		t.Fatalf("desktop selection=%d %s", rec.Code, rec.Body.String())
 	}
 	rec = postApp(native, "/resumes/import-native", url.Values{}, "wails://localhost", "1")

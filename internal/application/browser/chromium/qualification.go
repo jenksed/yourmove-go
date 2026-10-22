@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/coder/websocket"
@@ -78,6 +79,42 @@ func (s *Session) FixtureCall(ctx context.Context, page, method string, params, 
 	}
 	defer ws.Close(websocket.StatusNormalClosure, "")
 	return cdpCall(ctx, ws, 1, method, params, out)
+}
+
+// FixturePage holds one local fixture tab's DevTools connection for an
+// interactive qualification. Keeping the connection open preserves viewport
+// emulation and pointer state across the steps of a real-browser workflow.
+func (s *Session) FixturePage(ctx context.Context, page string) (*FixturePage, error) {
+	ws, err := s.fixtureConnection(ctx, page)
+	if err != nil {
+		return nil, err
+	}
+	return &FixturePage{ws: ws}, nil
+}
+
+type FixturePage struct {
+	mu sync.Mutex
+	ws *websocket.Conn
+}
+
+func (p *FixturePage) Call(ctx context.Context, method string, params, out any) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.ws == nil {
+		return errors.New("fixture page is closed")
+	}
+	return cdpCall(ctx, p.ws, 1, method, params, out)
+}
+
+func (p *FixturePage) Close() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.ws == nil {
+		return nil
+	}
+	ws := p.ws
+	p.ws = nil
+	return ws.Close(websocket.StatusNormalClosure, "")
 }
 
 func (s *Session) fixtureConnection(ctx context.Context, page string) (*websocket.Conn, error) {
