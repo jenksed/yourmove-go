@@ -87,4 +87,6 @@ Verification completed for this checkpoint:
 - `node --check static/ui.js`
 - `git diff --check`
 
-Commit and push status will be recorded after branch and upstream verification.
+Implementation commit: `9b8d8cbbe3402f9faf507ad81f40e98d2624474b` (`feat: unify and refine application answer workbench`), pushed to `main`.
+
+GitHub Actions run [39853174161](https://github.com/jenksed/yourmove-go/actions/runs/39853174161) completed successfully. Both **Go source verification** and **macOS desktop verification** passed. `origin/main` matched the pushed commit, and the worktree was clean at verification.
