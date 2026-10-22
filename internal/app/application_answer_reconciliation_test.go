@@ -89,6 +89,33 @@ func TestGreenhouseEarlyAnswerNeedsExplicitLiveAcceptance(t *testing.T) {
 	}
 }
 
+func TestNewlyGroupedAndCustomControlsCannotGainReconciliationAuthority(t *testing.T) {
+	job := Job{URL: testAshbyPosting}
+	for _, kind := range []string{"checkbox_group", "custom_radio_group", "custom_combobox", "unsupported_ambiguous"} {
+		t.Run(kind, func(t *testing.T) {
+			field := schema.Field{ID: "preview:stable-group", Label: "Tools used", Kind: kind, Options: []string{"Option A", "Option B"}}
+			answer := earlyApplicationAnswer{
+				Destination: job.URL, DiscoverySource: "preview", SourceQuestionID: field.ID,
+				Field: field, Answer: "Option A",
+			}
+			public := Inspection{
+				Source: "preview", ApplicationURL: job.URL + "/application",
+				Fields: []InspectedField{{Field: field}},
+			}
+			liveField := field
+			liveField.ID = "browser:" + strings.TrimPrefix(field.ID, "preview:")
+			live := Inspection{
+				Source: "browser", Platform: "ashby", ApplicationURL: job.URL + "/application",
+				Fields: []InspectedField{{Field: liveField}},
+			}
+			result := reconcileEarlyAnswer(job, answer, &public, live, true)
+			if result.CanAccept || result.Accepted || result.Status != "Manual only" {
+				t.Fatalf("deduplication granted authority to %s: %+v", kind, result)
+			}
+		})
+	}
+}
+
 func TestEarlyReconciliationConservativeCases(t *testing.T) {
 	job := Job{URL: earlyGreenhousePosting}
 	basePublic := schema.Field{ID: "application:story", Label: "Describe a time you improved a system", Kind: "textarea", Required: true, Group: "application"}

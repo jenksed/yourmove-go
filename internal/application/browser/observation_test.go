@@ -20,13 +20,39 @@ func TestAshbyPostingOwnership(t *testing.T) {
 }
 func TestBrowserResultKeepsStructuralEvidenceOnly(t *testing.T) {
 	s := "https://jobs.ashbyhq.com/render/e1f2d6a2-b9e2-4f16-b863-3ca228c83e75"
-	o := Observation{URL: s + "/application", Heading: "Apply", Controls: []Control{{ID: "candidate_email", Label: "Email address", Kind: "email", Required: true}, {ID: "sponsorship", Label: "Sponsorship", Sensitive: true}}, Actions: []Action{{Label: "Next", Method: "POST"}}}
+	o := Observation{URL: s + "/application", Heading: "Apply", RawControlCount: 4, Controls: []Control{{ID: "candidate_email", Label: "Email address", Kind: "email", Required: true}, {ID: "sponsorship", Label: "Sponsorship", Sensitive: true}}, Actions: []Action{{Label: "Next", Method: "POST"}}}
 	r, err := AsResult(s, o)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if r.Source != "browser" || r.Completeness != "rendered_partial" || len(r.Fields) != 2 || !r.Fields[1].Sensitive || len(r.Steps) != 2 || r.Steps[1].Action != "human · submission" {
 		t.Fatalf("bad observation: %+v", r)
+	}
+	if !strings.Contains(r.Note, "4 raw visible DOM controls normalized into 2 distinct questions") {
+		t.Fatalf("raw control count was not retained as diagnostic context: %s", r.Note)
+	}
+}
+
+func TestDuplicateAndMissingFieldIdentitiesBecomeManualAmbiguousRecords(t *testing.T) {
+	s := "https://jobs.ashbyhq.com/render/e1f2d6a2-b9e2-4f16-b863-3ca228c83e75"
+	o := Observation{URL: s + "/application", Controls: []Control{
+		{ID: "shared", Label: "Other information", Kind: "text"},
+		{ID: "shared", Label: "Other information", Kind: "text", Sensitive: true},
+		{Label: "Unlabeled control", Kind: "text"},
+		{Label: "Unlabeled control", Kind: "select", Options: []string{"A", "B"}},
+	}}
+	result, err := AsResult(s, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Fields) != 2 {
+		t.Fatalf("ambiguous identities produced duplicate questions: %+v", result.Fields)
+	}
+	if result.Fields[0].Kind != "unsupported_ambiguous" || !result.Fields[0].Sensitive {
+		t.Fatalf("duplicate identity lost its manual-only or sensitive state: %+v", result.Fields[0])
+	}
+	if result.Fields[1].ID != "browser:" || result.Fields[1].Kind != "unsupported_ambiguous" {
+		t.Fatalf("unidentified controls were assigned a fabricated identity: %+v", result.Fields[1])
 	}
 }
 

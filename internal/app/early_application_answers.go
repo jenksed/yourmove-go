@@ -87,6 +87,8 @@ type earlyQuestionPreparation struct {
 	Item                    *Inspection
 	Questions               []earlyApplicationQuestion
 	Previous                []earlyApplicationAnswer
+	SupportedQuestionCount  int
+	ManualQuestionCount     int
 	SelectedKey             string
 	ReturnNotice            string
 	PublicDiscoveryAllowed  bool
@@ -286,6 +288,13 @@ func (a *App) prepareEarlyQuestions(job Job, r *http.Request) (earlyQuestionPrep
 			q := earlyApplicationQuestion{JobID: job.ID, Destination: job.URL, DiscoverySource: item.Source, DiscoveryFingerprint: item.Fingerprint, SourceQuestionID: field.ID, Key: key, Field: field.Field, Value: answer.Answer, Revision: answer.Revision, Editable: editable, IsEarly: true, ManualReason: reason, LocalStatus: status, EarlyAnswerID: answer.ID, SavedReconciliationStatus: answer.ReconciliationStatus, SavedLiveInspection: answer.LiveInspection, SavedLiveQuestionKey: answer.LiveQuestionKey}
 			out.Questions = append(out.Questions, q)
 			seenCurrent[earlyRecordIdentity(job.URL, item.Source, item.Fingerprint, field.ID)] = true
+		}
+		for _, question := range out.Questions {
+			if question.Editable {
+				out.SupportedQuestionCount++
+			} else {
+				out.ManualQuestionCount++
+			}
 		}
 		for _, answer := range answersByIdentity {
 			identity := earlyRecordIdentity(answer.Destination, answer.DiscoverySource, answer.DiscoveryFingerprint, answer.SourceQuestionID)

@@ -30,15 +30,16 @@ type Frame struct {
 	Title string `json:"title"`
 }
 type Observation struct {
-	URL        string    `json:"url"`
-	Title      string    `json:"title"`
-	Heading    string    `json:"heading"`
-	ReadyState string    `json:"readyState"`
-	Forms      int       `json:"forms"`
-	Controls   []Control `json:"controls"`
-	Actions    []Action  `json:"actions"`
-	Frames     []Frame   `json:"frames"`
-	Truncated  bool      `json:"truncated"`
+	URL             string    `json:"url"`
+	Title           string    `json:"title"`
+	Heading         string    `json:"heading"`
+	ReadyState      string    `json:"readyState"`
+	Forms           int       `json:"forms"`
+	RawControlCount int       `json:"rawControlCount"`
+	Controls        []Control `json:"controls"`
+	Actions         []Action  `json:"actions"`
+	Frames          []Frame   `json:"frames"`
+	Truncated       bool      `json:"truncated"`
 }
 
 // OwnsAshbyURL enforces an exact saved posting identity, even after the user
@@ -67,12 +68,51 @@ func AsResult(jobURL string, o Observation) (schema.Result, error) {
 		return schema.Result{}, fmt.Errorf("browser inspection exceeds limits")
 	}
 	fields := make([]schema.Field, 0, len(o.Controls))
+	controlCounts := make(map[string]int, len(o.Controls))
+	for _, c := range o.Controls {
+		controlCounts[c.ID]++
+	}
+	seenControls := make(map[string]bool, len(controlCounts))
 	for _, c := range o.Controls {
 		if c.Label == "" {
 			continue
 		}
 		if len(c.ID) > 250 || len(c.Label) > 500 || len(c.Kind) > 100 || len(c.Options) > 60 {
 			return schema.Result{}, fmt.Errorf("invalid browser field")
+		}
+		if seenControls[c.ID] {
+			continue
+		}
+		seenControls[c.ID] = true
+		if c.ID == "" || controlCounts[c.ID] > 1 {
+			label, required, sensitive := c.Label, false, false
+			var commonOptions []string
+			sameOptions := true
+			seenOptions := false
+			for _, candidate := range o.Controls {
+				if candidate.ID != c.ID {
+					continue
+				}
+				required = required || candidate.Required
+				sensitive = sensitive || candidate.Sensitive
+				if candidate.Label != label {
+					label = "Several controls share an ambiguous field identity"
+				}
+				if !seenOptions {
+					commonOptions = append([]string(nil), candidate.Options...)
+					seenOptions = true
+				} else if !sameStringList(commonOptions, candidate.Options) {
+					sameOptions = false
+				}
+			}
+			if !sameOptions {
+				commonOptions = nil
+			}
+			fields = append(fields, schema.Field{
+				ID: "browser:" + c.ID, Label: label, Kind: "unsupported_ambiguous",
+				Required: required, Sensitive: sensitive, Options: commonOptions, Group: "rendered form",
+			})
+			continue
 		}
 		fields = append(fields, schema.Field{ID: "browser:" + c.ID, Label: c.Label, Kind: c.Kind, Required: c.Required, Sensitive: c.Sensitive, Options: c.Options, Group: "rendered form"})
 	}
@@ -94,7 +134,11 @@ func AsResult(jobURL string, o Observation) (schema.Result, error) {
 			break
 		}
 	}
-	note := fmt.Sprintf("Rendered read-only snapshot: %d visible controls, %d action candidates, %d embedded frames. Other pages and conditional states remain uninspected. No values were captured.", len(o.Controls), len(o.Actions), len(o.Frames))
+	rawControlCount := o.RawControlCount
+	if rawControlCount < len(o.Controls) {
+		rawControlCount = len(o.Controls)
+	}
+	note := fmt.Sprintf("Rendered read-only snapshot: %d raw visible DOM controls normalized into %d distinct questions, %d action candidates, and %d embedded frames. Other pages and conditional states remain uninspected. No values were captured.", rawControlCount, len(fields), len(o.Actions), len(o.Frames))
 	if len(o.Frames) > 0 {
 		note += " Embedded frames require separate inspection; their controls are not verified."
 	}
@@ -102,6 +146,18 @@ func AsResult(jobURL string, o Observation) (schema.Result, error) {
 		note += " Observation exceeded a limit; additional controls may exist."
 	}
 	return schema.Result{Platform: PostingPlatform(jobURL), Source: "browser", Completeness: "rendered_partial", ApplicationURL: o.URL, Note: note, Fields: fields, Steps: steps}, nil
+}
+
+func sameStringList(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // AsPreviewResult records only the same structural snapshot used by ordinary

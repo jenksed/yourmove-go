@@ -83,7 +83,10 @@ func TestGreenhouseEarlyDiscoveryDraftPersistenceAndLiveIsolation(t *testing.T) 
 	}
 	page := httptest.NewRecorder()
 	mux.ServeHTTP(page, httptest.NewRequest("GET", "http://localhost/jobs/1", nil))
-	for _, expected := range []string{"3 questions discovered", "public_api", "Describe a time you improved a system", "Preferred schedule", "Remote", "Required", "not verified"} {
+	if prep := earlyQuestionSummary(t, a, job); prep.SupportedQuestionCount != 2 || prep.ManualQuestionCount != 1 {
+		t.Fatalf("logical preparation counts: supported=%d manual=%d", prep.SupportedQuestionCount, prep.ManualQuestionCount)
+	}
+	for _, expected := range []string{"3 distinct questions discovered", "2 supported for early preparation", "1 manual-only or ambiguous", "public_api", "Describe a time you improved a system", "Preferred schedule", "Remote", "Required", "not verified"} {
 		if !strings.Contains(page.Body.String(), expected) {
 			t.Fatalf("Prepare omitted %q: %s", expected, page.Body.String())
 		}
@@ -147,6 +150,15 @@ func TestGreenhouseEarlyDiscoveryDraftPersistenceAndLiveIsolation(t *testing.T) 
 	}
 }
 
+func earlyQuestionSummary(t *testing.T, a *App, job Job) earlyQuestionPreparation {
+	t.Helper()
+	preparation, err := a.prepareEarlyQuestions(job, httptest.NewRequest("GET", "http://localhost/jobs/1", nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return preparation
+}
+
 func TestEarlyDraftRemainsVisibleWhenDestinationChangesBeforeNewDiscovery(t *testing.T) {
 	a, _ := testWorkspace(t)
 	job, result := earlyGreenhouseFixture(t, a)
@@ -178,6 +190,42 @@ func TestEarlyDraftRemainsVisibleWhenDestinationChangesBeforeNewDiscovery(t *tes
 	newMux(a).ServeHTTP(page, httptest.NewRequest("GET", "http://localhost/jobs/1", nil))
 	if !strings.Contains(page.Body.String(), "Earlier prepared answers preserved") || !strings.Contains(page.Body.String(), answer) || !strings.Contains(page.Body.String(), "cannot be reconciled with the current destination") {
 		t.Fatal("Prepare did not explain and preserve the earlier destination draft")
+	}
+}
+
+func TestAshbyEarlyDraftSurvivesNormalizedIdentityChange(t *testing.T) {
+	a, _ := testWorkspace(t)
+	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com", Title: "Synthetic role"}); err != nil {
+		t.Fatal(err)
+	}
+	job, err := a.jobByID(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := schema.Result{Platform: "ashby", Source: "preview", Completeness: "rendered_preview_partial", ApplicationURL: job.URL + "/application", Fields: []schema.Field{
+		{ID: "preview:entry-old__story", Label: "Describe a technical support issue you resolved", Kind: "textarea"},
+	}}
+	if _, err := a.saveInspection(job.ID, result); err != nil {
+		t.Fatal(err)
+	}
+	question := earlyQuestionByID(t, a, job, "preview:entry-old__story", "")
+	answer := "I documented the symptoms and verified the resolution."
+	if rec := postApp(newMux(a), "/jobs/1/answers/early-save", earlySaveValues(job, question, "0", answer), "", ""); rec.Code != http.StatusSeeOther {
+		t.Fatalf("save early answer: %d %s", rec.Code, rec.Body.String())
+	}
+
+	result.Fields[0].ID = "preview:entry-new__story"
+	if _, err := a.saveInspection(job.ID, result); err != nil {
+		t.Fatal(err)
+	}
+	preparation := earlyQuestionSummary(t, a, job)
+	if len(preparation.Questions) != 1 || preparation.Questions[0].SourceQuestionID != "preview:entry-new__story" ||
+		len(preparation.Previous) != 1 || preparation.Previous[0].SourceQuestionID != "preview:entry-old__story" ||
+		preparation.Previous[0].Answer != answer {
+		t.Fatalf("identity change lost or reused the original draft: current=%+v previous=%+v", preparation.Questions, preparation.Previous)
+	}
+	if preparation.Questions[0].Revision != 0 {
+		t.Fatalf("old answer was silently attached to the new field identity: %+v", preparation.Questions[0])
 	}
 }
 
@@ -248,6 +296,17 @@ func TestEarlyQuestionTypeSafetyAndAIUsesExistingReviewTicket(t *testing.T) {
 	selectQuestion := earlyQuestionByID(t, a, job, "compliance:authorization", "")
 	if selectQuestion.Editable || selectQuestion.ManualReason == "" {
 		t.Fatal("sensitive public question was exposed as an early editor")
+	}
+	for _, field := range []schema.Field{
+		{ID: "preview:race__group", Label: "Race and ethnicity", Kind: "checkbox_group", Sensitive: true, Options: []string{"Option A", "Option B"}},
+		{ID: "preview:tools__group", Label: "Tools used", Kind: "checkbox_group", Options: []string{"Tool A", "Tool B"}},
+		{ID: "preview:interest__group", Label: "Areas of interest", Kind: "custom_checkbox_group", Options: []string{"Customer success", "Technical support"}},
+		{ID: "preview:years__group", Label: "Support experience", Kind: "custom_radio_group", Options: []string{"One year", "Two years"}},
+		{ID: "preview:location", Label: "Current location", Kind: "custom_combobox"},
+	} {
+		if editable, _ := earlyQuestionWritable(field, true); editable {
+			t.Fatalf("newly grouped/custom question became eligible for early preparation: %+v", field)
+		}
 	}
 }
 

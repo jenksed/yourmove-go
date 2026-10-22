@@ -117,6 +117,9 @@ func TestUnstableSensitiveAndAmbiguousQuestionsStayManual(t *testing.T) {
 		{ID: "browser:legal", Kind: "text", Label: "Work authorization", Sensitive: true},
 		{ID: "browser:cover", Kind: "textarea", Label: "Cover letter"},
 		{ID: "browser:custom", Kind: "combobox", Label: "Preference"},
+		{ID: "browser:checkbox-group", Kind: "checkbox_group", Label: "Tools used", Options: []string{"A", "B"}},
+		{ID: "browser:aria-radio-group", Kind: "custom_radio_group", Label: "Support experience", Options: []string{"One year", "Two years"}},
+		{ID: "browser:ambiguous", Kind: "unsupported_ambiguous", Label: "Preference"},
 	} {
 		if editableQuestion(f, true) {
 			t.Fatal("unsafe question editor", f)
@@ -124,6 +127,12 @@ func TestUnstableSensitiveAndAmbiguousQuestionsStayManual(t *testing.T) {
 	}
 	if editableQuestion(schema.Field{ID: "browser:shared", Kind: "text"}, false) {
 		t.Fatal("ambiguous identity accepted")
+	}
+	if !editableQuestion(schema.Field{ID: "browser:one-checkbox", Kind: "checkbox", Label: "Keep me informed"}, true) {
+		t.Fatal("existing standalone checkbox eligibility changed")
+	}
+	if !editableQuestion(schema.Field{ID: "browser:native-radio", Kind: "radio", Label: "Support experience", Options: []string{"One year", "Two years"}}, true) {
+		t.Fatal("existing native radio eligibility changed")
 	}
 	// Options, sensitivity, and required semantics are part of question identity.
 	f := schema.Field{ID: "browser:question", Kind: "select", Label: "Preference", Options: []string{"One", "Two"}}

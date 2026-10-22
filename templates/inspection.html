@@ -43,8 +43,9 @@
   {{end}}
   <details class="g53-detail"><summary>Form observations and troubleshooting (optional)</summary>
   {{if .BrowserItem}}
-  <div class="g53-results-heading"><div><p class="eyebrow">CAPTURED FROM REAL PAGE</p><h3>Observed fields · {{len .BrowserItem.Fields}}</h3><p class="small-muted">{{.BrowserItem.CheckedAt}} · Read-only partial snapshot</p></div>{{if and (gt .BrowserLatestID 0) (ne .BrowserViewingID .BrowserLatestID)}}<a href="/jobs/{{.Job.ID}}/inspection" class="button button-secondary">Latest capture</a>{{end}}</div>
+  <div class="g53-results-heading"><div><p class="eyebrow">CAPTURED FROM REAL PAGE</p><h3>Observed questions · {{len .BrowserItem.Fields}}</h3><p class="small-muted">{{.BrowserItem.CheckedAt}} · Read-only partial snapshot</p></div>{{if and (gt .BrowserLatestID 0) (ne .BrowserViewingID .BrowserLatestID)}}<a href="/jobs/{{.Job.ID}}/inspection" class="button button-secondary">Latest capture</a>{{end}}</div>
   <p class="small-muted g53-url">{{.BrowserItem.ApplicationURL}}</p>
+  <p class="small-muted">{{.BrowserItem.Note}}</p>
   {{if .BrowserItem.Fields}}<div class="g5-fields">{{range .BrowserItem.Fields}}<div class="g5-field"><div><strong>{{.Label}}</strong><p class="small-muted">{{.Kind}} · {{if .Required}}Required{{else}}Optional / not confirmed{{end}}</p>{{if .Options}}<p class="small-muted">Options: {{range $i,$v:=.Options}}{{if $i}}, {{end}}{{$v}}{{end}}</p>{{end}}</div><span class="status status-review">{{if .Sensitive}}Manual review{{else}}Observed only{{end}}</span></div>{{end}}</div>{{else}}<p class="small-muted">No visible fields were captured. There may be more questions after opening the application.</p>{{end}}
   {{if .BrowserItem.Steps}}<details class="g53-detail"><summary>Page identity and possible next actions ({{len .BrowserItem.Steps}})</summary><ol class="g5-step-list">{{range .BrowserItem.Steps}}<li><strong>{{.Label}}</strong><p class="small-muted">{{.State}} · {{.Action}}</p></li>{{end}}</ol></details>{{end}}
   {{else}}

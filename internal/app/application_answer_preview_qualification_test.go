@@ -116,7 +116,7 @@ func TestControlledAshbyPreviewIsReadOnlyAndSessionIsolated(t *testing.T) {
 	}
 	page := httptest.NewRecorder()
 	newMux(a).ServeHTTP(page, httptest.NewRequest("GET", "http://localhost/jobs/1", nil))
-	for _, expected := range []string{"visible controls observed", "rendered preview", "Preview application questions again", "ordinary website network traffic", "No controls were filled"} {
+	for _, expected := range []string{"distinct questions identified", "raw visible DOM controls normalized", "rendered preview", "Preview application questions again", "ordinary website network traffic", "No controls were filled"} {
 		if !strings.Contains(page.Body.String(), expected) {
 			t.Fatalf("Prepare omitted preview state %q", expected)
 		}
