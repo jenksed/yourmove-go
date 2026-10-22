@@ -121,6 +121,14 @@
               {{if .Field.Options}}<p class="small-muted"><strong>Published options</strong> · {{range $i,$option := .Field.Options}}{{if $i}}, {{end}}{{$option}}{{end}}</p>{{end}}
               {{if .Editable}}
                 {{template "early-application-question" .}}
+                {{if .Revision}}<section class="early-reconciliation" aria-label="Live form reconciliation">
+                  <h4>Live form review</h4><p role="status"><strong>{{.Reconciliation.Status}}</strong> · {{.Reconciliation.Detail}}</p>
+                  {{if .Reconciliation.LiveField.ID}}<div class="early-reconciliation-current"><p><strong>Current employer question</strong> · {{.Reconciliation.LiveField.Label}}</p><p class="small-muted">{{.Reconciliation.LiveField.Kind}} · {{if .Reconciliation.LiveField.Required}}Required{{else}}Optional{{end}}{{if .Reconciliation.LiveField.Options}} · Options: {{range $i,$option := .Reconciliation.LiveField.Options}}{{if $i}}, {{end}}{{$option}}{{end}}{{end}}</p></div>{{end}}
+                  {{if .Reconciliation.CanAccept}}<form method="POST" action="/jobs/{{.JobID}}/answers/early-accept" class="early-reconciliation-accept">
+                    <input type="hidden" name="early_answer_id" value="{{.EarlyAnswerID}}"><input type="hidden" name="early_revision" value="{{.Revision}}"><input type="hidden" name="destination" value="{{.Destination}}"><input type="hidden" name="live_inspection_fingerprint" value="{{.Reconciliation.LiveInspectionFingerprint}}"><input type="hidden" name="live_question_key" value="{{.Reconciliation.LiveQuestionKey}}">
+                    <button type="submit" class="button button-secondary">Use prepared answer for this question</button>
+                  </form>{{else if and (ne .Reconciliation.Status "") (ne .Reconciliation.Status "Accepted as a live answer")}}<p class="small-muted"><a href="#application-questions">Review or adapt this answer in the current live question workbench ↓</a></p>{{end}}
+                </section>{{end}}
                 {{if .LibrarySuggestions}}{{template "related-answer-library" .}}{{end}}
                 {{if .CareerEvidence}}{{template "related-career-evidence" .}}{{end}}
                 {{if .AIChoices}}{{template "application-answer-ai" .}}{{end}}
@@ -131,8 +139,7 @@
           </div>
         </div>
         </div>
-        {{else}}<p>No question definitions were published. Use rendered-form inspection when supported, or open the employer application manually.</p>{{end}}
-        {{if .EarlyQuestions.Previous}}<details class="early-previous-drafts"><summary>Earlier prepared answers preserved ({{len .EarlyQuestions.Previous}})</summary>{{range .EarlyQuestions.Previous}}<article class="early-previous-draft"><h4>{{.QuestionLabel}}</h4><p class="small-muted">{{.DiscoverySource}} · {{.UpdatedAt}} · {{.Field.Kind}} · revision {{.Revision}}</p><p role="status">{{.CurrentQuestionState}}</p>{{if .Field.Options}}<p class="small-muted">Original options: {{range $i,$option := .Field.Options}}{{if $i}}, {{end}}{{$option}}{{end}}</p>{{end}}<pre class="evidence-text">{{.Answer}}</pre></article>{{end}}</details>{{end}}
+        {{else if eq .EarlyQuestions.Item.Source "preview"}}<p role="status">No visible application controls were captured. The page may require authentication, CAPTCHA, or a later manual step. YourMove stopped at the current page; continue through the rendered-form inspection path.</p><a href="/jobs/{{.ID}}/inspection" class="button button-secondary">Open rendered-form inspection</a>{{else}}<p>No question definitions were published. Use rendered-form inspection when supported, or open the employer application manually.</p>{{end}}
       {{else if .EarlyQuestions.PublicDiscoveryAllowed}}
         <p>Discover the published question definitions before opening the employer form. The actual live form can include additional or conditional questions.</p>
         <form method="POST" action="/jobs/{{.ID}}/inspect"><input type="hidden" name="return_to" value="prepare"><button type="submit" class="button button-primary">Discover application questions</button></form>
@@ -140,6 +147,7 @@
         <p role="status">Public question discovery is unavailable for this provider. Use the rendered-form inspection path or open the employer site manually. YourMove will not show an empty question workbench.</p>
         <a href="/jobs/{{.ID}}/inspection" class="button button-secondary">Open rendered-form inspection</a>
       {{end}}
+      {{if .EarlyQuestions.Previous}}<details class="early-previous-drafts"><summary>Earlier prepared answers preserved ({{len .EarlyQuestions.Previous}})</summary>{{range .EarlyQuestions.Previous}}<article class="early-previous-draft"><h4>{{.QuestionLabel}}</h4><p class="small-muted">{{.Destination}} · {{.DiscoverySource}} · {{.UpdatedAt}} · {{.Field.Kind}} · revision {{.Revision}}</p><p role="status">{{.CurrentQuestionState}}</p><p role="status"><strong>{{.Reconciliation.Status}}</strong> · {{.Reconciliation.Detail}}</p>{{if .Field.Options}}<p class="small-muted">Original options: {{range $i,$option := .Field.Options}}{{if $i}}, {{end}}{{.}}{{end}}</p>{{end}}<pre class="evidence-text">{{.Answer}}</pre></article>{{end}}</details>{{end}}
     </section>
     {{end}}
     {{if .Questions.WorkbenchQuestions}}

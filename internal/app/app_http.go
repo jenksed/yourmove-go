@@ -83,6 +83,7 @@ func newMux(app *App) http.Handler {
 	mux.HandleFunc("POST /jobs/{id}/cover-letter/transfer", app.transferCoverLetter)
 	mux.HandleFunc("POST /jobs/{id}/answers/save", app.saveApplicationAnswer)
 	mux.HandleFunc("POST /jobs/{id}/answers/early-save", app.saveEarlyApplicationAnswer)
+	mux.HandleFunc("POST /jobs/{id}/answers/early-accept", app.acceptEarlyApplicationAnswer)
 	mux.HandleFunc("POST /jobs/{id}/answers/ai/{action}", app.applicationAnswerAIHandler)
 	mux.HandleFunc("POST /jobs/{id}/answers/library", app.promoteApplicationAnswerHandler)
 	mux.HandleFunc("POST /jobs/{id}/answers/starting-point", app.answerLibraryStartingPointHandler)

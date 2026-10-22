@@ -76,6 +76,9 @@ func (w *desktopRedirectWriter) WriteHeader(status int) {
 	questionPostPath := ""
 	if strings.Contains(target, "?question=") {
 		questionPostPath = "/answers/save"
+		if strings.HasSuffix(w.requestPath, "/answers/early-accept") {
+			questionPostPath = "/answers/early-accept"
+		}
 	}
 	if strings.Contains(target, "?early_question=") {
 		questionPostPath = "/answers/early-save"

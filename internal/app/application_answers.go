@@ -291,24 +291,8 @@ func (a *App) saveApplicationAnswer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	value := r.PostForm.Get("answer")
-	if len(value) > 12000 || !utf8.ValidString(value) || strings.ContainsRune(value, 0) {
-		fail("Answer is too long or invalid", 422)
-		return
-	}
-	if question.Field.Kind == "select" || question.Field.Kind == "radio" {
-		valid := value == ""
-		for _, option := range question.Field.Options {
-			if option == value {
-				valid = true
-			}
-		}
-		if !valid {
-			fail("Choose an observed option", 422)
-			return
-		}
-	}
-	if question.Field.Kind == "checkbox" && value != "" && value != "true" && value != "false" {
-		fail("Choose Yes or No", 422)
+	if message := validateApplicationAnswerValue(*question, value); message != "" {
+		fail(message, 422)
 		return
 	}
 	// Optimistic revision checking prevents a stale tab from overwriting edits.
@@ -328,33 +312,78 @@ func (a *App) saveApplicationAnswer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	result, err := tx.Exec(`INSERT INTO application_answers(job_id,destination,provider,question_key,label,answer,revision) VALUES(?,?,?,?,?,?,1)
- ON CONFLICT(job_id,destination,provider,question_key) DO UPDATE SET answer=excluded.answer,revision=application_answers.revision+1 WHERE application_answers.revision=?`, id, job.URL, browser.PostingPlatform(job.URL), key, question.Field.Label, value, revision)
-	if err != nil {
-		fail("Unable to save the answer", 500)
-		return
-	}
-	n, err := result.RowsAffected()
-	if err != nil || n != 1 {
-		fail("This answer changed in another window. Reload Prepare.", 409)
-		return
-	}
-	if reuse {
-		result, err = tx.Exec(`INSERT INTO reusable_answers(question_key,employer_scope,label,answer,revision) VALUES(?,?,?,?,1)
- ON CONFLICT(question_key) DO UPDATE SET answer=excluded.answer,revision=reusable_answers.revision+1 WHERE reusable_answers.revision=?`, question.ReusableKey, answerEmployerScope(job.URL), question.Field.Label, value, memoryRevision)
-		if err != nil {
-			fail("Unable to save the reusable answer", 500)
-			return
-		}
-		n, err = result.RowsAffected()
-		if err != nil || n != 1 {
+	if err := persistApplicationAnswer(tx, job, *question, revision, value, reuse, memoryRevision); err != nil {
+		switch {
+		case errors.Is(err, errApplicationAnswerConflict):
+			fail("This answer changed in another window. Reload Prepare.", 409)
+		case errors.Is(err, errReusableAnswerConflict):
 			fail("The reusable original changed. Reload Prepare.", 409)
-			return
+		case errors.Is(err, errReusableAnswerInvalid):
+			fail("Only a qualified nonempty answer can be reusable", 422)
+		default:
+			fail("Unable to save the answer", 500)
 		}
+		return
 	}
 	if err := tx.Commit(); err != nil {
 		fail("Unable to save the answer", 500)
 		return
 	}
 	http.Redirect(w, r, fmt.Sprintf("/jobs/%d?question=%s#prepare", id, key), http.StatusSeeOther)
+}
+
+var (
+	errApplicationAnswerConflict = errors.New("application answer revision conflict")
+	errReusableAnswerConflict    = errors.New("reusable answer revision conflict")
+	errReusableAnswerInvalid     = errors.New("reusable answer is not qualified")
+)
+
+func validateApplicationAnswerValue(question preparedQuestion, value string) string {
+	if len(value) > 12000 || !utf8.ValidString(value) || strings.ContainsRune(value, 0) {
+		return "Answer is too long or invalid"
+	}
+	if question.Field.Kind == "select" || question.Field.Kind == "radio" {
+		valid := value == ""
+		for _, option := range question.Field.Options {
+			if option == value {
+				valid = true
+			}
+		}
+		if !valid {
+			return "Choose an observed option"
+		}
+	}
+	if question.Field.Kind == "checkbox" && value != "" && value != "true" && value != "false" {
+		return "Choose Yes or No"
+	}
+	return ""
+}
+
+// Both ordinary live edits and explicitly accepted early drafts use this
+// persistence path, so application-answer revision semantics stay identical.
+func persistApplicationAnswer(tx *sql.Tx, job Job, question preparedQuestion, revision int64, value string, reuse bool, memoryRevision int64) error {
+	result, err := tx.Exec(`INSERT INTO application_answers(job_id,destination,provider,question_key,label,answer,revision) VALUES(?,?,?,?,?,?,1)
+ ON CONFLICT(job_id,destination,provider,question_key) DO UPDATE SET answer=excluded.answer,revision=application_answers.revision+1 WHERE application_answers.revision=?`, job.ID, job.URL, browser.PostingPlatform(job.URL), question.Key, question.Field.Label, value, revision)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil || n != 1 {
+		return errApplicationAnswerConflict
+	}
+	if reuse {
+		if question.ReusableKey == "" || strings.TrimSpace(value) == "" {
+			return errReusableAnswerInvalid
+		}
+		result, err = tx.Exec(`INSERT INTO reusable_answers(question_key,employer_scope,label,answer,revision) VALUES(?,?,?,?,1)
+ ON CONFLICT(question_key) DO UPDATE SET answer=excluded.answer,revision=reusable_answers.revision+1 WHERE reusable_answers.revision=?`, question.ReusableKey, answerEmployerScope(job.URL), question.Field.Label, value, memoryRevision)
+		if err != nil {
+			return err
+		}
+		n, err = result.RowsAffected()
+		if err != nil || n != 1 {
+			return errReusableAnswerConflict
+		}
+	}
+	return nil
 }

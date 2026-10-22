@@ -40,38 +40,57 @@ type earlyApplicationAnswer struct {
 	CreatedAt            string
 	UpdatedAt            string
 	CurrentQuestionState string
+	Reconciliation       earlyReconciliation
+}
+
+// A reconciliation candidate is presentation data only. The accept handler
+// recomputes it from the current inspections before saving a live answer.
+type earlyReconciliation struct {
+	Status                    string
+	Detail                    string
+	LiveQuestionKey           string
+	LiveInspectionFingerprint string
+	LiveField                 schema.Field
+	CanAccept                 bool
+	Accepted                  bool
 }
 
 type earlyApplicationQuestion struct {
-	JobID                int64
-	Destination          string
-	DiscoverySource      string
-	DiscoveryFingerprint string
-	SourceQuestionID     string
-	Key                  string
-	Field                schema.Field
-	Value                string
-	Revision             int64
-	Editable             bool
-	IsEarly              bool
-	ManualReason         string
-	LocalStatus          string
-	AIChoices            *answerAIChoices
-	AIProviders          []answerAIProviderOption
-	AIDefaultProvider    string
-	AIDefaultModel       string
-	LibrarySuggestions   []answerLibrarySuggestion
-	CareerEvidence       []careerEvidenceSuggestion
+	JobID                     int64
+	Destination               string
+	DiscoverySource           string
+	DiscoveryFingerprint      string
+	SourceQuestionID          string
+	Key                       string
+	Field                     schema.Field
+	Value                     string
+	Revision                  int64
+	Editable                  bool
+	IsEarly                   bool
+	ManualReason              string
+	LocalStatus               string
+	AIChoices                 *answerAIChoices
+	AIProviders               []answerAIProviderOption
+	AIDefaultProvider         string
+	AIDefaultModel            string
+	LibrarySuggestions        []answerLibrarySuggestion
+	CareerEvidence            []careerEvidenceSuggestion
+	Reconciliation            earlyReconciliation
+	EarlyAnswerID             int64
+	SavedReconciliationStatus string
+	SavedLiveInspection       string
+	SavedLiveQuestionKey      string
 }
 
 type earlyQuestionPreparation struct {
-	Item                   *Inspection
-	Questions              []earlyApplicationQuestion
-	Previous               []earlyApplicationAnswer
-	SelectedKey            string
-	ReturnNotice           string
-	PublicDiscoveryAllowed bool
-	Notice                 string
+	Item                    *Inspection
+	Questions               []earlyApplicationQuestion
+	Previous                []earlyApplicationAnswer
+	SelectedKey             string
+	ReturnNotice            string
+	PublicDiscoveryAllowed  bool
+	PreviewDiscoveryAllowed bool
+	Notice                  string
 }
 
 func earlyQuestionKey(destination, source, fingerprint string, field schema.Field) string {
@@ -163,6 +182,9 @@ func earlyPotentialNarrative(field schema.Field) bool {
 }
 
 func (q earlyApplicationQuestion) Status() string {
+	if q.Reconciliation.Accepted {
+		return "Accepted as a live application answer; browser filling still requires your authorization."
+	}
 	if !q.Editable {
 		return "Manual completion required"
 	}
@@ -195,7 +217,7 @@ func (p *earlyQuestionPreparation) selectQuestion(r *http.Request) {
 }
 
 func (a *App) prepareEarlyQuestions(job Job, r *http.Request) (earlyQuestionPreparation, error) {
-	out := earlyQuestionPreparation{PublicDiscoveryAllowed: discovery.SupportsPublicQuestions(job.URL)}
+	out := earlyQuestionPreparation{PublicDiscoveryAllowed: discovery.SupportsPublicQuestions(job.URL), PreviewDiscoveryAllowed: browser.PostingPlatform(job.URL) == "ashby"}
 	if r != nil {
 		switch r.URL.Query().Get("early_discovery") {
 		case "failed":
@@ -203,67 +225,76 @@ func (a *App) prepareEarlyQuestions(job Job, r *http.Request) (earlyQuestionPrep
 		case "unsupported":
 			out.Notice = "Public question discovery is unavailable for this job. Use the rendered-form inspection path or open the employer site manually."
 		}
+		if r.URL.Query().Get("early_preview") == "failed" {
+			out.Notice = "The read-only preview could not inspect this page. Your saved questions and answers remain unchanged. Authentication, CAPTCHA, browser availability, or a later manual step may require the normal rendered-form inspection path."
+		}
 	}
 	if job.Stage == StageApplied || job.Stage == StageClosed || job.SubmissionCount > 0 {
 		return out, nil
 	}
-	item, err := a.latestInspectionBySource(job.ID, "public_api")
+	discoverySource := "public_api"
+	if !out.PublicDiscoveryAllowed && out.PreviewDiscoveryAllowed {
+		discoverySource = "preview"
+	}
+	item, err := a.latestInspectionBySource(job.ID, discoverySource)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return out, err
 	}
-	if err == nil && browser.OwnsPostingURL(job.URL, item.ApplicationURL) {
+	if err != nil || !browser.OwnsPostingURL(job.URL, item.ApplicationURL) {
+		history, historyErr := a.earlyAnswerHistory(job.ID)
+		if historyErr != nil {
+			return out, historyErr
+		}
+		for _, answer := range history {
+			answer.CurrentQuestionState = "No current discovery is available for this posting. The original question and answer are preserved for review."
+			answer.Reconciliation = earlyReconciliation{Status: "Not observed yet", Detail: "Run the available question discovery before reconciling this saved answer."}
+			if answer.Destination != job.URL {
+				answer.CurrentQuestionState = "This answer was saved for a different employer destination. Its original wording and answer are preserved; it cannot be reconciled with the current destination."
+				answer.Reconciliation = earlyReconciliation{Status: "Manual only", Detail: "The saved employer destination changed. The original answer cannot be accepted for this destination."}
+			}
+			out.Previous = append(out.Previous, answer)
+		}
+		return out, nil
+	}
+	if err == nil {
 		out.Item = &item
 		counts := make(map[string]int, len(item.Fields))
 		for _, field := range item.Fields {
 			counts[field.ID]++
 		}
-		rows, queryErr := a.db.Query(`SELECT id,job_id,destination,discovery_source,source_question_id,question_label,field_snapshot_json,discovery_fingerprint,answer,revision,reconciliation_status,live_inspection_fingerprint,live_question_key,reconciled_at,created_at,updated_at
-			FROM early_application_answers WHERE job_id=? AND destination=? ORDER BY updated_at DESC,id DESC LIMIT ?`, job.ID, job.URL, maxEarlyAnswersPerJob)
+		history, queryErr := a.earlyAnswerHistory(job.ID)
 		if queryErr != nil {
 			return out, queryErr
 		}
 		answersByIdentity := make(map[string]earlyApplicationAnswer)
-		for rows.Next() {
-			var answer earlyApplicationAnswer
-			var snapshot string
-			if queryErr = rows.Scan(&answer.ID, &answer.JobID, &answer.Destination, &answer.DiscoverySource, &answer.SourceQuestionID, &answer.QuestionLabel, &snapshot, &answer.DiscoveryFingerprint, &answer.Answer, &answer.Revision, &answer.ReconciliationStatus, &answer.LiveInspection, &answer.LiveQuestionKey, &answer.ReconciledAt, &answer.CreatedAt, &answer.UpdatedAt); queryErr != nil {
-				rows.Close()
-				return out, queryErr
-			}
-			if err := json.Unmarshal([]byte(snapshot), &answer.Field); err != nil {
-				rows.Close()
-				return out, fmt.Errorf("decode early answer question snapshot: %w", err)
-			}
-			identity := earlyRecordIdentity(answer.DiscoverySource, answer.DiscoveryFingerprint, answer.SourceQuestionID)
+		for _, answer := range history {
+			identity := earlyRecordIdentity(answer.Destination, answer.DiscoverySource, answer.DiscoveryFingerprint, answer.SourceQuestionID)
 			if _, exists := answersByIdentity[identity]; !exists {
 				answersByIdentity[identity] = answer
 			}
 		}
-		queryErr = rows.Err()
-		rows.Close()
-		if queryErr != nil {
-			return out, queryErr
-		}
 		seenCurrent := make(map[string]bool, len(item.Fields))
 		for _, field := range item.Fields {
 			key := earlyQuestionKey(job.URL, item.Source, item.Fingerprint, field.Field)
-			answer := answersByIdentity[earlyRecordIdentity(item.Source, item.Fingerprint, field.ID)]
+			answer := answersByIdentity[earlyRecordIdentity(job.URL, item.Source, item.Fingerprint, field.ID)]
 			editable, reason := earlyQuestionWritable(field.Field, counts[field.ID] == 1)
 			status := "No early answer saved"
 			if answer.Revision > 0 {
 				status = "Early answer saved locally; not checked against the employer form."
 			}
-			q := earlyApplicationQuestion{JobID: job.ID, Destination: job.URL, DiscoverySource: item.Source, DiscoveryFingerprint: item.Fingerprint, SourceQuestionID: field.ID, Key: key, Field: field.Field, Value: answer.Answer, Revision: answer.Revision, Editable: editable, IsEarly: true, ManualReason: reason, LocalStatus: status}
+			q := earlyApplicationQuestion{JobID: job.ID, Destination: job.URL, DiscoverySource: item.Source, DiscoveryFingerprint: item.Fingerprint, SourceQuestionID: field.ID, Key: key, Field: field.Field, Value: answer.Answer, Revision: answer.Revision, Editable: editable, IsEarly: true, ManualReason: reason, LocalStatus: status, EarlyAnswerID: answer.ID, SavedReconciliationStatus: answer.ReconciliationStatus, SavedLiveInspection: answer.LiveInspection, SavedLiveQuestionKey: answer.LiveQuestionKey}
 			out.Questions = append(out.Questions, q)
-			seenCurrent[earlyRecordIdentity(item.Source, item.Fingerprint, field.ID)] = true
+			seenCurrent[earlyRecordIdentity(job.URL, item.Source, item.Fingerprint, field.ID)] = true
 		}
 		for _, answer := range answersByIdentity {
-			identity := earlyRecordIdentity(answer.DiscoverySource, answer.DiscoveryFingerprint, answer.SourceQuestionID)
+			identity := earlyRecordIdentity(answer.Destination, answer.DiscoverySource, answer.DiscoveryFingerprint, answer.SourceQuestionID)
 			if seenCurrent[identity] {
 				continue
 			}
 			answer.CurrentQuestionState = "The saved question is not in the latest discovery. Its original wording and answer are preserved."
-			if answer.DiscoverySource == item.Source {
+			if answer.Destination != job.URL {
+				answer.CurrentQuestionState = "This answer was saved for a different employer destination. Its original wording and answer are preserved; it cannot be reconciled with the current destination."
+			} else if answer.DiscoverySource == item.Source {
 				if current, exists := fieldByID(item.Fields, answer.SourceQuestionID); exists {
 					if earlyFieldSnapshot(current) == earlyFieldSnapshot(answer.Field) {
 						answer.CurrentQuestionState = "The question itself is unchanged; the discovery schema was refreshed. Review and copy this earlier draft if needed."
@@ -282,6 +313,9 @@ func (a *App) prepareEarlyQuestions(job Job, r *http.Request) (earlyQuestionPrep
 		})
 		if r != nil {
 			out.selectQuestion(r)
+		}
+		if err := a.reconcileEarlyPreparation(job, &item, &out); err != nil {
+			return out, err
 		}
 		// Suggestions are loaded in one bounded batch. Full AI source choices are
 		// fetched only for the question currently open in the workbench.
@@ -318,8 +352,35 @@ func (a *App) prepareEarlyQuestions(job Job, r *http.Request) (earlyQuestionPrep
 	return out, nil
 }
 
-func earlyRecordIdentity(source, fingerprint, questionID string) string {
-	return source + "\x00" + fingerprint + "\x00" + questionID
+func (a *App) earlyAnswerHistory(jobID int64) ([]earlyApplicationAnswer, error) {
+	rows, err := a.db.Query(`SELECT id,job_id,destination,discovery_source,source_question_id,question_label,field_snapshot_json,discovery_fingerprint,answer,revision,reconciliation_status,live_inspection_fingerprint,live_question_key,reconciled_at,created_at,updated_at
+		FROM early_application_answers WHERE job_id=? ORDER BY updated_at DESC,id DESC LIMIT ?`, jobID, maxEarlyAnswersPerJob)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var history []earlyApplicationAnswer
+	seen := make(map[string]bool)
+	for rows.Next() {
+		var answer earlyApplicationAnswer
+		var snapshot string
+		if err := rows.Scan(&answer.ID, &answer.JobID, &answer.Destination, &answer.DiscoverySource, &answer.SourceQuestionID, &answer.QuestionLabel, &snapshot, &answer.DiscoveryFingerprint, &answer.Answer, &answer.Revision, &answer.ReconciliationStatus, &answer.LiveInspection, &answer.LiveQuestionKey, &answer.ReconciledAt, &answer.CreatedAt, &answer.UpdatedAt); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal([]byte(snapshot), &answer.Field); err != nil {
+			return nil, fmt.Errorf("decode early answer question snapshot: %w", err)
+		}
+		identity := earlyRecordIdentity(answer.Destination, answer.DiscoverySource, answer.DiscoveryFingerprint, answer.SourceQuestionID)
+		if !seen[identity] {
+			history = append(history, answer)
+			seen[identity] = true
+		}
+	}
+	return history, rows.Err()
+}
+
+func earlyRecordIdentity(destination, source, fingerprint, questionID string) string {
+	return destination + "\x00" + source + "\x00" + fingerprint + "\x00" + questionID
 }
 
 func fieldByID(fields []InspectedField, id string) (schema.Field, bool) {

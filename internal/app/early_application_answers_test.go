@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
@@ -146,6 +147,40 @@ func TestGreenhouseEarlyDiscoveryDraftPersistenceAndLiveIsolation(t *testing.T) 
 	}
 }
 
+func TestEarlyDraftRemainsVisibleWhenDestinationChangesBeforeNewDiscovery(t *testing.T) {
+	a, _ := testWorkspace(t)
+	job, result := earlyGreenhouseFixture(t, a)
+	if _, err := a.saveInspection(job.ID, result); err != nil {
+		t.Fatal(err)
+	}
+	q := earlyQuestionByID(t, a, job, "application:story", "")
+	answer := "Keep this draft with its original employer destination."
+	if rec := postApp(newMux(a), "/jobs/1/answers/early-save", earlySaveValues(job, q, "0", answer), "", ""); rec.Code != http.StatusSeeOther {
+		t.Fatalf("save early answer: %d %s", rec.Code, rec.Body.String())
+	}
+	changedURL := "https://job-boards.greenhouse.io/synthetic/jobs/98765"
+	if _, err := a.db.Exec(`UPDATE jobs SET url=? WHERE id=?`, changedURL, job.ID); err != nil {
+		t.Fatal(err)
+	}
+	changedJob, err := a.jobByID(job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := a.prepareEarlyQuestions(changedJob, httptest.NewRequest("GET", "http://localhost/jobs/1", nil))
+	if err != nil || prepared.Item != nil || len(prepared.Previous) != 1 {
+		t.Fatalf("destination change hid the earlier draft: %+v err=%v", prepared, err)
+	}
+	previous := prepared.Previous[0]
+	if previous.Answer != answer || previous.Destination != job.URL || previous.Reconciliation.Status != "Manual only" || !strings.Contains(previous.CurrentQuestionState, "different employer destination") {
+		t.Fatalf("changed-destination draft was lost or offered for reuse: %+v", previous)
+	}
+	page := httptest.NewRecorder()
+	newMux(a).ServeHTTP(page, httptest.NewRequest("GET", "http://localhost/jobs/1", nil))
+	if !strings.Contains(page.Body.String(), "Earlier prepared answers preserved") || !strings.Contains(page.Body.String(), answer) || !strings.Contains(page.Body.String(), "cannot be reconciled with the current destination") {
+		t.Fatal("Prepare did not explain and preserve the earlier destination draft")
+	}
+}
+
 func TestEarlyQuestionTypeSafetyAndAIUsesExistingReviewTicket(t *testing.T) {
 	a, _ := testWorkspace(t)
 	job, result := earlyGreenhouseFixture(t, a)
@@ -263,6 +298,44 @@ func BenchmarkPrepareRenderWithDiscoveredQuestions(b *testing.B) {
 	}
 }
 
+func BenchmarkEarlyAnswerReconciliation100(b *testing.B) {
+	a, job := benchmarkEarlyWorkspace(b, 100)
+	public, err := a.latestInspectionBySource(job.ID, "public_api")
+	if err != nil {
+		b.Fatal(err)
+	}
+	liveFields := make([]schema.Field, len(public.Fields))
+	for i, field := range public.Fields {
+		name := strings.TrimPrefix(field.ID, "application:")
+		liveFields[i] = schema.Field{ID: "browser:" + name, Label: field.Label, Kind: "textarea", Required: field.Required}
+	}
+	if _, err := a.saveInspection(job.ID, schema.Result{Platform: "greenhouse", Source: "browser", Completeness: "rendered_partial", ApplicationURL: job.URL, Fields: liveFields}); err != nil {
+		b.Fatal(err)
+	}
+	now := answerLibraryTimestamp()
+	tx, err := a.db.Begin()
+	if err != nil {
+		b.Fatal(err)
+	}
+	for _, field := range public.Fields {
+		if _, err := tx.Exec(`INSERT INTO early_application_answers(job_id,destination,discovery_source,source_question_id,question_label,field_snapshot_json,discovery_fingerprint,answer,revision,reconciliation_status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,1,'unreconciled',?,?)`, job.ID, job.URL, "public_api", field.ID, field.Label, earlyFieldSnapshot(field.Field), public.Fingerprint, "Synthetic prepared answer", now, now); err != nil {
+			tx.Rollback()
+			b.Fatal(err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		b.Fatal(err)
+	}
+	r := httptest.NewRequest("GET", "http://localhost/jobs/1", nil)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := a.prepareEarlyQuestions(job, r); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func benchmarkEarlyWorkspace(b *testing.B, questionCount int) (*App, Job) {
 	dir := b.TempDir()
 	db, err := storage.OpenDB(filepath.Join(dir, "jobs.db"))
@@ -293,7 +366,7 @@ func benchmarkEarlyWorkspace(b *testing.B, questionCount int) (*App, Job) {
 	job, _ = a.jobByID(1)
 	fields := make([]schema.Field, questionCount)
 	for i := range fields {
-		fields[i] = schema.Field{ID: fmt.Sprintf("application:question_%03d", i), Label: fmt.Sprintf("Application response field %03d", i), Kind: "textarea"}
+		fields[i] = schema.Field{ID: fmt.Sprintf("application:response_%03d", i), Label: fmt.Sprintf("Application response field %03d", i), Kind: "textarea", Group: "application"}
 	}
 	if _, err := a.saveInspection(job.ID, schema.Result{Platform: "greenhouse", Source: "public_api", Completeness: "public_schema", ApplicationURL: job.URL, Fields: fields}); err != nil {
 		b.Fatal(err)
