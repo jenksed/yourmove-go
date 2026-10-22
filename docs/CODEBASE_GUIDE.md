@@ -62,6 +62,7 @@ macOS Wails desktop.go ─┘           │
 - `internal/storage/sqlite.go: storage.OpenDB` uses one SQLite connection and creates/upgrades the schema through private initialization logic.
 - `internal/app/jobs.go`, `internal/app/resumes.go`, `internal/app/candidate_profile.go`, `internal/app/cover_letters.go`, `internal/app/application_answers.go`, `internal/app/reusable_answers.go`, and `internal/app/application_inspections.go` read/write their durable records.
 - `internal/app/answer_library.go` stores independently curated snapshots. `internal/app/answer_library_handlers.go` owns promotion, listing, editing, and deletion. `internal/app/answer_library_search.go` indexes and ranks only those snapshots; `internal/app/application_answers.go` attaches a bounded, read-only related-writing view to supported active narrative questions.
+- `internal/app/career_evidence.go` stores applicant-curated experience records independently of jobs and answers. `internal/app/career_evidence_handlers.go` owns drafts, revision-checked editing/deletion, and explicit applicant review. The `career_evidence` table has no job or Answer Library foreign key; source writing is retained as a text snapshot. `reviewed` means the applicant confirmed the content, not that another party verified it.
 - Stored resumes live in a separate `resumes/` directory within the workspace. Back up the database **and** that directory together, with the app stopped.
 
 The main persisted records map to these tables and files:
@@ -75,6 +76,7 @@ The main persisted records map to these tables and files:
 | Observed application form | `application_inspections`, `application_fields` and `application_steps` store observed structure, not a live browser session |
 | Employer answers | `application_answers` stores job/destination/provider-specific answers; `reusable_answers` stores separately approved employer-scoped answers |
 | Curated prior writing | `answer_library` stores user-promoted question-and-answer snapshots with source context, source revision, and an independent library revision |
+| Applicant-curated experience | `career_evidence` stores situation, actions, optional context/tools/outcome, explicit outcome state, source snapshot, applicant review status, revision, and timestamps; it has no job or Answer Library foreign key |
 
 ### Answer Library data flow
 
@@ -84,6 +86,7 @@ The main persisted records map to these tables and files:
 - `answer_library_search.go` ranks the original question more heavily than bounded answer-token support and phrase overlap. Prepare renders at most three excerpts for eligible narrative questions. Full answer content is fetched only after the user expands a suggestion, from the local content route.
 - The **Use as starting point** POST revalidates the current active question and source library ID, then returns a local JSON copy. Browser code places it into the current textarea as unsaved text; the normal Save answer locally form remains responsible for persistence. The Answer Library is not consulted by `resolveApplicationAnswer`, `reusable_answers`, or browser transfer authorization.
 - Explicit library search posts its query in the request body so it does not appear in the URL. Results retain the original question and source context and link to a server-rendered full entry for manual reading/copying without JavaScript.
+- Creating Career Evidence from a library entry stores an independent snapshot of the original question, writing, and source labels. The applicant rewrites that material into situation, actions, and any actual outcome; the server does not extract claims. Repeated creation while the evidence record exists opens that same draft, and deleting either record does not cascade to the other.
 
 - An app restart does not restore an in-memory employer browser session, its unsubmitted form changes or its last transient transfer statuses. Never make a UI promise to the contrary.
 

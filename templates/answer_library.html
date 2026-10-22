@@ -31,6 +31,10 @@
     <h2>Original question</h2><p class="answer-library-question">{{.OriginalQuestion}}</p>
     <details class="answer-library-full-answer"><summary>Read the complete saved answer</summary><pre class="evidence-text">{{.Answer}}</pre></details>
     <p class="small-muted">Previous writing from {{if .SourceEmployer}}{{.SourceEmployer}}{{else}}{{.SourceHost}}{{end}} · saved {{.CreatedAt}}{{if ne .UpdatedAt .CreatedAt}} · library copy edited {{.UpdatedAt}}{{end}}</p>
+    <form method="POST" action="/answer-library/{{.ID}}/career-evidence" class="answer-library-evidence-source">
+      <button type="submit" class="button button-secondary">Create career evidence from this writing</button>
+      <p class="small-muted">Opens an editable draft with the original question and writing saved as a source snapshot. No facts are extracted.</p>
+    </form>
     <details class="answer-library-manage"><summary>Edit or delete this library copy</summary>
       <p class="small-muted">The original question and source context stay attached. Editing or deleting this copy does not change application history.</p>
       <form method="POST" action="/answer-library/{{.ID}}/edit" class="answer-library-edit">

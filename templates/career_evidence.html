@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f7f7f4"><title>Career Evidence · YourMove</title><link rel="stylesheet" href="/static/styles.css"><script defer src="/static/ui.js"></script></head><body>
+{{template "shell-open" "career-evidence"}}
+<nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/jobs">Opportunities</a><span aria-hidden="true">/</span><span>Career Evidence</span></nav>
+<div class="page-heading"><div><h1>Career Evidence</h1><p class="page-description">Records of experiences you actually had. Keep situations, actions, and outcomes separate from the writing you made for an employer.</p></div>{{if not .Current}}<form method="POST" action="/career-evidence"><button type="submit" class="button button-primary">Add experience</button></form>{{end}}</div>
+{{if .Notice}}<p class="local-save-confirmation" role="status">{{.Notice}}</p>{{end}}
+
+{{if .Current}}
+<section class="career-evidence-editor" aria-labelledby="career-evidence-title">
+  <div class="career-evidence-editor-heading"><div><h2 id="career-evidence-title">{{if .Current.Title}}{{.Current.Title}}{{else}}Untitled draft{{end}}</h2><p class="small-muted">{{if eq .Current.Status "reviewed"}}Reviewed by applicant{{else}}Draft{{end}} · Revision {{.Current.Revision}}</p></div><a href="/career-evidence">All experiences</a></div>
+  {{if eq .Current.Status "reviewed"}}<p class="small-muted">You confirmed this record reflects your experience. This is applicant review, not independent verification. Saving changed content returns it to Draft.</p>{{else}}<p class="small-muted">Drafts can be incomplete. Review requires a title, situation, and actions.</p>{{end}}
+  <form method="POST" action="/career-evidence/{{.Current.ID}}/save" class="career-evidence-form" id="career-evidence-form">
+    <input type="hidden" name="revision" value="{{.Current.Revision}}">
+    <div class="field"><label for="career-title">Experience title</label><input id="career-title" name="title" value="{{.Current.Title}}" maxlength="160" autocomplete="off"></div>
+    <div class="field"><label for="career-situation">Situation or context</label><textarea id="career-situation" name="situation" rows="4" maxlength="6000">{{.Current.Situation}}</textarea></div>
+    <div class="field"><label for="career-actions">Actions you took</label><textarea id="career-actions" name="actions" rows="5" maxlength="8000">{{.Current.Actions}}</textarea></div>
+    <div class="career-evidence-context-grid">
+      <div class="field"><label for="career-employer">Employer, project, or organization</label><input id="career-employer" name="employer_context" value="{{.Current.EmployerContext}}" maxlength="240"></div>
+      <div class="field"><label for="career-role">Role or responsibility</label><input id="career-role" name="role_context" value="{{.Current.RoleContext}}" maxlength="240"></div>
+      <div class="field"><label for="career-technologies">Technologies or tools</label><textarea id="career-technologies" name="technologies" rows="2" maxlength="1200">{{.Current.Technologies}}</textarea></div>
+      <div class="field"><label for="career-period">Approximate date or period</label><input id="career-period" name="period" value="{{.Current.Period}}" maxlength="120"></div>
+    </div>
+    <div class="field"><label for="career-outcome-state">Outcome status</label><select id="career-outcome-state" name="outcome_state"><option value="not_recorded" {{if eq .Current.OutcomeState "not_recorded"}}selected{{end}}>Not recorded</option><option value="unknown" {{if eq .Current.OutcomeState "unknown"}}selected{{end}}>Unknown</option><option value="recorded" {{if eq .Current.OutcomeState "recorded"}}selected{{end}}>Actual outcome recorded below</option></select><small>Keep unknown separate from an outcome you have not recorded.</small></div>
+    <div class="field"><label for="career-outcome">Actual outcome or impact</label><textarea id="career-outcome" name="outcome" rows="3" maxlength="3000">{{.Current.Outcome}}</textarea><small>Optional unless you select “Actual outcome recorded below.” No estimates are added.</small></div>
+    <div class="field"><label for="career-source-notes">Source notes or supporting reference</label><textarea id="career-source-notes" name="source_notes" rows="3" maxlength="3000">{{.Current.SourceNotes}}</textarea><small>Notes only. YourMove does not open or fetch external references.</small></div>
+    <label class="confirm-row career-evidence-review-confirm"><input type="checkbox" name="confirm_review" value="yes"><span>I confirm this record accurately describes my experience. Marking it reviewed does not mean a third party verified it.</span></label>
+    <div class="career-evidence-form-actions"><button type="submit" class="button button-primary">Save draft</button><button type="submit" class="button button-secondary" formaction="/career-evidence/{{.Current.ID}}/review">Mark as reviewed</button></div>
+  </form>
+  {{if or .Current.SourceWriting .Current.SourceNotes}}
+  <details class="career-evidence-source">
+    <summary>Inspect source and supporting notes</summary>
+    {{if .Current.SourceLibraryEntryID}}<p class="small-muted">Snapshot from Answer Library{{if .Current.SourceEmployer}} · {{.Current.SourceEmployer}}{{else if .Current.SourceHost}} · {{.Current.SourceHost}}{{end}}{{if .Current.SourceJobTitle}} · {{.Current.SourceJobTitle}}{{end}}</p>{{end}}
+    {{if .Current.SourceQuestion}}<h3>Original employer question</h3><pre class="evidence-text">{{.Current.SourceQuestion}}</pre>{{end}}
+    {{if .Current.SourceWriting}}<h3>Original writing</h3><pre class="evidence-text">{{.Current.SourceWriting}}</pre>{{end}}
+    {{if .Current.SourceNotes}}<h3>Supporting notes</h3><pre class="evidence-text">{{.Current.SourceNotes}}</pre>{{end}}
+  </details>
+  {{end}}
+  <form method="POST" action="/career-evidence/{{.Current.ID}}/delete" class="career-evidence-delete">
+    <input type="hidden" name="revision" value="{{.Current.Revision}}">
+    <label class="confirm-row"><input type="checkbox" name="confirm" value="yes" required><span>Delete this independent Career Evidence record.</span></label>
+    <button type="submit" class="button button-danger">Delete experience</button>
+  </form>
+</section>
+{{end}}
+
+{{if .Entries}}
+<section class="career-evidence-list" aria-label="Saved career experiences">
+  <h2>Saved experiences</h2>
+  {{range .Entries}}
+  <article class="career-evidence-row">
+    <div><h3><a href="/career-evidence/{{.ID}}">{{if .Title}}{{.Title}}{{else}}Untitled draft{{end}}</a></h3><p>{{if eq .Status "reviewed"}}Reviewed by applicant{{else}}Draft{{end}}{{if .RoleContext}} · {{.RoleContext}}{{end}}{{if .EmployerContext}} · {{.EmployerContext}}{{end}}</p></div>
+    <p class="career-evidence-row-outcome">{{if eq .OutcomeState "recorded"}}{{.Outcome}}{{else if eq .OutcomeState "unknown"}}Outcome: Unknown{{else}}Outcome: Not recorded{{end}}</p>
+  </article>
+  {{end}}
+</section>
+{{else if not .Current}}
+<section class="inline-empty career-evidence-empty"><h2>No experiences saved yet</h2><p>Add a draft when you remember an example. It can be incomplete and you can review it later.</p></section>
+{{end}}
+{{template "shell-close" .}}</body></html>

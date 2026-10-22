@@ -88,7 +88,7 @@ func (w *desktopRedirectWriter) WriteHeader(status int) {
 	_, _ = w.ResponseWriter.Write([]byte(`<!doctype html><html lang="en"><head><meta charset="utf-8">` +
 		`<meta http-equiv="refresh" content="0;url=` + htmlTarget + `">` +
 		`<script>window.location.replace(` + string(jsTarget) + `)</script></head>` +
-		`<body><p>Continuing to <a href="` + htmlTarget + `">saved jobs</a>…</p></body></html>`))
+		`<body><p>Continuing to <a href="` + htmlTarget + `">the saved page</a>…</p></body></html>`))
 	log.Printf("desktop navigation: POST %s -> GET %s", w.requestPath, target)
 }
 
@@ -122,7 +122,17 @@ func safeDesktopRedirectTarget(target string) bool {
 			return true
 		}
 	}
-	if target == "/jobs" || target == "/resumes" || target == "/answer-library" || target == "/enrichment" || target == "/families" || target == "/utilities" || target == "/candidate" || target == "/ai" {
+	for _, notice := range []string{"created", "saved", "reviewed", "source"} {
+		parsed, err := url.Parse(target)
+		if err == nil && parsed.Query().Get("notice") == notice && parsed.RawQuery == "notice="+notice &&
+			parsed.Scheme == "" && parsed.Host == "" && parsed.User == nil && parsed.Fragment == "" {
+			id, parseErr := strconv.ParseInt(strings.TrimPrefix(parsed.Path, "/career-evidence/"), 10, 64)
+			if parseErr == nil && id > 0 && parsed.Path == "/career-evidence/"+strconv.FormatInt(id, 10) {
+				return true
+			}
+		}
+	}
+	if target == "/career-evidence?notice=deleted" || target == "/jobs" || target == "/resumes" || target == "/answer-library" || target == "/career-evidence" || target == "/enrichment" || target == "/families" || target == "/utilities" || target == "/candidate" || target == "/ai" {
 		return true
 	}
 	// Question saves use one exact hash-shaped presentation key. The save handler
