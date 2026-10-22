@@ -246,6 +246,7 @@ func (a *App) jobDetail(w http.ResponseWriter, r *http.Request) {
 	for _, id := range []string{"codex", "claude-cli", "ollama", "openai", "anthropic", "openrouter", "compatible"} {
 		providerReady[id] = coverprovider.Configured(id)
 	}
+	answerAIProviders := applicationAnswerAIProviders(providerReady)
 	letterResumes := make([]documentRow, 0, len(resumeOptions))
 	for _, r := range resumeOptions {
 		if r.ArchivedAt == "" && !r.IsMaster {
@@ -266,6 +267,11 @@ func (a *App) jobDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	for i := range questions.Questions {
 		questions.Questions[i].AIChoices = a.answerAIChoices(job, questions.Questions[i])
+		if questions.Questions[i].AIChoices != nil {
+			questions.Questions[i].AIProviders = answerAIProviders
+			questions.Questions[i].AIDefaultProvider = "ollama"
+			questions.Questions[i].AIDefaultModel = coverprovider.DefaultModel("ollama")
+		}
 	}
 	questions.selectQuestion(r)
 	workspace := jobWorkspace{Questions: questions, Job: job, Profile: profile, BrowserState: a.browsers.state(id), Resumes: resumes, ResumeOptions: resumeOptions, LetterResumes: letterResumes, Submissions: history, Desktop: a.openPosting != nil, SubmissionToken: token, SelectedResume: selected, AnswerEditingAllowed: job.Stage != StageApplied && job.Stage != StageClosed && job.SubmissionCount == 0, Handoff: assessResumeHandoff(job, selected), Sources: a.coverLetterSources(job, selected), Letter: letter, Letters: letters, LetterNotice: notice, LetterOpen: notice != "" || r.URL.Query().Has("draft"), LetterModel: letterModel, ProviderReady: providerReady, Match: match, HasFamilies: showMatch}

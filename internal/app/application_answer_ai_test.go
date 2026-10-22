@@ -442,6 +442,42 @@ func TestNarrativeJSONOriginErrorsAndSafeProviderErrors(t *testing.T) {
 	}
 }
 
+func TestNarrativeProviderSetupAndRuntimeFailuresGiveNextSteps(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("YOURMOVE_COMPAT_URL", "")
+	if got := answerAIProviderNotice("ollama", "", nil); got != "model" {
+		t.Fatalf("missing model notice=%q", got)
+	}
+	if got := answerAIProviderNotice("openai", "gpt-4.1-mini", nil); got != "key" {
+		t.Fatalf("missing API key notice=%q", got)
+	}
+	if got := answerAIProviderNotice("compatible", "", nil); got != "model" {
+		t.Fatalf("missing compatible model notice=%q", got)
+	}
+	for _, tc := range []struct{ provider, model, notice, want string }{
+		{"ollama", "qwen3.5:4b", "offline", "127.0.0.1:11434"},
+		{"ollama", "missing-model", "model-missing", "ollama list"},
+		{"codex", "default", "login", "codex login"},
+		{"claude-cli", "sonnet", "cli", "Claude Code"},
+	} {
+		if message := answerAIProviderMessage(tc.provider, tc.model, tc.notice); !strings.Contains(message, tc.want) {
+			t.Fatalf("%s %s message=%q, want %q", tc.provider, tc.notice, message, tc.want)
+		}
+	}
+	a, values, _ := narrativeFixture(t)
+	values.Set("model", "")
+	r := postApp(newMux(a), "/jobs/1/answers/ai/review", values, "", "")
+	if r.Code != 422 || !strings.Contains(r.Body.String(), "Enter a model supported by this provider") {
+		t.Fatalf("missing-model review=%d %s", r.Code, r.Body.String())
+	}
+	values.Set("provider", "openai")
+	values.Set("model", "gpt-4.1-mini")
+	r = postApp(newMux(a), "/jobs/1/answers/ai/review", values, "", "")
+	if r.Code != 422 || !strings.Contains(r.Body.String(), "OPENAI_API_KEY") {
+		t.Fatalf("missing-key review=%d %s", r.Code, r.Body.String())
+	}
+}
+
 func TestNarrativeExcerptsPreserveCompleteProvenance(t *testing.T) {
 	a, v, _ := narrativeFixture(t)
 	job, _ := a.jobByID(1)

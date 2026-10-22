@@ -26,6 +26,12 @@ func TestControlledNarrativeAnswerWorkbench(t *testing.T) {
 		t.Skip("opt-in isolated Chromium narrative drafting qualification")
 	}
 	a, v, evidenceID := narrativeFixture(t)
+	requireQualificationStorage(t, a)
+	evidenceRoot, err := os.MkdirTemp("/private/tmp", "yourmove-checkpoint1-ai-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("isolated narrative screenshots: %s", evidenceRoot)
 	job, _ := a.jobByID(1)
 	saveLibrarySourceAnswer(t, a, job, v.Get("question_key"), "I reviewed synthetic database logs.", 0)
 	if r := promoteLibrarySource(t, a, 1, v.Get("question_key"), 1); r.Code != 303 {
@@ -124,6 +130,14 @@ func TestControlledNarrativeAnswerWorkbench(t *testing.T) {
 		}
 	}
 	wait(`document.readyState==='complete'&&!!document.querySelector('[data-answer-ai-controls]:not([hidden])')`)
+	var initialProvider struct{ Provider, Model, DefaultModel, Help string }
+	if err := eval(`(()=>{const ai=document.querySelector('[data-answer-ai]'),provider=ai.querySelector('[name=provider]'),model=ai.querySelector('[name=model]');return {Provider:provider.value,Model:model.value,DefaultModel:provider.options[provider.selectedIndex].dataset.defaultModel,Help:ai.querySelector('[data-answer-ai-provider-help]').textContent}})()`, &initialProvider); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("rendered answer-drafting provider/model before user selection: %q / %q", initialProvider.Provider, initialProvider.Model)
+	if initialProvider.Provider != "ollama" || initialProvider.Model == "" || initialProvider.Model != initialProvider.DefaultModel || !strings.Contains(initialProvider.Help, "checked when you generate") {
+		t.Fatalf("provider readiness/default model is unclear: %+v", initialProvider)
+	}
 	run(`document.querySelector('[data-tab-target=prepare]').click();window.ai=document.querySelector('[data-answer-ai]');window.ed=document.querySelector('.application-question-form textarea');window.find=n=>ai.querySelector('[data-answer-ai-'+n+']');ai.open=true`)
 	assert(`ed.value===''&&!ai.querySelector('[name=career_evidence]').checked&&ai.querySelector('[name=library_entry]').value===''`)
 	review := func() {
@@ -150,6 +164,7 @@ func TestControlledNarrativeAnswerWorkbench(t *testing.T) {
 	assert(`ai.querySelector('[name=career_evidence]').checked`)
 	run(`ai.querySelector('[name=library_entry]').value=ai.querySelector('[name=library_entry]').options[1].value;ai.querySelector('[name=library_entry]').dispatchEvent(new Event('change',{bubbles:true}))`)
 	run(`ai.querySelector('[name=model]').focus()`)
+	run(`ai.querySelector('[name=model]').select()`)
 	if err := chrome.FixtureCall(ctx, page, "Input.insertText", map[string]any{"text": "synthetic-model"}, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -162,6 +177,15 @@ func TestControlledNarrativeAnswerWorkbench(t *testing.T) {
 		t.Fatal("review invoked provider")
 	}
 	assert(`find('payload').textContent.includes('unknown')&&!find('payload').textContent.includes('PRIVATE_SOURCE_NOTES')&&!find('payload').textContent.includes('PRIVATE_ORIGINAL_WRITING')`)
+	run(`ai.querySelector('[name=model]').value='different-synthetic-model';ai.querySelector('[name=model]').dispatchEvent(new Event('input',{bubbles:true}))`)
+	assert(`find('review-panel').hidden&&!find('authorize').checked&&!find('external').checked`)
+	run(`ai.querySelector('[name=provider]').value='openai';ai.querySelector('[name=provider]').dispatchEvent(new Event('change',{bubbles:true}))`)
+	assert(`find('review-panel').hidden&&!find('authorize').checked&&!find('external').checked&&ai.querySelector('[data-answer-ai-provider-help]').textContent.trim().length>0`)
+	run(`ai.querySelector('[name=provider]').value='ollama';ai.querySelector('[name=provider]').dispatchEvent(new Event('change',{bubbles:true}));ai.querySelector('[name=model]').value='synthetic-model';ai.querySelector('[name=model]').dispatchEvent(new Event('input',{bubbles:true}))`)
+	review()
+	if calls.Load() != 0 {
+		t.Fatal("provider/model changes called the injected generator before authorization")
+	}
 	run(`find('generate').click()`)
 	assert(`find('status').textContent.includes('Authorize')`)
 	run(`find('authorize').focus()`)
@@ -172,6 +196,17 @@ func TestControlledNarrativeAnswerWorkbench(t *testing.T) {
 	press(" ", "Space", 32)
 	wait(`!find('preview').hidden&&ai.getAttribute('aria-busy')==='false'`)
 	assert(`ed.value===''&&find('text').readOnly&&find('text').value.includes('EXPLAIN')&&!find('preview-sources').hidden&&find('preview-payload').textContent.includes('MySQL investigation')`)
+	shot, err := chrome.FixtureScreenshotAt(ctx, page, 1280, ".application-questions", "light")
+	if err != nil {
+		t.Fatal(err)
+	}
+	previewImage, err := base64.StdEncoding.DecodeString(shot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(evidenceRoot, "narrative-preview-1280.png"), previewImage, 0600); err != nil {
+		t.Fatal(err)
+	}
 	assert(`Object.keys(JSON.parse(sessionStorage.getItem('yourmove:pending-edits:'+location.pathname+':ai:'+ai.dataset.key))).every(key=>!['source_payload','sources','prompt','instructions'].includes(key))`)
 	if calls.Load() != 1 {
 		t.Fatal("calls", calls.Load())
@@ -266,7 +301,7 @@ func TestControlledNarrativeAnswerWorkbench(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(os.TempDir(), "yourmove-narrative-390-"+theme+".png"), data, 0600); err != nil {
+		if err := os.WriteFile(filepath.Join(evidenceRoot, "narrative-390-"+theme+".png"), data, 0600); err != nil {
 			t.Fatal(err)
 		}
 		assert(`document.documentElement.scrollWidth<=innerWidth`)
@@ -276,6 +311,17 @@ func TestControlledNarrativeAnswerWorkbench(t *testing.T) {
 	run(`ed.value+=' I documented my recommendation.';ed.dispatchEvent(new Event('input',{bubbles:true}));ed.closest('form').querySelector('button[type=submit]').click()`)
 	page = server.URL + "/jobs/1?question=" + v.Get("question_key")
 	wait(`document.readyState==='complete'&&document.querySelector('.application-question-form [name=revision]').value==='1'`)
+	shot, err = chrome.FixtureScreenshotAt(ctx, page, 1280, ".application-questions", "light")
+	if err != nil {
+		t.Fatal(err)
+	}
+	savedImage, err := base64.StdEncoding.DecodeString(shot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(evidenceRoot, "narrative-saved-1280.png"), savedImage, 0600); err != nil {
+		t.Fatal(err)
+	}
 	var saved string
 	if err := a.db.QueryRow(`SELECT answer FROM application_answers WHERE job_id=1`).Scan(&saved); err != nil || !strings.Contains(saved, "documented") {
 		t.Fatal(saved, err)

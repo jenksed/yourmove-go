@@ -348,6 +348,83 @@ func answerAIError(w http.ResponseWriter, status int, code string) {
 		"invalid_request":   "The drafting request is invalid. Review your selections.", "invalid_sources": "Select current reviewed Career Evidence or a valid resume excerpt. Oversized Career Evidence must be shortened and reviewed before selection.", "changed": "The question, saved answer, or selected sources changed. Review the current material again.", "authorization_required": "Authorize this generation and acknowledge external transmission for this specific review.", "not_found": "This review is unavailable. Review sources again.", "expired": "This review expired. Copy any preview you need and review sources again.", "capacity": "Too many active reviews. Wait for an existing review to expire.", "generation_in_progress": "Another generation is running for this job.", "provider_configuration": "Check this provider and model in AI connections.", "provider_failed": "The provider could not complete this request. Review sources again for a new attempt.", "timeout": "Generation timed out. This ticket cannot run again.", "output": "The provider returned unusable output. This ticket cannot run again.", "canceled": "Generation was canceled. Review sources again for a new attempt."}
 	answerAIResponse(w, status, map[string]string{"code": code, "message": messages[code]})
 }
+
+func answerAIErrorMessage(w http.ResponseWriter, status int, code, message string) {
+	answerAIResponse(w, status, map[string]string{"code": code, "message": message})
+}
+
+func answerAIProviderMessage(provider, model, notice string) string {
+	switch notice {
+	case "model":
+		return "Enter a model supported by this provider. See AI connections for its default and setup."
+	case "key":
+		environment := map[string]string{"openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY", "openrouter": "OPENROUTER_API_KEY"}[provider]
+		return "Set " + environment + " in the environment used to launch YourMove, then restart the app. Remote API use may be billed separately."
+	case "endpoint":
+		return "Set YOURMOVE_COMPAT_URL to a full /chat/completions endpoint and YOURMOVE_COMPAT_MODEL, plus YOURMOVE_COMPAT_API_KEY if required, then restart YourMove."
+	case "cli":
+		if provider == "claude-cli" {
+			return "Install Claude Code, make it available in YourMove's PATH, and sign in with Claude.ai. See AI connections for setup."
+		}
+		return "Install Codex, make it available in YourMove's PATH, and sign in with codex login using ChatGPT. See AI connections for setup."
+	case "login":
+		if provider == "claude-cli" {
+			return "Claude Code is not signed in. Run claude and sign in with Claude.ai, then review sources again."
+		}
+		return "Codex is not signed in. Run codex login and choose ChatGPT, then review sources again."
+	case "offline":
+		return "YourMove cannot reach Ollama at 127.0.0.1:11434. Start Ollama, confirm the selected model, then review sources again."
+	case "model-missing":
+		return "That Ollama model is not installed. Run ollama list, select an installed model, and review sources again."
+	case "auth":
+		return "The provider rejected its credentials or permissions. Check AI connections and provider account access, then review sources again."
+	case "rate":
+		return "The provider is rate-limiting requests. Wait or choose another configured provider, then review sources again."
+	case "credits":
+		return "The provider reports no available credits or billing access. Check its account before trying again."
+	case "timeout":
+		return "The provider timed out. This ticket cannot be retried; review sources again for a new request."
+	case "provider-unavailable":
+		return "The provider is unavailable. Check service status and model availability, then review sources again."
+	case "output":
+		return "The provider returned unusable text. This ticket cannot be retried; review sources again for a new request."
+	default:
+		return fmt.Sprintf("%s could not complete this request with model %s. Check AI connections and review sources again; no automatic retry occurred.", provider, model)
+	}
+}
+
+func answerAIProviderNotice(provider, model string, err error) string {
+	if !coverprovider.ValidProvider(provider) {
+		return "configuration"
+	}
+	if !coverprovider.ValidModel(model) {
+		return "model"
+	}
+	if err != nil {
+		notice := coverprovider.ErrorNotice(err)
+		if notice == "model" && provider == "compatible" && !coverprovider.Configured(provider) {
+			return "endpoint"
+		}
+		if notice != "failed" {
+			return notice
+		}
+	}
+	if !coverprovider.Configured(provider) {
+		switch provider {
+		case "openai", "anthropic", "openrouter":
+			return "key"
+		case "compatible":
+			return "endpoint"
+		case "codex", "claude-cli":
+			return "cli"
+		}
+	}
+	return "configuration"
+}
+
+func answerAIProviderFailure(w http.ResponseWriter, status int, provider, model, notice string) {
+	answerAIErrorMessage(w, status, "provider_configuration", answerAIProviderMessage(provider, model, notice))
+}
 func parseAnswerAIForm(w http.ResponseWriter, r *http.Request, limit int64, allowed map[string]bool) bool {
 	media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || media != "application/x-www-form-urlencoded" || r.URL.RawQuery != "" {
@@ -390,14 +467,15 @@ func (a *App) applicationAnswerAIHandler(w http.ResponseWriter, r *http.Request)
 				code = "changed"
 				status = 409
 			case "provider":
-				code = "provider_configuration"
+				answerAIProviderFailure(w, status, r.PostForm.Get("provider"), r.PostForm.Get("model"), answerAIProviderNotice(r.PostForm.Get("provider"), r.PostForm.Get("model"), nil))
+				return
 			}
 			answerAIError(w, status, code)
 			return
 		}
 		if a.applicationAnswerGenerate == nil {
 			if _, err := coverprovider.Configure(snapshot.Provider, snapshot.Model); err != nil {
-				answerAIError(w, 422, "provider_configuration")
+				answerAIProviderFailure(w, 422, snapshot.Provider, snapshot.Model, answerAIProviderNotice(snapshot.Provider, snapshot.Model, err))
 				return
 			}
 		}
@@ -480,7 +558,7 @@ func (a *App) applicationAnswerAIHandler(w http.ResponseWriter, r *http.Request)
 	if a.applicationAnswerGenerate == nil {
 		runner, err = coverprovider.Configure(snapshot.Provider, snapshot.Model)
 		if err != nil {
-			answerAIError(w, 422, "provider_configuration")
+			answerAIProviderFailure(w, 422, snapshot.Provider, snapshot.Model, answerAIProviderNotice(snapshot.Provider, snapshot.Model, err))
 			return
 		}
 	}
@@ -521,9 +599,10 @@ func (a *App) applicationAnswerAIHandler(w http.ResponseWriter, r *http.Request)
 	code := ""
 	final := "complete"
 	if err != nil {
-		code = "provider_failed"
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) || coverprovider.ErrorNotice(err) == "timeout" {
-			code = "timeout"
+		notice := answerAIProviderNotice(snapshot.Provider, snapshot.Model, err)
+		code = "provider_" + notice
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) || notice == "timeout" {
+			code = "provider_timeout"
 		}
 		final = "failed"
 	} else if validateGeneratedApplicationAnswer(answer) != nil || !validNarrativeFormat(answer, snapshot.Field.Label) {
@@ -563,7 +642,8 @@ func (a *App) answerAIResult(w http.ResponseWriter, token string, t *answerAITic
 	a.answerAI.mu.Unlock()
 	if code != "" {
 		status := 502
-		if code == "timeout" {
+		providerNotice := strings.TrimPrefix(code, "provider_")
+		if code == "timeout" || (strings.HasPrefix(code, "provider_") && providerNotice == "timeout") {
 			status = 504
 		}
 		if code == "output" {
@@ -572,7 +652,11 @@ func (a *App) answerAIResult(w http.ResponseWriter, token string, t *answerAITic
 		if code == "canceled" {
 			status = 409
 		}
-		answerAIError(w, status, code)
+		if strings.HasPrefix(code, "provider_") {
+			answerAIProviderFailure(w, status, s.Provider, s.Model, providerNotice)
+		} else {
+			answerAIError(w, status, code)
+		}
 		return
 	}
 	notice := ""

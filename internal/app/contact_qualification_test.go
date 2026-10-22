@@ -59,6 +59,10 @@ func controlledContactJourney(t *testing.T, combined bool) {
 	var mu sync.Mutex
 	uploads := 0
 	uploadHash := ""
+	additionalQuestion := ""
+	if combined {
+		additionalQuestion = `<label>Describe a difficult support incident you resolved<textarea name="incident-story"></textarea></label>`
+	}
 	fixture := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/upload" {
 			if err := r.ParseMultipartForm(1 << 20); err != nil {
@@ -86,7 +90,7 @@ func controlledContactJourney(t *testing.T, combined bool) {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprint(w, `<!doctype html><h1>Synthetic Ashby application</h1><form class="ashby-application-form">
+		html := `<!doctype html><h1>Synthetic Ashby application</h1><form class="ashby-application-form">
 <label>First name<input name="first_name" autocomplete="given-name"></label>
 <label>Last name<input name="last_name" autocomplete="family-name"></label>
 <label>Email<input name="email" type="email" autocomplete="email"></label>
@@ -96,6 +100,7 @@ func controlledContactJourney(t *testing.T, combined bool) {
 <section data-field-entry-id="resume"><div class="ashby-application-form-question-title">Resume</div><input type="file" name="resume" accept=".pdf"></section>
 <section data-field-entry-id="cover"><div class="ashby-application-form-question-title">Cover Letter</div><input type="file" name="cover"></section>
 <label>Why this team?<textarea name="motivation"></textarea></label>
+<!-- CHECKPOINT1_ADDITIONAL_QUESTION -->
 <label>Preferred working pattern<select name="working-pattern"><option value="">Choose</option><option value="remote">Remote</option><option value="office">Office</option></select></label>
 <label>Available for occasional travel<input name="travel" type="checkbox"></label>
 <fieldset><legend>Preferred interview time</legend><label>Morning<input name="interview" type="radio" value="am"></label><label>Afternoon<input name="interview" type="radio" value="pm"></label></fieldset>
@@ -108,7 +113,9 @@ document.querySelector('form').addEventListener('submit',e=>{e.preventDefault();
 for(const type of ['input','change']) document.addEventListener(type,e=>{if(['first_name','last_name','email','phone'].includes(e.target.name)) contactEvents[type]++});
 document.querySelector('[name=first_name]').addEventListener('input',e=>{const old=e.target;setTimeout(()=>{const fresh=old.cloneNode(true);fresh.value=old.value;old.replaceWith(fresh)},50)},{once:true});
 document.querySelector('[name=resume]').addEventListener('change',async e=>{const body=new FormData();body.append('resume',e.target.files[0]);await fetch('/upload',{method:'POST',body})});
-</script>`)
+</script>`
+		html = strings.Replace(html, "<!-- CHECKPOINT1_ADDITIONAL_QUESTION -->", additionalQuestion, 1)
+		fmt.Fprint(w, html)
 	}))
 	defer fixture.Close()
 	base := fixture.URL + "/fixture/job"
@@ -121,6 +128,7 @@ document.querySelector('[name=resume]').addEventListener('change',async e=>{cons
 	defer chrome.Close()
 	employer := base + "/application"
 	a, _ := testWorkspace(t)
+	requireQualificationStorage(t, a)
 	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com", Title: "Synthetic contact qualification", Description: "Support customers through production incidents"}); err != nil {
 		t.Fatal(err)
 	}
@@ -134,6 +142,15 @@ document.querySelector('[name=resume]').addEventListener('change',async e=>{cons
 	}
 	if err := a.setMasterResume(master.ID, true); err != nil {
 		t.Fatal(err)
+	}
+	var generatedAnswerCalls atomic.Int32
+	const generatedIncidentAnswer = "I reviewed the incident timeline, coordinated the response, and documented follow-up steps."
+	if combined {
+		addCareerEvidenceForSearch(t, a, careerEvidenceContent{Title: "Synthetic support incident", Situation: "A production customer workflow was interrupted.", Actions: "I reviewed the logs, coordinated the investigation, and documented follow-up.", OutcomeState: "unknown"}, true)
+		a.applicationAnswerGenerate = func(context.Context, string, string) (string, error) {
+			generatedAnswerCalls.Add(1)
+			return generatedIncidentAnswer, nil
+		}
 	}
 	a.coverLetterGenerate = func(context.Context, string) (string, error) {
 		return "Dear Hiring Team, I bring verified technical support experience to this role.", nil
@@ -201,7 +218,9 @@ document.querySelector('[name=resume]').addEventListener('change',async e=>{cons
 			}
 			time.Sleep(60 * time.Millisecond)
 		}
-		t.Fatalf("timed out: %s", description)
+		var diagnostic string
+		_ = evaluate(ui, `JSON.stringify({url:location.href,body:document.body.innerText.slice(0,1000),questions:[...document.querySelectorAll('.application-question-form')].map(f=>({label:f.querySelector('legend,h3,h4')?.textContent||f.textContent.slice(0,120),ai:!!f.querySelector('[data-answer-ai]')}))})`, &diagnostic)
+		t.Fatalf("timed out: %s; UI=%s", description, diagnostic)
 	}
 	wait("employer form", func() bool {
 		var ready bool
@@ -367,7 +386,82 @@ document.querySelector('[name=resume]').addEventListener('change',async e=>{cons
 		if err := evaluate(employer, `document.querySelector('[name=motivation]').value===''`, &untouched); err != nil || !untouched {
 			t.Fatal("saving answer transmitted data", err)
 		}
+		aiPage := questionPage("Describe a difficult support incident you resolved")
+		if err := chrome.FixtureCall(ctx, ui, "Page.navigate", map[string]any{"url": aiPage}, nil); err != nil {
+			t.Fatal(err)
+		}
+		ui = aiPage
+		wait("supported narrative question and AI controls", func() bool {
+			var ready bool
+			return evaluate(ui, `!!document.querySelector('.question-panel:not([hidden]) [data-answer-ai] [name="provider"]')&&!!document.querySelector('.question-panel:not([hidden]) [data-answer-ai-controls]:not([hidden])')`, &ready) == nil && ready
+		})
+		var providerModel struct{ Provider, Model string }
+		if err := evaluate(ui, `({Provider:document.querySelector('.question-panel:not([hidden]) [data-answer-ai] [name="provider"]').value,Model:document.querySelector('.question-panel:not([hidden]) [data-answer-ai] [name="model"]').value})`, &providerModel); err != nil {
+			t.Fatal(err)
+		}
+		if providerModel.Provider != "ollama" || providerModel.Model == "" {
+			t.Fatalf("AI provider/model controls did not initialize: %+v", providerModel)
+		}
+		if err := evaluate(ui, `(()=>{const ai=document.querySelector('.question-panel:not([hidden]) [data-answer-ai]');ai.open=true;ai.querySelector('[data-answer-ai-another]').open=true;ai.querySelector('[name="career_evidence"]').checked=true;ai.querySelector('[data-answer-ai-review]').click();return true})()`, nil); err != nil {
+			t.Fatal(err)
+		}
+		wait("AI source review completed locally", func() bool {
+			var ready bool
+			return evaluate(ui, `!document.querySelector('.question-panel:not([hidden]) [data-answer-ai-review-panel]').hidden`, &ready) == nil && ready
+		})
+		if generatedAnswerCalls.Load() != 0 {
+			t.Fatal("AI source review called the injected generator")
+		}
+		var exactReview struct{ Question, Payload string }
+		if err := evaluate(ui, `({Question:document.querySelector('.question-panel:not([hidden])')?.getAttribute('aria-label')||'',Payload:document.querySelector('.question-panel:not([hidden]) [data-answer-ai-payload]').textContent})`, &exactReview); err != nil {
+			t.Fatal(err)
+		}
+		if exactReview.Question != "Describe a difficult support incident you resolved" || !strings.Contains(exactReview.Payload, "Synthetic support incident") || !strings.Contains(exactReview.Payload, "A production customer workflow was interrupted") {
+			t.Fatalf("AI review omitted the selected factual source: %+v", exactReview)
+		}
+		if err := evaluate(ui, `(()=>{const ai=document.querySelector('.question-panel:not([hidden]) [data-answer-ai]');ai.querySelector('[data-answer-ai-authorize]').checked=true;ai.querySelector('[data-answer-ai-external]').checked=true;ai.querySelector('[data-answer-ai-generate]').click();return true})()`, nil); err != nil {
+			t.Fatal(err)
+		}
+		wait("fake AI preview completed", func() bool {
+			var ready bool
+			return evaluate(ui, `!document.querySelector('.question-panel:not([hidden]) [data-answer-ai-preview]').hidden&&document.querySelector('.question-panel:not([hidden]) [data-answer-ai-text]').value.includes('incident timeline')`, &ready) == nil && ready
+		})
+		if generatedAnswerCalls.Load() != 1 {
+			t.Fatalf("explicitly authorized AI request count=%d", generatedAnswerCalls.Load())
+		}
+		if err := evaluate(ui, `document.querySelector('.question-panel:not([hidden]) [data-answer-ai-adopt]').click();true`, nil); err != nil {
+			t.Fatal(err)
+		}
+		wait("explicit adoption into unsaved editor", func() bool {
+			var ready bool
+			return evaluate(ui, `document.querySelector('.question-panel:not([hidden]) .application-question-form textarea[name="answer"]').value==='`+generatedIncidentAnswer+`'&&document.querySelector('.question-panel:not([hidden]) .application-question-form').dataset.dirty==='true'`, &ready) == nil && ready
+		})
+		var savedCount int
+		if err := a.db.QueryRow(`SELECT COUNT(*) FROM application_answers WHERE job_id=1 AND answer=?`, generatedIncidentAnswer).Scan(&savedCount); err != nil || savedCount != 0 {
+			t.Fatalf("AI adoption saved without the local Save action: count=%d err=%v", savedCount, err)
+		}
+		if err := evaluate(ui, `document.querySelector('.question-panel:not([hidden]) .application-question-form button[type="submit"]').click();true`, nil); err != nil {
+			t.Fatal(err)
+		}
+		wait("adopted answer saved locally", func() bool {
+			var ready bool
+			return evaluate(ui, `document.querySelector('.question-panel:not([hidden]) .application-question-form [name="revision"]').value==='1'&&document.querySelector('.question-panel:not([hidden]) .application-question-form textarea[name="answer"]').value==='`+generatedIncidentAnswer+`'`, &ready) == nil && ready
+		})
+		var savedAIAnswer string
+		var savedAIRevision int64
+		if err := a.db.QueryRow(`SELECT answer,revision FROM application_answers WHERE job_id=1 AND label=?`, "Describe a difficult support incident you resolved").Scan(&savedAIAnswer, &savedAIRevision); err != nil || savedAIAnswer != generatedIncidentAnswer || savedAIRevision != 1 {
+			t.Fatalf("adopted answer did not persist at revision 1: answer=%q revision=%d err=%v", savedAIAnswer, savedAIRevision, err)
+		}
+		whyPage := questionPage("Why this team?")
+		if err := chrome.FixtureCall(ctx, ui, "Page.navigate", map[string]any{"url": whyPage}, nil); err != nil {
+			t.Fatal(err)
+		}
+		ui = whyPage
 		expectedAction = "Continue application"
+		wait("saved answer and letter action after returning to the first question", func() bool {
+			var ready bool
+			return evaluate(ui, `document.querySelector('form[action$="/continue"] button')?.textContent==='Continue application'`, &ready) == nil && ready
+		})
 	}
 	var scoped bool
 	if err := evaluate(ui, `document.querySelector('form[action$="/continue"] button').textContent==='`+expectedAction+`'&&!document.querySelector('form[action$="/continue"] [name=confirm]')`, &scoped); err != nil || !scoped {
@@ -387,14 +481,17 @@ document.querySelector('[name=resume]').addEventListener('change',async e=>{cons
 	})
 	letterTime := time.Since(letterStart)
 	var documents struct {
-		Resume, Cover string
-		Submitted     int
+		Resume, Cover, Motivation, Incident string
+		Submitted                           int
 	}
-	if err := evaluate(employer, `({Resume:document.querySelector('[name=resume]').files[0]?.name,Cover:document.querySelector('[name=cover]').files[0]?.name,Submitted:contactEvents.submitted})`, &documents); err != nil {
+	if err := evaluate(employer, `({Resume:document.querySelector('[name=resume]').files[0]?.name,Cover:document.querySelector('[name=cover]').files[0]?.name,Motivation:document.querySelector('[name=motivation]').value,Incident:document.querySelector('[name=incident-story]')?.value||'',Submitted:contactEvents.submitted})`, &documents); err != nil {
 		t.Fatal(err)
 	}
 	if documents.Resume != "Casey_Fixture_Resume_Synthetic_contact_qualification.pdf" || documents.Cover != "Casey_Fixture_Cover_Letter_Synthetic_contact_qualification.pdf" || documents.Submitted != 0 {
 		t.Fatalf("incorrect continuation: %+v", documents)
+	}
+	if combined && (documents.Motivation != combinedAnswer || documents.Incident != generatedIncidentAnswer) {
+		t.Fatalf("authorized saved answers did not reach the controlled employer form: %+v", documents)
 	}
 	mu.Lock()
 	count = uploads
@@ -470,7 +567,9 @@ document.querySelector('[name=resume]').addEventListener('change',async e=>{cons
 	if err := evaluate(ui, `(()=>{const e=[...document.querySelectorAll('form[action$="/answers/save"] textarea')].find(e=>e.value==='`+answer+`');e.value='Unsaved local draft';e.dispatchEvent(new Event('input',{bubbles:true}));return true})()`, nil); err != nil {
 		t.Fatal(err)
 	}
-	wait("approved answers observed", func() bool { return a.browsers.state(1).AnswerStatus == "complete" })
+	wait("answer transfer processing finished", func() bool { return a.browsers.state(1).AnswerStatus == "complete" })
+	transferState := a.browsers.state(1)
+	t.Logf("observed per-field answer outcomes: %+v", transferState.AnswerOutcomes)
 
 	answerTime := time.Since(answerStart)
 	wait("status refresh preserved unsaved edits", func() bool {
@@ -532,6 +631,59 @@ document.querySelector('[name=resume]').addEventListener('change',async e=>{cons
 		var ready bool
 		return evaluate(ui, `[...document.querySelectorAll('form[action$="/answers/save"] textarea')].some(e=>e.value==='SSH and shared incident notes')`, &ready) == nil && ready
 	})
+	// The employer changes this field's identity after the local save. Recheck
+	// the live form and make sure the old answer is preserved for review instead
+	// of being sent to the newly identified control.
+	if err := evaluate(employer, `(()=>{const e=document.querySelector('[name="remote-tools"]');e.name='remote-tools-v2';return true})()`, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := evaluate(ui, `document.querySelector('form[action$="/browser/observe"] button').click();true`, nil); err != nil {
+		t.Fatal(err)
+	}
+	ui = app.URL + "/jobs/1"
+	wait("changed employer question identity captured", func() bool {
+		job, _ := a.jobByID(1)
+		profile, _ := a.candidateProfile()
+		prep, err := a.prepareQuestions(job, profile)
+		if err != nil {
+			return false
+		}
+		changed := false
+		previous := false
+		for _, question := range prep.Questions {
+			if question.Field.ID == "browser:remote-tools-v2" {
+				changed = true
+			}
+		}
+		for _, answer := range prep.Previous {
+			if answer.Label == "Which remote support tools have you used?" && answer.Value == "SSH and shared incident notes" {
+				previous = true
+			}
+		}
+		return changed && previous
+	})
+	changedQuestionPage := questionPage("Which remote support tools have you used?")
+	if err := chrome.FixtureCall(ctx, ui, "Page.navigate", map[string]any{"url": changedQuestionPage}, nil); err != nil {
+		t.Fatal(err)
+	}
+	ui = changedQuestionPage
+	wait("old identity answer shown for manual review", func() bool {
+		var ready bool
+		return evaluate(ui, `document.body.textContent.includes('Earlier saved answers needing review')&&document.body.textContent.includes('SSH and shared incident notes')&&document.querySelector('.question-panel:not([hidden]) textarea[name="answer"]')?.value===''`, &ready) == nil && ready
+	})
+	const changedIdentityAnswer = "SSH and shared incident notes, reviewed for the changed employer field."
+	if err := evaluate(ui, `(()=>{const f=document.querySelector('.question-panel:not([hidden]) form[action$="/answers/save"]');const e=f.querySelector('textarea[name="answer"]');e.value='`+changedIdentityAnswer+`';e.dispatchEvent(new Event('input',{bubbles:true}));f.querySelector('button').click();return true})()`, nil); err != nil {
+		t.Fatal(err)
+	}
+	ui = changedQuestionPage
+	wait("new identity answer saved locally", func() bool {
+		var ready bool
+		return evaluate(ui, `document.querySelector('.question-panel:not([hidden]) form[action$="/answers/save"] textarea[name="answer"]')?.value==='`+changedIdentityAnswer+`'`, &ready) == nil && ready
+	})
+	const employerManualAnswer = "Applicant-entered manually before authorized transfer"
+	if err := evaluate(employer, `(()=>{const e=document.querySelector('[name="remote-tools-v2"]');e.value='`+employerManualAnswer+`';e.dispatchEvent(new Event('input',{bubbles:true}));return true})()`, nil); err != nil {
+		t.Fatal(err)
+	}
 	job, _ := a.jobByID(1)
 	profile, _ := a.candidateProfile()
 	nextPrep, err := a.prepareQuestions(job, profile)
@@ -552,16 +704,41 @@ document.querySelector('[name=resume]').addEventListener('change',async e=>{cons
 		Answer, Last, Resume, Cover string
 		Submitted                   int
 	}
-	if err := evaluate(employer, `({Answer:document.querySelector('[name=remote-tools]').value,Last:document.querySelector('[name=last_name]').value,Resume:document.querySelector('[name=resume]').files[0]?.name,Cover:document.querySelector('[name=cover]').files[0]?.name,Submitted:contactEvents.submitted})`, &continued); err != nil {
+	if err := evaluate(employer, `({Answer:document.querySelector('[name=remote-tools-v2]').value,Last:document.querySelector('[name=last_name]').value,Resume:document.querySelector('[name=resume]').files[0]?.name,Cover:document.querySelector('[name=cover]').files[0]?.name,Submitted:contactEvents.submitted})`, &continued); err != nil {
 		t.Fatal(err)
 	}
-	if continued.Answer != "SSH and shared incident notes" || continued.Last != "Manual correction" || continued.Resume != "Casey_Fixture_Resume_Synthetic_contact_qualification.pdf" || continued.Cover != "Casey_Fixture_Cover_Letter_Synthetic_contact_qualification.pdf" || continued.Submitted != 0 {
+	if continued.Answer != employerManualAnswer || continued.Last != "Manual correction" || continued.Resume != "Casey_Fixture_Resume_Synthetic_contact_qualification.pdf" || continued.Cover != "Casey_Fixture_Cover_Letter_Synthetic_contact_qualification.pdf" || continued.Submitted != 0 {
 		t.Fatalf("conditional continuation damaged: %+v", continued)
+	}
+	manualOutcome := false
+	for _, outcome := range a.browsers.state(1).AnswerOutcomes {
+		if outcome.Label == "Which remote support tools have you used?" && outcome.Status == "manual" {
+			manualOutcome = true
+		}
+	}
+	if !manualOutcome {
+		t.Fatalf("manual employer value was not reported per field: %+v", a.browsers.state(1).AnswerOutcomes)
 	}
 	wait("final answer results visible", func() bool {
 		var ready bool
-		return evaluate(ui, `document.body.textContent.includes('Review the results below and continue in Chromium.')`, &ready) == nil && ready
+		return evaluate(ui, `document.body.textContent.includes('Answer transfer · processing finished')&&document.body.textContent.includes('1 needs manual completion')&&document.body.textContent.includes('Manual completion required in Chromium')&&!!document.querySelector('.observed-results details[open]')`, &ready) == nil && ready
 	})
+	if dir := os.Getenv("YOURMOVE_EVIDENCE_DIR"); dir != "" {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		shot, err := chrome.FixtureScreenshotAt(ctx, ui, 1280, "#observed-results-title", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := base64.StdEncoding.DecodeString(shot)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "answer-outcomes-1280.png"), data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	capture(1280, "continued-1280.png")
 	capture(390, "continued-390.png")
 	if combined {
@@ -589,14 +766,57 @@ document.querySelector('[name=resume]').addEventListener('change',async e=>{cons
 	if _, err := a.saveInspection(2, nextResult); err != nil {
 		t.Fatal(err)
 	}
-	if err := evaluate(ui, `location.href='/jobs/2#prepare';true`, nil); err != nil {
+	var beforeNext struct {
+		URL        string
+		DirtyForms []string
+	}
+	if err := evaluate(ui, `({URL:location.href,DirtyForms:[...document.querySelectorAll('form[data-dirty="true"]')].map(f=>f.action)})`, &beforeNext); err != nil {
 		t.Fatal(err)
 	}
+	if len(beforeNext.DirtyForms) > 0 {
+		t.Fatalf("a saved answer or letter remained dirty before changing opportunities: %+v", beforeNext)
+	}
+	var nextNavigation struct {
+		FrameID, LoaderID, ErrorText string
+	}
+	if err := chrome.FixtureCall(ctx, ui, "Page.navigate", map[string]any{"url": app.URL + "/jobs/2#prepare"}, &nextNavigation); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("next opportunity browser navigation: %+v", nextNavigation)
 	nextUI := app.URL + "/jobs/2"
-	wait("qualified reusable answer visible without retyping", func() bool {
+	deadline := time.Now().Add(12 * time.Second)
+	var lastNavigationErr error
+	var reusableVisible bool
+	for time.Now().Before(deadline) {
 		var ready bool
-		return evaluate(nextUI, `[...document.querySelectorAll('form[action$="/answers/save"]')].some(f=>f.textContent.includes('Why this team?')&&f.textContent.includes('Reusable answer approved')&&f.querySelector('textarea')?.value==='`+answer+`')`, &ready) == nil && ready
-	})
+		lastNavigationErr = evaluate(nextUI, `[...document.querySelectorAll('form[action$="/answers/save"]')].some(f=>f.textContent.includes('Why this team?')&&f.textContent.includes('Answer available locally; transfer requires your authorization')&&f.querySelector('textarea')?.value==='`+answer+`')`, &ready)
+		if lastNavigationErr == nil && ready {
+			reusableVisible = true
+			break
+		}
+		time.Sleep(60 * time.Millisecond)
+	}
+	if !reusableVisible {
+		response, requestErr := http.Get(nextUI)
+		status := ""
+		responseText := ""
+		if requestErr == nil {
+			status = response.Status
+			body, _ := io.ReadAll(response.Body)
+			responseText = string(body)
+			response.Body.Close()
+		}
+		job, _ := a.jobByID(2)
+		profile, _ := a.candidateProfile()
+		prepared, prepareErr := a.prepareQuestions(job, profile)
+		var answerState []string
+		for _, question := range prepared.Questions {
+			if strings.Contains(question.Field.Label, "Why this team") {
+				answerState = append(answerState, fmt.Sprintf("source=%q value=%q reusable=%t suggestions=%d", question.Source, question.Value, question.ReusableKey != "", len(question.LibrarySuggestions)))
+			}
+		}
+		t.Fatalf("qualified reusable answer not visible without retyping: browser navigation=%+v browser error=%v direct GET=%s (%v) prepared=%v prepare err=%v body has answer=%t reusable-copy=%t", nextNavigation, lastNavigationErr, status, requestErr, answerState, prepareErr, strings.Contains(responseText, answer), strings.Contains(responseText, "Reusable answer approved"))
+	}
 	t.Log("E: optional reuse selected in the authoritative editor; second saved opportunity displayed the exact qualified answer without retyping; different-employer and local-override boundaries covered in Go storage tests")
 
 	liveObservation, err := chrome.Observe(ctx)
@@ -746,6 +966,100 @@ document.querySelector('[name=resume]').addEventListener('change',async e=>{cons
 		t.Fatal("contact transfer allowed a foreign application")
 	}
 	t.Log("Additional live-CDP cases passed: ambiguous controls, positional-ID abstention, conflicting user values, already-correct value, Ashby full-name controls, rerender loss, sensitive-label abstention, foreign session ownership")
+
+	if combined {
+		// Finish the same synthetic opportunity in the rendered YourMove UI.
+		// The employer form's submit handler prevents external submission; this
+		// records only the applicant's explicit, simulated confirmation.
+		// YourMove's application window and managed employer browser are
+		// separate Chromium processes in normal desktop operation. Keep that
+		// boundary here because Next job deliberately closes the employer one.
+		appUI, err := chromium.LaunchFixture(ctx, app.URL+"/jobs/1#prepare")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer appUI.Close()
+		appPage := app.URL + "/jobs/1"
+		evaluateAppUI := func(page, expression string, out any) error {
+			var reply struct {
+				Result struct {
+					Value json.RawMessage `json:"value"`
+				} `json:"result"`
+				Exception json.RawMessage `json:"exceptionDetails"`
+			}
+			if err := appUI.FixtureCall(ctx, page, "Runtime.evaluate", map[string]any{"expression": expression, "returnByValue": true}, &reply); err != nil {
+				return err
+			}
+			if len(reply.Exception) > 0 {
+				return fmt.Errorf("YourMove UI JavaScript: %s", reply.Exception)
+			}
+			if out != nil {
+				return json.Unmarshal(reply.Result.Value, out)
+			}
+			return nil
+		}
+		waitAppUI := func(description, page, expression string) {
+			t.Helper()
+			deadline := time.Now().Add(12 * time.Second)
+			for time.Now().Before(deadline) {
+				var ready bool
+				if evaluateAppUI(page, expression, &ready) == nil && ready {
+					return
+				}
+				time.Sleep(60 * time.Millisecond)
+			}
+			var diagnostic string
+			_ = evaluateAppUI(page, `JSON.stringify({url:location.href,body:document.body.innerText.slice(0,500)})`, &diagnostic)
+			t.Fatalf("timed out: %s; YourMove UI=%s", description, diagnostic)
+		}
+		waitAppUI("recording action after the controlled application journey", appPage, `document.readyState==='complete'&&!!document.querySelector('[data-record-completion]')&&!!document.querySelector('[data-record-completion] [name="submission_token"]')`)
+		const completionNote = "Synthetic applicant-confirmed submission"
+		if err := evaluateAppUI(appPage, `(()=>{const d=document.querySelector('#record-submission');d.open=true;const n=d.querySelector('[name="notes"]');n.focus();n.value=`+strconv.Quote(completionNote)+`;n.dispatchEvent(new Event('input',{bubbles:true}));const c=d.querySelector('[name="confirm"]');c.click();return d.open&&c.checked})()`, nil); err != nil {
+			t.Fatal(err)
+		}
+		if err := evaluateAppUI(appPage, `document.querySelector('[data-record-completion] button[type="submit"]').click();true`, nil); err != nil {
+			t.Fatal(err)
+		}
+		waitAppUI("completion confirmation and persisted History rendered", appPage, `document.body.textContent.includes('Application recorded as Applied.')&&document.querySelector('#history')?.textContent.includes('Synthetic applicant-confirmed submission')`)
+		job, err := a.jobByID(1)
+		if err != nil || job.Stage != StageApplied {
+			t.Fatalf("integrated application did not reach Applied: %+v %v", job, err)
+		}
+		history, err := a.jobSubmissions(1)
+		if err != nil || len(history) != 1 || history[0].ResumeID != resume.ID || history[0].Notes != completionNote {
+			t.Fatalf("integrated completion record mismatch: %+v %v", history, err)
+		}
+		var historyResume bool
+		if err := evaluateAppUI(appPage, `!!document.querySelector('#history form[action="/jobs/1/next"] button')&&document.querySelector('#history').textContent.includes('approved-resume.pdf')`, &historyResume); err != nil || !historyResume {
+			t.Fatalf("History did not show the resume association and next action: %v", err)
+		}
+		if dir := os.Getenv("YOURMOVE_EVIDENCE_DIR"); dir != "" {
+			if err := os.MkdirAll(dir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			shot, err := appUI.FixtureScreenshotAt(ctx, appPage, 1280, "#history", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			data, err := base64.StdEncoding.DecodeString(shot)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "integrated-applied-history.png"), data, 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := evaluateAppUI(appPage, `document.querySelector('#history form[action="/jobs/1/next"] button').click();true`, nil); err != nil {
+			t.Fatal(err)
+		}
+		nextPage := app.URL + "/jobs/2"
+		waitAppUI("next opportunity after integrated completion", nextPage, `location.pathname==='/jobs/2'&&document.readyState==='complete'`)
+		history, err = a.jobSubmissions(1)
+		if err != nil || len(history) != 1 {
+			t.Fatalf("advancing lost or duplicated the completed application: %+v %v", history, err)
+		}
+		t.Log("Integrated Chromium journey passed: AI preview → explicit adoption → local save → authorized employer fill → rendered Applied/History → Next job; one persisted submission, no employer submit")
+	}
 }
 
 func mustQualificationPDF(t *testing.T) []byte {

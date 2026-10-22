@@ -22,6 +22,9 @@ import (
 // changes create a separate answer, leaving earlier user work intact.
 type preparedQuestion struct {
 	AIChoices                 *answerAIChoices // Presentation only; server review reconstructs sources.
+	AIProviders               []answerAIProviderOption
+	AIDefaultProvider         string
+	AIDefaultModel            string
 	ReusableRevision          int64
 	ReusableKey               string
 	JobID                     int64

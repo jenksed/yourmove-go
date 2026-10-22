@@ -591,6 +591,33 @@
     const editor = form?.querySelector('textarea[name="answer"]');
     if (!form || !editor) return;
     find('controls').hidden = false;
+    const providerField = root.querySelector('[name="provider"]');
+    const modelField = root.querySelector('[name="model"]');
+    const providerHelp = find('provider-help');
+    if (!providerField || !modelField || !providerHelp) return;
+    const modelPreferencesKey = 'yourmove.answer.models.v1';
+    const providerPreferenceKey = 'yourmove.answer.provider.v1';
+    let modelPreferences = {};
+    try { modelPreferences = JSON.parse(localStorage.getItem(modelPreferencesKey) || '{}'); } catch (_) {}
+    const availableProvider = value => [...providerField.options].some(option => option.value === value);
+    const updateProviderModel = () => {
+      const option = providerField.options[providerField.selectedIndex];
+      providerHelp.textContent = option?.dataset.help || 'Review AI connections for provider setup and supported models.';
+      modelField.value = modelPreferences[providerField.value] || option?.dataset.defaultModel || '';
+    };
+    try {
+      const preferredProvider = localStorage.getItem(providerPreferenceKey);
+      if (preferredProvider && availableProvider(preferredProvider)) providerField.value = preferredProvider;
+    } catch (_) {}
+    updateProviderModel();
+    providerField.addEventListener('change', () => {
+      try { localStorage.setItem(providerPreferenceKey, providerField.value); } catch (_) {}
+      updateProviderModel();
+    });
+    modelField.addEventListener('input', () => {
+      modelPreferences[providerField.value] = modelField.value;
+      try { localStorage.setItem(modelPreferencesKey, JSON.stringify(modelPreferences)); } catch (_) {}
+    });
     let reviewed = null, preview = null, busy = false, request = null, selectionVersion = 0;
     const key = prefix + root.dataset.key;
     const status = message => { find('status').textContent = message; };
@@ -658,6 +685,11 @@
     find('review').addEventListener('click', async () => {
       if (busy) return;
       invalidateReview();
+      if (!modelField.value.trim()) {
+        status('Enter a model available to the selected provider. See AI connections for setup.');
+        modelField.focus();
+        return;
+      }
       const fields = new URLSearchParams({question_key: root.dataset.key, revision: root.dataset.revision, destination: root.dataset.destination});
       find('selection').querySelectorAll('[name]').forEach(input => {
         if (input.type === 'checkbox' && !input.checked) return;

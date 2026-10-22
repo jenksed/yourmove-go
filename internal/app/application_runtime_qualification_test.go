@@ -34,6 +34,7 @@ func TestControlledRuntimeRestart(t *testing.T) {
 	}
 	probe.Close()
 	a, dir := testWorkspace(t)
+	requireQualificationStorage(t, a)
 	for i := 1; i <= 2; i++ {
 		if err = a.saveJob(Job{URL: fmt.Sprintf("https://jobs.ashbyhq.com/fixture/%d", i), Host: "jobs.ashbyhq.com", Title: fmt.Sprintf("Runtime fixture %d", i), Stage: StageReady}); err != nil {
 			t.Fatal(err)
@@ -76,7 +77,13 @@ func TestControlledRuntimeRestart(t *testing.T) {
 		t.Helper()
 		cmd := exec.Command(bin)
 		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "YOURMOVE_DATA_DIR="+dir)
+		cmd.Env = make([]string, 0, len(os.Environ())+1)
+		for _, entry := range os.Environ() {
+			if !strings.HasPrefix(entry, "YOURMOVE_DATA_DIR=") {
+				cmd.Env = append(cmd.Env, entry)
+			}
+		}
+		cmd.Env = append(cmd.Env, "YOURMOVE_DATA_DIR="+dir)
 		var logs bytes.Buffer
 		cmd.Stdout = &logs
 		cmd.Stderr = &logs
@@ -171,8 +178,11 @@ func TestControlledRuntimeRestart(t *testing.T) {
 	}
 	_ = eval(`location.reload();true`)
 	wait(`!!document.querySelector('form[action$="/continue"]')&&document.querySelector('form[action$="/continue"]').textContent.includes('Saved runtime answer')`)
-	evidence := "/private/tmp/yourmove-throughput-evidence"
-	_ = os.MkdirAll(evidence, 0700)
+	evidence, err := os.MkdirTemp("/private/tmp", "yourmove-checkpoint1-runtime-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("isolated runtime screenshots: %s", evidence)
 	for _, width := range []int{1100, 390} {
 		shot, e := chrome.FixtureScreenshotAt(ctx, page, width, "#application-action", "light")
 		if e != nil {
