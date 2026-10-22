@@ -106,32 +106,39 @@ func parseAnswerAISource(s string) (int64, int64, string, error) {
 
 // Excerpts are leading UTF-8 slices with an explicit indicator; the serialized
 // category/identity overhead is included, not merely the document text.
-func boundedAnswerAISource(s answerAISource, max int) (answerAISource, error) {
-	if !validNarrativeText(s.Content) {
-		return s, errors.New("text")
-	}
-	original := s.Content
-	for len(answerAIJSON(s)) > max {
-		if len(s.Content) == 0 {
-			return s, errors.New("budget")
-		}
-		n := len(s.Content) - (len(answerAIJSON(s)) - max) - 32
-		if n < 0 {
-			n = 0
-		}
-		if n > len(original) {
-			n = len(original)
-		}
-		for n > 0 && n < len(original) && !utf8.RuneStart(original[n]) {
-			n--
-		}
-		s.Content = original[:n] + "\n[Excerpt truncated]"
-		if n == 0 && len(answerAIJSON(s)) > max {
-			return s, errors.New("budget")
-		}
-	}
-	return s, nil
+func boundedAnswerAISource(source answerAISource, limit int) (answerAISource, error) {
+	return boundedProjectedAnswerAISource(source, source.Content, func(text string) string { return text }, limit)
 }
+
+// Preserve typed provenance and context while shortening only the designated
+// excerpt. Measure serialized bytes at UTF-8 boundaries, including escaping;
+// never admit a source containing only a truncation marker.
+func boundedProjectedAnswerAISource(source answerAISource, text string, project func(string) string, limit int) (answerAISource, error) {
+	if !validNarrativeText(text) {
+		return source, errors.New("text")
+	}
+	source.Content = project(text)
+	if len(answerAIJSON(source)) <= limit {
+		return source, nil
+	}
+	runes := []rune(text)
+	low, high := 0, len(runes)
+	for low < high {
+		middle := (low + high + 1) / 2
+		source.Content = project(string(runes[:middle]) + "\n[Excerpt truncated]")
+		if len(answerAIJSON(source)) <= limit {
+			low = middle
+		} else {
+			high = middle - 1
+		}
+	}
+	if low == 0 {
+		return source, errors.New("provenance_budget")
+	}
+	source.Content = project(string(runes[:low]) + "\n[Excerpt truncated]")
+	return source, nil
+}
+
 func (a *App) buildAnswerGenerationSnapshot(id int64, v url.Values) (answerGenerationSnapshot, error) {
 	var out answerGenerationSnapshot
 	job, q, err := a.currentNarrativeQuestion(id, v)
@@ -188,10 +195,12 @@ func (a *App) buildAnswerGenerationSnapshot(id int64, v url.Values) (answerGener
 			return out, err
 		}
 		e, err := a.answerLibraryBySourceID(a.db, id)
-		if err != nil || e.Revision != rev || e.CreatedAt != created || !validNarrativeText(e.Answer) || !validNarrativeText(e.OriginalQuestion+e.SourceEmployer+e.SourceJobTitle+e.SourceHost) {
+		if err != nil || e.Revision != rev || e.CreatedAt != created || strings.TrimSpace(e.Answer) == "" || !validNarrativeText(e.Answer) || !validNarrativeText(e.OriginalQuestion+e.SourceEmployer+e.SourceJobTitle+e.SourceHost) {
 			return out, errors.New("writing")
 		}
-		source, err := boundedAnswerAISource(answerAISource{Category: "Previous writing: phrasing and structure only; unsupported claims are not candidate facts", ID: id, CreatedAt: created, Revision: rev, Content: answerAIJSON(struct{ Question, Employer, Job, Host, Example string }{e.OriginalQuestion, e.SourceEmployer, e.SourceJobTitle, e.SourceHost, e.Answer})}, 4<<10)
+		source, err := boundedProjectedAnswerAISource(answerAISource{Category: "Previous writing: phrasing and structure only; unsupported claims are not candidate facts", ID: id, CreatedAt: created, Revision: rev}, e.Answer, func(excerpt string) string {
+			return answerAIJSON(struct{ Question, Employer, Job, Host, Example string }{e.OriginalQuestion, e.SourceEmployer, e.SourceJobTitle, e.SourceHost, excerpt})
+		}, 4<<10)
 		if err != nil {
 			return out, err
 		}
@@ -245,6 +254,9 @@ func (a *App) buildAnswerGenerationSnapshot(id int64, v url.Values) (answerGener
 		if err != nil {
 			return out, err
 		}
+		if strings.TrimSpace(strings.TrimSuffix(source.Content, "\n[Excerpt truncated]")) == "" {
+			return out, errors.New("resume")
+		}
 		source.ExcerptHash = answerAIHash(source.Content)
 		resumeBytes += len(answerAIJSON(source))
 		if resumeBytes+len(seen)+1 > 6<<10 {
@@ -260,7 +272,9 @@ func (a *App) buildAnswerGenerationSnapshot(id int64, v url.Values) (answerGener
 		if v.Get("include_job_context") != "yes" {
 			return out, errors.New("context")
 		}
-		source, err := boundedAnswerAISource(answerAISource{Category: "Employer requirements and context only; not applicant evidence", ExcerptHash: strings.Repeat("0", 64), Content: answerAIJSON(struct{ Title, Employer, Description string }{job.Title, job.Company, job.Description})}, 3<<10)
+		source, err := boundedProjectedAnswerAISource(answerAISource{Category: "Employer requirements and context only; not applicant evidence", ExcerptHash: strings.Repeat("0", 64)}, job.Description, func(excerpt string) string {
+			return answerAIJSON(struct{ Title, Employer, Description string }{job.Title, job.Company, excerpt})
+		}, 3<<10)
 		if err != nil || !validNarrativeText(job.Title+job.Company+job.Description) {
 			return out, errors.New("context")
 		}
@@ -328,9 +342,10 @@ func answerAIResponse(w http.ResponseWriter, status int, value any) {
 }
 func answerAIError(w http.ResponseWriter, status int, code string) {
 	messages := map[string]string{
-		"local_boundary":  "A trusted local application request is required.",
-		"evidence_budget": "Selected Career Evidence exceeds 12 KiB per record or 20 KiB combined. Shorten the selected record and review it again; no evidence was sent or silently truncated.",
-		"invalid_request": "The drafting request is invalid. Review your selections.", "invalid_sources": "Select current reviewed Career Evidence or a valid resume excerpt. Oversized Career Evidence must be shortened and reviewed before selection.", "changed": "The question, saved answer, or selected sources changed. Review the current material again.", "authorization_required": "Authorize this generation and acknowledge external transmission for this specific review.", "not_found": "This review is unavailable. Review sources again.", "expired": "This review expired. Copy any preview you need and review sources again.", "capacity": "Too many active reviews. Wait for an existing review to expire.", "generation_in_progress": "Another generation is running for this job.", "provider_configuration": "Check this provider and model in AI connections.", "provider_failed": "The provider could not complete this request. Review sources again for a new attempt.", "timeout": "Generation timed out. This ticket cannot run again.", "output": "The provider returned unusable output. This ticket cannot run again.", "canceled": "Generation was canceled. Review sources again for a new attempt."}
+		"local_boundary":    "A trusted local application request is required.",
+		"provenance_budget": "The selected writing question and provenance exceed the source budget. Choose another previous-writing example.",
+		"evidence_budget":   "Selected Career Evidence exceeds 12 KiB per record or 20 KiB combined. Shorten the selected record and review it again; no evidence was sent or silently truncated.",
+		"invalid_request":   "The drafting request is invalid. Review your selections.", "invalid_sources": "Select current reviewed Career Evidence or a valid resume excerpt. Oversized Career Evidence must be shortened and reviewed before selection.", "changed": "The question, saved answer, or selected sources changed. Review the current material again.", "authorization_required": "Authorize this generation and acknowledge external transmission for this specific review.", "not_found": "This review is unavailable. Review sources again.", "expired": "This review expired. Copy any preview you need and review sources again.", "capacity": "Too many active reviews. Wait for an existing review to expire.", "generation_in_progress": "Another generation is running for this job.", "provider_configuration": "Check this provider and model in AI connections.", "provider_failed": "The provider could not complete this request. Review sources again for a new attempt.", "timeout": "Generation timed out. This ticket cannot run again.", "output": "The provider returned unusable output. This ticket cannot run again.", "canceled": "Generation was canceled. Review sources again for a new attempt."}
 	answerAIResponse(w, status, map[string]string{"code": code, "message": messages[code]})
 }
 func parseAnswerAIForm(w http.ResponseWriter, r *http.Request, limit int64, allowed map[string]bool) bool {
@@ -369,8 +384,8 @@ func (a *App) applicationAnswerAIHandler(w http.ResponseWriter, r *http.Request)
 		if err != nil {
 			code, status := "invalid_sources", 422
 			switch err.Error() {
-			case "evidence_budget":
-				code = "evidence_budget"
+			case "evidence_budget", "provenance_budget":
+				code = err.Error()
 			case "question", "state":
 				code = "changed"
 				status = 409
@@ -471,6 +486,14 @@ func (a *App) applicationAnswerAIHandler(w http.ResponseWriter, r *http.Request)
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
 	registry.mu.Lock()
+	// Source extraction can take time. Expiry and registry membership must still
+	// hold at the atomic reservation, even if cleanup ran during preflight.
+	if !time.Now().Before(t.expires) || registry.tickets[token] != t {
+		registry.mu.Unlock()
+		cancel()
+		answerAIError(w, 410, "expired")
+		return
+	}
 	if registry.closed || t.state != "reviewed" {
 		registry.mu.Unlock()
 		cancel()

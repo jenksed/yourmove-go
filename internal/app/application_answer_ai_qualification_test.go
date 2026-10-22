@@ -171,7 +171,8 @@ func TestControlledNarrativeAnswerWorkbench(t *testing.T) {
 	run(`find('generate').focus()`)
 	press(" ", "Space", 32)
 	wait(`!find('preview').hidden&&ai.getAttribute('aria-busy')==='false'`)
-	assert(`ed.value===''&&find('text').readOnly&&find('text').value.includes('EXPLAIN')`)
+	assert(`ed.value===''&&find('text').readOnly&&find('text').value.includes('EXPLAIN')&&!find('preview-sources').hidden&&find('preview-payload').textContent.includes('MySQL investigation')`)
+	assert(`Object.keys(JSON.parse(sessionStorage.getItem('yourmove:pending-edits:'+location.pathname+':ai:'+ai.dataset.key))).every(key=>!['source_payload','sources','prompt','instructions'].includes(key))`)
 	if calls.Load() != 1 {
 		t.Fatal("calls", calls.Load())
 	}

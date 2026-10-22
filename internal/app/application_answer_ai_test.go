@@ -441,3 +441,76 @@ func TestNarrativeJSONOriginErrorsAndSafeProviderErrors(t *testing.T) {
 		t.Fatal("failure replay", r.Code)
 	}
 }
+
+func TestNarrativeExcerptsPreserveCompleteProvenance(t *testing.T) {
+	a, v, _ := narrativeFixture(t)
+	job, _ := a.jobByID(1)
+	key := v.Get("question_key")
+	saveLibrarySourceAnswer(t, a, job, key, strings.Repeat("Résumé experience. ", 500), 0)
+	if r := promoteLibrarySource(t, a, 1, key, 1); r.Code != 303 {
+		t.Fatal(r.Code)
+	}
+	entries, err := a.answerLibraryEntries()
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := entries[0]
+	v.Set("revision", "1")
+	v.Set("library_entry", fmt.Sprintf("%d:%d:%s", e.ID, e.Revision, e.CreatedAt))
+	v.Set("include_job_context", "yes")
+	if _, err := a.db.Exec(`UPDATE jobs SET description=? WHERE id=1`, strings.Repeat("Employer requirements. ", 500)); err != nil {
+		t.Fatal(err)
+	}
+	s, err := a.buildAnswerGenerationSnapshot(1, v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var writing struct{ Question, Employer, Job, Host, Example string }
+	var context struct{ Title, Employer, Description string }
+	for _, source := range s.Sources {
+		if strings.HasPrefix(source.Category, "Previous writing") {
+			if err := json.Unmarshal([]byte(source.Content), &writing); err != nil {
+				t.Fatal("broken writing serialization", err)
+			}
+			if len(answerAIJSON(source)) > 4096 {
+				t.Fatal("writing budget")
+			}
+		}
+		if strings.HasPrefix(source.Category, "Employer requirements") {
+			if err := json.Unmarshal([]byte(source.Content), &context); err != nil {
+				t.Fatal("broken context serialization", err)
+			}
+			if len(answerAIJSON(source)) > 3072 {
+				t.Fatal("context budget")
+			}
+		}
+	}
+	if writing.Question != e.OriginalQuestion || writing.Employer != e.SourceEmployer || writing.Job != e.SourceJobTitle || writing.Host != e.SourceHost || !strings.HasSuffix(writing.Example, "[Excerpt truncated]") {
+		t.Fatal("lost provenance", writing)
+	}
+	if context.Title != job.Title || context.Employer != job.Company || !strings.HasSuffix(context.Description, "[Excerpt truncated]") {
+		t.Fatal("lost context", context)
+	}
+	// Do not silently throw away provenance to admit an otherwise impossible source.
+	if _, err := a.db.Exec(`UPDATE answer_library SET original_question=? WHERE id=?`, strings.Repeat("Original question ", 500), e.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.buildAnswerGenerationSnapshot(1, v); err == nil {
+		t.Fatal("oversized provenance accepted")
+	}
+	response := postApp(newMux(a), "/jobs/1/answers/ai/review", v, "", "")
+	if response.Code != 422 || !strings.Contains(response.Body.String(), `"code":"provenance_budget"`) || !strings.Contains(response.Body.String(), "Choose another previous-writing example") {
+		t.Fatal(response.Code, response.Body.String())
+	}
+}
+
+func TestNarrativeEscapedUTF8ExcerptsKeepActualEvidence(t *testing.T) {
+	original := "Résumé investigation: " + strings.Repeat("<>& résumé ", 1000)
+	source, err := boundedAnswerAISource(answerAISource{Category: "resume", Content: original}, 512)
+	if err != nil || len(answerAIJSON(source)) > 512 || !validNarrativeText(source.Content) || !strings.HasPrefix(source.Content, "Résumé investigation:") || !strings.HasSuffix(source.Content, "[Excerpt truncated]") {
+		t.Fatal("escaped excerpt", source, err)
+	}
+	if _, err := boundedAnswerAISource(answerAISource{Category: strings.Repeat("metadata", 100), Content: "actual facts"}, 50); err == nil {
+		t.Fatal("metadata-only source admitted")
+	}
+}

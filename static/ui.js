@@ -547,6 +547,11 @@
     if (!response.ok) throw new Error(value.message || 'This drafting request could not complete. Review sources again.');
     return value;
   };
+  const sourceReference = source => {
+    let name = '';
+    try { const content = JSON.parse(source.content); name = content.Title || [content.Employer, content.Job].filter(Boolean).join(' · '); } catch (_) {}
+    return `${source.category}${name ? ` · ${name.slice(0, 200)}` : ''}${source.id ? ` · ID ${source.id} · revision ${source.revision}` : ''}`;
+  };
   const roots = [...document.querySelectorAll('[data-answer-ai]')];
   roots.forEach(root => {
     const find = name => root.querySelector(`[data-answer-ai-${name}]`);
@@ -650,7 +655,7 @@
         });
         find('payload').textContent = `${value.prompt}\n\n${value.instructions}`;
         find('execution').textContent = `${value.provider} · ${value.model}. ${value.execution}`;
-        find('sources').textContent = value.sources.map(source => `${source.category}${source.id ? ` · ID ${source.id} · revision ${source.revision}` : ''}`).join('\n');
+        find('sources').textContent = value.sources.map(sourceReference).join('\n');
         find('review-panel').hidden = false;
         status('Local review complete. No model has been called. Inspect the exact text before authorizing.');
       } catch (error) { status(error.message); }
@@ -666,7 +671,9 @@
       try {
         const value = await api(root, 'generate', {ticket: authorized.ticket, authorize_generation: 'yes', authorize_external: 'yes'}, request.signal);
         if (value.state === 'complete' && typeof value.answer === 'string') {
-          showPreview({...value, references: `${authorized.provider} · ${authorized.model}. ` + authorized.sources.map(source => `${source.category}${source.id ? ` · ID ${source.id} · revision ${source.revision}` : ''}`).join('; ')});
+          find('preview-payload').textContent = authorized.source_payload;
+          find('preview-sources').hidden = false;
+          showPreview({...value, references: `${authorized.provider} · ${authorized.model}. ` + authorized.sources.map(sourceReference).join('; ')});
         } else status(value.notice || `Generation state: ${value.state}. Review sources again for a new request.`);
       } catch (error) { status(error.name === 'AbortError' ? 'Generation canceled. Your existing text is unchanged.' : error.message); }
       finally {
@@ -709,7 +716,7 @@
     });
     find('discard').addEventListener('click', () => {
       if (preview?.ticket) api(root, 'cancel', {ticket: preview.ticket}).catch(() => {});
-      preview = null; find('text').value = ''; find('preview').hidden = true; find('another').open = true; persist(); status('Preview discarded. Your editor is unchanged.');
+      preview = null; find('text').value = ''; find('preview-payload').textContent = ''; find('preview-sources').hidden = true; find('preview').hidden = true; find('another').open = true; persist(); status('Preview discarded. Your editor is unchanged.');
     });
     try {
       const stored = sessionStorage.getItem(key);
