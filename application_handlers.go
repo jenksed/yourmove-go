@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	browser "github.com/jenksed/yourmove-go/internal/application/browser"
+	"github.com/jenksed/yourmove-go/internal/documents"
 )
 
 var resumesTemplate = template.Must(template.ParseFS(templateFiles, "templates/resumes.html", "templates/partials.html"))
@@ -212,7 +213,7 @@ func (a *App) uploadResume(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Storage unavailable", 500)
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, maxResumeSize+(1<<20))
+	r.Body = http.MaxBytesReader(w, r.Body, documents.MaxResumeSize+(1<<20))
 	if err := r.ParseMultipartForm(64 << 10); err != nil {
 		http.Error(w, "Invalid or oversized upload", http.StatusBadRequest)
 		return
@@ -367,7 +368,7 @@ func (a *App) reviseResumeBrowser(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, maxResumeSize+(1<<20))
+	r.Body = http.MaxBytesReader(w, r.Body, documents.MaxResumeSize+(1<<20))
 	if err := r.ParseMultipartForm(64 << 10); err != nil {
 		http.Redirect(w, r, "/resumes?notice=failed", http.StatusSeeOther)
 		return

@@ -170,34 +170,6 @@ func TestCoverLetterStudioCanChooseDifferentSourceThanApplication(t *testing.T) 
 	}
 }
 
-// A minimal selectable-text PDF ensures letter generation is not DOCX-only.
-func TestExtractPDFTextForCoverLetter(t *testing.T) {
-	var b bytes.Buffer
-	offsets := []int{0}
-	b.WriteString("%PDF-1.4\n")
-	objects := []string{
-		"<< /Type /Catalog /Pages 2 0 R >>",
-		"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
-		"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-		fmt.Sprintf("<< /Length %d >>\nstream\n%s\nendstream", len("BT /F1 12 Tf 72 700 Td (Linux support production troubleshooting and incident response) Tj ET"), "BT /F1 12 Tf 72 700 Td (Linux support production troubleshooting and incident response) Tj ET"),
-	}
-	for n, obj := range objects {
-		offsets = append(offsets, b.Len())
-		fmt.Fprintf(&b, "%d 0 obj\n%s\nendobj\n", n+1, obj)
-	}
-	xref := b.Len()
-	fmt.Fprintf(&b, "xref\n0 %d\n0000000000 65535 f \n", len(offsets))
-	for _, offset := range offsets[1:] {
-		fmt.Fprintf(&b, "%010d 00000 n \n", offset)
-	}
-	fmt.Fprintf(&b, "trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n", len(offsets), xref)
-	text, err := extractPDFText(b.Bytes())
-	if err != nil || !strings.Contains(text, "Linux") || !strings.Contains(text, "incident") {
-		t.Fatalf("PDF text %q error %v", text, err)
-	}
-}
-
 func TestCoverLetterWritingPolicyHasSingleEditableSource(t *testing.T) {
 	if strings.TrimSpace(coverLetterInstructions) == "" {
 		t.Fatal("embedded cover letter instructions are empty")

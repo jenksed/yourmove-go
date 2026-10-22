@@ -1,25 +1,19 @@
 package main
 
 import (
-	"archive/zip"
-	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
-	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
-	pdf "github.com/ledongthuc/pdf"
+	"github.com/jenksed/yourmove-go/internal/documents"
 )
-
-const maxResumeSize = 10 << 20
 
 type Resume struct {
 	ID           int64
@@ -47,70 +41,19 @@ type Submission struct {
 	Notes        string
 }
 
-func validateResume(name string, data []byte) (string, error) {
-	if len(data) == 0 || len(data) > maxResumeSize {
-		return "", fmt.Errorf("resume must be between 1 byte and 10 MiB")
-	}
-	kind := strings.ToLower(filepath.Ext(name))
-	switch kind {
-	case ".pdf":
-		if !bytes.HasPrefix(data, []byte("%PDF-")) {
-			return "", fmt.Errorf("file is not a PDF")
-		}
-	case ".docx":
-		z, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
-		if err != nil {
-			return "", fmt.Errorf("file is not a DOCX: %w", err)
-		}
-		document, contentTypes := false, false
-		for _, f := range z.File {
-			if f.Name == "word/document.xml" {
-				document = true
-			}
-			if f.Name == "[Content_Types].xml" {
-				contentTypes = true
-			}
-		}
-		if !document || !contentTypes {
-			return "", fmt.Errorf("DOCX missing required package entries")
-		}
-	default:
-		return "", fmt.Errorf("only .pdf and .docx resumes are supported")
-	}
-	return kind, nil
-}
-
-func cleanResumeName(name string) string {
-	// An uploaded filename is display-only. Never use it in a filesystem path.
-	name = filepath.Base(strings.ReplaceAll(name, "\\", "/"))
-	name = strings.TrimSpace(name)
-	if len(name) > 180 {
-		return ""
-	}
-	if name == "." || name == "/" || strings.ContainsAny(name, "\x00\r\n") {
-		return ""
-	}
-	for _, char := range name {
-		if char < 0x20 || char == 0x7f {
-			return ""
-		}
-	}
-	return name
-}
-
 func (a *App) importResume(name string, body io.Reader) (Resume, error) {
 	if a.resumeDir == "" {
 		return Resume{}, errors.New("resume storage is not configured")
 	}
-	name = cleanResumeName(name)
+	name = documents.SanitizeFilename(name)
 	if name == "" {
 		return Resume{}, fmt.Errorf("invalid filename")
 	}
-	data, err := io.ReadAll(io.LimitReader(body, maxResumeSize+1))
+	data, err := io.ReadAll(io.LimitReader(body, documents.MaxResumeSize+1))
 	if err != nil {
 		return Resume{}, fmt.Errorf("read resume: %w", err)
 	}
-	kind, err := validateResume(name, data)
+	kind, err := documents.ValidateResume(name, data)
 	if err != nil {
 		return Resume{}, err
 	}
@@ -172,7 +115,7 @@ func (a *App) readResumeBytes(resume Resume) ([]byte, error) {
 		resume.StoredName == "" ||
 		filepath.Base(resume.StoredName) != resume.StoredName ||
 		resume.Size <= 0 ||
-		resume.Size > maxResumeSize {
+		resume.Size > documents.MaxResumeSize {
 		return nil, errors.New("invalid stored resume")
 	}
 
@@ -182,7 +125,7 @@ func (a *App) readResumeBytes(resume Resume) ([]byte, error) {
 	}
 	defer file.Close()
 
-	data, err := io.ReadAll(io.LimitReader(file, maxResumeSize+1))
+	data, err := io.ReadAll(io.LimitReader(file, documents.MaxResumeSize+1))
 	if err != nil {
 		return nil, fmt.Errorf("read stored resume: %w", err)
 	}
@@ -205,167 +148,7 @@ func (a *App) extractResumeText(resume Resume) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	switch resume.Kind {
-	case ".docx":
-		return extractDOCXText(data)
-	case ".pdf":
-		return extractPDFText(data)
-	default:
-		return "", fmt.Errorf("text extraction for %s is not supported", resume.Kind)
-	}
-}
-
-// A read-only, bounded PDF extraction. No external process, upload or shell command.
-// Image-only or encrypted PDFs may not contain usable text: those need DOCX.
-func extractPDFText(data []byte) (result string, err error) {
-	defer func() {
-		if recover() != nil {
-			result = ""
-			err = errors.New("unable to parse PDF text")
-		}
-	}()
-	reader, err := pdf.NewReader(bytes.NewReader(data), int64(len(data)))
-	if err != nil {
-		return "", err
-	}
-	if reader.NumPage() > 60 {
-		return "", errors.New("PDF has too many pages")
-	}
-	textReader, err := reader.GetPlainText()
-	if err != nil {
-		return "", err
-	}
-	const limit = 256 << 10
-	raw, err := io.ReadAll(io.LimitReader(textReader, limit+1))
-	if err != nil {
-		return "", err
-	}
-	if len(raw) > limit {
-		return "", errors.New("PDF extracted text exceeds limit")
-	}
-	result = strings.TrimSpace(string(raw))
-	if len([]rune(result)) < 30 {
-		return "", errors.New("PDF contains insufficient selectable text; use a DOCX revision")
-	}
-	return result, nil
-}
-
-func extractDOCXText(data []byte) (string, error) {
-	const maxXML = 8 << 20
-	const maxText = 256 << 10
-	const wordNS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
-
-	archive, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
-	if err != nil {
-		return "", err
-	}
-
-	for _, file := range archive.File {
-		if file.Name != "word/document.xml" {
-			continue
-		}
-		if file.UncompressedSize64 > maxXML {
-			return "", errors.New("DOCX document XML exceeds extraction limit")
-		}
-
-		reader, err := file.Open()
-		if err != nil {
-			return "", err
-		}
-		content, readErr := io.ReadAll(io.LimitReader(reader, maxXML+1))
-		closeErr := reader.Close()
-		if readErr != nil {
-			return "", readErr
-		}
-		if closeErr != nil {
-			return "", closeErr
-		}
-		if len(content) > maxXML {
-			return "", errors.New("DOCX document XML exceeds extraction limit")
-		}
-
-		decoder := xml.NewDecoder(bytes.NewReader(content))
-		var result, paragraph strings.Builder
-		inParagraph, inText := false, false
-		hidden := 0
-
-		for {
-			token, err := decoder.Token()
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			if err != nil {
-				return "", fmt.Errorf("parse DOCX text: %w", err)
-			}
-
-			switch node := token.(type) {
-			case xml.StartElement:
-				if node.Name.Space != wordNS {
-					continue
-				}
-				switch node.Name.Local {
-				case "del", "moveFrom":
-					hidden++
-				case "p":
-					if hidden == 0 {
-						paragraph.Reset()
-						inParagraph = true
-					}
-				case "t":
-					inText = inParagraph && hidden == 0
-				case "tab":
-					if inParagraph && hidden == 0 {
-						paragraph.WriteByte('\t')
-					}
-				case "br", "cr":
-					if inParagraph && hidden == 0 {
-						paragraph.WriteByte('\n')
-					}
-				}
-
-			case xml.CharData:
-				if inText && hidden == 0 {
-					paragraph.Write(node)
-				}
-
-			case xml.EndElement:
-				if node.Name.Space != wordNS {
-					continue
-				}
-				switch node.Name.Local {
-				case "t":
-					inText = false
-				case "p":
-					if inParagraph && hidden == 0 {
-						line := strings.TrimSpace(paragraph.String())
-						if line != "" {
-							if result.Len() > 0 {
-								result.WriteByte('\n')
-							}
-							result.WriteString(line)
-						}
-						inParagraph = false
-					}
-				case "del", "moveFrom":
-					if hidden > 0 {
-						hidden--
-					}
-				}
-			}
-
-			if result.Len()+paragraph.Len() > maxText {
-				return "", errors.New("extracted resume text exceeds limit")
-			}
-		}
-
-		text := strings.TrimSpace(result.String())
-		if text == "" {
-			return "", errors.New("DOCX contains no readable document text")
-		}
-		return text, nil
-	}
-
-	return "", errors.New("DOCX missing word/document.xml")
+	return documents.ExtractText(resume.Kind, data)
 }
 
 func (a *App) resumeByHash(hash string) (Resume, error) {
@@ -571,15 +354,15 @@ func (a *App) reviseResume(previousID int64, filename string, body io.Reader) (R
 	if a.resumeDir == "" {
 		return Resume{}, errors.New("resume storage is not configured")
 	}
-	filename = cleanResumeName(filename)
+	filename = documents.SanitizeFilename(filename)
 	if filename == "" {
 		return Resume{}, errors.New("invalid revision filename")
 	}
-	data, err := io.ReadAll(io.LimitReader(body, maxResumeSize+1))
+	data, err := io.ReadAll(io.LimitReader(body, documents.MaxResumeSize+1))
 	if err != nil {
 		return Resume{}, err
 	}
-	kind, err := validateResume(filename, data)
+	kind, err := documents.ValidateResume(filename, data)
 	if err != nil {
 		return Resume{}, err
 	}
