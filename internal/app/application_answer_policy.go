@@ -36,9 +36,38 @@ func editableQuestionForPlatform(f schema.Field, unique bool, platform string, p
 	return platform == "ashby" && stableQuestionIdentity(f, unique) && f.Kind == "combobox" && supportedLocationLabel(f.Label) && candidateLocation(p) != ""
 }
 
+func profileQuestionIdentity(id string) string {
+	for _, prefix := range []string{"browser:", "application:", "preview:"} {
+		id = strings.TrimPrefix(id, prefix)
+	}
+	return id
+}
+
 func stableQuestionIdentity(f schema.Field, unique bool) bool {
-	id := strings.TrimPrefix(f.ID, "browser:")
+	id := profileQuestionIdentity(f.ID)
 	return unique && !f.Sensitive && id != "" && !positionalQuestionID.MatchString(id) && !strings.HasPrefix(id, "unidentified-") && !strings.Contains(strings.ToLower(f.Label), "cover letter")
+}
+
+// employerOnlyQuestion labels identify questions the existing preparation
+// policy excludes for privacy or legal attestation reasons. Ordinary contact
+// labels remain actionable when an approved profile fact is missing.
+func employerOnlyQuestion(f schema.Field) bool {
+	if f.Sensitive {
+		return true
+	}
+	for _, phrase := range []string{
+		"authorization", "authorized to work", "eligible to work", "work eligibility", "visa", "sponsor", "immigration", "citizenship", "citizen",
+		"race", "ethnicity", "gender", "sexual orientation", "sponsorship", "work permit", "disability", "accommodation", "veteran",
+		"date of birth", "birth date", "birth year", "birthday", "how old", "age", "religion", "marital status", "medical", "health condition", "demographic", "pronoun",
+		"salary", "salaries", "compensation", "pay expectation", "desired pay", "hourly rate", "wage", "reference", "referee", "street address", "mailing address",
+		"password", "credential", "secret", "api key", "access token", "social security", "ssn", "bank account",
+		"agree to", "i agree", "consent", "acknowledg", "attest", "certify", "legally bound", "background check",
+	} {
+		if answerLibraryContainsPhrase(f.Label, phrase) {
+			return true
+		}
+	}
+	return false
 }
 
 func supportedLocationLabel(label string) bool {
@@ -97,7 +126,7 @@ func resolveApplicationAnswer(f schema.Field, explicit string, hasExplicit bool,
 // These exact labels and identities intentionally exclude eligibility, consent,
 // demographic questions and general narrative prompts. No value is inferred.
 func resolveAdditionalProfileFact(f schema.Field, p CandidateProfile) string {
-	id := strings.TrimPrefix(strings.TrimPrefix(f.ID, "browser:"), "application:")
+	id := profileQuestionIdentity(f.ID)
 	if !p.Approved || f.Sensitive || id == "" || positionalQuestionID.MatchString(id) || strings.HasPrefix(id, "unidentified-") {
 		return ""
 	}
@@ -198,7 +227,7 @@ func profileContactKey(f schema.Field) string {
 	if f.Sensitive {
 		return ""
 	}
-	id := strings.TrimPrefix(strings.TrimPrefix(f.ID, "browser:"), "application:")
+	id := profileQuestionIdentity(f.ID)
 	if match := namespacedSystemField.FindStringSubmatch(id); match != nil {
 		id = match[1]
 	}

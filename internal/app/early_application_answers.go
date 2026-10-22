@@ -65,10 +65,13 @@ type earlyApplicationQuestion struct {
 	Key                       string
 	Field                     schema.Field
 	Value                     string
+	ProfileValue              string
+	ProfileResolved           bool
 	Revision                  int64
 	Editable                  bool
 	IsEarly                   bool
 	ManualReason              string
+	TriageCategory            string
 	LocalStatus               string
 	AIChoices                 *answerAIChoices
 	AIProviders               []answerAIProviderOption
@@ -94,6 +97,81 @@ type earlyQuestionPreparation struct {
 	PublicDiscoveryAllowed  bool
 	PreviewDiscoveryAllowed bool
 	Notice                  string
+}
+
+func (q earlyApplicationQuestion) NeedsAnswer() bool  { return q.TriageCategory == "answer" }
+func (q earlyApplicationQuestion) FromProfile() bool  { return q.TriageCategory == "profile" }
+func (q earlyApplicationQuestion) EmployerOnly() bool { return q.TriageCategory == "employer" }
+func (q earlyApplicationQuestion) NeedsReview() bool  { return q.TriageCategory == "review" }
+
+func (p earlyQuestionPreparation) WorkbenchQuestions() []earlyApplicationQuestion {
+	var questions []earlyApplicationQuestion
+	seen := make(map[string]bool)
+	for _, q := range p.Questions {
+		if !seen[q.Key] {
+			seen[q.Key] = true
+			questions = append(questions, q)
+		}
+	}
+	return questions
+}
+
+func (p earlyQuestionPreparation) ActionableQuestions() []earlyApplicationQuestion {
+	var questions []earlyApplicationQuestion
+	for _, q := range p.WorkbenchQuestions() {
+		if q.NeedsAnswer() {
+			questions = append(questions, q)
+		}
+	}
+	return questions
+}
+
+func (p earlyQuestionPreparation) ProfileQuestions() []earlyApplicationQuestion {
+	var questions []earlyApplicationQuestion
+	for _, q := range p.WorkbenchQuestions() {
+		if q.FromProfile() {
+			questions = append(questions, q)
+		}
+	}
+	return questions
+}
+
+func (p earlyQuestionPreparation) EmployerSiteQuestions() []earlyApplicationQuestion {
+	var questions []earlyApplicationQuestion
+	for _, q := range p.WorkbenchQuestions() {
+		if q.EmployerOnly() {
+			questions = append(questions, q)
+		}
+	}
+	return questions
+}
+
+func (p earlyQuestionPreparation) ManualReviewQuestions() []earlyApplicationQuestion {
+	var questions []earlyApplicationQuestion
+	for _, q := range p.WorkbenchQuestions() {
+		if q.NeedsReview() {
+			questions = append(questions, q)
+		}
+	}
+	return questions
+}
+
+func (p earlyQuestionPreparation) PreparedCount() int {
+	count := 0
+	for _, q := range p.ActionableQuestions() {
+		if q.Revision > 0 {
+			count++
+		}
+	}
+	return count
+}
+
+func (p earlyQuestionPreparation) NeedsAnswerCount() int {
+	count := len(p.ActionableQuestions()) - p.PreparedCount()
+	if count < 0 {
+		return 0
+	}
+	return count
 }
 
 func earlyQuestionKey(destination, source, fingerprint string, field schema.Field) string {
@@ -198,8 +276,9 @@ func (q earlyApplicationQuestion) Status() string {
 }
 
 func (p *earlyQuestionPreparation) selectQuestion(r *http.Request) {
+	questions := p.ActionableQuestions()
 	requested := r.URL.Query().Get("early_question")
-	for _, q := range p.Questions {
+	for _, q := range questions {
 		if requested != "" && requested == q.Key {
 			p.SelectedKey = q.Key
 			return
@@ -208,19 +287,23 @@ func (p *earlyQuestionPreparation) selectQuestion(r *http.Request) {
 	if requested != "" {
 		p.ReturnNotice = "That discovered question changed. Review the current question before continuing."
 	}
-	for _, q := range p.Questions {
-		if q.Editable && q.Revision == 0 {
+	for _, q := range questions {
+		if q.Revision == 0 {
 			p.SelectedKey = q.Key
 			return
 		}
 	}
-	if len(p.Questions) > 0 {
-		p.SelectedKey = p.Questions[0].Key
+	if len(questions) > 0 {
+		p.SelectedKey = questions[0].Key
 	}
 }
 
 func (a *App) prepareEarlyQuestions(job Job, r *http.Request) (earlyQuestionPreparation, error) {
 	out := earlyQuestionPreparation{PublicDiscoveryAllowed: discovery.SupportsPublicQuestions(job.URL), PreviewDiscoveryAllowed: browser.PostingPlatform(job.URL) == "ashby"}
+	profile, err := a.candidateProfile()
+	if err != nil {
+		return out, err
+	}
 	if r != nil {
 		switch r.URL.Query().Get("early_discovery") {
 		case "failed":
@@ -285,7 +368,27 @@ func (a *App) prepareEarlyQuestions(job Job, r *http.Request) (earlyQuestionPrep
 			if answer.Revision > 0 {
 				status = "Early answer saved locally; not checked against the employer form."
 			}
-			q := earlyApplicationQuestion{JobID: job.ID, Destination: job.URL, DiscoverySource: item.Source, DiscoveryFingerprint: item.Fingerprint, SourceQuestionID: field.ID, Key: key, Field: field.Field, Value: answer.Answer, Revision: answer.Revision, Editable: editable, IsEarly: true, ManualReason: reason, LocalStatus: status, EarlyAnswerID: answer.ID, SavedReconciliationStatus: answer.ReconciliationStatus, SavedLiveInspection: answer.LiveInspection, SavedLiveQuestionKey: answer.LiveQuestionKey}
+			stableIdentity := stableQuestionIdentity(field.Field, counts[field.ID] == 1)
+			profileValue, profileSource := resolveApplicationAnswer(field.Field, "", false, profile, "", false)
+			profileResolved := stableIdentity && profileSource == "Approved candidate information" && strings.TrimSpace(profileValue) != ""
+			category := "answer"
+			switch {
+			case profileResolved && !(answer.Revision > 0 && editable):
+				category = "profile"
+			case employerOnlyQuestion(field.Field):
+				category = "employer"
+				if reason == "" {
+					reason = "This question is excluded from early preparation by existing privacy or legal policy. Complete it in the employer application."
+				}
+			case answer.Revision > 0 && editable:
+				category = "answer" // Preserve explicit early work over a profile fact.
+			case !editable || !stableIdentity && answer.Revision == 0:
+				if reason == "" {
+					reason = "This question has no unique, stable identity. Review and complete it manually in the employer application."
+				}
+				category = "review"
+			}
+			q := earlyApplicationQuestion{JobID: job.ID, Destination: job.URL, DiscoverySource: item.Source, DiscoveryFingerprint: item.Fingerprint, SourceQuestionID: field.ID, Key: key, Field: field.Field, Value: answer.Answer, ProfileValue: profileValue, ProfileResolved: profileResolved, Revision: answer.Revision, Editable: editable, IsEarly: true, ManualReason: reason, TriageCategory: category, LocalStatus: status, EarlyAnswerID: answer.ID, SavedReconciliationStatus: answer.ReconciliationStatus, SavedLiveInspection: answer.LiveInspection, SavedLiveQuestionKey: answer.LiveQuestionKey}
 			out.Questions = append(out.Questions, q)
 			seenCurrent[earlyRecordIdentity(job.URL, item.Source, item.Fingerprint, field.ID)] = true
 		}

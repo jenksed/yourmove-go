@@ -282,7 +282,7 @@
       chooser.value = panels[selected].dataset.questionKey;
       previous.disabled = selected === 0;
       next.disabled = selected === panels.length - 1;
-      position.textContent = `Question ${selected + 1} of ${panels.length} · ${questionParam === 'early_question' ? 'discovered order' : 'observed order'}`;
+      position.textContent = `Question ${selected + 1} of ${panels.length}`;
       if (focus) {
         panels[selected].focus({preventScroll:true});
         const bounds = panels[selected].getBoundingClientRect();
@@ -290,20 +290,18 @@
       }
     };
     const statusGroups = questionParam === 'early_question' ? [
-      {label: 'Needs early answer', matches: status => status === 'No early answer saved'},
-      {label: 'Prepared early', matches: status => status.startsWith('Early answer saved locally')},
-      {label: 'Manual completion required', matches: status => status === 'Manual completion required'}
+      {label: 'Needs your answer', matches: status => status === 'No early answer saved'},
+      {label: 'Prepared locally', matches: status => status.startsWith('Early answer saved locally')}
     ] : [
-      {label: 'Needs local answer', matches: status => status === 'Needs local answer'},
-      {label: 'Prepared locally or provided by an approved source', matches: status => status.startsWith('Answer saved locally.') || status.startsWith('Answer available locally') || status.startsWith('Approved candidate information;')},
-      {label: 'Requires manual completion in Chromium', matches: status => status.startsWith('Requires manual completion')}
+      {label: 'Needs your answer', matches: status => status === 'Needs your answer'},
+      {label: 'Prepared locally', matches: status => status.startsWith('Answer saved locally.') || status.startsWith('Answer available locally')}
     ];
     for (const {label: status, matches} of statusGroups) {
       const members = panels.filter(panel => matches(panel.dataset.questionStatus || ''));
       if (!members.length) continue;
       const group = document.createElement('div');
       const heading = document.createElement('h4');
-      heading.textContent = `${status} (${members.length})`;
+      heading.textContent = status;
       group.append(heading);
       const options = document.createElement('optgroup');
       options.label = status;
@@ -325,11 +323,7 @@
       groups.set(status, members.length);
     }
     const summary = workbench.querySelector('[data-question-summary]');
-    if (questionParam === 'early_question') {
-      summary.textContent = `${groups.get('Needs early answer') || 0} need an early answer · ${groups.get('Prepared early') || 0} saved locally · ${groups.get('Manual completion required') || 0} manual`;
-    } else {
-      summary.textContent = `${groups.get('Needs local answer') || 0} need a local answer · ${groups.get('Prepared locally or provided by an approved source') || 0} prepared · ${groups.get('Requires manual completion in Chromium') || 0} manual`;
-    }
+    summary.textContent = `Needs your answer: ${groups.get('Needs your answer') || 0} · Prepared locally: ${groups.get('Prepared locally') || 0} · From candidate profile: ${workbench.dataset.profileCount || 0} · Complete on employer site: ${workbench.dataset.employerCount || 0} · Needs manual review: ${workbench.dataset.reviewCount || 0}`;
     chooser.addEventListener('change', () => show(panels.findIndex(panel => panel.dataset.questionKey === chooser.value)));
     previous.addEventListener('click', () => show(selected - 1));
     next.addEventListener('click', () => show(selected + 1));

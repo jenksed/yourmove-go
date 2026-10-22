@@ -86,6 +86,10 @@ func TestGreenhouseEarlyDiscoveryDraftPersistenceAndLiveIsolation(t *testing.T) 
 	if prep := earlyQuestionSummary(t, a, job); prep.SupportedQuestionCount != 2 || prep.ManualQuestionCount != 1 {
 		t.Fatalf("logical preparation counts: supported=%d manual=%d", prep.SupportedQuestionCount, prep.ManualQuestionCount)
 	}
+	triage := earlyQuestionSummary(t, a, job)
+	if len(triage.ActionableQuestions()) != 2 || len(triage.EmployerSiteQuestions()) != 1 || len(triage.ProfileQuestions()) != 0 || len(triage.ManualReviewQuestions()) != 0 {
+		t.Fatalf("Greenhouse public-discovery triage: action=%d employer=%d profile=%d review=%d", len(triage.ActionableQuestions()), len(triage.EmployerSiteQuestions()), len(triage.ProfileQuestions()), len(triage.ManualReviewQuestions()))
+	}
 	for _, expected := range []string{"3 distinct questions discovered", "2 supported for early preparation", "1 manual-only or ambiguous", "public_api", "Describe a time you improved a system", "Preferred schedule", "Remote", "Required", "not verified"} {
 		if !strings.Contains(page.Body.String(), expected) {
 			t.Fatalf("Prepare omitted %q: %s", expected, page.Body.String())

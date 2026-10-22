@@ -66,7 +66,7 @@ func (q preparedQuestion) LocalStatus() string {
 		return "Requires manual completion in Chromium"
 	}
 	if q.Value == "" {
-		return "Needs local answer"
+		return "Needs your answer"
 	}
 	if q.Source == "Approved candidate information" {
 		return "Approved candidate information; transfer requires your authorization"
@@ -91,21 +91,63 @@ func (p questionPreparation) WorkbenchQuestions() []preparedQuestion {
 	return questions
 }
 
+// ActionableQuestions are supported application-specific questions. Profile
+// facts and employer-only/manual controls stay available in separate summaries.
+func (p questionPreparation) ActionableQuestions() []preparedQuestion {
+	var questions []preparedQuestion
+	for _, q := range p.WorkbenchQuestions() {
+		if q.Editable && !employerOnlyQuestion(q.Field) && !(q.Value != "" && q.Source == "Approved candidate information") {
+			questions = append(questions, q)
+		}
+	}
+	return questions
+}
+
 // ProfileQuestions are ready, safely editable facts, not work left to answer.
 // Keep Questions intact: presentation must never change transfer scope or hashes.
 func (p questionPreparation) ProfileQuestions() []preparedQuestion {
-	return p.partitionQuestions(true)
+	return p.partitionQuestions("profile")
 }
 
 func (p questionPreparation) EmployerQuestions() []preparedQuestion {
-	return p.partitionQuestions(false)
+	return p.ActionableQuestions()
 }
 
-func (p questionPreparation) partitionQuestions(profile bool) []preparedQuestion {
+func (p questionPreparation) PreparedQuestions() []preparedQuestion {
+	var questions []preparedQuestion
+	for _, q := range p.ActionableQuestions() {
+		if q.Value != "" {
+			questions = append(questions, q)
+		}
+	}
+	return questions
+}
+
+func (p questionPreparation) NeedsAnswerQuestions() []preparedQuestion {
+	var questions []preparedQuestion
+	for _, q := range p.ActionableQuestions() {
+		if q.Value == "" {
+			questions = append(questions, q)
+		}
+	}
+	return questions
+}
+
+func (p questionPreparation) EmployerSiteQuestions() []preparedQuestion {
+	return p.partitionQuestions("employer")
+}
+
+func (p questionPreparation) ManualReviewQuestions() []preparedQuestion {
+	return p.partitionQuestions("review")
+}
+
+func (p questionPreparation) partitionQuestions(category string) []preparedQuestion {
 	var questions []preparedQuestion
 	for _, q := range p.WorkbenchQuestions() {
 		readyProfile := q.Editable && q.Value != "" && q.Source == "Approved candidate information"
-		if readyProfile == profile {
+		employerOnly := employerOnlyQuestion(q.Field)
+		manualReview := !q.Editable && !employerOnly
+		if (category == "profile" && readyProfile) || (category == "employer" && employerOnly) || (category == "review" && manualReview) {
 			questions = append(questions, q)
 		}
 	}
@@ -128,7 +170,7 @@ func (p *questionPreparation) selectQuestion(r *http.Request) {
 		p.ReturnNotice = "That question is no longer available in this observed form. Review the current questions below."
 	}
 	for _, q := range questions {
-		if q.Editable && q.Value == "" {
+		if q.Value == "" {
 			p.SelectedKey = q.Key
 			return
 		}

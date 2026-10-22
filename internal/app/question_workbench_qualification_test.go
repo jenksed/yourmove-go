@@ -191,9 +191,10 @@ func TestControlledQuestionWorkbench(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	queue := p.ActionableQuestions()
 	choose := func(n int) {
 		t.Helper()
-		key := p.Questions[n].Key
+		key := queue[n].Key
 		mustEvaluate(fmt.Sprintf(`(()=>{const c=document.querySelector('[data-question-chooser]');c.value=%q;c.dispatchEvent(new Event('change',{bubbles:true}));return true})()`, key), nil)
 	}
 	snapshot := func(name, selector string) {
@@ -236,8 +237,8 @@ func TestControlledQuestionWorkbench(t *testing.T) {
 	assertJS(`document.querySelectorAll('[data-question-panel]:not([hidden])').length===1 && document.querySelector('[data-question-previous]').disabled`)
 	assertJS(`document.querySelectorAll('[data-browser-watch]').length===1`)
 	typeText(`[data-question-panel]:not([hidden]) [name=answer]`, "https://alex.example.test/work")
-	click(`[data-question-link="` + p.Questions[1].Key + `"]`)
-	click(`[data-question-link="` + p.Questions[0].Key + `"]`)
+	click(`[data-question-link="` + queue[1].Key + `"]`)
+	click(`[data-question-link="` + queue[0].Key + `"]`)
 	assertJS(`document.querySelector('[data-question-panel]:not([hidden]) [name=answer]').value==='https://alex.example.test/work'`)
 
 	assertJS(`(()=>{const e=new Event('beforeunload',{cancelable:true});window.dispatchEvent(e);return e.defaultPrevented})()`)
@@ -278,7 +279,7 @@ func TestControlledQuestionWorkbench(t *testing.T) {
 	click(`[data-question-panel]:not([hidden]) button[type=submit]`)
 	page = server.URL + "/jobs/1?question=" + p.Questions[0].Key
 	waitJS(`document.readyState==='complete' && document.querySelector('[data-question-panel]:not([hidden]) [name=revision]')?.value==='1' && document.activeElement===document.querySelector('[data-question-panel]:not([hidden])')`)
-	assertJS(`document.activeElement===document.querySelector('[data-question-panel]:not([hidden])') && document.querySelector('[data-question-panel]:not([hidden]) [data-answer-status]').textContent.includes('Saved locally')`)
+	assertJS(`document.activeElement===document.querySelector('[data-question-panel]:not([hidden])') && document.querySelector('[data-question-panel]:not([hidden]) [data-answer-status]').textContent.includes('Answer saved locally')`)
 	current, _ := a.prepareQuestions(job, CandidateProfile{})
 	if current.Questions[0].Value != "https://alex.example.test/work" || current.Questions[1].Revision != 0 {
 		t.Fatal("wrong saved identity or content")
@@ -309,10 +310,11 @@ func TestControlledQuestionWorkbench(t *testing.T) {
 	click(`.profile-question-summary > summary`)
 	assertJS(`document.querySelector('.profile-question-summary').textContent.includes('alex@example.test')`)
 	snapshot("profile-facts", ".profile-question-summary")
-	choose(5)
-	assertJS(`!document.querySelector('[data-question-panel]:not([hidden]) form') && document.querySelector('[data-question-panel]:not([hidden])').textContent.includes('manual completion')`)
+	assertJS(`!document.querySelector('[data-question-chooser]').textContent.includes('Work authorization') && document.querySelector('.employer-site-summary').textContent.includes('Work authorization') && !document.querySelector('.manual-review-summary').textContent.includes('Work authorization')`)
+	assertJS(`document.querySelector('.manual-review-summary').textContent.includes('Choose a location on the map')`)
 	p = current // The conditional question is now part of the freshly rendered form.
-	choose(7)
+	queue = p.ActionableQuestions()
+	choose(len(queue) - 1)
 	assertJS(`document.querySelector('[data-question-next]').disabled`)
 	longShot, err := session.FixtureScreenshotAt(ctx, page, 390, ".application-questions", "dark")
 	if err != nil {
@@ -368,6 +370,10 @@ func TestControlledQuestionWorkbench(t *testing.T) {
 	mustEvaluate(`window.confirm=()=>true;document.querySelector('.answer-save-error a').click();true`, nil)
 	page = server.URL + "/jobs/1"
 	waitJS(`document.readyState==='complete' && document.querySelectorAll('.application-question-form').length===6`)
+	click(`.employer-site-summary > summary`)
+	assertJS(`document.querySelector('.employer-site-summary').open && document.querySelector('.employer-site-summary').textContent.includes('Work authorization') && !document.querySelector('.employer-site-summary form')`)
+	click(`.manual-review-summary > summary`)
+	assertJS(`document.querySelector('.manual-review-summary').open && document.querySelector('.manual-review-summary').textContent.includes('Choose a location on the map') && !document.querySelector('.manual-review-summary form')`)
 	click(`.question-override summary`)
 	assertJS(`!document.querySelector('.questions-enabled') && [...document.querySelectorAll('.application-question-form')].every(f=>f.getClientRects().length>0) && !document.querySelector('.question-panel[hidden]')`)
 	typeText(`[name=question_key][value="`+p.Questions[0].Key+`"] ~ .field [name=answer]`, " Updated without JavaScript.")

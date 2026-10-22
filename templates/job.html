@@ -110,20 +110,23 @@
         <p class="small-muted">{{.EarlyQuestions.Item.Note}} These are published question definitions. They may not include conditional controls, custom fields, or later steps on the actual employer form.</p>
         <form method="POST" action="/jobs/{{.ID}}/inspect" class="early-discovery-refresh"><input type="hidden" name="return_to" value="prepare"><button type="submit" class="button button-secondary">Refresh discovered questions</button></form>{{end}}
         {{if .EarlyQuestions.Questions}}
-        <div data-question-workbench data-question-param="early_question" data-selected-question="{{.EarlyQuestions.SelectedKey}}">
+        <p class="small-muted">Needs your answer: {{.EarlyQuestions.NeedsAnswerCount}} · Prepared locally: {{.EarlyQuestions.PreparedCount}} · From candidate profile: {{len .EarlyQuestions.ProfileQuestions}} · Complete on employer site: {{len .EarlyQuestions.EmployerSiteQuestions}} · Needs manual review: {{len .EarlyQuestions.ManualReviewQuestions}}</p>
+        {{if .EarlyQuestions.ActionableQuestions}}
+        <div data-question-workbench data-question-param="early_question" data-selected-question="{{.EarlyQuestions.SelectedKey}}" data-profile-count="{{len .EarlyQuestions.ProfileQuestions}}" data-employer-count="{{len .EarlyQuestions.EmployerSiteQuestions}}" data-review-count="{{len .EarlyQuestions.ManualReviewQuestions}}">
         <div class="question-heading"><p class="small-muted" data-question-summary></p><p class="small-muted">Early answers are saved only in YourMove. They are not live application answers and do not authorize browser filling.</p></div>
         {{if .EarlyQuestions.ReturnNotice}}<p role="status">{{.EarlyQuestions.ReturnNotice}}</p>{{end}}
         <div class="question-layout">
-          <nav class="question-index" aria-label="Discovered questions" data-question-index hidden></nav>
-          <div class="field question-chooser" hidden><label for="early-question-chooser">Discovered questions</label><select id="early-question-chooser" data-question-chooser></select></div>
+          <nav class="question-index" aria-label="Questions to prepare" data-question-index hidden></nav>
+          <div class="field question-chooser" hidden><label for="early-question-chooser">Questions to prepare</label><select id="early-question-chooser" data-question-chooser></select></div>
           <div class="question-editors">
             <p class="question-position small-muted" data-question-position aria-live="polite" hidden></p>
-            {{range .EarlyQuestions.Questions}}
+            {{range .EarlyQuestions.ActionableQuestions}}
             <div class="question-panel" id="early-question-{{.Key}}" role="group" aria-label="{{.Field.Label}}" data-question-panel data-question-key="{{.Key}}" data-question-label="{{.Field.Label}}" data-question-status="{{.LocalStatus}}" tabindex="-1">
               <p class="small-muted">{{.Field.Kind}} · {{if .Field.Required}}Required{{else}}Optional{{end}}{{if .Field.Group}} · {{.Field.Group}}{{end}}</p>
               {{if .Field.Options}}<p class="small-muted"><strong>Published options</strong> · {{range $i,$option := .Field.Options}}{{if $i}}, {{end}}{{$option}}{{end}}</p>{{end}}
               {{if .Editable}}
                 {{template "early-application-question" .}}
+                {{if and .ProfileResolved .Revision}}<p class="small-muted">Your saved draft is preserved. The approved profile currently has a different value: {{.ProfileValue}}</p>{{end}}
                 {{if .Revision}}<section class="early-reconciliation" aria-label="Live form reconciliation">
                   <h4>Live form review</h4><p role="status"><strong>{{.Reconciliation.Status}}</strong> · {{.Reconciliation.Detail}}</p>
                   {{if .Reconciliation.LiveField.ID}}<div class="early-reconciliation-current"><p><strong>Current employer question</strong> · {{.Reconciliation.LiveField.Label}}</p><p class="small-muted">{{.Reconciliation.LiveField.Kind}} · {{if .Reconciliation.LiveField.Required}}Required{{else}}Optional{{end}}{{if .Reconciliation.LiveField.Options}} · Options: {{range $i,$option := .Reconciliation.LiveField.Options}}{{if $i}}, {{end}}{{$option}}{{end}}{{end}}</p></div>{{end}}
@@ -142,6 +145,10 @@
           </div>
         </div>
         </div>
+        {{else}}<p role="status">No additional answers to prepare here. Review the employer form for questions that must be completed manually.</p>{{end}}
+        {{if .EarlyQuestions.ProfileQuestions}}<details class="profile-question-summary"><summary><strong>From your candidate profile</strong> · {{len .EarlyQuestions.ProfileQuestions}}</summary><p class="small-muted">These approved facts are available for review. They have not been saved as early answers or filled on the employer site. <a href="/candidate">Review candidate profile</a></p>{{range .EarlyQuestions.ProfileQuestions}}<div class="profile-question-fact"><p><strong>{{.Field.Label}}</strong> · {{.ProfileValue}}</p>{{if .Editable}}<details class="question-override"><summary>Prepare an application-specific answer</summary><p class="small-muted">Saving here creates an early draft for this question. Your approved profile stays unchanged.</p>{{template "early-application-question" .}}</details>{{end}}</div>{{end}}</details>{{end}}
+        {{if .EarlyQuestions.EmployerSiteQuestions}}<details><summary><strong>Complete on employer site</strong> · {{len .EarlyQuestions.EmployerSiteQuestions}}</summary>{{range .EarlyQuestions.EmployerSiteQuestions}}<p><strong>{{.Field.Label}}</strong>{{if .Field.Required}} · Required{{else}} · Optional{{end}}</p><p class="small-muted">{{.ManualReason}}</p>{{end}}</details>{{end}}
+        {{if .EarlyQuestions.ManualReviewQuestions}}<details><summary><strong>Needs manual review</strong> · {{len .EarlyQuestions.ManualReviewQuestions}}</summary>{{range .EarlyQuestions.ManualReviewQuestions}}<p><strong>{{.Field.Label}}</strong>{{if .Field.Required}} · Required{{else}} · Optional{{end}}</p><p class="small-muted">{{.ManualReason}}</p>{{end}}</details>{{end}}
         {{else if eq .EarlyQuestions.Item.Source "preview"}}<p role="status">No visible application controls were captured. The page may require authentication, CAPTCHA, or a later manual step. YourMove stopped at the current page; continue through the rendered-form inspection path.</p><a href="/jobs/{{.ID}}/inspection" class="button button-secondary">Open rendered-form inspection</a>{{else}}<p>No question definitions were published. Use rendered-form inspection when supported, or open the employer application manually.</p>{{end}}
       {{else if .EarlyQuestions.PublicDiscoveryAllowed}}
         <p>Discover the published question definitions before opening the employer form. The actual live form can include additional or conditional questions.</p>
@@ -157,16 +164,16 @@
     </section>
     {{end}}
     {{if .Questions.WorkbenchQuestions}}
-    <section class="prepare-handoff application-questions" id="application-questions" aria-labelledby="application-questions-title" data-question-workbench data-selected-question="{{.Questions.SelectedKey}}">
+    <section class="prepare-handoff application-questions" id="application-questions" aria-labelledby="application-questions-title" data-question-workbench data-selected-question="{{.Questions.SelectedKey}}" data-profile-count="{{len .Questions.ProfileQuestions}}" data-employer-count="{{len .Questions.EmployerSiteQuestions}}" data-review-count="{{len .Questions.ManualReviewQuestions}}">
       <div class="question-heading"><h3 id="application-questions-title">Application questions</h3>{{if .AnswerEditingAllowed}}<a href="#prepare" data-review-ready>Review ready material ↑</a>{{end}}</div>
       {{if .AnswerEditingAllowed}}
-        {{if not .Questions.EmployerQuestions}}<p class="small-muted">No additional questions to answer in this observed form.</p>{{end}}
-        <p class="small-muted">These questions were captured from the employer form. Saving an answer keeps it in YourMove; filling the employer form is a separate action that requires your authorization. AI drafting needs a supported observed narrative question; other fields stay manual.</p>
+        {{if not .Questions.EmployerQuestions}}<p role="status">No additional answers to prepare here. Review the employer form for questions that must be completed manually.</p>{{end}}
+        <p class="small-muted">Save answers here. Filling the employer form is a separate action that requires your authorization.</p>
         {{if .Questions.ReturnNotice}}<p role="status">{{.Questions.ReturnNotice}}</p>{{end}}
-        <p class="small-muted" data-question-summary></p>
-        <div class="question-layout">
-          <nav class="question-index" aria-label="Observed questions" data-question-index hidden></nav>
-          <div class="field question-chooser" hidden><label for="question-chooser">Observed questions</label><select id="question-chooser" data-question-chooser></select></div>
+        <p class="small-muted" data-question-summary>Needs your answer: {{len .Questions.NeedsAnswerQuestions}} · Prepared locally: {{len .Questions.PreparedQuestions}} · From candidate profile: {{len .Questions.ProfileQuestions}} · Complete on employer site: {{len .Questions.EmployerSiteQuestions}} · Needs manual review: {{len .Questions.ManualReviewQuestions}}</p>
+        {{if .Questions.EmployerQuestions}}<div class="question-layout">
+          <nav class="question-index" aria-label="Questions to prepare" data-question-index hidden></nav>
+          <div class="field question-chooser" hidden><label for="question-chooser">Questions to prepare</label><select id="question-chooser" data-question-chooser></select></div>
           <div class="question-editors">
             <p class="question-position small-muted" data-question-position aria-live="polite" hidden></p>
             {{range .Questions.EmployerQuestions}}
@@ -182,7 +189,7 @@
             {{end}}
             <div class="question-navigation" hidden><button type="button" class="button button-secondary" data-question-previous>← Previous</button><button type="button" class="button button-secondary" data-question-next>Next →</button></div>
           </div>
-        </div>
+        </div>{{end}}
         {{if .Questions.Previous}}<details><summary>Earlier saved answers needing review</summary>{{range .Questions.Previous}}<p><strong>{{.Label}}</strong></p><pre class="evidence-text">{{.Value}}</pre>{{end}}<p class="small-muted">These answers are preserved, but the current form has different question identities. They will not be transferred.</p></details>{{end}}
       {{else}}
         <p class="small-muted">This application is completed. Its saved answers are read-only; eligible narrative examples can be copied into your Answer Library.</p>
@@ -212,8 +219,8 @@
     {{end}}
     {{if and .Questions.ProfileQuestions .AnswerEditingAllowed}}
     <details class="prepare-handoff profile-question-summary">
-      <summary><strong>From your profile</strong> · {{len .Questions.ProfileQuestions}} ready {{range .Questions.ProfileQuestions}}<span> · {{.Field.Label}}</span>{{end}}</summary>
-      <p class="small-muted">Prepared from your approved profile. Filled only when you approve transfer. <a href="/candidate">Edit candidate profile</a></p>
+      <summary><strong>From your candidate profile</strong> · {{len .Questions.ProfileQuestions}} ready</summary>
+      <p class="small-muted">Available from approved profile facts; this does not mean the employer form is filled. Review or edit the source at <a href="/candidate">candidate profile</a>.</p>
       {{range .Questions.ProfileQuestions}}
       <div class="profile-question-fact">
         <p><strong>{{.Field.Label}}</strong> · {{.Value}}</p>
@@ -225,6 +232,8 @@
       {{end}}
     </details>
     {{end}}
+    {{if and .Questions.EmployerSiteQuestions .AnswerEditingAllowed}}<details class="prepare-handoff employer-site-summary"><summary><strong>Complete on employer site</strong> · {{len .Questions.EmployerSiteQuestions}}</summary>{{range .Questions.EmployerSiteQuestions}}<p><strong>{{.Field.Label}}</strong>{{if .Field.Required}} · Required{{else}} · Optional{{end}}</p><p class="small-muted">This question is excluded from YourMove preparation by the existing safety policy. Complete it on the employer site.</p>{{end}}</details>{{end}}
+    {{if and .Questions.ManualReviewQuestions .AnswerEditingAllowed}}<details class="prepare-handoff manual-review-summary"><summary><strong>Needs manual review</strong> · {{len .Questions.ManualReviewQuestions}}</summary>{{range .Questions.ManualReviewQuestions}}<p><strong>{{.Field.Label}}</strong>{{if .Field.Required}} · Required{{else}} · Optional{{end}}</p><p class="small-muted">This control cannot be identified or prepared safely. Review and complete it manually on the employer site.</p>{{end}}</details>{{end}}
     <details class="prepare-writer" id="letter-editor" {{if .LetterOpen}}open{{end}}><summary><span><strong>{{if .Letter.ID}}Edit letter{{else}}Cover letter{{end}}</strong><small>{{if .Letter.ID}}Draft {{.Letter.ID}} · Saved locally · {{if .Letter.EditedAt}}{{.Letter.EditedAt}}{{else}}{{.Letter.CreatedAt}}{{end}}{{else}}Optional · Generate a draft for review.{{end}}</small></span><span class="prepare-writer-state">{{if .Letter.ID}}Draft saved{{else if .Sources.Ready}}Ready to write{{else}}Sources incomplete{{end}} <span class="summary-chevron" aria-hidden="true">⌄</span></span></summary>
     {{if .Letter.ID}}<p class="letter-material-actions"><a href="#prepare" data-review-ready>Review current scope ↑</a></p>{{end}}
     <section class="letter-studio ai-writer" aria-labelledby="letter-studio-title">

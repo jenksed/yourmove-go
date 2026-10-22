@@ -63,7 +63,7 @@ func testProfileQuestionPresentation(t *testing.T, namespaced bool) {
 	page := httptest.NewRecorder()
 	mux.ServeHTTP(page, httptest.NewRequest("GET", "http://localhost/jobs/1", nil))
 	body := page.Body.String()
-	if page.Code != 200 || !strings.Contains(body, "From your profile") || strings.Count(body, "data-question-panel ") != 1 {
+	if page.Code != 200 || !strings.Contains(body, "From your candidate profile") || strings.Count(body, "data-question-panel ") != 1 {
 		t.Fatal("profile fields remain in question navigator", page.Code)
 	}
 	// A profile-only form still exposes review and overrides without question panels.
@@ -72,7 +72,7 @@ func testProfileQuestionPresentation(t *testing.T, namespaced bool) {
 	}
 	only := httptest.NewRecorder()
 	mux.ServeHTTP(only, httptest.NewRequest("GET", "http://localhost/jobs/1", nil))
-	if only.Code != 200 || strings.Contains(only.Body.String(), "data-question-panel ") || !strings.Contains(only.Body.String(), "No additional questions to answer") || !strings.Contains(only.Body.String(), "From your profile") {
+	if only.Code != 200 || strings.Contains(only.Body.String(), "data-question-panel ") || !strings.Contains(only.Body.String(), "No additional answers to prepare here") || !strings.Contains(only.Body.String(), "From your candidate profile") {
 		t.Fatal("profile-only form lost review or retained question panels")
 	}
 	if _, err := a.saveInspection(1, schema.Result{Platform: "ashby", Source: "browser", ApplicationURL: testAshbyPosting + "/application", Fields: fields}); err != nil {
@@ -101,7 +101,7 @@ func testProfileQuestionPresentation(t *testing.T, namespaced bool) {
 		}
 	}
 	manual := questionPreparation{Questions: []preparedQuestion{{Key: "manual", Value: "value", Source: "Approved candidate information"}}}
-	if len(manual.ProfileQuestions()) != 0 || len(manual.EmployerQuestions()) != 1 {
+	if len(manual.ProfileQuestions()) != 0 || len(manual.EmployerQuestions()) != 0 || len(manual.ManualReviewQuestions()) != 1 {
 		t.Fatal("manual control concealed")
 	}
 }
