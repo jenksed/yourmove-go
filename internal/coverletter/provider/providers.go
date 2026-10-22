@@ -12,6 +12,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const maxLetterBytes = 12000
@@ -85,6 +86,21 @@ func (r Runner) GenerateNarrative(ctx context.Context, prompt, instructions stri
 		prompt += "\n\n" + instructions
 	}
 	return runProviderProfile(ctx, r.backend, prompt, instructions, nil, true)
+}
+
+// ExecutionLocality describes the configured transport, never inference guarantees.
+func (r Runner) ExecutionLocality() string {
+	if coverSubscription(r.provider) {
+		return "local command using remote vendor services"
+	}
+	if u, err := url.Parse(r.backend.URL); err == nil {
+		host := u.Hostname()
+		ip := net.ParseIP(host)
+		if strings.EqualFold(host, "localhost") || (ip != nil && ip.IsLoopback()) {
+			return "loopback service; may forward to remote inference"
+		}
+	}
+	return "remote service"
 }
 
 func ValidProvider(provider string) bool { return validCoverProvider(provider) }
@@ -290,7 +306,7 @@ func runProviderProfile(ctx context.Context, backend coverBackend, prompt, instr
 		return "", errCoverUnavailable
 	}
 	limited, err := io.ReadAll(io.LimitReader(resp.Body, 128<<10+1))
-	if err != nil || len(limited) > 128<<10 {
+	if err != nil || len(limited) > 128<<10 || (narrative && !utf8.Valid(limited)) {
 		return "", errCoverOutput
 	}
 	var text string
@@ -314,6 +330,7 @@ func runProviderProfile(ctx context.Context, backend coverBackend, prompt, instr
 			Status string `json:"status"`
 			Output []struct {
 				Type    string `json:"type"`
+				Status  string `json:"status"`
 				Content []struct {
 					Type string `json:"type"`
 					Text string `json:"text"`
@@ -325,7 +342,13 @@ func runProviderProfile(ctx context.Context, backend coverBackend, prompt, instr
 		}
 		var parts []string
 		for _, item := range result.Output {
+			if narrative && item.Status != "" && item.Status != "completed" {
+				return "", errCoverOutput
+			}
 			if item.Type != "message" {
+				if narrative && item.Type != "reasoning" {
+					return "", errCoverOutput
+				}
 				continue
 			}
 			for _, part := range item.Content {
@@ -351,6 +374,9 @@ func runProviderProfile(ctx context.Context, backend coverBackend, prompt, instr
 		}
 		var parts []string
 		for _, part := range result.Content {
+			if narrative && part.Type != "text" {
+				return "", errCoverOutput
+			}
 			if part.Type == "text" {
 				parts = append(parts, part.Text)
 			}
@@ -361,7 +387,9 @@ func runProviderProfile(ctx context.Context, backend coverBackend, prompt, instr
 			Choices []struct {
 				FinishReason string `json:"finish_reason"`
 				Message      struct {
-					Content string `json:"content"`
+					Content      string          `json:"content"`
+					ToolCalls    json.RawMessage `json:"tool_calls"`
+					FunctionCall json.RawMessage `json:"function_call"`
 				} `json:"message"`
 			} `json:"choices"`
 		}
@@ -373,7 +401,10 @@ func runProviderProfile(ctx context.Context, backend coverBackend, prompt, instr
 		// and require a successful stop when OpenRouter supplies a reason.
 		reason := strings.ToLower(strings.TrimSpace(result.Choices[0].FinishReason))
 		if reason == "length" || reason == "max_tokens" || reason == "content_filter" || reason == "tool_calls" ||
-			(backend.Provider == "openrouter" && reason != "" && reason != "stop") {
+			((backend.Provider == "openrouter" || narrative) && reason != "" && reason != "stop") {
+			return "", errCoverOutput
+		}
+		if narrative && ((len(result.Choices[0].Message.ToolCalls) > 0 && string(result.Choices[0].Message.ToolCalls) != "[]" && string(result.Choices[0].Message.ToolCalls) != "null") || (len(result.Choices[0].Message.FunctionCall) > 0 && string(result.Choices[0].Message.FunctionCall) != "null")) {
 			return "", errCoverOutput
 		}
 		text = result.Choices[0].Message.Content

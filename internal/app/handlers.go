@@ -264,6 +264,9 @@ func (a *App) jobDetail(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unable to load saved application answers", 500)
 		return
 	}
+	for i := range questions.Questions {
+		questions.Questions[i].AIChoices = a.answerAIChoices(job, questions.Questions[i])
+	}
 	questions.selectQuestion(r)
 	workspace := jobWorkspace{Questions: questions, Job: job, Profile: profile, BrowserState: a.browsers.state(id), Resumes: resumes, ResumeOptions: resumeOptions, LetterResumes: letterResumes, Submissions: history, Desktop: a.openPosting != nil, SubmissionToken: token, SelectedResume: selected, AnswerEditingAllowed: job.Stage != StageApplied && job.Stage != StageClosed && job.SubmissionCount == 0, Handoff: assessResumeHandoff(job, selected), Sources: a.coverLetterSources(job, selected), Letter: letter, Letters: letters, LetterNotice: notice, LetterOpen: notice != "" || r.URL.Query().Has("draft"), LetterModel: letterModel, ProviderReady: providerReady, Match: match, HasFamilies: showMatch}
 	workspace.SubmissionNotice, workspace.SubmissionUncertain = submissionRecoveryNotice(r.URL.Query().Get("submission"))

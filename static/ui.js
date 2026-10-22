@@ -346,7 +346,7 @@
   // Explicit server saves remain authoritative. Independent material actions
   // carry unsaved edits across their same-job redirect in this tab only.
   const editors = Array.from(document.querySelectorAll('form[action$="/answers/save"], form[action$="/cover-letter/save"]'));
-  const recovery = () => document.querySelector('[data-answer-recovery], [data-letter-recovery]');
+  const recovery = () => document.querySelector('[data-answer-recovery], [data-letter-recovery], [data-answer-ai-unprotected="true"]');
   const initial = new Map(editors.map(form => [form, new URLSearchParams(new FormData(form)).toString()]));
   const dirtyForms = () => editors.filter(form => form.dataset.dirty === 'true');
   let leaving = false;
@@ -531,4 +531,213 @@
   };
   if (document.readyState === 'complete') show();
   else window.addEventListener('load', () => requestAnimationFrame(show), {once:true});
+})();
+
+// Narrative drafting owns only review tickets and read-only previews. The
+// existing answer form remains the sole local save operation.
+(() => {
+  'use strict';
+  const prefix = 'yourmove:pending-edits:' + location.pathname + ':ai:';
+  const api = async (root, action, fields, signal) => {
+    const response = await fetch(`/jobs/${encodeURIComponent(root.dataset.job)}/answers/ai/${action}`, {
+      method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8', Accept: 'application/json'},
+      body: fields instanceof URLSearchParams ? fields : new URLSearchParams(fields), signal
+    });
+    const value = await response.json();
+    if (!response.ok) throw new Error(value.message || 'This drafting request could not complete. Review sources again.');
+    return value;
+  };
+  const roots = [...document.querySelectorAll('[data-answer-ai]')];
+  roots.forEach(root => {
+    const find = name => root.querySelector(`[data-answer-ai-${name}]`);
+    const panel = root.closest('[data-question-panel]');
+    const form = panel?.querySelector('form[action$="/answers/save"]');
+    const editor = form?.querySelector('textarea[name="answer"]');
+    if (!form || !editor) return;
+    find('controls').hidden = false;
+    let reviewed = null, preview = null, busy = false, request = null, selectionVersion = 0;
+    const key = prefix + root.dataset.key;
+    const status = message => { find('status').textContent = message; };
+    const matches = () => form.isConnected && root.isConnected && form.querySelector('[name=question_key]')?.value === root.dataset.key && form.querySelector('[name=revision]')?.value === root.dataset.revision;
+    const persist = () => {
+      try {
+        if (preview) {
+          const serialized = JSON.stringify(preview);
+          if (serialized.length > 22000) throw new Error('Preview recovery limit');
+          const existing = [];
+          for (let i = 0; i < sessionStorage.length; i++) {
+            const candidate = sessionStorage.key(i);
+            if (candidate !== key && candidate?.startsWith('yourmove:pending-edits:') && candidate.includes(':ai:')) existing.push(candidate);
+          }
+          existing.sort((a,b) => {
+            const expiry = item => { try { return Date.parse(JSON.parse(sessionStorage.getItem(item)).expires_at) || 0; } catch (_) { return 0; } };
+            return expiry(a) - expiry(b);
+          });
+          while (existing.length >= 16) sessionStorage.removeItem(existing.shift());
+          sessionStorage.setItem(key, serialized);
+        }
+        else sessionStorage.removeItem(key);
+        delete root.dataset.answerAiUnprotected;
+      } catch (_) {
+        if (preview) root.dataset.answerAiUnprotected = 'true';
+        status('Preview recovery storage is unavailable. Keep this page open or copy the preview before leaving.');
+      }
+    };
+    const showPreview = (value, recovering = false) => {
+      preview = value;
+      find('preview').hidden = false;
+      find('text').value = value.answer;
+      find('question').textContent = value.question;
+      find('reference').textContent = value.references || 'Recovered preview; server review required before use.';
+      find('adopt').disabled = !matches() || String(value.revision) !== root.dataset.revision || value.question_key !== root.dataset.key || Date.parse(value.expires_at) <= Date.now() || value.adoptable === false;
+      find('another').open = false;
+      root.open = true;
+      status(recovering ? 'Recovered read-only preview. Use requires a fresh server check. Recovery is limited to this tab and is not durable storage.' : value.notice || 'Draft ready for your review. It has not changed the answer editor.');
+      if (!recovering) find('heading').focus({preventScroll: true});
+      persist();
+    };
+    const setBusy = value => {
+      busy = value;
+      find('selection').disabled = value;
+      find('review').disabled = value;
+      find('generate').disabled = value;
+      find('cancel').hidden = !value;
+      root.setAttribute('aria-busy', String(value));
+    };
+    const invalidateReview = event => {
+      if (busy) return;
+      if (event?.target?.type === 'checkbox' && ['application_resume','master_resume'].includes(event.target.name) && !event.target.checked) {
+        find('excerpts').querySelector(`[data-excerpt-role="${event.target.name}"]`)?.remove();
+      }
+      selectionVersion++;
+      const old = reviewed;
+      reviewed = null;
+      find('review-panel').hidden = true;
+      find('authorize').checked = false;
+      find('external').checked = false;
+      if (old) api(root, 'cancel', {ticket: old.ticket}).catch(() => {});
+    };
+    find('selection').addEventListener('input', invalidateReview);
+    find('selection').addEventListener('change', invalidateReview);
+    find('review').addEventListener('click', async () => {
+      if (busy) return;
+      invalidateReview();
+      const fields = new URLSearchParams({question_key: root.dataset.key, revision: root.dataset.revision, destination: root.dataset.destination});
+      find('selection').querySelectorAll('[name]').forEach(input => {
+        if (input.type === 'checkbox' && !input.checked) return;
+        if (input.value) fields.append(input.name, input.value);
+      });
+      const version = selectionVersion;
+      find('review').disabled = true;
+      status('Reviewing selected sources locally…');
+      try {
+        const value = await api(root, 'review', fields);
+        if (version !== selectionVersion) { api(root, 'cancel', {ticket: value.ticket}).catch(() => {}); throw new Error('Selections changed during review. Review the current choices again.'); }
+        reviewed = value;
+        value.sources.filter(source => source.category.startsWith('application_resume:') || source.category.startsWith('master_resume:')).forEach(source => {
+          const role = source.category.split(':')[0];
+          if (find('excerpts').querySelector(`[data-excerpt-role="${role}"]`)) return;
+          const text = source.content.replace(/\n\[Excerpt truncated\]$/, '');
+          const characters = [...text];
+          const field = document.createElement('div'); field.className = 'field'; field.dataset.excerptRole = role;
+          const label = document.createElement('label');
+          const input = document.createElement('input'); input.type = 'number'; input.min = '1'; input.max = String(characters.length); input.value = String(characters.length);
+          input.id = `ai-excerpt-${root.dataset.key}-${role}`; label.htmlFor = input.id;
+          label.textContent = `Shorten ${role === 'application_resume' ? 'application' : 'master'} resume excerpt to first characters (optional)`;
+          const boundary = document.createElement('input'); boundary.type = 'hidden'; boundary.name = role + '_end';
+          input.addEventListener('input', () => { const count = Number(input.value); boundary.value = Number.isInteger(count) && count > 0 && count <= characters.length ? String(new TextEncoder().encode(characters.slice(0, count).join('')).length) : ''; });
+          field.append(label, input, boundary); find('excerpts').append(field);
+        });
+        find('payload').textContent = `${value.prompt}\n\n${value.instructions}`;
+        find('execution').textContent = `${value.provider} · ${value.model}. ${value.execution}`;
+        find('sources').textContent = value.sources.map(source => `${source.category}${source.id ? ` · ID ${source.id} · revision ${source.revision}` : ''}`).join('\n');
+        find('review-panel').hidden = false;
+        status('Local review complete. No model has been called. Inspect the exact text before authorizing.');
+      } catch (error) { status(error.message); }
+      finally { find('review').disabled = false; }
+    });
+    find('generate').addEventListener('click', async () => {
+      if (busy || !reviewed) return;
+      if (!find('authorize').checked || !find('external').checked) { status('Authorize this generation and acknowledge possible external transmission first.'); return; }
+      const authorized = reviewed;
+      request = new AbortController();
+      setBusy(true);
+      status('Generating one proposed answer. Your editor remains available.');
+      try {
+        const value = await api(root, 'generate', {ticket: authorized.ticket, authorize_generation: 'yes', authorize_external: 'yes'}, request.signal);
+        if (value.state === 'complete' && typeof value.answer === 'string') {
+          showPreview({...value, references: `${authorized.provider} · ${authorized.model}. ` + authorized.sources.map(source => `${source.category}${source.id ? ` · ID ${source.id} · revision ${source.revision}` : ''}`).join('; ')});
+        } else status(value.notice || `Generation state: ${value.state}. Review sources again for a new request.`);
+      } catch (error) { status(error.name === 'AbortError' ? 'Generation canceled. Your existing text is unchanged.' : error.message); }
+      finally {
+        setBusy(false); request = null; reviewed = null;
+        find('review-panel').hidden = true;
+        find('authorize').checked = false; find('external').checked = false;
+      }
+    });
+    find('cancel').addEventListener('click', async () => {
+      if (!reviewed) return;
+      const ticket = reviewed.ticket;
+      try { await api(root, 'cancel', {ticket}); } catch (_) {}
+      request?.abort();
+    });
+    find('adopt').addEventListener('click', async () => {
+      if (!preview || find('adopt').disabled) return;
+      const value = preview;
+      const before = editor.value;
+      const current = () => matches() && editor.value === before && preview === value && !panel.hidden;
+      find('adopt').disabled = true;
+      try {
+        const checked = await api(root, 'adopt-check', {ticket: value.ticket, question_key: root.dataset.key, revision: root.dataset.revision});
+        if (!checked.adoptable || checked.ticket !== value.ticket || checked.question_key !== root.dataset.key || String(checked.revision) !== root.dataset.revision || typeof checked.answer !== 'string' || checked.answer !== value.answer || !current()) throw new Error('The editor or review changed during the check. Your text was preserved.');
+        if (before !== '' && !window.confirm('Replace the current editor text with this generated draft? It will remain unsaved until you choose Save answer locally.')) return;
+        if (!current()) throw new Error('The editor changed during confirmation. Your text was preserved.');
+        editor.value = checked.answer;
+        editor.dispatchEvent(new Event('input', {bubbles: true}));
+        editor.focus();
+        status('Added to your unsaved answer. Review and edit it, then choose Save answer locally.');
+      } catch (error) {
+        preview.adoptable = false; persist(); status(error.message + ' You can still copy this preview.');
+      } finally { find('adopt').disabled = preview?.adoptable === false; }
+    });
+    find('copy').addEventListener('click', async () => {
+      try {
+        if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(find('text').value);
+        else { find('text').select(); if (!document.execCommand('copy')) throw new Error(); }
+        status('Preview copied.');
+      } catch (_) { find('text').focus(); find('text').select(); status('Select and copy the preview text.'); }
+    });
+    find('discard').addEventListener('click', () => {
+      if (preview?.ticket) api(root, 'cancel', {ticket: preview.ticket}).catch(() => {});
+      preview = null; find('text').value = ''; find('preview').hidden = true; find('another').open = true; persist(); status('Preview discarded. Your editor is unchanged.');
+    });
+    try {
+      const stored = sessionStorage.getItem(key);
+      if (stored && stored.length <= 22000) {
+        const value = JSON.parse(stored);
+        if (value.question_key === root.dataset.key && typeof value.answer === 'string' && new TextEncoder().encode(value.answer).length <= 6000 && typeof value.question === 'string') showPreview(value, true);
+      }
+    } catch (_) {}
+    // Best effort cancellation, without invoking generation or storing sources.
+    window.addEventListener('pagehide', () => {
+      if (busy && reviewed) fetch(`/jobs/${encodeURIComponent(root.dataset.job)}/answers/ai/cancel`, {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: new URLSearchParams({ticket: reviewed.ticket}), keepalive: true}).catch(() => {});
+    });
+  });
+  // If an observed question disappeared, retain copyable text without adoption.
+  try {
+    for (let i = 0, count = 0; i < sessionStorage.length && count < 16; i++) {
+      const key = sessionStorage.key(i);
+      if (!key?.startsWith(prefix) || roots.some(root => key === prefix + root.dataset.key)) continue;
+      const stored = sessionStorage.getItem(key);
+      if (!stored || stored.length > 22000) continue;
+      const value = JSON.parse(stored);
+      if (typeof value.answer !== 'string' || new TextEncoder().encode(value.answer).length > 6000) continue;
+      const section = document.createElement('section');
+      const notice = document.createElement('p'); notice.textContent = 'Recovered preview for an unavailable question. Copy this text for reference; adoption is unavailable.';
+      const text = document.createElement('textarea'); text.readOnly = true; text.value = value.answer; text.setAttribute('aria-label', 'Recovered generated preview');
+      const discard = document.createElement('button'); discard.type = 'button'; discard.textContent = 'Discard recovered preview'; discard.className = 'button button-secondary';
+      discard.addEventListener('click', () => { sessionStorage.removeItem(key); section.remove(); });
+      section.append(notice, text, discard); document.querySelector('.application-questions')?.append(section); count++;
+    }
+  } catch (_) {}
 })();

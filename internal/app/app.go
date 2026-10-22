@@ -48,7 +48,7 @@ type appResources struct {
 func New(config Config) (*App, error) {
 	if config.DB == nil || config.TemplateFiles == nil || config.StaticFiles == nil ||
 		strings.TrimSpace(config.CoverLetterInstructions) == "" || !validNarrativeInstructions(config.ApplicationAnswerInstructions) {
-		return nil, fmt.Errorf("application requires a database, templates, static assets, and cover-letter instructions")
+		return nil, fmt.Errorf("application requires a database, templates, static assets, and independent cover-letter and application-answer instructions")
 	}
 	resources := &appResources{
 		staticFiles: config.StaticFiles, coverLetterInstructions: config.CoverLetterInstructions, applicationAnswerInstructions: config.ApplicationAnswerInstructions,

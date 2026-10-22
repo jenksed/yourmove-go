@@ -876,3 +876,15 @@ a.progress-metric:hover span {text-decoration:underline;color:var(--color-primar
  .progress-metric span {font-size:11px}
  .dashboard-next .button {width:100%}
 }
+
+/* The existing answer editor remains primary; drafting is a scoped disclosure. */
+.answer-ai { max-width: 780px; min-width: 0; margin-block: 16px; }
+.answer-ai [data-answer-ai-controls] { margin-block: 12px; }
+.answer-ai fieldset { min-width: 0; border: 0; padding: 0; margin-block: 16px; }
+.answer-ai legend { font-weight: 600; }
+.answer-ai textarea { width: 100%; box-sizing: border-box; }
+.answer-ai pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 28rem; overflow: auto; }
+.answer-ai .field, .answer-ai select, .answer-ai input[type=text] { min-width: 0; max-width: 100%; }
+.answer-ai .confirm-row, .answer-ai [role=status], .answer-ai p { overflow-wrap: anywhere; }
+.answer-ai .button-row { display: flex; flex-wrap: wrap; gap: 8px; margin-block: 12px; }
+.answer-ai [data-answer-ai-preview] { margin-block: 16px; }

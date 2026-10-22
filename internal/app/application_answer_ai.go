@@ -290,10 +290,14 @@ func validateGeneratedApplicationAnswer(text string) error {
 		return nil
 	}
 	lower := strings.ToLower(strings.TrimSpace(text))
+	switch lower {
+	case "n/a", "na", "...", "…", "answer", "your answer here":
+		return errors.New("output")
+	}
 	if strings.Contains(text, insufficientAnswer) || strings.HasPrefix(lower, "{") || strings.HasPrefix(lower, "[") {
 		return errors.New("output")
 	}
-	for _, s := range []string{"```", "<think", "</think", "<analysis", "<|", "tool_calls", "function_call", "analysis:", "reasoning:", "assistant:", "here is your", "here's your", "here is a draft", "as an ai", "i cannot answer", "i can't answer", "[insert", "[your ", "placeholder", "todo", "tbd"} {
+	for _, s := range []string{"```", "<think", "</think", "<analysis", "<|", "tool_calls", "function_call", "analysis:", "reasoning:", "assistant:", "here is your", "final answer:", "let me think", "let me draft", "i will write", "i need to answer", "my reasoning", "<tool", "<function", "<script", "here's your", "here is a draft", "as an ai", "i cannot answer", "i can't answer", "[insert", "[your ", "placeholder", "todo", "tbd"} {
 		if strings.Contains(lower, s) {
 			return errors.New("output")
 		}
@@ -324,7 +328,9 @@ func answerAIResponse(w http.ResponseWriter, status int, value any) {
 }
 func answerAIError(w http.ResponseWriter, status int, code string) {
 	messages := map[string]string{
-		"invalid_request": "The drafting request is invalid. Review your selections.", "invalid_sources": "Select current reviewed Career Evidence or a valid resume excerpt. Oversized Career Evidence must be shortened and reviewed before selection.", "changed": "The question, saved answer, or selected sources changed. Review the current material again.", "authorization_required": "Authorize this generation and acknowledge external transmission for this specific review.", "not_found": "This review is unavailable. Review sources again.", "expired": "This review expired. Copy any preview you need and review sources again.", "capacity": "Too many active reviews. Discard a preview or wait for expiration.", "generation_in_progress": "Another generation is running for this job.", "provider_configuration": "Check this provider and model in AI connections.", "provider_failed": "The provider could not complete this request. Review sources again for a new attempt.", "timeout": "Generation timed out. This ticket cannot run again.", "output": "The provider returned unusable output. This ticket cannot run again.", "canceled": "Generation was canceled. Review sources again for a new attempt."}
+		"local_boundary":  "A trusted local application request is required.",
+		"evidence_budget": "Selected Career Evidence exceeds 12 KiB per record or 20 KiB combined. Shorten the selected record and review it again; no evidence was sent or silently truncated.",
+		"invalid_request": "The drafting request is invalid. Review your selections.", "invalid_sources": "Select current reviewed Career Evidence or a valid resume excerpt. Oversized Career Evidence must be shortened and reviewed before selection.", "changed": "The question, saved answer, or selected sources changed. Review the current material again.", "authorization_required": "Authorize this generation and acknowledge external transmission for this specific review.", "not_found": "This review is unavailable. Review sources again.", "expired": "This review expired. Copy any preview you need and review sources again.", "capacity": "Too many active reviews. Wait for an existing review to expire.", "generation_in_progress": "Another generation is running for this job.", "provider_configuration": "Check this provider and model in AI connections.", "provider_failed": "The provider could not complete this request. Review sources again for a new attempt.", "timeout": "Generation timed out. This ticket cannot run again.", "output": "The provider returned unusable output. This ticket cannot run again.", "canceled": "Generation was canceled. Review sources again for a new attempt."}
 	answerAIResponse(w, status, map[string]string{"code": code, "message": messages[code]})
 }
 func parseAnswerAIForm(w http.ResponseWriter, r *http.Request, limit int64, allowed map[string]bool) bool {
@@ -361,7 +367,17 @@ func (a *App) applicationAnswerAIHandler(w http.ResponseWriter, r *http.Request)
 		}
 		snapshot, err := a.buildAnswerGenerationSnapshot(id, r.PostForm)
 		if err != nil {
-			answerAIError(w, 422, "invalid_sources")
+			code, status := "invalid_sources", 422
+			switch err.Error() {
+			case "evidence_budget":
+				code = "evidence_budget"
+			case "question", "state":
+				code = "changed"
+				status = 409
+			case "provider":
+				code = "provider_configuration"
+			}
+			answerAIError(w, status, code)
 			return
 		}
 		if a.applicationAnswerGenerate == nil {
@@ -376,6 +392,9 @@ func (a *App) applicationAnswerAIHandler(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		execution := answerAIExecution(snapshot.Provider)
+		if runner, err := coverprovider.Configure(snapshot.Provider, snapshot.Model); err == nil {
+			execution += " Transport: " + runner.ExecutionLocality() + "."
+		}
 		answerAIResponse(w, 200, map[string]any{"ticket": token, "state": "reviewed", "question_key": snapshot.QuestionKey, "revision": snapshot.Revision, "question": snapshot.Field.Label, "provider": snapshot.Provider, "model": snapshot.Model, "execution": execution, "sources": snapshot.Sources, "source_payload": snapshot.Payload, "prompt": snapshot.Prompt, "instructions": snapshot.Instructions, "expires_at": expires, "requires_external": true})
 		return
 	}

@@ -108,11 +108,19 @@ func protectLocalRequests(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !localRequestHost(r.Host) || r.Header.Get("Sec-Fetch-Site") == "cross-site" ||
 			len(r.Header.Values("Origin")) > 1 {
-			http.Error(w, "Local application request required", http.StatusForbidden)
+			if strings.Contains(r.URL.Path, "/answers/ai/") {
+				answerAIError(w, 403, "local_boundary")
+			} else {
+				http.Error(w, "Local application request required", http.StatusForbidden)
+			}
 			return
 		}
 		if origin := r.Header.Get("Origin"); origin != "" && origin != "http://"+r.Host {
-			http.Error(w, "Cross-origin requests are not allowed", http.StatusForbidden)
+			if strings.Contains(r.URL.Path, "/answers/ai/") {
+				answerAIError(w, 403, "local_boundary")
+			} else {
+				http.Error(w, "Cross-origin requests are not allowed", http.StatusForbidden)
+			}
 			return
 		}
 		next.ServeHTTP(w, r)

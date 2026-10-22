@@ -21,6 +21,7 @@ import (
 // An answer belongs to the exact destination and question definition. Identity
 // changes create a separate answer, leaving earlier user work intact.
 type preparedQuestion struct {
+	AIChoices                 *answerAIChoices // Presentation only; server review reconstructs sources.
 	ReusableRevision          int64
 	ReusableKey               string
 	JobID                     int64

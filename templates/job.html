@@ -320,6 +320,7 @@
         {{if and .ReusableKey (ne .Source "Approved candidate information")}}<input type="hidden" name="reusable_revision" value="{{.ReusableRevision}}"><details class="question-reuse"><summary>Reuse at this employer</summary><label class="confirm-row"><input type="checkbox" name="reusable" value="yes"><span>Reuse this answer for the exact same question at this employer. Application-specific edits keep the reusable original unless I select this again.</span></label></details>{{end}}
         <button type="submit" class="button button-primary">Save answer locally</button>
       </form>
+      {{if .AIChoices}}{{template "application-answer-ai" .}}{{end}}
       {{if and .Revision .LibraryEligible}}{{template "answer-library-promotion" .}}{{end}}
 {{end}}
 
@@ -414,3 +415,48 @@
 {{end}}
 
 {{define "resume-option-label"}}{{if .FamilyName}}{{.FamilyName}} · {{end}}{{.Name}} ({{.Kind}}){{if .IsPrimary}} · Primary{{end}}{{if .ArchivedAt}} · Archived (select a newer version){{end}}{{end}}
+
+{{define "application-answer-ai"}}
+<details class="answer-ai" data-answer-ai data-job="{{.JobID}}" data-key="{{.Key}}" data-revision="{{.Revision}}" data-destination="{{.Destination}}">
+  <summary>Draft answer with AI</summary>
+  <noscript><p>Inline AI drafting requires JavaScript. You can still edit and save your answer normally.</p></noscript>
+  <div data-answer-ai-controls hidden>
+    <section data-answer-ai-preview hidden aria-label="Generated answer preview">
+      <h4 tabindex="-1" data-answer-ai-heading>Generated preview · not saved</h4>
+      <p data-answer-ai-question></p>
+      <div class="field"><textarea rows="8" readonly aria-label="Generated answer preview" data-answer-ai-text></textarea></div>
+      <p class="small-muted" data-answer-ai-reference></p>
+      <div class="button-row">
+        <button type="button" class="button button-secondary" data-answer-ai-adopt>Use as unsaved answer</button>
+        <button type="button" class="button button-secondary" data-answer-ai-copy>Copy</button>
+        <button type="button" class="button button-secondary" data-answer-ai-discard>Discard preview</button>
+      </div>
+      <p class="small-muted">Review the proposed facts and attribution. Generation does not verify, save, transfer, or submit an answer. This tab can temporarily recover up to 16 previews.</p>
+    </section>
+    <details data-answer-ai-another open><summary>Draft another version</summary>
+      <fieldset data-answer-ai-selection><legend>Choose factual evidence</legend>
+        <p class="small-muted">Select up to two applicant-reviewed experiences, or a resume excerpt. Nothing is selected automatically. Suggestions appear first, followed by up to 30 recent records.</p>
+        {{range .AIChoices.Evidence}}<label class="confirm-row"><input type="checkbox" name="career_evidence" value="{{.Identity}}"><span>{{.Label}}</span></label>{{else}}<p>No reviewed experiences available. <a href="/career-evidence" target="_blank" rel="noopener">Curate and review an experience ↗</a></p>{{end}}
+        {{if .AIChoices.ApplicationResume}}<label class="confirm-row"><input type="checkbox" name="application_resume" value="{{.AIChoices.ApplicationResume.Identity}}"><span>Application resume · {{.AIChoices.ApplicationResume.Label}}</span></label>{{end}}
+        {{if .AIChoices.MasterResume}}<label class="confirm-row"><input type="checkbox" name="master_resume" value="{{.AIChoices.MasterResume.Identity}}"><span>Master resume · {{.AIChoices.MasterResume.Label}}</span></label>{{end}}
+        <div class="field"><label for="ai-writing-{{.Key}}">Previous writing (optional; style reference only)</label><select id="ai-writing-{{.Key}}" name="library_entry"><option value="">None</option>{{range .AIChoices.Writing}}<option value="{{.Identity}}">{{.Label}}</option>{{end}}</select></div>
+        <label class="confirm-row"><input type="checkbox" name="include_job_context" value="yes"><span>Include bounded job title, employer, and description as requirements and context only.</span></label>
+        <div class="field"><label for="ai-provider-{{.Key}}">Provider</label><select id="ai-provider-{{.Key}}" name="provider"><option value="ollama">Ollama (local or cloud inference)</option><option value="openai">OpenAI API (remote)</option><option value="anthropic">Anthropic API (remote)</option><option value="openrouter">OpenRouter (remote)</option><option value="compatible">Configured compatible endpoint</option><option value="codex">Codex CLI (vendor service)</option><option value="claude-cli">Claude CLI (vendor service)</option></select></div>
+        <div class="field"><label for="ai-model-{{.Key}}">Model</label><input id="ai-model-{{.Key}}" type="text" name="model" maxlength="120" placeholder="Enter a model name"></div>
+        <div data-answer-ai-excerpts></div>
+        <button type="button" class="button button-secondary" data-answer-ai-review>Review selected sources</button>
+      </fieldset>
+      <section data-answer-ai-review-panel hidden aria-label="Reviewed generation material">
+        <p data-answer-ai-execution></p>
+        <details><summary>Exact text to be shared</summary><pre class="evidence-text" data-answer-ai-payload></pre></details>
+        <p class="small-muted" data-answer-ai-sources></p>
+        <label class="confirm-row"><input type="checkbox" data-answer-ai-authorize><span>I authorize one generation for this question, provider, model, and reviewed source payload.</span></label>
+        <label class="confirm-row"><input type="checkbox" data-answer-ai-external><span>I acknowledge that this text may be transmitted to external model services.</span></label>
+        <button type="button" class="button button-secondary" data-answer-ai-generate>Generate draft</button>
+      </section>
+    </details>
+    <button type="button" class="button button-secondary" data-answer-ai-cancel hidden>Cancel generation</button>
+    <p role="status" aria-live="polite" data-answer-ai-status></p>
+  </div>
+</details>
+{{end}}

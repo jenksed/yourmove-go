@@ -419,3 +419,25 @@ func TestNarrativeResumeIntegrityAndContext(t *testing.T) {
 		t.Fatal("changed bytes accepted")
 	}
 }
+
+func TestNarrativeJSONOriginErrorsAndSafeProviderErrors(t *testing.T) {
+	a, v, _ := narrativeFixture(t)
+	a.applicationAnswerGenerate = func(context.Context, string, string) (string, error) {
+		return "", fmt.Errorf("PRIVATE_PROVIDER_KEY PRIVATE_SOURCE_PAYLOAD")
+	}
+	for _, handler := range []http.Handler{newMux(a), newDesktopMux(a)} {
+		r := postApp(handler, "/jobs/1/answers/ai/review", v, "https://foreign.invalid", "")
+		if r.Code != 403 || !strings.HasPrefix(r.Header().Get("Content-Type"), "application/json") || r.Header().Get("Cache-Control") != "private, no-store" {
+			t.Fatal(r.Code, r.Header())
+		}
+	}
+	token := reviewNarrative(t, a, v)
+	r := postApp(newMux(a), "/jobs/1/answers/ai/generate", generationForm(token), "", "")
+	if r.Code != 502 || strings.Contains(r.Body.String(), "PRIVATE_") {
+		t.Fatal(r.Code, r.Body.String())
+	}
+	r = postApp(newMux(a), "/jobs/1/answers/ai/generate", generationForm(token), "", "")
+	if r.Code != 502 {
+		t.Fatal("failure replay", r.Code)
+	}
+}

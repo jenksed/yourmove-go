@@ -30,7 +30,11 @@ func withWailsOrigin(next http.Handler) http.Handler {
 		origin := r.Header.Get("Origin")
 		if r.Host != "localhost" || len(r.Header.Values("Origin")) > 1 ||
 			(origin != "" && origin != "wails://localhost" && origin != "http://localhost") {
-			http.Error(w, "Desktop application request required", http.StatusForbidden)
+			if strings.Contains(r.URL.Path, "/answers/ai/") {
+				answerAIError(w, 403, "local_boundary")
+			} else {
+				http.Error(w, "Desktop application request required", http.StatusForbidden)
+			}
 			return
 		}
 		r = r.Clone(context.WithValue(r.Context(), desktopRequestKey{}, true))
