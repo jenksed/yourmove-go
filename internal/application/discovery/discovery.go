@@ -20,6 +20,22 @@ type Inspector interface {
 	Inspect(context.Context, string) (schema.Result, error)
 }
 
+// SupportsPublicQuestions reports providers whose documented public API can
+// return question definitions. Other supported posting lookups may resolve a
+// destination without exposing the employer's application form.
+func SupportsPublicQuestions(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" || u.User != nil || u.Port() != "" {
+		return false
+	}
+	switch strings.ToLower(u.Hostname()) {
+	case "job-boards.greenhouse.io", "boards.greenhouse.io":
+		return true
+	default:
+		return false
+	}
+}
+
 type Registry struct {
 	Greenhouse Inspector
 	Ashby      Inspector

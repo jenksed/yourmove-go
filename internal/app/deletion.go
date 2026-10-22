@@ -42,6 +42,9 @@ func (a *App) deleteJobs(ids []int64, allowHistory bool) (int64, error) {
 	}
 	for _, id := range ids {
 		// Answers and inspections are job-local; remove dependents before the job.
+		if _, err := tx.Exec(`DELETE FROM early_application_answers WHERE job_id=?`, id); err != nil {
+			return 0, err
+		}
 		if _, err := tx.Exec(`DELETE FROM application_answers WHERE job_id=?`, id); err != nil {
 			return 0, err
 		}

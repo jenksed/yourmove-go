@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"net/url"
 	"strconv"
 
 	browser "github.com/jenksed/yourmove-go/internal/application/browser"
@@ -131,6 +132,14 @@ func (a *App) inspectJob(w http.ResponseWriter, r *http.Request) {
 	if !parseLocalForm(w, r, 2<<10) {
 		return
 	}
+	returnToPrepare := r.PostForm.Get("return_to") == "prepare"
+	prepareLocation := func(notice string) string {
+		location := "/jobs/" + strconv.FormatInt(id, 10)
+		if notice != "" {
+			location += "?early_discovery=" + url.QueryEscape(notice)
+		}
+		return location + "#prepare"
+	}
 	job, err := a.jobByID(id)
 	if errors.Is(err, sql.ErrNoRows) {
 		http.NotFound(w, r)
@@ -151,16 +160,28 @@ func (a *App) inspectJob(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := fetch(r.Context(), job.URL)
 	if errors.Is(err, discovery.ErrUnsupported) {
+		if returnToPrepare {
+			http.Redirect(w, r, prepareLocation("unsupported"), http.StatusSeeOther)
+			return
+		}
 		http.Error(w, "No public application schema is available for this platform yet. The employer site can still be opened manually.", 422)
 		return
 	}
 	if err != nil {
 		log.Printf("public application discovery for job %d: %v", id, err)
+		if returnToPrepare {
+			http.Redirect(w, r, prepareLocation("failed"), http.StatusSeeOther)
+			return
+		}
 		http.Error(w, "Public inspection failed; saved data has not been changed. Retry later or open the employer site.", 502)
 		return
 	}
 	if _, err := a.saveInspection(id, result); err != nil {
 		http.Error(w, "Unable to store inspection", 500)
+		return
+	}
+	if returnToPrepare {
+		http.Redirect(w, r, prepareLocation(""), http.StatusSeeOther)
 		return
 	}
 	http.Redirect(w, r, "/jobs/"+strconv.FormatInt(id, 10)+"/inspection", http.StatusSeeOther)

@@ -73,8 +73,15 @@ func (w *desktopRedirectWriter) WriteHeader(status int) {
 	// Limit this compatibility shim to YourMove's current internal POST
 	// destinations. Never render an external or user-controlled destination.
 	target := w.Header().Get("Location")
-	if !safeDesktopRedirectTarget(target) || (strings.Contains(target, "?question=") &&
-		w.requestPath != strings.Split(target, "?")[0]+"/answers/save") {
+	questionPostPath := ""
+	if strings.Contains(target, "?question=") {
+		questionPostPath = "/answers/save"
+	}
+	if strings.Contains(target, "?early_question=") {
+		questionPostPath = "/answers/early-save"
+	}
+	if !safeDesktopRedirectTarget(target) || (questionPostPath != "" &&
+		w.requestPath != strings.Split(target, "?")[0]+questionPostPath) {
 		w.ResponseWriter.WriteHeader(status)
 		return
 	}
@@ -145,10 +152,13 @@ func safeDesktopRedirectTarget(target string) bool {
 		query, err := url.ParseQuery(parsed.RawQuery)
 		id, idErr := strconv.ParseInt(strings.TrimPrefix(parsed.Path, "/jobs/"), 10, 64)
 		if err == nil && idErr == nil && id > 0 && parsed.Path == "/jobs/"+strconv.FormatInt(id, 10) &&
-			parsed.Scheme == "" && parsed.Host == "" && parsed.User == nil &&
-			len(query) == 1 && len(query["question"]) == 1 && questionReturnKey.MatchString(query.Get("question")) &&
-			target == parsed.Path+"?question="+query.Get("question")+"#prepare" {
-			return true
+			parsed.Scheme == "" && parsed.Host == "" && parsed.User == nil && len(query) == 1 {
+			for _, param := range []string{"question", "early_question"} {
+				if len(query[param]) == 1 && questionReturnKey.MatchString(query.Get(param)) &&
+					target == parsed.Path+"?"+param+"="+query.Get(param)+"#prepare" {
+					return true
+				}
+			}
 		}
 	}
 	// Cover letter actions return to the Prepare tab with an allowlisted notice.

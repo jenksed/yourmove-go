@@ -257,9 +257,11 @@
 
 // Question workbench: visibility and navigation over the authoritative Go forms.
 (() => {
-  const workbench = document.querySelector('[data-question-workbench]');
-  if (workbench && workbench.querySelector('[data-question-panel]')) {
-    const returning = new URLSearchParams(location.search).has('question');
+  const workbenches = [...document.querySelectorAll('[data-question-workbench]')];
+  workbenches.forEach(workbench => {
+  if (workbench.querySelector('[data-question-panel]')) {
+    const questionParam = workbench.dataset.questionParam || 'question';
+    const returning = new URLSearchParams(location.search).has(questionParam);
     const panels = Array.from(workbench.querySelectorAll('[data-question-panel]'));
     const index = workbench.querySelector('[data-question-index]');
     const chooser = workbench.querySelector('[data-question-chooser]');
@@ -280,14 +282,18 @@
       chooser.value = panels[selected].dataset.questionKey;
       previous.disabled = selected === 0;
       next.disabled = selected === panels.length - 1;
-      position.textContent = `Question ${selected + 1} of ${panels.length} · observed order`;
+      position.textContent = `Question ${selected + 1} of ${panels.length} · ${questionParam === 'early_question' ? 'discovered order' : 'observed order'}`;
       if (focus) {
         panels[selected].focus({preventScroll:true});
         const bounds = panels[selected].getBoundingClientRect();
         if (bounds.top < 0 || bounds.top >= innerHeight) panels[selected].scrollIntoView({block:'start', behavior:'instant'});
       }
     };
-    const statusGroups = [
+    const statusGroups = questionParam === 'early_question' ? [
+      {label: 'Needs early answer', matches: status => status === 'No early answer saved'},
+      {label: 'Prepared early', matches: status => status.startsWith('Early answer saved locally')},
+      {label: 'Manual completion required', matches: status => status === 'Manual completion required'}
+    ] : [
       {label: 'Needs local answer', matches: status => status === 'Needs local answer'},
       {label: 'Prepared locally or provided by an approved source', matches: status => status.startsWith('Answer saved locally.') || status.startsWith('Answer available locally') || status.startsWith('Approved candidate information;')},
       {label: 'Requires manual completion in Chromium', matches: status => status.startsWith('Requires manual completion')}
@@ -318,12 +324,17 @@
       chooser.append(options);
       groups.set(status, members.length);
     }
-    workbench.querySelector('[data-question-summary]').textContent = `${groups.get('Needs local answer') || 0} need a local answer · ${groups.get('Prepared locally or provided by an approved source') || 0} prepared · ${groups.get('Requires manual completion in Chromium') || 0} manual`;
+    const summary = workbench.querySelector('[data-question-summary]');
+    if (questionParam === 'early_question') {
+      summary.textContent = `${groups.get('Needs early answer') || 0} need an early answer · ${groups.get('Prepared early') || 0} saved locally · ${groups.get('Manual completion required') || 0} manual`;
+    } else {
+      summary.textContent = `${groups.get('Needs local answer') || 0} need a local answer · ${groups.get('Prepared locally or provided by an approved source') || 0} prepared · ${groups.get('Requires manual completion in Chromium') || 0} manual`;
+    }
     chooser.addEventListener('change', () => show(panels.findIndex(panel => panel.dataset.questionKey === chooser.value)));
     previous.addEventListener('click', () => show(selected - 1));
     next.addEventListener('click', () => show(selected + 1));
     workbench.addEventListener('question:reveal', event => show(panels.indexOf(event.target.closest('[data-question-panel]'))));
-    workbench.querySelector('[data-review-ready]').addEventListener('click', event => {
+    workbench.querySelector('[data-review-ready]')?.addEventListener('click', event => {
       event.preventDefault();
       const scope = document.getElementById('application-action');
       scope.focus({preventScroll:true});
@@ -347,10 +358,11 @@
       else window.addEventListener('load', () => requestAnimationFrame(restore), {once:true});
     }
   }
+  });
 
   // Explicit server saves remain authoritative. Independent material actions
   // carry unsaved edits across their same-job redirect in this tab only.
-  const editors = Array.from(document.querySelectorAll('form[action$="/answers/save"], form[action$="/cover-letter/save"]'));
+  const editors = Array.from(document.querySelectorAll('form[action$="/answers/save"], form[action$="/answers/early-save"], form[action$="/cover-letter/save"]'));
   const recovery = () => document.querySelector('[data-answer-recovery], [data-letter-recovery], [data-answer-ai-unprotected="true"]');
   const initial = new Map(editors.map(form => [form, new URLSearchParams(new FormData(form)).toString()]));
   const dirtyForms = () => editors.filter(form => form.dataset.dirty === 'true');
@@ -364,9 +376,10 @@
       status.textContent = dirty ? 'Unsaved changes' : status.dataset.savedText;
     }
     const panel = form.closest('[data-question-panel]');
-    const link = panel && workbench?.querySelector(`[data-question-link="${panel.dataset.questionKey}"]`);
+    const workbench = panel?.closest('[data-question-workbench]');
+    const link = workbench?.querySelector(`[data-question-link="${panel.dataset.questionKey}"]`);
     if (link) link.textContent = panel.dataset.questionLabel + (dirty ? ' · Unsaved changes' : '');
-    const option = panel && workbench?.querySelector(`option[value="${panel.dataset.questionKey}"]`);
+    const option = workbench?.querySelector(`option[value="${panel.dataset.questionKey}"]`);
     if (option) option.textContent = option.textContent.replace(/ · Unsaved changes$/, '') + (dirty ? ' · Unsaved changes' : '');
   };
   // Related writing stays read-only until a user opens it. Inserting an
@@ -587,7 +600,7 @@
   roots.forEach(root => {
     const find = name => root.querySelector(`[data-answer-ai-${name}]`);
     const panel = root.closest('[data-question-panel]');
-    const form = panel?.querySelector('form[action$="/answers/save"]');
+    const form = panel?.querySelector('form[action$="/answers/save"], form[action$="/answers/early-save"]');
     const editor = form?.querySelector('textarea[name="answer"]');
     if (!form || !editor) return;
     find('controls').hidden = false;
@@ -691,6 +704,12 @@
         return;
       }
       const fields = new URLSearchParams({question_key: root.dataset.key, revision: root.dataset.revision, destination: root.dataset.destination});
+      if (root.dataset.early === 'yes') {
+        fields.set('early', 'yes');
+        fields.set('discovery_source', root.dataset.discoverySource || '');
+        fields.set('discovery_fingerprint', root.dataset.discoveryFingerprint || '');
+        fields.set('source_question_id', root.dataset.sourceQuestionId || '');
+      }
       find('selection').querySelectorAll('[name]').forEach(input => {
         if (input.type === 'checkbox' && !input.checked) return;
         if (input.value) fields.append(input.name, input.value);
@@ -717,7 +736,8 @@
           field.append(label, input, boundary); find('excerpts').append(field);
         });
         find('payload').textContent = `${value.prompt}\n\n${value.instructions}`;
-        find('execution').textContent = `${value.provider} · ${value.model}. ${value.execution}`;
+        const questionStatus = value.preparation_kind === 'early' ? 'Published question; not yet checked against the live employer form. ' : 'Current browser-observed question. ';
+        find('execution').textContent = `${questionStatus}${value.provider} · ${value.model}. ${value.execution}`;
         find('sources').textContent = value.sources.map(sourceReference).join('\n');
         find('review-panel').hidden = false;
         status('Local review complete. No model has been called. Inspect the exact text before authorizing.');
@@ -765,7 +785,7 @@
         editor.value = checked.answer;
         editor.dispatchEvent(new Event('input', {bubbles: true}));
         editor.focus();
-        status('Added to your unsaved answer. Review and edit it, then choose Save answer locally.');
+        status(root.dataset.early === 'yes' ? 'Added to your unsaved early answer. Review and edit it, then choose Save early answer locally.' : 'Added to your unsaved answer. Review and edit it, then choose Save answer locally.');
       } catch (error) {
         preview.adoptable = false; persist(); status(error.message + ' You can still copy this preview.');
       } finally { find('adopt').disabled = preview?.adoptable === false; }
@@ -807,7 +827,7 @@
       const text = document.createElement('textarea'); text.readOnly = true; text.value = value.answer; text.setAttribute('aria-label', 'Recovered generated preview');
       const discard = document.createElement('button'); discard.type = 'button'; discard.textContent = 'Discard recovered preview'; discard.className = 'button button-secondary';
       discard.addEventListener('click', () => { sessionStorage.removeItem(key); section.remove(); });
-      section.append(notice, text, discard); document.querySelector('.application-questions')?.append(section); count++;
+      section.append(notice, text, discard); document.querySelector('.application-questions, .early-application-questions')?.append(section); count++;
     }
   } catch (_) {}
 })();

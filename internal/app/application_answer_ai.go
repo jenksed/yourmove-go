@@ -59,6 +59,8 @@ type answerGenerationSnapshot struct {
 	JobID                                         int64
 	Destination, PostingProvider                  string
 	QuestionKey                                   string
+	PreparationKind, DiscoverySource              string
+	DiscoveryFingerprint, SourceQuestionID        string
 	Field                                         schema.Field
 	Revision                                      int64
 	BaselineHash                                  string
@@ -72,6 +74,15 @@ func (a *App) currentNarrativeQuestion(id int64, v url.Values) (Job, preparedQue
 	job, err := a.jobByID(id)
 	if err != nil || job.Stage == StageApplied || job.Stage == StageClosed || job.SubmissionCount > 0 || job.URL != v.Get("destination") {
 		return Job{}, preparedQuestion{}, errors.New("state")
+	}
+	if v.Get("early") == "yes" {
+		early, err := a.earlyQuestionForGeneration(job, v.Get("discovery_source"), v.Get("discovery_fingerprint"), v.Get("source_question_id"))
+		revision, revisionErr := strconv.ParseInt(v.Get("revision"), 10, 64)
+		q := preparedQuestion{JobID: job.ID, Destination: job.URL, Field: early.Field, Key: early.Key, Value: early.Value, Revision: early.Revision, Editable: early.Editable}
+		if err != nil || revisionErr != nil || revision != early.Revision || early.Key != v.Get("question_key") || !narrativeAnswerEligible(q) {
+			return Job{}, preparedQuestion{}, errors.New("question")
+		}
+		return job, q, nil
 	}
 	p, err := a.candidateProfile()
 	if err != nil {
@@ -151,7 +162,11 @@ func (a *App) buildAnswerGenerationSnapshot(id int64, v url.Values) (answerGener
 	if len(v["career_evidence"]) > 2 {
 		return out, errors.New("sources")
 	}
-	out = answerGenerationSnapshot{JobID: id, Destination: job.URL, PostingProvider: browser.PostingPlatform(job.URL), QuestionKey: q.Key, Field: q.Field, Revision: q.Revision, BaselineHash: answerAIHash(q.Value), Provider: v.Get("provider"), Model: v.Get("model"), PolicyHash: answerAIHash(answerWritingPolicy), InstructionsHash: answerAIHash(a.resources.applicationAnswerInstructions)}
+	preparationKind := "live"
+	if v.Get("early") == "yes" {
+		preparationKind = "early"
+	}
+	out = answerGenerationSnapshot{JobID: id, Destination: job.URL, PostingProvider: browser.PostingPlatform(job.URL), QuestionKey: q.Key, PreparationKind: preparationKind, DiscoverySource: v.Get("discovery_source"), DiscoveryFingerprint: v.Get("discovery_fingerprint"), SourceQuestionID: v.Get("source_question_id"), Field: q.Field, Revision: q.Revision, BaselineHash: answerAIHash(q.Value), Provider: v.Get("provider"), Model: v.Get("model"), PolicyHash: answerAIHash(answerWritingPolicy), InstructionsHash: answerAIHash(a.resources.applicationAnswerInstructions)}
 	out.Selection = make(url.Values, len(v))
 	for k, values := range v {
 		out.Selection[k] = append([]string(nil), values...)
@@ -284,7 +299,11 @@ func (a *App) buildAnswerGenerationSnapshot(id int64, v url.Values) (answerGener
 	out.Payload = answerAIJSON(out.Sources)
 	out.PayloadHash = answerAIHash(out.Payload)
 	out.Instructions = answerWritingPolicy + "\n\n" + a.resources.applicationAnswerInstructions
-	out.Prompt = "Exact employer question (data):\n" + q.Field.Label + "\n\nSelected sources (data):\n" + out.Payload
+	questionDescription := "Exact employer question (data):\n"
+	if preparationKind == "early" {
+		questionDescription = "Exact published application question (not yet verified on the employer form; data):\n"
+	}
+	out.Prompt = questionDescription + q.Field.Label + "\n\nSelected sources (data):\n" + out.Payload
 	// Include the extra trusted instructions appended for stdin-only providers.
 	if len(out.Prompt)+len(out.Instructions)+2 > 48<<10 {
 		return out, errors.New("prompt_budget")
@@ -453,7 +472,7 @@ func (a *App) applicationAnswerAIHandler(w http.ResponseWriter, r *http.Request)
 	}
 	action := r.PathValue("action")
 	if action == "review" {
-		allowed := map[string]bool{"question_key": false, "revision": false, "destination": false, "provider": false, "model": false, "career_evidence": true, "library_entry": false, "application_resume": false, "master_resume": false, "application_resume_end": false, "master_resume_end": false, "include_job_context": false}
+		allowed := map[string]bool{"question_key": false, "revision": false, "destination": false, "provider": false, "model": false, "career_evidence": true, "library_entry": false, "application_resume": false, "master_resume": false, "application_resume_end": false, "master_resume_end": false, "include_job_context": false, "early": false, "discovery_source": false, "discovery_fingerprint": false, "source_question_id": false}
 		if !parseAnswerAIForm(w, r, 8<<10, allowed) {
 			return
 		}
@@ -488,7 +507,7 @@ func (a *App) applicationAnswerAIHandler(w http.ResponseWriter, r *http.Request)
 		if runner, err := coverprovider.Configure(snapshot.Provider, snapshot.Model); err == nil {
 			execution += " Transport: " + runner.ExecutionLocality() + "."
 		}
-		answerAIResponse(w, 200, map[string]any{"ticket": token, "state": "reviewed", "question_key": snapshot.QuestionKey, "revision": snapshot.Revision, "question": snapshot.Field.Label, "provider": snapshot.Provider, "model": snapshot.Model, "execution": execution, "sources": snapshot.Sources, "source_payload": snapshot.Payload, "prompt": snapshot.Prompt, "instructions": snapshot.Instructions, "expires_at": expires, "requires_external": true})
+		answerAIResponse(w, 200, map[string]any{"ticket": token, "state": "reviewed", "question_key": snapshot.QuestionKey, "revision": snapshot.Revision, "question": snapshot.Field.Label, "preparation_kind": snapshot.PreparationKind, "provider": snapshot.Provider, "model": snapshot.Model, "execution": execution, "sources": snapshot.Sources, "source_payload": snapshot.Payload, "prompt": snapshot.Prompt, "instructions": snapshot.Instructions, "expires_at": expires, "requires_external": true})
 		return
 	}
 	allowed := map[string]bool{"ticket": false}

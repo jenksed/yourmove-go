@@ -2,6 +2,7 @@ package greenhouse
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -35,6 +36,31 @@ func TestRejectsUntrustedURLs(t *testing.T) {
 	for _, s := range []string{"https://bad.test/acme/jobs/123", "http://job-boards.greenhouse.io/acme/jobs/123", "https://job-boards.greenhouse.io@evil.test/acme/jobs/123", "https://job-boards.greenhouse.io/acme/jobs/not-id", "https://job-boards.greenhouse.io/acme/jobs/123/extra"} {
 		if _, _, err := posting(s); err == nil {
 			t.Errorf("accepted %s", s)
+		}
+	}
+}
+
+func BenchmarkGreenhousePublicQuestionDiscovery(b *testing.B) {
+	var payload strings.Builder
+	payload.WriteString(`{"questions":[`)
+	for i := 0; i < 100; i++ {
+		if i > 0 {
+			payload.WriteByte(',')
+		}
+		fmt.Fprintf(&payload, `{"label":"Describe a project, question %03d","required":true,"fields":[{"name":"project_%03d","type":"textarea"}]}`, i, i)
+	}
+	payload.WriteString(`]}`)
+	responseBody := payload.String()
+	client := &http.Client{Transport: roundTrip(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(responseBody)), Header: make(http.Header)}, nil
+	})}
+	inspector := New(client)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		result, err := inspector.Inspect(context.Background(), "https://job-boards.greenhouse.io/acme/jobs/1234")
+		if err != nil || len(result.Fields) != 100 {
+			b.Fatalf("synthetic discovery returned %d fields: %v", len(result.Fields), err)
 		}
 	}
 }

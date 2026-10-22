@@ -34,6 +34,7 @@ type preparedQuestion struct {
 	Revision                  int64
 	Editable                  bool
 	LibraryEligible           bool
+	IsEarly                   bool // Presentation only; this never grants live question authority.
 	LibrarySuggestions        []answerLibrarySuggestion
 	CareerEvidenceSuggestions []careerEvidenceSuggestion
 }

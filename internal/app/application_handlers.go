@@ -27,6 +27,7 @@ type jobWorkspace struct {
 	SubmissionNotice    string
 	SubmissionUncertain bool
 	Questions           questionPreparation
+	EarlyQuestions      earlyQuestionPreparation
 	Job
 	Resumes              []Resume
 	ResumeOptions        []documentRow

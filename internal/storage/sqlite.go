@@ -263,6 +263,28 @@ func initJobsSchema(db *sql.DB) error {
  job_id INTEGER NOT NULL REFERENCES jobs(id), destination TEXT NOT NULL, provider TEXT NOT NULL,
  question_key TEXT NOT NULL, label TEXT NOT NULL, answer TEXT NOT NULL, revision INTEGER NOT NULL,
  PRIMARY KEY(job_id,destination,provider,question_key))`,
+		// Early drafts are intentionally separate from employer answers. Their
+		// question and schema snapshots remain understandable without a mutable
+		// inspection row and never enter the live transfer query.
+		`CREATE TABLE IF NOT EXISTS early_application_answers (
+		 id INTEGER PRIMARY KEY,
+		 job_id INTEGER NOT NULL REFERENCES jobs(id),
+		 destination TEXT NOT NULL,
+		 discovery_source TEXT NOT NULL,
+		 source_question_id TEXT NOT NULL,
+		 question_label TEXT NOT NULL,
+		 field_snapshot_json TEXT NOT NULL,
+		 discovery_fingerprint TEXT NOT NULL,
+		 answer TEXT NOT NULL,
+		 revision INTEGER NOT NULL,
+		 reconciliation_status TEXT NOT NULL DEFAULT 'unreconciled',
+		 live_inspection_fingerprint TEXT NOT NULL DEFAULT '',
+		 live_question_key TEXT NOT NULL DEFAULT '',
+		 reconciled_at TEXT NOT NULL DEFAULT '',
+		 created_at TEXT NOT NULL,
+		 updated_at TEXT NOT NULL,
+		 UNIQUE(job_id,destination,discovery_source,discovery_fingerprint,source_question_id))`,
+		`CREATE INDEX IF NOT EXISTS early_answers_by_job ON early_application_answers(job_id,destination,updated_at DESC,id DESC)`,
 		// Answer Library entries are independent snapshots. Source IDs and URLs are
 		// audit/deduplication metadata, deliberately without a jobs foreign key.
 		`CREATE TABLE IF NOT EXISTS answer_library (

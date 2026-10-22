@@ -98,6 +98,50 @@
     </div>{{end}}
     {{if not .SelectedResume}}<p class="inline-hint">You can still open the employer site and select a file manually.</p>{{end}}
     </section>
+    {{if .AnswerEditingAllowed}}
+    <section class="prepare-handoff early-application-questions" id="early-application-questions" aria-labelledby="early-application-questions-title">
+      <div class="question-heading"><h3 id="early-application-questions-title">Prepare application answers early</h3><a class="text-link" href="/jobs/{{.ID}}/inspection">Rendered-form inspection →</a></div>
+      {{if .EarlyQuestions.Notice}}<p role="status" class="inline-hint">{{.EarlyQuestions.Notice}}</p>{{end}}
+      {{if .EarlyQuestions.Item}}
+        <p role="status"><strong>{{len .EarlyQuestions.Questions}} questions discovered</strong> · {{.EarlyQuestions.Item.Source}} · {{.EarlyQuestions.Item.CheckedAt}}</p>
+        <p class="small-muted">{{.EarlyQuestions.Item.Note}} These are published question definitions. They may not include conditional controls, custom fields, or later steps on the actual employer form.</p>
+        <form method="POST" action="/jobs/{{.ID}}/inspect" class="early-discovery-refresh"><input type="hidden" name="return_to" value="prepare"><button type="submit" class="button button-secondary">Refresh discovered questions</button></form>
+        {{if .EarlyQuestions.Questions}}
+        <div data-question-workbench data-question-param="early_question" data-selected-question="{{.EarlyQuestions.SelectedKey}}">
+        <div class="question-heading"><p class="small-muted" data-question-summary></p><p class="small-muted">Early answers are saved only in YourMove. They are not live application answers and do not authorize browser filling.</p></div>
+        {{if .EarlyQuestions.ReturnNotice}}<p role="status">{{.EarlyQuestions.ReturnNotice}}</p>{{end}}
+        <div class="question-layout">
+          <nav class="question-index" aria-label="Discovered questions" data-question-index hidden></nav>
+          <div class="field question-chooser" hidden><label for="early-question-chooser">Discovered questions</label><select id="early-question-chooser" data-question-chooser></select></div>
+          <div class="question-editors">
+            <p class="question-position small-muted" data-question-position aria-live="polite" hidden></p>
+            {{range .EarlyQuestions.Questions}}
+            <div class="question-panel" id="early-question-{{.Key}}" role="group" aria-label="{{.Field.Label}}" data-question-panel data-question-key="{{.Key}}" data-question-label="{{.Field.Label}}" data-question-status="{{.LocalStatus}}" tabindex="-1">
+              <p class="small-muted">{{.Field.Kind}} · {{if .Field.Required}}Required{{else}}Optional{{end}}{{if .Field.Group}} · {{.Field.Group}}{{end}}</p>
+              {{if .Field.Options}}<p class="small-muted"><strong>Published options</strong> · {{range $i,$option := .Field.Options}}{{if $i}}, {{end}}{{$option}}{{end}}</p>{{end}}
+              {{if .Editable}}
+                {{template "early-application-question" .}}
+                {{if .LibrarySuggestions}}{{template "related-answer-library" .}}{{end}}
+                {{if .CareerEvidence}}{{template "related-career-evidence" .}}{{end}}
+                {{if .AIChoices}}{{template "application-answer-ai" .}}{{end}}
+              {{else}}<h4>{{.Field.Label}}{{if .Field.Required}} (required){{end}}</h4><p>Manual completion required.</p><p class="small-muted">{{.ManualReason}}</p>{{end}}
+            </div>
+            {{end}}
+            <div class="question-navigation" hidden><button type="button" class="button button-secondary" data-question-previous>← Previous</button><button type="button" class="button button-secondary" data-question-next>Next →</button></div>
+          </div>
+        </div>
+        </div>
+        {{else}}<p>No question definitions were published. Use rendered-form inspection when supported, or open the employer application manually.</p>{{end}}
+        {{if .EarlyQuestions.Previous}}<details class="early-previous-drafts"><summary>Earlier prepared answers preserved ({{len .EarlyQuestions.Previous}})</summary>{{range .EarlyQuestions.Previous}}<article class="early-previous-draft"><h4>{{.QuestionLabel}}</h4><p class="small-muted">{{.DiscoverySource}} · {{.UpdatedAt}} · {{.Field.Kind}} · revision {{.Revision}}</p><p role="status">{{.CurrentQuestionState}}</p>{{if .Field.Options}}<p class="small-muted">Original options: {{range $i,$option := .Field.Options}}{{if $i}}, {{end}}{{$option}}{{end}}</p>{{end}}<pre class="evidence-text">{{.Answer}}</pre></article>{{end}}</details>{{end}}
+      {{else if .EarlyQuestions.PublicDiscoveryAllowed}}
+        <p>Discover the published question definitions before opening the employer form. The actual live form can include additional or conditional questions.</p>
+        <form method="POST" action="/jobs/{{.ID}}/inspect"><input type="hidden" name="return_to" value="prepare"><button type="submit" class="button button-primary">Discover application questions</button></form>
+      {{else}}
+        <p role="status">Public question discovery is unavailable for this provider. Use the rendered-form inspection path or open the employer site manually. YourMove will not show an empty question workbench.</p>
+        <a href="/jobs/{{.ID}}/inspection" class="button button-secondary">Open rendered-form inspection</a>
+      {{end}}
+    </section>
+    {{end}}
     {{if .Questions.WorkbenchQuestions}}
     <section class="prepare-handoff application-questions" id="application-questions" aria-labelledby="application-questions-title" data-question-workbench data-selected-question="{{.Questions.SelectedKey}}">
       <div class="question-heading"><h3 id="application-questions-title">Application questions</h3>{{if .AnswerEditingAllowed}}<a href="#prepare" data-review-ready>Review ready material ↑</a>{{end}}</div>
@@ -342,6 +386,21 @@
       {{if and .Revision .LibraryEligible}}{{template "answer-library-promotion" .}}{{end}}
 {{end}}
 
+{{define "early-application-question"}}{{$answer := .Value}}
+      <form method="POST" action="/jobs/{{.JobID}}/answers/early-save" class="application-question-form">
+        <input type="hidden" name="question_key" value="{{.Key}}"><input type="hidden" name="revision" value="{{.Revision}}"><input type="hidden" name="destination" value="{{.Destination}}">
+        <input type="hidden" name="discovery_source" value="{{.DiscoverySource}}"><input type="hidden" name="discovery_fingerprint" value="{{.DiscoveryFingerprint}}"><input type="hidden" name="source_question_id" value="{{.SourceQuestionID}}">
+        <div class="field"><label for="early-answer-{{.Key}}">{{.Field.Label}}{{if .Field.Required}} (required){{end}}</label>
+        {{if or (eq .Field.Kind "select") (eq .Field.Kind "radio") (eq .Field.Kind "multi_value_single_select")}}
+        <select name="answer" id="early-answer-{{.Key}}"><option value="">Choose a published option</option>{{range .Field.Options}}<option value="{{.}}" {{if eq . $answer}}selected{{end}}>{{.}}</option>{{end}}</select>
+        {{else if eq .Field.Kind "textarea"}}<textarea name="answer" id="early-answer-{{.Key}}" rows="5" maxlength="12000">{{.Value}}</textarea>
+        {{else}}<input type="text" name="answer" id="early-answer-{{.Key}}" maxlength="12000" value="{{.Value}}">{{end}}
+        </div>
+        <p class="question-save-status small-muted" data-answer-status role="status">{{.LocalStatus}}</p>
+        <button type="submit" class="button button-primary">Save early answer locally</button>
+      </form>
+{{end}}
+
 {{define "answer-library-promotion"}}
       <details class="answer-library-promotion">
         <summary>Save to Answer Library</summary>
@@ -368,7 +427,7 @@
             <summary>Read the complete answer</summary>
             <div data-related-content><p class="small-muted">Open the complete example to read and copy it. JavaScript can also load it here.</p></div>
             <p><a href="/answer-library/{{.EntryID}}" target="_blank" rel="noopener noreferrer">Open full example and source context ↗</a></p>
-            <button type="button" class="button button-secondary" data-use-library-answer data-entry-id="{{.EntryID}}" data-startpoint-url="/jobs/{{$.JobID}}/answers/starting-point" hidden>Use as starting point</button>
+            {{if not $.IsEarly}}<button type="button" class="button button-secondary" data-use-library-answer data-entry-id="{{.EntryID}}" data-startpoint-url="/jobs/{{$.JobID}}/answers/starting-point" hidden>Use as starting point</button>{{end}}
             <p class="small-muted" role="status" aria-live="polite" data-related-status></p>
           </details>
         </article>
@@ -421,6 +480,15 @@
 </section>{{template "shell-close" .}}</body></html>
 {{end}}
 
+{{define "early-answer-save-error"}}
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Early answer not saved · YourMove</title><link rel="stylesheet" href="/static/styles.css"><script defer src="/static/ui.js"></script></head><body>
+{{template "shell-open" "jobs"}}
+<section class="panel answer-save-error" data-answer-recovery><h1>Early answer not saved</h1><p role="alert">{{.Message}}</p>
+<p>Your submitted text remains below as unsaved work. Copy it before reviewing the current discovery. Early answers are separate from live application answers.</p>
+<div class="field"><label for="unsaved-early-answer">Unsaved early answer</label><textarea id="unsaved-early-answer" rows="8">{{.Value}}</textarea></div>
+<p><a href="/jobs/{{.ID}}#prepare">Review Prepare and the current discovered questions →</a></p></section>{{template "shell-close" .}}</body></html>
+{{end}}
+
 {{define "letter-save-error"}}
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Letter not saved · YourMove</title><link rel="stylesheet" href="/static/styles.css"><script defer src="/static/ui.js"></script></head><body>
 {{template "shell-open" "jobs"}}
@@ -435,7 +503,7 @@
 {{define "resume-option-label"}}{{if .FamilyName}}{{.FamilyName}} · {{end}}{{.Name}} ({{.Kind}}){{if .IsPrimary}} · Primary{{end}}{{if .ArchivedAt}} · Archived (select a newer version){{end}}{{end}}
 
 {{define "application-answer-ai"}}
-<details class="answer-ai" data-answer-ai data-job="{{.JobID}}" data-key="{{.Key}}" data-revision="{{.Revision}}" data-destination="{{.Destination}}">
+<details class="answer-ai" data-answer-ai data-job="{{.JobID}}" data-key="{{.Key}}" data-revision="{{.Revision}}" data-destination="{{.Destination}}" {{if .IsEarly}}data-early="yes" data-discovery-source="{{.DiscoverySource}}" data-discovery-fingerprint="{{.DiscoveryFingerprint}}" data-source-question-id="{{.SourceQuestionID}}"{{end}}>
   <summary>Draft answer with AI</summary>
   <noscript><p>Inline AI drafting requires JavaScript. You can still edit and save your answer normally.</p></noscript>
   <div data-answer-ai-controls hidden>
