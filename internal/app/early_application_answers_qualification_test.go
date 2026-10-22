@@ -267,6 +267,7 @@ func TestControlledEarlyPreparationWorkbench(t *testing.T) {
 		"destination":                 {job.URL},
 		"live_inspection_fingerprint": {preparedEarly.Reconciliation.LiveInspectionFingerprint},
 		"live_question_key":           {preparedEarly.Reconciliation.LiveQuestionKey},
+		"live_answer_revision":        {fmt.Sprint(preparedEarly.Reconciliation.LiveAnswerRevision)},
 	}
 	preparedPage := httptest.NewRecorder()
 	newMux(a).ServeHTTP(preparedPage, httptest.NewRequest("GET", "http://localhost/jobs/1", nil))

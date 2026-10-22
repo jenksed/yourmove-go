@@ -40,29 +40,73 @@ func (a *App) reconcileEarlyPreparation(job Job, public *Inspection, preparation
 			Answer: q.Value, Revision: q.Revision, ReconciliationStatus: q.SavedReconciliationStatus,
 			LiveInspection: q.SavedLiveInspection, LiveQuestionKey: q.SavedLiveQuestionKey,
 		}
-		q.Reconciliation = reconcileEarlyAnswer(job, answer, public, live, liveAvailable)
+		q.Reconciliation, err = a.reconcileSavedEarlyAnswer(job, answer, public, live, liveAvailable)
+		if err != nil {
+			return err
+		}
 		if q.Reconciliation.Accepted {
 			q.LocalStatus = q.Status()
 		}
 	}
 	for i := range preparation.Previous {
-		preparation.Previous[i].Reconciliation = reconcileEarlyAnswer(job, preparation.Previous[i], public, live, liveAvailable)
+		preparation.Previous[i].Reconciliation, err = a.reconcileSavedEarlyAnswer(job, preparation.Previous[i], public, live, liveAvailable)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+func (a *App) reconcileSavedEarlyAnswer(job Job, answer earlyApplicationAnswer, public *Inspection, live Inspection, liveAvailable bool) (earlyReconciliation, error) {
+	result := reconcileEarlyAnswer(job, answer, public, live, liveAvailable)
+	if !result.CanAccept {
+		return result, nil
+	}
+	current, err := a.savedLiveAnswer(job, result.LiveQuestionKey)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return earlyReconciliation{}, err
+	}
+	if err == nil {
+		result.LiveAnswerRevision = current.Revision
+	}
+	if answer.ReconciliationStatus != "accepted" || answer.LiveQuestionKey == "" || result.LiveQuestionKey != answer.LiveQuestionKey {
+		return result, nil
+	}
+	if err == nil && current.Value == answer.Answer {
+		result.Status = "Accepted as a live answer"
+		result.Detail = "The current saved live answer still matches this early draft. Browser filling still requires separate authorization."
+		result.Accepted = true
+		result.CanAccept = false
+		return result, nil
+	}
+	result.Accepted = false
+	result.CanAccept = false
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		result.Status = "Live answer removed"
+		result.Detail = "This early answer was accepted before, but its live saved answer has since been removed. The current live workbench is unchanged; this early copy remains saved for review."
+	case current.Value == "":
+		result.Status = "Live answer cleared"
+		result.Detail = "This early answer was accepted before, but its live saved answer has since been cleared. The cleared live answer stays unchanged; this early copy remains saved for review."
+	default:
+		result.Status = "Live answer changed"
+		result.Detail = "This early answer was accepted before, but its live saved answer has since changed. The newer live answer stays unchanged; this early copy remains saved for review."
+	}
+	return result, nil
+}
+
+func (a *App) savedLiveAnswer(job Job, questionKey string) (savedApplicationAnswer, error) {
+	var answer savedApplicationAnswer
+	err := a.db.QueryRow(`SELECT question_key,label,answer,revision FROM application_answers
+		WHERE job_id=? AND destination=? AND provider=? AND question_key=?`,
+		job.ID, job.URL, browser.PostingPlatform(job.URL), questionKey).Scan(&answer.Key, &answer.Label, &answer.Value, &answer.Revision)
+	return answer, err
 }
 
 func reconcileEarlyAnswer(job Job, answer earlyApplicationAnswer, public *Inspection, live Inspection, liveAvailable bool) earlyReconciliation {
 	result := earlyReconciliation{Status: "Not observed yet", Detail: "This saved question has not been matched to a current rendered application control."}
 	if answer.Destination != job.URL {
 		return earlyReconciliation{Status: "Manual only", Detail: "The saved employer destination changed. The original answer is preserved and cannot be used for this destination."}
-	}
-	if answer.ReconciliationStatus == "accepted" && liveAvailable && live.Fingerprint == answer.LiveInspection && answer.LiveQuestionKey != "" {
-		result.Status = "Accepted as a live answer"
-		result.Detail = "Saved in the live application answer workbench. Browser filling still requires separate authorization."
-		result.LiveInspectionFingerprint = live.Fingerprint
-		result.LiveQuestionKey = answer.LiveQuestionKey
-		result.Accepted = true
-		return result
 	}
 	if answer.DiscoverySource != "public_api" && answer.DiscoverySource != "preview" {
 		return earlyReconciliation{Status: "Manual only", Detail: "This discovery source has no qualified identity relationship with live controls."}
@@ -240,7 +284,8 @@ func (a *App) acceptEarlyApplicationAnswer(w http.ResponseWriter, r *http.Reques
 	}
 	answerID, idErr := strconv.ParseInt(r.PostForm.Get("early_answer_id"), 10, 64)
 	revision, revErr := strconv.ParseInt(r.PostForm.Get("early_revision"), 10, 64)
-	if idErr != nil || answerID <= 0 || revErr != nil || revision <= 0 || r.PostForm.Get("destination") != job.URL {
+	liveAnswerRevision, liveAnswerRevErr := strconv.ParseInt(r.PostForm.Get("live_answer_revision"), 10, 64)
+	if idErr != nil || answerID <= 0 || revErr != nil || revision <= 0 || liveAnswerRevErr != nil || liveAnswerRevision < 0 || r.PostForm.Get("destination") != job.URL {
 		fail("This prepared answer changed. Review the current question before continuing.", http.StatusConflict)
 		return
 	}
@@ -283,6 +328,10 @@ func (a *App) acceptEarlyApplicationAnswer(w http.ResponseWriter, r *http.Reques
 	}
 	if liveQuestion == nil || !liveQuestion.Editable {
 		fail("The current employer question is not eligible for a saved local answer. Complete it manually.", http.StatusConflict)
+		return
+	}
+	if liveQuestion.Revision != liveAnswerRevision {
+		fail("The live saved answer changed after this review. Your current live answer was kept; review it before using the early draft.", http.StatusConflict)
 		return
 	}
 	if message := validateApplicationAnswerValue(*liveQuestion, answer.Answer); message != "" {

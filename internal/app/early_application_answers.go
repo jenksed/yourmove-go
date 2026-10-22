@@ -50,6 +50,7 @@ type earlyReconciliation struct {
 	Detail                    string
 	LiveQuestionKey           string
 	LiveInspectionFingerprint string
+	LiveAnswerRevision        int64
 	LiveField                 schema.Field
 	CanAccept                 bool
 	Accepted                  bool

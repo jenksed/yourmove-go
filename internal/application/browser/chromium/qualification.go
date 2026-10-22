@@ -85,14 +85,14 @@ func PreviewFixture(ctx context.Context, savedPosting, fixturePosting string) (s
 	dir := session.dir
 	observation, observeErr := observePreviewPage(ctx, session)
 	closeErr := session.Close()
-	if observeErr != nil {
-		return schema.Result{}, fmt.Errorf("observe controlled preview fixture: %w", observeErr)
-	}
 	if closeErr != nil {
-		return schema.Result{}, closeErr
+		return schema.Result{}, fmt.Errorf("close controlled preview: %w", closeErr)
 	}
 	if _, err := os.Stat(dir); !os.IsNotExist(err) {
 		return schema.Result{}, errors.New("qualification preview profile was not removed")
+	}
+	if observeErr != nil {
+		return schema.Result{}, fmt.Errorf("observe controlled preview fixture: %w", observeErr)
 	}
 	// The fixture served at loopback is a controlled surrogate for this exact
 	// saved Ashby posting; no network request is made to a real employer.

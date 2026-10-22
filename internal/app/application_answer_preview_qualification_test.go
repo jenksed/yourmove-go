@@ -159,6 +159,55 @@ func TestAshbyPreviewFailureAndUnsupportedProviderPreserveSavedData(t *testing.T
 	}
 }
 
+func TestControlledAshbyPreviewCancellationRemovesIsolatedProfile(t *testing.T) {
+	if testing.Short() || os.Getenv("YOURMOVE_QUALIFY_PREVIEW") != "1" {
+		t.Skip("opt-in isolated Ashby preview cancellation qualification")
+	}
+	requested := make(chan struct{}, 1)
+	var mutationCount atomic.Int32
+	employer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			mutationCount.Add(1)
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		select {
+		case requested <- struct{}{}:
+		default:
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprint(w, `<!doctype html><html><head><title>Slow synthetic preview</title></head><body><h1>Preview remains read only</h1></body></html>`)
+	}))
+	defer employer.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	result := make(chan error, 1)
+	go func() {
+		_, err := chromium.PreviewFixture(ctx, testAshbyPosting, employer.URL)
+		result <- err
+	}()
+	select {
+	case <-requested:
+	case <-time.After(12 * time.Second):
+		cancel()
+		t.Fatal("preview browser did not request the controlled page")
+	}
+	// The empty page keeps the preview in its bounded observation window after
+	// its first DOM snapshot, leaving a deterministic cancellation point.
+	time.Sleep(300 * time.Millisecond)
+	cancel()
+	select {
+	case err := <-result:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("preview cancellation returned %v", err)
+		}
+	case <-time.After(12 * time.Second):
+		t.Fatal("canceled preview did not release its Chromium process")
+	}
+	if mutationCount.Load() != 0 {
+		t.Fatalf("canceled preview made %d non-GET requests", mutationCount.Load())
+	}
+}
+
 func earlyAshbyFixture(t *testing.T, a *App) (Job, schema.Result) {
 	t.Helper()
 	job := Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com", Title: "Synthetic Ashby role"}

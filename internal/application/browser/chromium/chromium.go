@@ -43,6 +43,10 @@ type Session struct {
 }
 
 func Launch(ctx context.Context, posting string) (*Session, error) {
+	return launch(ctx, posting, false)
+}
+
+func launch(ctx context.Context, posting string, headless bool) (*Session, error) {
 	if !browser.OwnsPostingURL(posting, posting) {
 		return nil, errors.New("managed inspection supports saved Ashby, Greenhouse, and Lever postings")
 	}
@@ -75,6 +79,9 @@ func Launch(ctx context.Context, posting string) (*Session, error) {
 		landing = u.String()
 	}
 	args := launchArguments(dir, landing)
+	if headless {
+		args = previewLaunchArguments(dir, landing)
+	}
 	// Root-only container testing opt-in. Never disable the sandbox by default.
 	if os.Getenv("YOURMOVE_CHROME_NO_SANDBOX") == "1" {
 		args = append(args, "--no-sandbox")
@@ -101,11 +108,9 @@ func Launch(ctx context.Context, posting string) (*Session, error) {
 		}
 		select {
 		case <-ctx.Done():
-			s.Close()
-			return nil, ctx.Err()
+			return nil, errors.Join(ctx.Err(), s.Close())
 		case <-deadline.C:
-			s.Close()
-			return nil, errors.New("Chromium did not expose a debugging port; verify it can launch a visible window")
+			return nil, errors.Join(errors.New("Chromium did not expose a debugging port; verify it can launch"), s.Close())
 		case <-tick.C:
 		}
 	}
@@ -114,17 +119,22 @@ func Launch(ctx context.Context, posting string) (*Session, error) {
 // Preview opens one public Ashby application route in an isolated temporary
 // Chromium profile, observes its current DOM once, and closes only that process.
 // It does not join the managed application watcher or expose mutation methods.
-func Preview(ctx context.Context, posting string) (schema.Result, error) {
+func Preview(ctx context.Context, posting string) (result schema.Result, err error) {
 	if browser.PostingPlatform(posting) != "ashby" || !browser.OwnsPostingURL(posting, posting) {
 		return schema.Result{}, errors.New("read-only preview supports only the saved Ashby posting")
 	}
 	bounded, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
-	session, err := Launch(bounded, posting)
+	session, err := launch(bounded, posting, true)
 	if err != nil {
 		return schema.Result{}, err
 	}
-	defer session.Close()
+	defer func() {
+		if closeErr := session.Close(); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("close read-only preview: %w", closeErr))
+			result = schema.Result{}
+		}
+	}()
 	observation, err := observePreviewPage(bounded, session)
 	if err != nil {
 		return schema.Result{}, err
@@ -142,6 +152,9 @@ func observePreviewPage(ctx context.Context, session *Session) (browser.Observat
 		observation, err := session.Observe(bounded)
 		if err != nil {
 			if haveSnapshot && errors.Is(err, context.DeadlineExceeded) {
+				if contextErr := ctx.Err(); contextErr != nil {
+					return browser.Observation{}, contextErr
+				}
 				return last, nil
 			}
 			return browser.Observation{}, err
@@ -154,6 +167,9 @@ func observePreviewPage(ctx context.Context, session *Session) (browser.Observat
 		select {
 		case <-bounded.Done():
 			timer.Stop()
+			if err := ctx.Err(); err != nil {
+				return browser.Observation{}, err
+			}
 			return last, nil
 		case <-timer.C:
 		}
@@ -164,6 +180,10 @@ func observePreviewPage(ctx context.Context, session *Session) (browser.Observat
 // must start on the application page, never the job description page.
 func launchArguments(profileDir, applicationURL string) []string {
 	return []string{"--remote-debugging-port=0", "--remote-debugging-address=127.0.0.1", "--user-data-dir=" + profileDir, "--no-first-run", "--no-default-browser-check", "--disable-sync", "--window-size=1150,850", "--app=" + applicationURL}
+}
+
+func previewLaunchArguments(profileDir, applicationURL string) []string {
+	return append(launchArguments(profileDir, applicationURL), "--headless=new")
 }
 
 func (s *Session) Close() error {

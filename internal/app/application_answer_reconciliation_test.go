@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
@@ -57,6 +58,7 @@ func TestGreenhouseEarlyAnswerNeedsExplicitLiveAcceptance(t *testing.T) {
 		"destination":                 {job.URL},
 		"live_inspection_fingerprint": {prepared.Reconciliation.LiveInspectionFingerprint},
 		"live_question_key":           {prepared.Reconciliation.LiveQuestionKey},
+		"live_answer_revision":        {fmt.Sprint(prepared.Reconciliation.LiveAnswerRevision)},
 	}
 	accepted := postApp(newDesktopMux(a), "/jobs/1/answers/early-accept", values, "wails://localhost", "1")
 	if accepted.Code != 200 || !strings.Contains(accepted.Body.String(), `window.location.replace("/jobs/1?question=`) {
@@ -207,6 +209,7 @@ func TestEarlyAcceptanceRejectsStaleDraftAndChangedLiveInspection(t *testing.T) 
 		"destination":                 {job.URL},
 		"live_inspection_fingerprint": {q.Reconciliation.LiveInspectionFingerprint},
 		"live_question_key":           {q.Reconciliation.LiveQuestionKey},
+		"live_answer_revision":        {fmt.Sprint(q.Reconciliation.LiveAnswerRevision)},
 	}
 	stale := values.Clone()
 	stale.Set("early_revision", "0")
@@ -225,4 +228,168 @@ func TestEarlyAcceptanceRejectsStaleDraftAndChangedLiveInspection(t *testing.T) 
 	if err := a.db.QueryRow(`SELECT COUNT(*) FROM application_answers`).Scan(&count); err != nil || count != 0 {
 		t.Fatalf("rejected acceptance wrote live answer: %d %v", count, err)
 	}
+}
+
+func TestAcceptedEarlyAnswerReflectsCurrentLiveSavedAnswer(t *testing.T) {
+	for _, tc := range []struct {
+		name, status, liveValue, mutation string
+	}{
+		{name: "changed", status: "Live answer changed", liveValue: "Newer live answer", mutation: "UPDATE"},
+		{name: "cleared", status: "Live answer cleared", liveValue: "", mutation: "UPDATE"},
+		{name: "removed", status: "Live answer removed", mutation: "DELETE"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, job, earlyAnswer, liveKey, preparedText := acceptGreenhouseEarlyAnswer(t)
+			if tc.mutation == "DELETE" {
+				if _, err := a.db.Exec(`DELETE FROM application_answers WHERE job_id=? AND question_key=?`, job.ID, liveKey); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				if _, err := a.db.Exec(`UPDATE application_answers SET answer=?,revision=revision+1 WHERE job_id=? AND question_key=?`, tc.liveValue, job.ID, liveKey); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			preparation, err := a.prepareEarlyQuestions(job, httptest.NewRequest("GET", "http://localhost/jobs/1", nil))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got earlyApplicationQuestion
+			for _, candidate := range preparation.Questions {
+				if candidate.EarlyAnswerID == earlyAnswer.ID {
+					got = candidate
+					break
+				}
+			}
+			if got.EarlyAnswerID == 0 {
+				t.Fatal("accepted early answer was not in the current question list")
+			}
+			if got.Reconciliation.Status != tc.status || got.Reconciliation.Accepted || got.Reconciliation.CanAccept {
+				t.Fatalf("stale acceptance was not withdrawn: %+v", got.Reconciliation)
+			}
+			if strings.Contains(got.LocalStatus, "Accepted as a live") || strings.Contains(got.Status(), "Accepted as a live") {
+				t.Fatalf("early draft still presents as current live answer: local=%q status=%q", got.LocalStatus, got.Status())
+			}
+			page := httptest.NewRecorder()
+			newMux(a).ServeHTTP(page, httptest.NewRequest("GET", "http://localhost/jobs/1", nil))
+			if !strings.Contains(page.Body.String(), tc.status) || strings.Contains(page.Body.String(), `action="/jobs/1/answers/early-accept"`) {
+				t.Fatalf("page did not show stale state without an acceptance action: %s", page.Body.String())
+			}
+
+			var storedEarly string
+			if err := a.db.QueryRow(`SELECT answer FROM early_application_answers WHERE id=?`, earlyAnswer.ID).Scan(&storedEarly); err != nil || storedEarly != preparedText {
+				t.Fatalf("early copy changed: %q err=%v", storedEarly, err)
+			}
+			var storedLive string
+			err = a.db.QueryRow(`SELECT answer FROM application_answers WHERE job_id=? AND question_key=?`, job.ID, liveKey).Scan(&storedLive)
+			if tc.mutation == "DELETE" {
+				if err == nil {
+					t.Fatalf("removed live answer was restored as %q", storedLive)
+				}
+			} else if err != nil || storedLive != tc.liveValue {
+				t.Fatalf("current live answer changed: %q err=%v", storedLive, err)
+			}
+		})
+	}
+}
+
+func TestEarlyAcceptanceRejectsChangedLiveAnswerRevision(t *testing.T) {
+	a, job, earlyQuestion, acceptValues := readyGreenhouseEarlyAnswer(t)
+	profile, err := a.candidateProfile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	live, err := a.prepareQuestions(job, profile)
+	if err != nil || len(live.Questions) == 0 {
+		t.Fatalf("prepare current live question: %+v err=%v", live.Questions, err)
+	}
+	var liveQuestion *preparedQuestion
+	for i := range live.Questions {
+		if live.Questions[i].Key == acceptValues.Get("live_question_key") {
+			liveQuestion = &live.Questions[i]
+			break
+		}
+	}
+	if liveQuestion == nil {
+		t.Fatal("live answer selected for acceptance was not prepared")
+	}
+	newerText := "A newer live answer saved in another tab."
+	edit := url.Values{
+		"question_key": {liveQuestion.Key},
+		"revision":     {fmt.Sprint(liveQuestion.Revision)},
+		"destination":  {job.URL},
+		"answer":       {newerText},
+	}
+	if rec := postApp(newMux(a), "/jobs/1/answers/save", edit, "", ""); rec.Code != http.StatusSeeOther {
+		t.Fatalf("save newer live answer: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := postApp(newMux(a), "/jobs/1/answers/early-accept", acceptValues, "", ""); rec.Code != http.StatusConflict {
+		t.Fatalf("stale acceptance did not conflict: %d %s", rec.Code, rec.Body.String())
+	}
+	var savedLive, savedEarly string
+	if err := a.db.QueryRow(`SELECT answer FROM application_answers WHERE job_id=1`).Scan(&savedLive); err != nil || savedLive != newerText {
+		t.Fatalf("new live answer was overwritten: %q err=%v", savedLive, err)
+	}
+	if err := a.db.QueryRow(`SELECT answer FROM early_application_answers WHERE id=?`, earlyQuestion.EarlyAnswerID).Scan(&savedEarly); err != nil || savedEarly != earlyQuestion.Value {
+		t.Fatalf("early draft changed after rejected acceptance: %q err=%v", savedEarly, err)
+	}
+}
+
+func acceptGreenhouseEarlyAnswer(t *testing.T) (*App, Job, earlyApplicationAnswer, string, string) {
+	t.Helper()
+	a, job, question, values := readyGreenhouseEarlyAnswer(t)
+	preparedText := question.Value
+	if rec := postApp(newMux(a), "/jobs/1/answers/early-accept", values, "", ""); rec.Code != http.StatusSeeOther {
+		t.Fatalf("accept early answer: %d %s", rec.Code, rec.Body.String())
+	}
+	answer, err := earlyApplicationAnswerByID(a, job.ID, question.EarlyAnswerID)
+	if err != nil || answer.ReconciliationStatus != "accepted" {
+		t.Fatalf("early acceptance was not recorded: %+v err=%v", answer, err)
+	}
+	return a, job, answer, values.Get("live_question_key"), preparedText
+}
+
+func readyGreenhouseEarlyAnswer(t *testing.T) (*App, Job, earlyApplicationQuestion, url.Values) {
+	t.Helper()
+	a, _ := testWorkspace(t)
+	job, publicResult := earlyGreenhouseFixture(t, a)
+	if _, err := a.saveInspection(job.ID, publicResult); err != nil {
+		t.Fatal(err)
+	}
+	question := earlyQuestionByID(t, a, job, "application:story", "")
+	preparedText := "Prepared answer kept in its own record."
+	if rec := postApp(newMux(a), "/jobs/1/answers/early-save", earlySaveValues(job, question, "0", preparedText), "", ""); rec.Code != http.StatusSeeOther {
+		t.Fatalf("save early answer: %d %s", rec.Code, rec.Body.String())
+	}
+	liveResult := schema.Result{Platform: "greenhouse", Source: "browser", Completeness: "rendered_partial", ApplicationURL: job.URL, Fields: []schema.Field{{ID: "browser:story", Label: question.Field.Label, Kind: "textarea", Required: true}}}
+	if _, err := a.saveInspection(job.ID, liveResult); err != nil {
+		t.Fatal(err)
+	}
+	preparation, err := a.prepareEarlyQuestions(job, httptest.NewRequest("GET", "http://localhost/jobs/1", nil))
+	if err != nil {
+		t.Fatalf("prepare early answer for review: %+v err=%v", preparation.Questions, err)
+	}
+	found := false
+	for _, candidate := range preparation.Questions {
+		if candidate.SourceQuestionID == "application:story" {
+			question = candidate
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("early answer question was not prepared")
+	}
+	if question.Reconciliation.Status != "Ready for explicit review" || !question.Reconciliation.CanAccept {
+		t.Fatalf("prepared answer is not reviewable: %+v", question.Reconciliation)
+	}
+	values := url.Values{
+		"early_answer_id":             {fmt.Sprint(question.EarlyAnswerID)},
+		"early_revision":              {fmt.Sprint(question.Revision)},
+		"destination":                 {job.URL},
+		"live_inspection_fingerprint": {question.Reconciliation.LiveInspectionFingerprint},
+		"live_question_key":           {question.Reconciliation.LiveQuestionKey},
+		"live_answer_revision":        {fmt.Sprint(question.Reconciliation.LiveAnswerRevision)},
+	}
+	return a, job, question, values
 }

@@ -50,3 +50,19 @@ func TestLaunchArgumentsUseApplicationNotDescription(t *testing.T) {
 	}
 	t.Fatalf("missing direct application landing: %v", args)
 }
+
+func TestPreviewLaunchArgumentsUseAnIsolatedHeadlessProfile(t *testing.T) {
+	posting := "https://jobs.ashbyhq.com/render/e1f2d6a2-b9e2-4f16-b863-3ca228c83e75"
+	args := previewLaunchArguments("/tmp/isolated-preview-profile", posting+"/application")
+	want := map[string]bool{
+		"--user-data-dir=/tmp/isolated-preview-profile": true,
+		"--app=" + posting + "/application":             true,
+		"--headless=new":                                true,
+	}
+	for _, arg := range args {
+		delete(want, arg)
+	}
+	if len(want) != 0 {
+		t.Fatalf("preview is missing isolated/headless launch arguments: %v in %v", want, args)
+	}
+}
