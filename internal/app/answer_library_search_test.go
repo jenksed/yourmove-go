@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -126,21 +127,21 @@ func TestAnswerLibrarySearchAndStartingPointAreReadOnlyUntilSave(t *testing.T) {
 	key := questionKey(destination.URL, "ashby", field)
 	saveLibrarySourceAnswer(t, a, destination, key, "Existing saved response", 0)
 	startingPointForm := url.Values{
-		"library_entry_id": {strconv.FormatInt(entries[0].ID, 10)}, "question_key": {key}, "revision": {"1"},
+		"library_entry_id": {strconv.FormatInt(entries[0].ID, 10)}, "library_revision": {strconv.FormatInt(entries[0].Revision, 10)}, "question_key": {key}, "revision": {"1"}, "destination": {destination.URL},
 	}
 	startingPoint := postApp(newMux(a), "/jobs/2/answers/starting-point", startingPointForm, "", "")
 	if startingPoint.Code != http.StatusOK || !strings.Contains(startingPoint.Body.String(), "challenging Linux incident") {
 		t.Fatalf("starting point could not be read: %d %s", startingPoint.Code, startingPoint.Body.String())
 	}
-	stale := url.Values{"library_entry_id": {strconv.FormatInt(entries[0].ID, 10)}, "question_key": {key}, "revision": {"0"}}
+	stale := url.Values{"library_entry_id": {strconv.FormatInt(entries[0].ID, 10)}, "library_revision": {strconv.FormatInt(entries[0].Revision, 10)}, "question_key": {key}, "revision": {"0"}, "destination": {destination.URL}}
 	if response := postApp(newMux(a), "/jobs/2/answers/starting-point", stale, "", ""); response.Code != http.StatusConflict {
 		t.Fatalf("stale question revision accepted as a starting point: %d", response.Code)
 	}
-	foreign := url.Values{"library_entry_id": {strconv.FormatInt(entries[0].ID, 10)}, "question_key": {strings.Repeat("0", 64)}, "revision": {"1"}}
+	foreign := url.Values{"library_entry_id": {strconv.FormatInt(entries[0].ID, 10)}, "library_revision": {strconv.FormatInt(entries[0].Revision, 10)}, "question_key": {strings.Repeat("0", 64)}, "revision": {"1"}, "destination": {destination.URL}}
 	if response := postApp(newMux(a), "/jobs/2/answers/starting-point", foreign, "", ""); response.Code != http.StatusConflict {
 		t.Fatalf("different question identity accepted as a starting point: %d", response.Code)
 	}
-	missing := url.Values{"library_entry_id": {"99999"}, "question_key": {key}, "revision": {"1"}}
+	missing := url.Values{"library_entry_id": {"99999"}, "library_revision": {"1"}, "question_key": {key}, "revision": {"1"}, "destination": {destination.URL}}
 	if response := postApp(newMux(a), "/jobs/2/answers/starting-point", missing, "", ""); response.Code != http.StatusNotFound {
 		t.Fatalf("missing library source accepted: %d", response.Code)
 	}
@@ -158,9 +159,12 @@ func TestAnswerLibrarySearchAndStartingPointAreReadOnlyUntilSave(t *testing.T) {
 	}
 
 	page := httptestGet(t, newMux(a), "/jobs/2")
-	if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), "Related previous writing") ||
-		!strings.Contains(page.Body.String(), "Original question") || !strings.Contains(page.Body.String(), "Use as starting point") {
-		t.Fatalf("Question Workbench did not present related writing: %d %s", page.Code, page.Body.String())
+	if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), "Help me answer") || strings.Contains(page.Body.String(), "Related previous writing") {
+		t.Fatalf("Question Workbench did not defer related writing until requested: %d", page.Code)
+	}
+	help := postApp(newMux(a), "/jobs/2/answers/help", url.Values{"question_key": {key}, "revision": {"1"}, "destination": {destination.URL}}, "", "")
+	if help.Code != http.StatusOK || !strings.Contains(help.Body.String(), "Related previous writing") || !strings.Contains(help.Body.String(), "Use as starting point") {
+		t.Fatalf("Question Workbench did not return requested assistance: %d %s", help.Code, help.Body.String())
 	}
 	if err := a.db.QueryRow(`SELECT answer,revision FROM application_answers WHERE job_id=? AND question_key=?`, destination.ID, key).Scan(&destinationAnswer, &destinationRevision); err != nil {
 		t.Fatal(err)
@@ -270,7 +274,7 @@ func TestAnswerLibraryStartingDraftSurvivesStaleSaveError(t *testing.T) {
 	initial := "My original current-application answer."
 	saveLibrarySourceAnswer(t, a, destination, key, initial, 0)
 	selected := postApp(newMux(a), "/jobs/2/answers/starting-point", url.Values{
-		"library_entry_id": {strconv.FormatInt(entry[0].ID, 10)}, "question_key": {key}, "revision": {"1"},
+		"library_entry_id": {strconv.FormatInt(entry[0].ID, 10)}, "library_revision": {strconv.FormatInt(entry[0].Revision, 10)}, "question_key": {key}, "revision": {"1"}, "destination": {destination.URL},
 	}, "", "")
 	if selected.Code != http.StatusOK || !strings.Contains(selected.Body.String(), sourceAnswer) {
 		t.Fatalf("read starting text: %d %s", selected.Code, selected.Body.String())
@@ -290,6 +294,72 @@ func TestAnswerLibraryStartingDraftSurvivesStaleSaveError(t *testing.T) {
 	var revision int64
 	if err := a.db.QueryRow(`SELECT answer,revision FROM application_answers WHERE job_id=? AND question_key=?`, destination.ID, key).Scan(&stored, &revision); err != nil || stored != newer || revision != 2 {
 		t.Fatalf("stale save overwrote the newer answer: %q revision=%d err=%v", stored, revision, err)
+	}
+}
+
+func TestEarlyAnswerLibraryStartingPointIsQuestionBoundAndUnsaved(t *testing.T) {
+	a, _ := testWorkspace(t)
+	job, result := earlyGreenhouseFixture(t, a)
+	if _, err := a.saveInspection(job.ID, result); err != nil {
+		t.Fatal(err)
+	}
+	current := earlyQuestionByID(t, a, job, "application:story", "")
+	source := Job{URL: "https://jobs.ashbyhq.com/source/00000000-0000-0000-0000-000000000002", Host: "jobs.ashbyhq.com", Title: "Source role", Company: "Example employer"}
+	if err := a.saveJob(source); err != nil {
+		t.Fatal(err)
+	}
+	source, err := a.jobByID(2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	field := schema.Field{ID: "browser:source-story", Label: "Describe a technical customer challenge you resolved", Kind: "textarea"}
+	if _, err := a.saveInspection(source.ID, schema.Result{Platform: "ashby", Source: "browser", ApplicationURL: source.URL + "/application", Fields: []schema.Field{field}}); err != nil {
+		t.Fatal(err)
+	}
+	sourceKey := questionKey(source.URL, "ashby", field)
+	answer := "I diagnosed the customer issue, documented the fix, and reviewed the outcome with the team."
+	saveLibrarySourceAnswer(t, a, source, sourceKey, answer, 0)
+	if response := promoteLibrarySource(t, a, source.ID, sourceKey, 1); response.Code != http.StatusSeeOther {
+		t.Fatalf("promote source: %d %s", response.Code, response.Body.String())
+	}
+	entries, err := a.answerLibraryEntries()
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("library entries: %d %v", len(entries), err)
+	}
+	base := url.Values{"library_entry_id": {strconv.FormatInt(entries[0].ID, 10)}, "library_revision": {strconv.FormatInt(entries[0].Revision, 10)}, "question_key": {current.Key}, "revision": {"0"}, "destination": {job.URL}, "early": {"yes"}, "discovery_source": {current.DiscoverySource}, "discovery_fingerprint": {current.DiscoveryFingerprint}, "source_question_id": {current.SourceQuestionID}}
+	selected := postApp(newMux(a), "/jobs/1/answers/starting-point", base, "", "")
+	var got struct {
+		EntryID     int64  `json:"entry_id"`
+		QuestionKey string `json:"question_key"`
+		Revision    int64  `json:"revision"`
+		Answer      string `json:"answer"`
+	}
+	if selected.Code != http.StatusOK || json.Unmarshal(selected.Body.Bytes(), &got) != nil || got.EntryID != entries[0].ID || got.QuestionKey != current.Key || got.Revision != 0 || got.Answer != answer {
+		t.Fatalf("early starting point: %d %s %+v", selected.Code, selected.Body.String(), got)
+	}
+	if _, err := a.db.Exec(`UPDATE answer_library SET revision=revision+1 WHERE id=?`, entries[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	if response := postApp(newMux(a), "/jobs/1/answers/starting-point", base, "", ""); response.Code != http.StatusConflict {
+		t.Fatalf("stale library revision accepted as early starting point: %d %s", response.Code, response.Body.String())
+	}
+	for name, value := range map[string]string{"discovery_fingerprint": "stale", "source_question_id": "foreign", "destination": "https://elsewhere.example/application", "revision": "1"} {
+		bad := url.Values{}
+		for k, vs := range base {
+			bad[k] = append([]string(nil), vs...)
+		}
+		bad.Set(name, value)
+		if response := postApp(newMux(a), "/jobs/1/answers/starting-point", bad, "", ""); response.Code != http.StatusConflict {
+			t.Fatalf("stale early %s accepted: %d %s", name, response.Code, response.Body.String())
+		}
+	}
+	var saved int
+	if err := a.db.QueryRow(`SELECT COUNT(*) FROM early_application_answers WHERE job_id=?`, job.ID).Scan(&saved); err != nil || saved != 0 {
+		t.Fatalf("starting point auto-saved early text: %d %v", saved, err)
+	}
+	retained, err := a.answerLibraryBySourceID(a.db, entries[0].ID)
+	if err != nil || retained.Answer != answer {
+		t.Fatalf("starting point changed library text: %q %v", retained.Answer, err)
 	}
 }
 

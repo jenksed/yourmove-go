@@ -275,6 +275,7 @@
       if (number < 0 || number >= panels.length) return;
       selected = number;
       panels.forEach((panel, i) => panel.hidden = i !== selected);
+      panels[selected].dispatchEvent(new CustomEvent('question:selected'));
       links.forEach((link, panel) => {
         if (panel === panels[selected]) link.setAttribute('aria-current', 'true');
         else link.removeAttribute('aria-current');
@@ -309,6 +310,7 @@
         const link = document.createElement('a');
         link.href = `#${panel.id}`;
         link.textContent = panel.dataset.questionLabel;
+        link.title = panel.dataset.questionLabel;
         link.dataset.questionLink = panel.dataset.questionKey;
         link.addEventListener('click', event => { event.preventDefault(); show(panels.indexOf(panel)); });
         group.append(link);
@@ -322,8 +324,6 @@
       chooser.append(options);
       groups.set(status, members.length);
     }
-    const summary = workbench.querySelector('[data-question-summary]');
-    summary.textContent = `Needs your answer: ${groups.get('Needs your answer') || 0} · Prepared locally: ${groups.get('Prepared locally') || 0} · From candidate profile: ${workbench.dataset.profileCount || 0} · Complete on employer site: ${workbench.dataset.employerCount || 0} · Needs manual review: ${workbench.dataset.reviewCount || 0}`;
     chooser.addEventListener('change', () => show(panels.findIndex(panel => panel.dataset.questionKey === chooser.value)));
     previous.addEventListener('click', () => show(selected - 1));
     next.addEventListener('click', () => show(selected + 1));
@@ -379,8 +379,9 @@
   // Related writing stays read-only until a user opens it. Inserting an
   // example changes only the current textarea; the existing save form owns
   // persistence and revision handling.
-  document.querySelectorAll('[data-related-answer]').forEach(details => {
-    details.addEventListener('toggle', async () => {
+  document.addEventListener('toggle', async event => {
+      const details = event.target.closest?.('[data-related-answer]');
+      if (!details) return;
       if (!details.open || details.dataset.loaded === 'true') return;
       const entryID = details.dataset.entryId;
       const content = details.querySelector('[data-related-content]');
@@ -390,6 +391,11 @@
         const response = await fetch(`/answer-library/${encodeURIComponent(entryID)}/content`, {headers: {'Accept': 'application/json'}});
         if (!response.ok) throw new Error('Unable to load this previous example. Open the full library entry to review it.');
         const example = await response.json();
+        if (example.revision !== Number(details.dataset.libraryRevision)) {
+          content.textContent = 'This example changed after the recommendation was shown. Reload the question before using it.';
+          details.dataset.stale = 'true';
+          return;
+        }
         const answer = document.createElement('pre');
         answer.className = 'evidence-text related-writing-full-answer';
         answer.setAttribute('aria-label', 'Complete previous answer');
@@ -400,47 +406,51 @@
       } catch (_) {
         content.textContent = 'Unable to load this previous example. Open the full library entry to review and copy it.';
       }
-    });
-  });
-  document.querySelectorAll('[data-use-library-answer]').forEach(button => {
-    button.addEventListener('click', async () => {
+  }, true);
+  document.addEventListener('click', async event => {
+      const button = event.target.closest('[data-use-library-answer]');
+      if (!button) return;
       const panel = button.closest('[data-question-panel]');
-      const form = panel?.querySelector('form[action$="/answers/save"]');
+      const form = panel?.querySelector('form[action$="/answers/save"], form[action$="/answers/early-save"]');
       const key = form?.querySelector('[name="question_key"]')?.value;
       const revision = form?.querySelector('[name="revision"]')?.value;
-      const editor = form?.querySelector('textarea[name="answer"]');
+      const editor = form?.querySelector('[name="answer"]');
       const status = button.closest('[data-related-answer]')?.querySelector('[data-related-status]');
       const entryID = button.dataset.entryId;
-      if (!panel || !form || !key || revision === undefined || !editor || !entryID || !status) return;
+      const libraryRevision = button.dataset.libraryRevision;
+      if (!panel || !form || !key || revision === undefined || !editor || !entryID || !libraryRevision || !status) return;
       const beforeValue = editor.value;
       const beforeKey = key;
       const beforeRevision = revision;
       if (panel.hidden) return;
       if ((form.dataset.dirty === 'true' || beforeValue.trim() !== '') &&
-          !window.confirm('Replace the current answer editor text with this previous writing? It will be an unsaved draft. You can still cancel or edit it before choosing Save answer locally.')) return;
+          !window.confirm('Replace the current editor text with this previous writing? It will remain unsaved until you save this answer locally.')) return;
       button.disabled = true;
       status.textContent = 'Checking the current question…';
       try {
-        const body = new URLSearchParams({library_entry_id: entryID, question_key: beforeKey, revision: beforeRevision});
+        const body = new URLSearchParams({library_entry_id: entryID, library_revision: libraryRevision, question_key: beforeKey, revision: beforeRevision, destination: form.querySelector('[name="destination"]')?.value || ''});
+        if (form.action.endsWith('/answers/early-save')) {
+          body.set('early','yes');
+          for (const name of ['discovery_source','discovery_fingerprint','source_question_id']) body.set(name,form.querySelector(`[name="${name}"]`)?.value || '');
+        }
         const response = await fetch(button.dataset.startpointUrl, {
           method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8', 'Accept': 'application/json'}, body
         });
         if (!response.ok) throw new Error(await response.text() || 'The current question changed. Review it before using previous writing.');
         const selected = await response.json();
-        if (selected.entry_id !== Number(entryID) || selected.question_key !== beforeKey ||
+        if (selected.entry_id !== Number(entryID) || selected.library_revision !== Number(libraryRevision) || selected.question_key !== beforeKey ||
             String(selected.revision) !== beforeRevision || form.querySelector('[name="question_key"]')?.value !== beforeKey ||
             form.querySelector('[name="revision"]')?.value !== beforeRevision || editor.value !== beforeValue || panel.hidden) {
           throw new Error('The current editor changed while the example was loading. Review the question and try again.');
         }
         editor.value = typeof selected.answer === 'string' ? selected.answer : '';
         editor.dispatchEvent(new Event('input', {bubbles: true}));
-        status.textContent = 'Previous writing copied into this unsaved answer. Edit it for this question, then choose Save answer locally.';
+        status.textContent = 'Previous writing copied into this unsaved answer. Edit it for this question, then save locally.';
       } catch (error) {
         status.textContent = error instanceof Error ? error.message : 'Unable to use this previous example. Review the current question and try again.';
       } finally {
         button.disabled = false;
       }
-    });
   });
   for (const type of ['input', 'change']) document.addEventListener(type, event => {
     const form = event.target.closest('form');
@@ -591,7 +601,9 @@
     return `${source.category}${name ? ` · ${name.slice(0, 200)}` : ''}${source.id ? ` · ID ${source.id} · revision ${source.revision}` : ''}`;
   };
   const roots = [...document.querySelectorAll('[data-answer-ai]')];
-  roots.forEach(root => {
+  const initialize = root => {
+    if (root.dataset.initialized === 'true') return;
+    root.dataset.initialized = 'true';
     const find = name => root.querySelector(`[data-answer-ai-${name}]`);
     const panel = root.closest('[data-question-panel]');
     const form = panel?.querySelector('form[action$="/answers/save"], form[action$="/answers/early-save"]');
@@ -806,7 +818,9 @@
     window.addEventListener('pagehide', () => {
       if (busy && reviewed) fetch(`/jobs/${encodeURIComponent(root.dataset.job)}/answers/ai/cancel`, {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: new URLSearchParams({ticket: reviewed.ticket}), keepalive: true}).catch(() => {});
     });
-  });
+  };
+  roots.forEach(initialize);
+  window.initializeAnswerAI = initialize;
   // If an observed question disappeared, retain copyable text without adoption.
   try {
     for (let i = 0, count = 0; i < sessionStorage.length && count < 16; i++) {
@@ -824,4 +838,51 @@
       section.append(notice, text, discard); document.querySelector('.application-questions, .early-application-questions')?.append(section); count++;
     }
   } catch (_) {}
+})();
+
+// Load the combined, question-bound writing assistance only after it is opened.
+(() => {
+  document.querySelectorAll('[data-question-help]').forEach(help => {
+    const panel = help.closest('[data-question-panel]');
+    const restorePreviewDisclosure = () => {
+      if (!panel || panel.hidden) return;
+      try {
+        const previewKey = `yourmove:pending-edits:${location.pathname}:ai:${help.dataset.key}`;
+        if (sessionStorage.getItem(previewKey)) help.open = true;
+      } catch (_) {}
+    };
+    panel?.addEventListener('question:selected', restorePreviewDisclosure);
+    restorePreviewDisclosure();
+    help.addEventListener('toggle', async () => {
+      if (!help.open || help.dataset.loaded === 'true' || help.dataset.loading === 'true') return;
+      const panel = help.closest('[data-question-panel]');
+      const content = help.querySelector('[data-question-help-content]');
+      const form = panel?.querySelector('form[action$="/answers/save"],form[action$="/answers/early-save"]');
+      if (!panel || !form || panel.hidden) return;
+      help.dataset.loading = 'true';
+      const prior = content.innerHTML;
+      content.replaceChildren(Object.assign(document.createElement('p'), {textContent:'Loading relevant writing and experience…', role:'status'}));
+      try {
+        const fields = new URLSearchParams({question_key:help.dataset.key, revision:help.dataset.revision, destination:help.dataset.destination});
+        if (help.dataset.early === 'yes') {
+          fields.set('early','yes');
+          fields.set('discovery_source',help.dataset.discoverySource || '');
+          fields.set('discovery_fingerprint',help.dataset.discoveryFingerprint || '');
+          fields.set('source_question_id',help.dataset.sourceQuestionId || '');
+        }
+        const response = await fetch(help.dataset.helpUrl,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8','Accept':'application/json'},body:fields});
+        const raw = await response.text();
+        let result = {};
+        try { result = JSON.parse(raw); } catch (_) { result.message = raw.replace(/<[^>]*>/g,' ').trim(); }
+        if (!response.ok) throw new Error(result.message || 'Assistance could not be loaded. Review this question and try again.');
+        if (panel.hidden || panel.dataset.questionKey !== help.dataset.key || form.querySelector('[name="revision"]').value !== help.dataset.revision) throw new Error('The question changed while assistance was loading. Open Help me answer again.');
+        content.innerHTML = result.html;
+        content.querySelectorAll('[data-answer-ai]').forEach(root => window.initializeAnswerAI?.(root));
+        help.dataset.loaded = 'true';
+      } catch (error) {
+        content.innerHTML = prior;
+        const notice = document.createElement('p'); notice.setAttribute('role','status'); notice.textContent = error.message || 'Assistance could not be loaded.'; content.append(notice);
+      } finally { delete help.dataset.loading; }
+    });
+  });
 })();

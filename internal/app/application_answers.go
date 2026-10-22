@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -34,7 +33,10 @@ type preparedQuestion struct {
 	Revision                  int64
 	Editable                  bool
 	LibraryEligible           bool
-	IsEarly                   bool // Presentation only; this never grants live question authority.
+	IsEarly                   bool   // Presentation only; this never grants live question authority.
+	DiscoverySource           string // Presentation identity for early-only assistance requests.
+	DiscoveryFingerprint      string
+	SourceQuestionID          string
 	LibrarySuggestions        []answerLibrarySuggestion
 	CareerEvidenceSuggestions []careerEvidenceSuggestion
 }
@@ -76,6 +78,8 @@ func (q preparedQuestion) LocalStatus() string {
 	}
 	return "Answer available locally; transfer requires your authorization"
 }
+
+func (q preparedQuestion) HelpEligible() bool { return q.Editable && narrativeAnswerEligible(q) }
 
 func (p questionPreparation) WorkbenchQuestions() []preparedQuestion {
 	var questions []preparedQuestion
@@ -253,22 +257,6 @@ func (a *App) prepareQuestions(job Job, p CandidateProfile) (questionPreparation
 	for _, v := range ordered {
 		if !used[v.Key] {
 			out.Previous = append(out.Previous, v)
-		}
-	}
-	if job.Stage != StageApplied && job.Stage != StageClosed && job.SubmissionCount == 0 {
-		if suggestions, err := a.answerLibrarySuggestionsForQuestions(out.Questions); err != nil {
-			log.Printf("retrieve Answer Library suggestions: %v", err)
-		} else {
-			for i := range out.Questions {
-				out.Questions[i].LibrarySuggestions = suggestions[out.Questions[i].Key]
-			}
-		}
-		if suggestions, err := a.careerEvidenceSuggestionsForQuestions(out.Questions); err != nil {
-			log.Printf("retrieve Career Evidence suggestions: %v", err)
-		} else {
-			for i := range out.Questions {
-				out.Questions[i].CareerEvidenceSuggestions = suggestions[out.Questions[i].Key]
-			}
 		}
 	}
 	return out, nil

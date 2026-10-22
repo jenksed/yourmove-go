@@ -4,6 +4,7 @@ package app
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -42,6 +43,23 @@ func TestControlledEarlyPreparationWorkbench(t *testing.T) {
 	}
 	a, workspaceDir := testWorkspace(t)
 	job, result := earlyGreenhouseFixture(t, a)
+	sourceJob := Job{URL: "https://job-boards.greenhouse.io/synthetic/jobs/67890", Host: "job-boards.greenhouse.io", Title: "Previous Synthetic Engineer", Company: "Previous Fixture Co"}
+	if err := a.saveJob(sourceJob); err != nil {
+		t.Fatal(err)
+	}
+	sourceJob, err := a.jobByID(2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.saveInspection(sourceJob.ID, schema.Result{Platform: "greenhouse", Source: "browser", ApplicationURL: sourceJob.URL, Fields: []schema.Field{result.Fields[0]}}); err != nil {
+		t.Fatal(err)
+	}
+	sourceKey := questionKey(sourceJob.URL, "greenhouse", result.Fields[0])
+	previousAnswer := "I improved a synthetic system by reviewing its query plan and recommending an index."
+	saveLibrarySourceAnswer(t, a, sourceJob, sourceKey, previousAnswer, 0)
+	if promoted := promoteLibrarySource(t, a, sourceJob.ID, sourceKey, 1); promoted.Code != http.StatusSeeOther {
+		t.Fatalf("promote early starting-point fixture: %d %s", promoted.Code, promoted.Body.String())
+	}
 	addCareerEvidenceForSearch(t, a, careerEvidenceContent{Title: "Synthetic performance improvement", Situation: "A dashboard query slowed down.", Actions: "I reviewed the query plan and recommended an index.", OutcomeState: "unknown"}, true)
 	var inspectionCalls, generationCalls atomic.Int32
 	var invalidProviderPrompt atomic.Bool
@@ -71,6 +89,11 @@ func TestControlledEarlyPreparationWorkbench(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	page := server.URL + "/jobs/1#prepare"
+	evidenceRoot, err := os.MkdirTemp("/private/tmp", "yourmove-checkpoint2-greenhouse-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("isolated Greenhouse question-workbench screenshots: %s", evidenceRoot)
 	chrome, err := chromium.LaunchFixture(ctx, page)
 	if err != nil {
 		t.Fatal(err)
@@ -120,21 +143,60 @@ func TestControlledEarlyPreparationWorkbench(t *testing.T) {
 			t.Fatalf("browser assertion failed: %s (%v)", script, err)
 		}
 	}
+	capture := func(name string, width int, selector, theme string) {
+		t.Helper()
+		shot, err := chrome.FixtureScreenshotAt(ctx, page, width, selector, theme)
+		if err != nil {
+			t.Fatalf("capture %s: %v", name, err)
+		}
+		data, err := base64.StdEncoding.DecodeString(shot)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(evidenceRoot, name+".png"), data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	wait(`document.readyState==='complete'&&!!document.querySelector('.early-application-questions form[action$="/inspect"] button')`)
 	assert(`document.querySelector('[data-question-workbench]')===null||document.querySelectorAll('[data-question-workbench] [data-question-panel]').length===0`)
 	run(`document.querySelector('.early-application-questions form[action$="/inspect"] button').click()`)
-	wait(`document.readyState==='complete'&&!!document.querySelector('.early-application-questions [data-answer-ai]')`)
+	wait(`document.readyState==='complete'&&!!document.querySelector('.early-application-questions [data-question-help]')`)
+	capture("early-initial-1280-light", 1280, ".early-application-questions", "light")
 	if inspectionCalls.Load() != 1 {
 		t.Fatalf("expected one explicitly requested public inspection, got %d", inspectionCalls.Load())
 	}
+	run(`document.querySelector('.early-application-questions [data-question-help]').open=true;window.editor=document.querySelector('.early-application-questions textarea[name=answer]')`)
+	wait(`!!document.querySelector('.early-application-questions [data-answer-ai]')`)
+	run(`document.querySelector('.early-application-questions .help-tool:first-child > summary').click()`)
+	wait(`!!document.querySelector('.early-application-questions [data-related-answer]')`)
+	run(`document.querySelector('.early-application-questions [data-related-answer] > summary').click()`)
+	wait(`document.querySelector('.early-application-questions [data-related-answer]').dataset.loaded==='true'`)
+	assert(`document.querySelector('.early-application-questions [data-related-content]').textContent.includes(` + fmt.Sprintf("%q", previousAnswer) + `)`)
+	assert(`document.querySelector('.early-application-questions [data-use-library-answer]').hidden===false`)
+	run(`window.confirm=()=>false;editor.value='keep this early text';editor.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('.early-application-questions [data-use-library-answer]').click()`)
+	assert(`editor.value==='keep this early text'`)
+	run(`window.confirm=()=>true;document.querySelector('.early-application-questions [data-use-library-answer]').click()`)
+	wait(`editor.value===` + fmt.Sprintf("%q", previousAnswer))
+	var unsavedEarlyCount int
+	if err := a.db.QueryRow(`SELECT COUNT(*) FROM early_application_answers WHERE job_id=?`, job.ID).Scan(&unsavedEarlyCount); err != nil || unsavedEarlyCount != 0 {
+		t.Fatalf("using previous writing persisted the early answer: %d %v", unsavedEarlyCount, err)
+	}
+	run(`editor.value='';editor.dispatchEvent(new Event('input',{bubbles:true}))`)
+	run(`document.querySelectorAll('.early-application-questions .help-tool')[1].open=true`)
+	capture("early-career-evidence-1280-dark", 1280, ".early-application-questions", "dark")
+	run(`document.querySelectorAll('.early-application-questions .help-tool')[1].open=false`)
 	run(`window.ai=document.querySelector('.early-application-questions [data-answer-ai]');window.find=n=>ai.querySelector('[data-answer-ai-'+n+']');window.editor=document.querySelector('.early-application-questions textarea[name=answer]');ai.open=true`)
 	assert(`ai.dataset.early==='yes'&&editor.value===''&&ai.querySelector('[name=career_evidence]')&&!ai.querySelector('[name=career_evidence]').checked`)
+	run(`find('another').open=true`)
+	capture("early-ai-source-selection-390-light", 390, "[data-answer-ai-selection]", "light")
 	run(`ai.querySelector('[name=career_evidence]').checked=true;ai.querySelector('[name=model]').value='synthetic-model';find('review').click()`)
 	wait(`!find('review-panel').hidden`)
+	capture("early-ai-review-1280-light", 1280, "[data-answer-ai-review-panel]", "light")
 	assert(`find('execution').textContent.includes('Published question')`)
 	assert(`find('authorize')&&!find('authorize').checked&&find('external')&&!find('external').checked`)
 	run(`find('authorize').checked=true;find('external').checked=true;find('generate').click()`)
 	wait(`!find('preview').hidden&&find('text').value.includes('query plan')`)
+	capture("early-generated-390-dark", 390, "[data-answer-ai-preview]", "dark")
 	if generationCalls.Load() != 1 {
 		t.Fatalf("expected one explicitly authorized AI request, got %d", generationCalls.Load())
 	}
@@ -143,21 +205,23 @@ func TestControlledEarlyPreparationWorkbench(t *testing.T) {
 	}
 	var earlyCount, liveCount, browserCount, submissionCount int
 	_ = a.db.QueryRow(`SELECT COUNT(*) FROM early_application_answers`).Scan(&earlyCount)
-	_ = a.db.QueryRow(`SELECT COUNT(*) FROM application_answers`).Scan(&liveCount)
-	_ = a.db.QueryRow(`SELECT COUNT(*) FROM application_inspections WHERE source='browser'`).Scan(&browserCount)
-	_ = a.db.QueryRow(`SELECT COUNT(*) FROM submissions`).Scan(&submissionCount)
+	_ = a.db.QueryRow(`SELECT COUNT(*) FROM application_answers WHERE job_id=?`, job.ID).Scan(&liveCount)
+	_ = a.db.QueryRow(`SELECT COUNT(*) FROM application_inspections WHERE job_id=? AND source='browser'`, job.ID).Scan(&browserCount)
+	_ = a.db.QueryRow(`SELECT COUNT(*) FROM submissions WHERE job_id=?`, job.ID).Scan(&submissionCount)
 	if earlyCount != 0 || liveCount != 0 || browserCount != 0 || submissionCount != 0 {
 		t.Fatalf("AI preview or public discovery crossed a live boundary: early=%d live=%d browser=%d submissions=%d", earlyCount, liveCount, browserCount, submissionCount)
 	}
 	run(`find('adopt').click()`)
 	wait(`editor.value.includes('query plan')&&find('status').textContent.includes('Save early answer locally')`)
+	run(`document.querySelector('.early-application-questions [data-question-help]').open=true`)
+	wait(`!!document.querySelector('.early-application-questions [data-answer-ai]')`)
 	assert(`document.querySelector('.early-application-questions [data-question-panel]:not([hidden]) [data-answer-ai]')`)
 	run(`editor.value+=' I documented the recommendation.';editor.dispatchEvent(new Event('input',{bubbles:true}));editor.closest('form').querySelector('button[type=submit]').click()`)
 	wait(`document.readyState==='complete'&&document.querySelector('.early-application-questions textarea[name=answer]')?.value.includes('documented the recommendation')`)
 	_ = a.db.QueryRow(`SELECT COUNT(*) FROM early_application_answers`).Scan(&earlyCount)
-	_ = a.db.QueryRow(`SELECT COUNT(*) FROM application_answers`).Scan(&liveCount)
-	_ = a.db.QueryRow(`SELECT COUNT(*) FROM application_inspections WHERE source='browser'`).Scan(&browserCount)
-	_ = a.db.QueryRow(`SELECT COUNT(*) FROM submissions`).Scan(&submissionCount)
+	_ = a.db.QueryRow(`SELECT COUNT(*) FROM application_answers WHERE job_id=?`, job.ID).Scan(&liveCount)
+	_ = a.db.QueryRow(`SELECT COUNT(*) FROM application_inspections WHERE job_id=? AND source='browser'`, job.ID).Scan(&browserCount)
+	_ = a.db.QueryRow(`SELECT COUNT(*) FROM submissions WHERE job_id=?`, job.ID).Scan(&submissionCount)
 	if earlyCount != 1 || liveCount != 0 || browserCount != 0 || submissionCount != 0 {
 		t.Fatalf("saved early proposal crossed a live boundary: early=%d live=%d browser=%d submissions=%d", earlyCount, liveCount, browserCount, submissionCount)
 	}
@@ -258,7 +322,7 @@ func TestControlledEarlyPreparationWorkbench(t *testing.T) {
 		t.Fatalf("prepared text reached the employer before explicit acceptance and transfer: %q", liveValue)
 	}
 	var applicationAnswerCount int
-	if err := a.db.QueryRow(`SELECT COUNT(*) FROM application_answers`).Scan(&applicationAnswerCount); err != nil || applicationAnswerCount != 0 {
+	if err := a.db.QueryRow(`SELECT COUNT(*) FROM application_answers WHERE job_id=?`, job.ID).Scan(&applicationAnswerCount); err != nil || applicationAnswerCount != 0 {
 		t.Fatalf("public draft bypassed live acceptance: count=%d err=%v", applicationAnswerCount, err)
 	}
 	acceptValues := url.Values{
@@ -305,7 +369,7 @@ func TestControlledEarlyPreparationWorkbench(t *testing.T) {
 	if liveValue = readEmployerValue(); liveValue != preparedEarly.Value {
 		t.Fatalf("employer field did not receive the explicitly authorized saved answer: %q", liveValue)
 	}
-	if err := a.db.QueryRow(`SELECT COUNT(*) FROM submissions`).Scan(&submissionCount); err != nil || submissionCount != 0 || employerSubmissions.Load() != 0 {
+	if err := a.db.QueryRow(`SELECT COUNT(*) FROM submissions WHERE job_id=?`, job.ID).Scan(&submissionCount); err != nil || submissionCount != 0 || employerSubmissions.Load() != 0 {
 		t.Fatalf("answer filling submitted the employer application: local=%d employer events=%d err=%v", submissionCount, employerSubmissions.Load(), err)
 	}
 	resultPage := httptest.NewRecorder()
@@ -333,11 +397,11 @@ func TestControlledEarlyPreparationWorkbench(t *testing.T) {
 		t.Fatal("Applied history did not include the controlled Greenhouse opportunity")
 	}
 	next := postApp(newMux(a), "/jobs/1/next", url.Values{}, "", "")
-	if next.Code != http.StatusSeeOther || next.Header().Get("Location") != "/jobs/2#prepare" || a.browsers.has(job.ID) {
+	if next.Code != http.StatusSeeOther || next.Header().Get("Location") != "/jobs/3#prepare" || a.browsers.has(job.ID) {
 		t.Fatalf("Next job transition failed: %d %s active=%v", next.Code, next.Header().Get("Location"), a.browsers.has(job.ID))
 	}
 	nextPage := httptest.NewRecorder()
-	newMux(a).ServeHTTP(nextPage, httptest.NewRequest("GET", "http://localhost/jobs/2", nil))
+	newMux(a).ServeHTTP(nextPage, httptest.NewRequest("GET", "http://localhost/jobs/3", nil))
 	if !strings.Contains(nextPage.Body.String(), "Next Synthetic Opportunity") {
 		t.Fatal("Next job did not open the next opportunity")
 	}

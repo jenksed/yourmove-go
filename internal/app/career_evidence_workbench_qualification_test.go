@@ -103,9 +103,7 @@ func TestControlledCareerEvidenceWorkbench(t *testing.T) {
 	for _, script := range []string{"/static/ui.js", "/static/inspection.js"} {
 		router.HandleFunc("GET "+script, func(w http.ResponseWriter, r *http.Request) {
 			appScripts.Add(1)
-			w.Header().Set("Cache-Control", "no-store")
-			w.Header().Set("Content-Type", "text/javascript")
-			w.WriteHeader(http.StatusNoContent)
+			appHandler.ServeHTTP(w, r)
 		})
 	}
 	router.Handle("/", appHandler)
@@ -151,7 +149,7 @@ func TestControlledCareerEvidenceWorkbench(t *testing.T) {
 			time.Sleep(50 * time.Millisecond)
 		}
 		var state string
-		_ = evaluate(`JSON.stringify({url:location.href,title:document.title,body:document.body?.innerText?.slice(0,1200),forms:[...document.forms].map(f=>f.action)})`, &state)
+		_ = evaluate(`JSON.stringify({url:location.href,title:document.title,body:document.body?.innerText?.slice(0,1200),help:document.querySelector('[data-question-help]')?.outerHTML,forms:[...document.forms].map(f=>f.action)})`, &state)
 		t.Fatalf("Career Evidence workbench browser condition timed out: %s (%s, %v)", script, state, lastErr)
 	}
 	assert := func(script string) {
@@ -165,6 +163,10 @@ func TestControlledCareerEvidenceWorkbench(t *testing.T) {
 	if appScripts.Load() < 2 {
 		t.Fatalf("workbench did not request both optional app scripts: %d", appScripts.Load())
 	}
+	if err := evaluate(`document.querySelector('[data-question-help] summary').click()`, nil); err != nil {
+		t.Fatal(err)
+	}
+	wait(`document.querySelector('[data-question-help]').dataset.loaded==='true'`)
 	assert(`document.querySelectorAll('.related-previous-writing').length===1 && document.querySelectorAll('.related-career-evidence').length===1`)
 	assert(`document.querySelector('[data-question-panel]').dataset.questionLabel===` + fmt.Sprintf("%q", field.Label))
 	assert(`document.querySelector('.related-career-evidence').textContent.includes("` + evidenceContent.Title + `")`)
@@ -255,9 +257,12 @@ func TestControlledCareerEvidenceWorkbench(t *testing.T) {
 		t.Fatal(err)
 	}
 	prepared, err := restarted.prepareQuestions(restartedJob, CandidateProfile{})
-	if err != nil || len(prepared.Questions) != 1 || len(prepared.Questions[0].CareerEvidenceSuggestions) != 1 ||
-		prepared.Questions[0].CareerEvidenceSuggestions[0].Evidence.ID != evidenceID || prepared.Questions[0].Value != dirtyAnswer {
-		t.Fatalf("restart did not preserve answer and reviewed evidence suggestion: %+v %v", prepared, err)
+	if err != nil || len(prepared.Questions) != 1 || prepared.Questions[0].Value != dirtyAnswer {
+		t.Fatalf("restart did not preserve answer: %+v %v", prepared, err)
 	}
-	t.Log("Rendered synthetic previous writing with reviewed evidence; hid the relevant draft; inspected full evidence while preserving a dirty editor; saved only through the explicit local form; confirmed no transfer/submission; reloaded the evidence after SQLite restart. App scripts were disabled.")
+	suggestions, err := restarted.careerEvidenceSuggestionsForQuestions(prepared.Questions)
+	if err != nil || len(suggestions[prepared.Questions[0].Key]) != 1 || suggestions[prepared.Questions[0].Key][0].Evidence.ID != evidenceID {
+		t.Fatalf("restart did not preserve on-demand reviewed evidence retrieval: %+v %v", suggestions, err)
+	}
+	t.Log("Rendered question-specific previous writing and reviewed evidence after opening Help me answer; hid the relevant draft; inspected full evidence while preserving a dirty editor; saved only through the explicit local form; confirmed no transfer/submission; reloaded the evidence after SQLite restart.")
 }

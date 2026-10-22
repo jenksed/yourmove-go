@@ -2,7 +2,7 @@ package app
 
 import (
 	"net/http"
-	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -85,17 +85,17 @@ func TestCareerEvidenceSuggestionsRequireReviewAndStaySeparateFromPreviousWritin
 		t.Fatalf("unrelated experience surfaced: %+v %v", noMatch, err)
 	}
 
-	request := httptest.NewRequest(http.MethodGet, "http://localhost/jobs/1", nil)
-	request.Host = "localhost"
-	response := httptest.NewRecorder()
-	newMux(a).ServeHTTP(response, request)
-	body := response.Body.String()
-	if response.Code != http.StatusOK || !strings.Contains(body, field.Label) ||
+	var answerRevision int64
+	if err := a.db.QueryRow(`SELECT revision FROM application_answers WHERE job_id=? AND question_key=?`, job.ID, key).Scan(&answerRevision); err != nil {
+		t.Fatal(err)
+	}
+	body := postQuestionHelp(t, a, url.Values{"destination": {job.URL}, "question_key": {key}, "revision": {strconv.FormatInt(answerRevision, 10)}})
+	if !strings.Contains(body, field.Label) ||
 		!strings.Contains(body, "Related previous writing") || !strings.Contains(body, "Relevant career experiences") ||
 		!strings.Contains(body, approved.Title) || !strings.Contains(body, "Reviewed query logs and EXPLAIN plans") ||
 		!strings.Contains(body, "Outcome</strong> · Unknown") || !strings.Contains(body, "Inspect complete experience") ||
 		!strings.Contains(body, "/career-evidence/"+strconv.FormatInt(approved.ID, 10)) || strings.Contains(body, draft.Title) {
-		t.Fatalf("separate, read-only suggestions did not render with the exact question: %d %s", response.Code, body)
+		t.Fatalf("separate, read-only suggestions did not render with the exact question: %s", body)
 	}
 	if strings.Contains(body, ">"+approved.Title+"</textarea>") || strings.Contains(body, ">"+draft.Title+"</textarea>") {
 		t.Fatal("Career Evidence was copied into the application answer editor")

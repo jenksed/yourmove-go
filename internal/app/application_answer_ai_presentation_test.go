@@ -2,27 +2,37 @@ package app
 
 import (
 	"bytes"
+	"encoding/json"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 )
 
 func TestNarrativeWorkbenchPresentationIsOptionalAndUnselected(t *testing.T) {
-	a, _, _ := narrativeFixture(t)
+	a, v, _ := narrativeFixture(t)
 	page := httptest.NewRecorder()
 	newMux(a).ServeHTTP(page, httptest.NewRequest("GET", "http://localhost/jobs/1", nil))
 	body := page.Body.String()
-	for _, s := range []string{"Draft answer with AI", "data-answer-ai-controls hidden", "Inline AI drafting requires JavaScript", "Use as unsaved answer", "data-answer-ai-payload", "name=\"career_evidence\""} {
+	for _, s := range []string{"Help me answer", "Open this section to see relevant previous writing"} {
 		if !strings.Contains(body, s) {
 			t.Fatal("missing", s)
 		}
 	}
-	if strings.Contains(body, `name="career_evidence" checked`) {
+	if strings.Contains(body, `data-answer-ai`) {
+		t.Fatal("initial page eagerly rendered AI assistance")
+	}
+	help := postQuestionHelp(t, a, v)
+	for _, s := range []string{"Draft with AI", "data-answer-ai-controls hidden", "Inline AI drafting requires JavaScript", "Use as unsaved answer", "data-answer-ai-payload", `name="career_evidence"`} {
+		if !strings.Contains(help, s) {
+			t.Fatal("missing on-demand AI control", s)
+		}
+	}
+	if strings.Contains(help, `name="career_evidence" checked`) {
 		t.Fatal("auto-selected evidence")
 	}
-	start, end := strings.Index(body, `class="application-question-form"`), strings.Index(body, `data-answer-ai-controls`)
-	if start < 0 || !strings.Contains(body[start:end], "</form>") {
-		t.Fatal("drafting nested in answer save form")
+	if strings.Contains(help, "<form") {
+		t.Fatal("drafting controls unexpectedly contain a form")
 	}
 	if _, err := a.db.Exec(`UPDATE jobs SET stage=? WHERE id=1`, StageApplied); err != nil {
 		t.Fatal(err)
@@ -35,7 +45,7 @@ func TestNarrativeWorkbenchPresentationIsOptionalAndUnselected(t *testing.T) {
 }
 
 func TestNarrativeResumeAlternativeDoesNotRequireCareerEvidence(t *testing.T) {
-	a, _, evidenceID := narrativeFixture(t)
+	a, v, evidenceID := narrativeFixture(t)
 	if _, err := a.db.Exec(`DELETE FROM career_evidence WHERE id=?`, evidenceID); err != nil {
 		t.Fatal(err)
 	}
@@ -46,15 +56,28 @@ func TestNarrativeResumeAlternativeDoesNotRequireCareerEvidence(t *testing.T) {
 	if err := a.assignResume(1, resume.ID); err != nil {
 		t.Fatal(err)
 	}
-	page := httptest.NewRecorder()
-	newMux(a).ServeHTTP(page, httptest.NewRequest("GET", "http://localhost/jobs/1", nil))
-	body := page.Body.String()
-	if page.Code != 200 || !strings.Contains(body, `name="application_resume"`) || !strings.Contains(body, "A resume can be used without creating Career Evidence first") {
-		t.Fatalf("resume evidence alternative is unavailable: %d %s", page.Code, body)
+	body := postQuestionHelp(t, a, v)
+	if !strings.Contains(body, `name="application_resume"`) || !strings.Contains(body, "A resume can be used without creating Career Evidence first") {
+		t.Fatalf("resume evidence alternative is unavailable: %s", body)
 	}
 	if strings.Contains(body, `name="application_resume" checked`) {
 		t.Fatal("resume evidence was selected automatically")
 	}
+}
+
+func postQuestionHelp(t *testing.T, a *App, values url.Values) string {
+	t.Helper()
+	recorder := postApp(newMux(a), "/jobs/1/answers/help", values, "", "")
+	if recorder.Code != 200 {
+		t.Fatalf("question assistance %d: %s", recorder.Code, recorder.Body.String())
+	}
+	var response struct {
+		HTML string `json:"html"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	return response.HTML
 }
 
 func TestPrepareExplainsMissingObservedQuestionsAndDraftEvidence(t *testing.T) {
@@ -68,14 +91,15 @@ func TestPrepareExplainsMissingObservedQuestionsAndDraftEvidence(t *testing.T) {
 		t.Fatal("missing observed-question guidance", page.Code, page.Body.String())
 	}
 
-	b, _, evidenceID := narrativeFixture(t)
+	b, values, evidenceID := narrativeFixture(t)
 	if _, err := b.db.Exec(`DELETE FROM career_evidence WHERE id=?`, evidenceID); err != nil {
 		t.Fatal(err)
 	}
-	page = httptest.NewRecorder()
-	newMux(b).ServeHTTP(page, httptest.NewRequest("GET", "http://localhost/jobs/1", nil))
-	if !strings.Contains(page.Body.String(), "No usable resume is available.") || !strings.Contains(page.Body.String(), "Import or repair a resume") || !strings.Contains(page.Body.String(), "review Career Evidence") {
-		t.Fatal("missing factual-source recovery guidance", page.Code, page.Body.String())
+	if _, err := b.db.Exec(`DELETE FROM career_evidence`); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(postQuestionHelp(t, b, values), "No usable resume is available.") {
+		t.Fatal("missing factual-source recovery guidance")
 	}
 }
 

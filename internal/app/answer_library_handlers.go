@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/jenksed/yourmove-go/internal/application/schema"
 )
 
 type answerLibraryPage struct {
@@ -114,12 +116,13 @@ func (a *App) answerLibraryEntryContentHandler(w http.ResponseWriter, r *http.Re
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "private, no-store")
 	_ = json.NewEncoder(w).Encode(struct {
+		Revision         int64  `json:"revision"`
 		OriginalQuestion string `json:"original_question"`
 		Answer           string `json:"answer"`
 		SourceEmployer   string `json:"source_employer"`
 		SourceJobTitle   string `json:"source_job_title"`
 		SourceHost       string `json:"source_host"`
-	}{entry.OriginalQuestion, entry.Answer, entry.SourceEmployer, entry.SourceJobTitle, entry.SourceHost})
+	}{entry.Revision, entry.OriginalQuestion, entry.Answer, entry.SourceEmployer, entry.SourceJobTitle, entry.SourceHost})
 }
 
 func (a *App) answerLibraryStartingPointHandler(w http.ResponseWriter, r *http.Request) {
@@ -131,14 +134,15 @@ func (a *App) answerLibraryStartingPointHandler(w http.ResponseWriter, r *http.R
 	if !parseLocalForm(w, r, 4<<10) {
 		return
 	}
-	entryValues, keyValues, revisionValues := r.PostForm["library_entry_id"], r.PostForm["question_key"], r.PostForm["revision"]
-	if len(entryValues) != 1 || len(keyValues) != 1 || len(revisionValues) != 1 || !questionReturnKey.MatchString(keyValues[0]) {
+	entryValues, keyValues, revisionValues, libraryRevisionValues := r.PostForm["library_entry_id"], r.PostForm["question_key"], r.PostForm["revision"], r.PostForm["library_revision"]
+	if len(entryValues) != 1 || len(keyValues) != 1 || len(revisionValues) != 1 || len(libraryRevisionValues) != 1 || !questionReturnKey.MatchString(keyValues[0]) {
 		http.Error(w, "Review the current question and selected example", http.StatusBadRequest)
 		return
 	}
 	entryID, entryErr := strconv.ParseInt(entryValues[0], 10, 64)
 	revision, revisionErr := strconv.ParseInt(revisionValues[0], 10, 64)
-	if entryErr != nil || entryID <= 0 || revisionErr != nil || revision < 0 {
+	libraryRevision, libraryRevisionErr := strconv.ParseInt(libraryRevisionValues[0], 10, 64)
+	if entryErr != nil || entryID <= 0 || revisionErr != nil || revision < 0 || libraryRevisionErr != nil || libraryRevision < 1 {
 		http.Error(w, "Review the current question and selected example", http.StatusBadRequest)
 		return
 	}
@@ -151,24 +155,49 @@ func (a *App) answerLibraryStartingPointHandler(w http.ResponseWriter, r *http.R
 		http.Error(w, "Completed applications cannot be edited", http.StatusConflict)
 		return
 	}
-	profile, err := a.candidateProfile()
-	if err != nil {
-		http.Error(w, "Unable to read current application questions", http.StatusInternalServerError)
+	destinationValues := r.PostForm["destination"]
+	if len(destinationValues) != 1 || destinationValues[0] != job.URL {
+		http.Error(w, "The application destination changed. Review the current question before using previous writing.", http.StatusConflict)
 		return
 	}
-	prepared, err := a.prepareQuestions(job, profile)
-	if err != nil {
-		http.Error(w, "Unable to read current application questions", http.StatusInternalServerError)
-		return
-	}
-	var current *preparedQuestion
-	for i := range prepared.Questions {
-		if prepared.Questions[i].Key == keyValues[0] {
-			current = &prepared.Questions[i]
-			break
+	var currentField schema.Field
+	validCurrent := false
+	if r.PostForm.Get("early") == "yes" {
+		source, fp, sourceID := r.PostForm.Get("discovery_source"), r.PostForm.Get("discovery_fingerprint"), r.PostForm.Get("source_question_id")
+		if source == "" || fp == "" || sourceID == "" || len(r.PostForm["early"]) != 1 || len(r.PostForm["discovery_source"]) != 1 || len(r.PostForm["discovery_fingerprint"]) != 1 || len(r.PostForm["source_question_id"]) != 1 {
+			http.Error(w, "The discovered question changed. Review it before using previous writing.", http.StatusConflict)
+			return
+		}
+		prepared, prepErr := a.prepareEarlyQuestions(job, r)
+		if prepErr != nil || prepared.Item == nil || prepared.Item.Source != source || prepared.Item.Fingerprint != fp {
+			http.Error(w, "The discovered question changed. Review it before using previous writing.", http.StatusConflict)
+			return
+		}
+		for _, q := range prepared.Questions {
+			if q.Key == keyValues[0] && q.SourceQuestionID == sourceID && q.Destination == job.URL && q.Revision == revision && q.Editable && q.TriageCategory == "answer" && earlyPotentialNarrative(q.Field) {
+				currentField, validCurrent = q.Field, true
+				break
+			}
+		}
+	} else {
+		profile, profileErr := a.candidateProfile()
+		if profileErr != nil {
+			http.Error(w, "Unable to read current application questions", http.StatusInternalServerError)
+			return
+		}
+		prepared, prepErr := a.prepareQuestions(job, profile)
+		if prepErr != nil {
+			http.Error(w, "Unable to read current application questions", http.StatusInternalServerError)
+			return
+		}
+		for _, q := range prepared.Questions {
+			if q.Key == keyValues[0] && q.Destination == job.URL && q.Editable && q.Revision == revision && answerLibraryEligible(q.Field, true) {
+				currentField, validCurrent = q.Field, true
+				break
+			}
 		}
 	}
-	if current == nil || !current.Editable || !answerLibraryEligible(current.Field, true) || current.Revision != revision {
+	if !validCurrent || !answerLibraryEligible(currentField, true) {
 		http.Error(w, "The current application question changed. Review it before using previous writing.", http.StatusConflict)
 		return
 	}
@@ -181,14 +210,19 @@ func (a *App) answerLibraryStartingPointHandler(w http.ResponseWriter, r *http.R
 		http.Error(w, "Unable to read the selected Answer Library example", http.StatusInternalServerError)
 		return
 	}
+	if entry.Revision != libraryRevision {
+		http.Error(w, "This Answer Library example changed. Review the updated example before using it.", http.StatusConflict)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "private, no-store")
 	_ = json.NewEncoder(w).Encode(struct {
-		EntryID     int64  `json:"entry_id"`
-		QuestionKey string `json:"question_key"`
-		Revision    int64  `json:"revision"`
-		Answer      string `json:"answer"`
-	}{entry.ID, current.Key, current.Revision, entry.Answer})
+		EntryID         int64  `json:"entry_id"`
+		LibraryRevision int64  `json:"library_revision"`
+		QuestionKey     string `json:"question_key"`
+		Revision        int64  `json:"revision"`
+		Answer          string `json:"answer"`
+	}{entry.ID, entry.Revision, keyValues[0], revision, entry.Answer})
 }
 
 func (a *App) promoteApplicationAnswerHandler(w http.ResponseWriter, r *http.Request) {

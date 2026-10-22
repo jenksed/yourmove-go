@@ -240,8 +240,16 @@ func TestEarlyQuestionTypeSafetyAndAIUsesExistingReviewTicket(t *testing.T) {
 		t.Fatal(err)
 	}
 	q := earlyQuestionByID(t, a, job, "application:story", "?early_question=")
-	if !q.Editable || q.AIChoices == nil || !narrativeAnswerEligible(preparedQuestion{Field: q.Field, Editable: q.Editable}) {
-		t.Fatalf("eligible early narrative question missing existing AI choices: %+v", q)
+	if !q.Editable || q.AIChoices != nil || !q.HelpEligible() {
+		t.Fatalf("eligible early narrative question should expose deferred assistance: %+v", q)
+	}
+	help := postApp(newMux(a), "/jobs/1/answers/help", url.Values{"question_key": {q.Key}, "revision": {"0"}, "destination": {job.URL}, "early": {"yes"}, "discovery_source": {q.DiscoverySource}, "discovery_fingerprint": {q.DiscoveryFingerprint}, "source_question_id": {q.SourceQuestionID}}, "", "")
+	if help.Code != 200 || !strings.Contains(help.Body.String(), "Draft with AI") {
+		t.Fatalf("early narrative assistance did not load: %d %s", help.Code, help.Body.String())
+	}
+	staleHelp := url.Values{"question_key": {q.Key}, "revision": {"0"}, "destination": {job.URL}, "early": {"yes"}, "discovery_source": {q.DiscoverySource}, "discovery_fingerprint": {"stale"}, "source_question_id": {q.SourceQuestionID}}
+	if response := postApp(newMux(a), "/jobs/1/answers/help", staleHelp, "", ""); response.Code != http.StatusConflict {
+		t.Fatalf("stale discovery received assistance: %d %s", response.Code, response.Body.String())
 	}
 	choice := addCareerEvidenceForSearch(t, a, careerEvidenceContent{Title: "Database performance improvement", Situation: "A reporting system had slow queries.", Actions: "I reviewed the plans and recommended a targeted index.", OutcomeState: "unknown"}, true)
 	var calls atomic.Int32

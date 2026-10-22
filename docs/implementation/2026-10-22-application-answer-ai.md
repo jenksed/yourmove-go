@@ -2,6 +2,8 @@
 
 Implemented against `be24335d3e8d6d28e49dfec359c15bcf10447958`, confirmed against fetched `origin/main` before editing. The supplied authoritative design document was preserved. This report describes implementation and measured qualification, not a new architecture proposal.
 
+Checkpoint 2 follow-up: see [`2026-10-22-answer-assistance-refinement.md`](2026-10-22-answer-assistance-refinement.md) for per-question lazy loading, the unified Help me answer composition, visual captures, qualification, and delivery status.
+
 ## Ownership and boundaries
 
 - Application-owned deterministic policy admits only active, current, unambiguous, editable narrative questions already accepted by Answer Library eligibility. Unsupported questions retain their ordinary manual workflow.

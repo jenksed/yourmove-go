@@ -103,17 +103,16 @@
       <div class="question-heading"><h3 id="early-application-questions-title">Prepare application answers early</h3><a class="text-link" href="/jobs/{{.ID}}/inspection">Rendered-form inspection →</a></div>
       {{if .EarlyQuestions.Notice}}<p role="status" class="inline-hint">{{.EarlyQuestions.Notice}}</p>{{end}}
       {{if .EarlyQuestions.Item}}
-        {{if eq .EarlyQuestions.Item.Source "preview"}}<p role="status"><strong>{{len .EarlyQuestions.Questions}} distinct questions identified</strong> · {{.EarlyQuestions.SupportedQuestionCount}} supported for early preparation · {{.EarlyQuestions.ManualQuestionCount}} manual-only or ambiguous · rendered preview · {{.EarlyQuestions.Item.CheckedAt}}</p>
-        <p class="small-muted">{{.EarlyQuestions.Item.Note}}</p>
+        {{if eq .EarlyQuestions.Item.Source "preview"}}<p role="status"><strong>{{len .EarlyQuestions.ActionableQuestions}} questions to prepare</strong> · {{.EarlyQuestions.NeedsAnswerCount}} need an answer · {{.EarlyQuestions.PreparedCount}} prepared locally</p>
+        <details class="question-discovery-details"><summary>Discovery details</summary><p>{{len .EarlyQuestions.Questions}} distinct questions identified · {{.EarlyQuestions.SupportedQuestionCount}} supported for early preparation · {{.EarlyQuestions.ManualQuestionCount}} manual-only or ambiguous · read-only rendered preview · {{.EarlyQuestions.Item.CheckedAt}}</p><p class="small-muted">{{.EarlyQuestions.Item.Note}}</p></details>
         <form method="POST" action="/jobs/{{.ID}}/answers/preview" class="early-discovery-refresh"><input type="hidden" name="return_to" value="prepare"><button type="submit" class="button button-secondary">Preview application questions again</button></form>
-        {{else}}<p role="status"><strong>{{len .EarlyQuestions.Questions}} distinct questions discovered</strong> · {{.EarlyQuestions.SupportedQuestionCount}} supported for early preparation · {{.EarlyQuestions.ManualQuestionCount}} manual-only or ambiguous · {{.EarlyQuestions.Item.Source}} · {{.EarlyQuestions.Item.CheckedAt}}</p>
-        <p class="small-muted">{{.EarlyQuestions.Item.Note}} These are published question definitions. They may not include conditional controls, custom fields, or later steps on the actual employer form.</p>
+        {{else}}<p role="status"><strong>{{len .EarlyQuestions.ActionableQuestions}} questions to prepare</strong> · {{.EarlyQuestions.NeedsAnswerCount}} need an answer · {{.EarlyQuestions.PreparedCount}} prepared locally</p>
+        <details class="question-discovery-details"><summary>Discovery details</summary><p>{{len .EarlyQuestions.Questions}} distinct questions discovered · {{.EarlyQuestions.SupportedQuestionCount}} supported for early preparation · {{.EarlyQuestions.ManualQuestionCount}} manual-only or ambiguous · {{.EarlyQuestions.Item.Source}} · {{.EarlyQuestions.Item.CheckedAt}}</p><p class="small-muted">{{.EarlyQuestions.Item.Note}} These published definitions may omit conditional controls or later steps.</p></details>
         <form method="POST" action="/jobs/{{.ID}}/inspect" class="early-discovery-refresh"><input type="hidden" name="return_to" value="prepare"><button type="submit" class="button button-secondary">Refresh discovered questions</button></form>{{end}}
         {{if .EarlyQuestions.Questions}}
-        <p class="small-muted">Needs your answer: {{.EarlyQuestions.NeedsAnswerCount}} · Prepared locally: {{.EarlyQuestions.PreparedCount}} · From candidate profile: {{len .EarlyQuestions.ProfileQuestions}} · Complete on employer site: {{len .EarlyQuestions.EmployerSiteQuestions}} · Needs manual review: {{len .EarlyQuestions.ManualReviewQuestions}}</p>
         {{if .EarlyQuestions.ActionableQuestions}}
         <div data-question-workbench data-question-param="early_question" data-selected-question="{{.EarlyQuestions.SelectedKey}}" data-profile-count="{{len .EarlyQuestions.ProfileQuestions}}" data-employer-count="{{len .EarlyQuestions.EmployerSiteQuestions}}" data-review-count="{{len .EarlyQuestions.ManualReviewQuestions}}">
-        <div class="question-heading"><p class="small-muted" data-question-summary></p><p class="small-muted">Early answers are saved only in YourMove. They are not live application answers and do not authorize browser filling.</p></div>
+        <p class="small-muted">Early answers remain separate from live answers and do not authorize browser filling.</p>
         {{if .EarlyQuestions.ReturnNotice}}<p role="status">{{.EarlyQuestions.ReturnNotice}}</p>{{end}}
         <div class="question-layout">
           <nav class="question-index" aria-label="Questions to prepare" data-question-index hidden></nav>
@@ -135,9 +134,7 @@
                     <button type="submit" class="button button-secondary">Use prepared answer for this question</button>
                   </form>{{else if and (ne .Reconciliation.Status "") (ne .Reconciliation.Status "Accepted as a live answer")}}<p class="small-muted"><a href="#application-questions">Review or adapt this answer in the current live question workbench ↓</a></p>{{end}}
                 </section>{{end}}
-                {{if .LibrarySuggestions}}{{template "related-answer-library" .}}{{end}}
-                {{if .CareerEvidence}}{{template "related-career-evidence" .}}{{end}}
-                {{if .AIChoices}}{{template "application-answer-ai" .}}{{end}}
+                {{if .HelpEligible}}<details class="question-help" data-question-help data-help-url="/jobs/{{.JobID}}/answers/help" data-job="{{.JobID}}" data-key="{{.Key}}" data-revision="{{.Revision}}" data-destination="{{.Destination}}" data-early="yes" data-discovery-source="{{.DiscoverySource}}" data-discovery-fingerprint="{{.DiscoveryFingerprint}}" data-source-question-id="{{.SourceQuestionID}}"><summary>Help me answer</summary><div data-question-help-content><p class="small-muted">Open this section to see relevant previous writing, reviewed experiences, and drafting tools.</p><noscript><p>Suggestions and AI drafting need JavaScript. You can still edit and save your early answer here, or browse the <a href="/answer-library">Answer Library</a> and <a href="/career-evidence">Career Evidence</a>.</p></noscript></div></details>{{end}}
               {{else}}<h4>{{.Field.Label}}{{if .Field.Required}} (required){{end}}</h4><p>Manual completion required.</p><p class="small-muted">{{.ManualReason}}</p>{{end}}
             </div>
             {{end}}
@@ -170,7 +167,7 @@
         {{if not .Questions.EmployerQuestions}}<p role="status">No additional answers to prepare here. Review the employer form for questions that must be completed manually.</p>{{end}}
         <p class="small-muted">Save answers here. Filling the employer form is a separate action that requires your authorization.</p>
         {{if .Questions.ReturnNotice}}<p role="status">{{.Questions.ReturnNotice}}</p>{{end}}
-        <p class="small-muted" data-question-summary>Needs your answer: {{len .Questions.NeedsAnswerQuestions}} · Prepared locally: {{len .Questions.PreparedQuestions}} · From candidate profile: {{len .Questions.ProfileQuestions}} · Complete on employer site: {{len .Questions.EmployerSiteQuestions}} · Needs manual review: {{len .Questions.ManualReviewQuestions}}</p>
+        <p class="small-muted">{{len .Questions.NeedsAnswerQuestions}} need an answer · {{len .Questions.PreparedQuestions}} prepared locally · {{len .Questions.ProfileQuestions}} from profile · {{len .Questions.EmployerSiteQuestions}} for employer site · {{len .Questions.ManualReviewQuestions}} need review</p>
         {{if .Questions.EmployerQuestions}}<div class="question-layout">
           <nav class="question-index" aria-label="Questions to prepare" data-question-index hidden></nav>
           <div class="field question-chooser" hidden><label for="question-chooser">Questions to prepare</label><select id="question-chooser" data-question-chooser></select></div>
@@ -182,8 +179,7 @@
                 {{if eq .Source "Approved candidate information"}}<p><strong>{{.Field.Label}}</strong> · {{.Value}}</p><p class="small-muted">Prepared locally — Approved candidate profile · <a href="/candidate">Edit candidate profile</a></p><details class="question-override"><summary>Edit answer for this application</summary><p class="small-muted">Saving creates an application-specific override. Your approved profile stays unchanged.</p>{{end}}
                 {{template "application-question" .}}
                 {{if eq .Source "Approved candidate information"}}</details>{{end}}
-                {{if .LibrarySuggestions}}{{template "related-answer-library" .}}{{end}}
-                {{if .CareerEvidenceSuggestions}}{{template "related-career-evidence" .}}{{end}}
+                {{if .HelpEligible}}<details class="question-help" data-question-help data-help-url="/jobs/{{.JobID}}/answers/help" data-job="{{.JobID}}" data-key="{{.Key}}" data-revision="{{.Revision}}" data-destination="{{.Destination}}"><summary>Help me answer</summary><div data-question-help-content><p class="small-muted">Open this section to see relevant previous writing, reviewed experiences, and drafting tools.</p><noscript><p>Suggestions and AI drafting need JavaScript. You can still edit and save this answer here, or browse the <a href="/answer-library">Answer Library</a> and <a href="/career-evidence">Career Evidence</a>.</p></noscript></div></details>{{end}}
               {{else}}<h4>{{.Field.Label}}{{if .Field.Required}} (required){{end}}</h4><p>Requires manual completion in Chromium.</p><p class="small-muted">This control is sensitive, unsupported, or cannot be identified safely. Complete it in the employer browser.</p>{{end}}
             </div>
             {{end}}
@@ -439,23 +435,31 @@
 
 {{define "related-answer-library"}}
       <section class="related-previous-writing" aria-label="Related previous writing">
-        <h4>Related previous writing</h4>
-        <p class="small-muted">These are your earlier examples. Review the original question and provenance, then adapt any starting point for this employer's question.</p>
         {{range .LibrarySuggestions}}
         <article class="related-writing-example" data-related-writing-example>
           <p><strong>Original question</strong><br>{{.OriginalQuestion}}</p>
           <p class="related-writing-source"><strong>Source</strong> · {{if .SourceEmployer}}{{.SourceEmployer}}{{else}}{{.SourceHost}}{{end}}{{if .SourceJobTitle}} · {{.SourceJobTitle}}{{end}}</p>
           <p class="related-writing-excerpt"><strong>Excerpt</strong> · {{.Excerpt}}</p>
-          <details class="related-writing-full" data-related-answer data-entry-id="{{.EntryID}}">
+          <details class="related-writing-full" data-related-answer data-entry-id="{{.EntryID}}" data-library-revision="{{.Revision}}">
             <summary>Read the complete answer</summary>
             <div data-related-content><p class="small-muted">Open the complete example to read and copy it. JavaScript can also load it here.</p></div>
             <p><a href="/answer-library/{{.EntryID}}" target="_blank" rel="noopener noreferrer">Open full example and source context ↗</a></p>
-            {{if not $.IsEarly}}<button type="button" class="button button-secondary" data-use-library-answer data-entry-id="{{.EntryID}}" data-startpoint-url="/jobs/{{$.JobID}}/answers/starting-point" hidden>Use as starting point</button>{{end}}
+            <button type="button" class="button button-secondary" data-use-library-answer data-entry-id="{{.EntryID}}" data-library-revision="{{.Revision}}" data-startpoint-url="/jobs/{{$.JobID}}/answers/starting-point" hidden>Use as starting point</button>
             <p class="small-muted" role="status" aria-live="polite" data-related-status></p>
           </details>
         </article>
         {{end}}
       </section>
+{{end}}
+
+{{define "question-help-content"}}
+<div class="question-help-content">
+  {{with .Question}}
+    <details class="help-tool"><summary>Use previous writing</summary>{{if .LibrarySuggestions}}{{template "related-answer-library" .}}{{else}}<section class="help-empty"><p>{{if $.LibraryEmpty}}Your Answer Library is empty. You can browse or add examples there when ready.{{else}}No saved example is relevant enough to recommend for this question.{{end}} <a href="/answer-library" target="_blank" rel="noopener">Open Answer Library ↗</a></p></section>{{end}}</details>
+    <details class="help-tool"><summary>Find relevant experience</summary>{{if .CareerEvidenceSuggestions}}{{template "related-career-evidence" .}}{{else}}<section class="help-empty"><p>{{if $.EvidenceEmpty}}No reviewed Career Evidence is available yet. A readable resume can still be selected as factual evidence when drafting with AI.{{else}}No reviewed experience closely matches this question. A readable resume can still be selected as factual evidence when drafting with AI.{{end}} <a href="/career-evidence" target="_blank" rel="noopener">Review Career Evidence ↗</a></p></section>{{end}}</details>
+    {{template "application-answer-ai" .}}
+  {{end}}
+</div>
 {{end}}
 
 {{define "related-career-evidence"}}
@@ -527,9 +531,10 @@
 
 {{define "application-answer-ai"}}
 <details class="answer-ai" data-answer-ai data-job="{{.JobID}}" data-key="{{.Key}}" data-revision="{{.Revision}}" data-destination="{{.Destination}}" {{if .IsEarly}}data-early="yes" data-discovery-source="{{.DiscoverySource}}" data-discovery-fingerprint="{{.DiscoveryFingerprint}}" data-source-question-id="{{.SourceQuestionID}}"{{end}}>
-  <summary>Draft answer with AI</summary>
+  <summary>Draft with AI</summary>
   <noscript><p>Inline AI drafting requires JavaScript. You can still edit and save your answer normally.</p></noscript>
   <div data-answer-ai-controls hidden>
+    <p class="small-muted answer-ai-intro">Draft an answer using your experience. Choose factual sources, review the exact text, then authorize one generation.</p>
     <section data-answer-ai-preview hidden aria-label="Generated answer preview">
       <h4 tabindex="-1" data-answer-ai-heading>Generated preview · not saved</h4>
       <p data-answer-ai-question></p>
@@ -543,7 +548,7 @@
       </div>
       <p class="small-muted">Review the proposed facts and attribution. Generation does not verify, save, transfer, or submit an answer. This tab can temporarily recover up to 16 previews.</p>
     </section>
-    <details data-answer-ai-another open><summary>Draft another version</summary>
+    <details data-answer-ai-another><summary>Choose sources and settings</summary>
       <fieldset data-answer-ai-selection><legend>Choose factual evidence</legend>
         <p class="small-muted">Select up to two applicant-reviewed experiences, or deliberately select a readable resume excerpt below. A resume can be used without creating Career Evidence first. Nothing is selected automatically.</p>
         {{range .AIChoices.Evidence}}<label class="confirm-row"><input type="checkbox" name="career_evidence" value="{{.Identity}}"><span>{{.Label}}</span></label>{{else}}<p>No reviewed Career Evidence is available. You can use an available resume below, or <a href="/career-evidence" target="_blank" rel="noopener">review a career experience ↗</a>.</p>{{end}}
@@ -564,7 +569,7 @@
         <p class="small-muted" data-answer-ai-sources></p>
         <label class="confirm-row"><input type="checkbox" data-answer-ai-authorize><span>I authorize one generation for this question, provider, model, and reviewed source payload.</span></label>
         <label class="confirm-row"><input type="checkbox" data-answer-ai-external><span>I acknowledge that this text may be transmitted to external model services.</span></label>
-        <button type="button" class="button button-secondary" data-answer-ai-generate>Generate draft</button>
+        <button type="button" class="button button-primary" data-answer-ai-generate>Generate one draft</button>
       </section>
     </details>
     <button type="button" class="button button-secondary" data-answer-ai-cancel hidden>Cancel generation</button>

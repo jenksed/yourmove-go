@@ -103,6 +103,9 @@ func (q earlyApplicationQuestion) NeedsAnswer() bool  { return q.TriageCategory 
 func (q earlyApplicationQuestion) FromProfile() bool  { return q.TriageCategory == "profile" }
 func (q earlyApplicationQuestion) EmployerOnly() bool { return q.TriageCategory == "employer" }
 func (q earlyApplicationQuestion) NeedsReview() bool  { return q.TriageCategory == "review" }
+func (q earlyApplicationQuestion) HelpEligible() bool {
+	return q.Editable && q.TriageCategory == "answer" && earlyPotentialNarrative(q.Field)
+}
 
 func (p earlyQuestionPreparation) WorkbenchQuestions() []earlyApplicationQuestion {
 	var questions []earlyApplicationQuestion
@@ -429,37 +432,6 @@ func (a *App) prepareEarlyQuestions(job Job, r *http.Request) (earlyQuestionPrep
 		}
 		if err := a.reconcileEarlyPreparation(job, &item, &out); err != nil {
 			return out, err
-		}
-		// Suggestions are loaded in one bounded batch. Full AI source choices are
-		// fetched only for the question currently open in the workbench.
-		var candidates []preparedQuestion
-		for _, q := range out.Questions {
-			if q.Editable && earlyPotentialNarrative(q.Field) && answerLibraryEligible(q.Field, true) {
-				candidates = append(candidates, preparedQuestion{JobID: job.ID, Destination: job.URL, Field: q.Field, Key: q.Key, Editable: true})
-			}
-		}
-		if len(candidates) > 0 {
-			if suggestions, suggestionErr := a.answerLibrarySuggestionsForQuestions(candidates); suggestionErr == nil {
-				for i := range out.Questions {
-					out.Questions[i].LibrarySuggestions = suggestions[out.Questions[i].Key]
-				}
-			}
-			if suggestions, suggestionErr := a.careerEvidenceSuggestionsForQuestions(candidates); suggestionErr == nil {
-				for i := range out.Questions {
-					out.Questions[i].CareerEvidence = suggestions[out.Questions[i].Key]
-				}
-			}
-		}
-		if out.SelectedKey != "" {
-			for i := range out.Questions {
-				q := &out.Questions[i]
-				if q.Key != out.SelectedKey || !narrativeAnswerEligible(preparedQuestion{Field: q.Field, Editable: q.Editable}) {
-					continue
-				}
-				eligible := preparedQuestion{JobID: q.JobID, Destination: q.Destination, Field: q.Field, Key: q.Key, Value: q.Value, Revision: q.Revision, Editable: q.Editable, LibrarySuggestions: q.LibrarySuggestions, CareerEvidenceSuggestions: q.CareerEvidence}
-				q.AIChoices = a.answerAIChoices(job, eligible)
-				break
-			}
 		}
 	}
 	return out, nil

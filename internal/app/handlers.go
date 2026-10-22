@@ -246,7 +246,6 @@ func (a *App) jobDetail(w http.ResponseWriter, r *http.Request) {
 	for _, id := range []string{"codex", "claude-cli", "ollama", "openai", "anthropic", "openrouter", "compatible"} {
 		providerReady[id] = coverprovider.Configured(id)
 	}
-	answerAIProviders := applicationAnswerAIProviders(providerReady)
 	letterResumes := make([]documentRow, 0, len(resumeOptions))
 	for _, r := range resumeOptions {
 		if r.ArchivedAt == "" && !r.IsMaster {
@@ -265,26 +264,11 @@ func (a *App) jobDetail(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unable to load saved application answers", 500)
 		return
 	}
-	for i := range questions.Questions {
-		questions.Questions[i].AIChoices = a.answerAIChoices(job, questions.Questions[i])
-		if questions.Questions[i].AIChoices != nil {
-			questions.Questions[i].AIProviders = answerAIProviders
-			questions.Questions[i].AIDefaultProvider = "ollama"
-			questions.Questions[i].AIDefaultModel = coverprovider.DefaultModel("ollama")
-		}
-	}
 	questions.selectQuestion(r)
 	earlyQuestions, err := a.prepareEarlyQuestions(job, r)
 	if err != nil {
 		http.Error(w, "Unable to load discovered application questions", 500)
 		return
-	}
-	for i := range earlyQuestions.Questions {
-		if earlyQuestions.Questions[i].AIChoices != nil {
-			earlyQuestions.Questions[i].AIProviders = answerAIProviders
-			earlyQuestions.Questions[i].AIDefaultProvider = "ollama"
-			earlyQuestions.Questions[i].AIDefaultModel = letterModel
-		}
 	}
 	workspace := jobWorkspace{Questions: questions, EarlyQuestions: earlyQuestions, Job: job, Profile: profile, BrowserState: a.browsers.state(id), Resumes: resumes, ResumeOptions: resumeOptions, LetterResumes: letterResumes, Submissions: history, Desktop: a.openPosting != nil, SubmissionToken: token, SelectedResume: selected, AnswerEditingAllowed: job.Stage != StageApplied && job.Stage != StageClosed && job.SubmissionCount == 0, Handoff: assessResumeHandoff(job, selected), Sources: a.coverLetterSources(job, selected), Letter: letter, Letters: letters, LetterNotice: notice, LetterOpen: notice != "" || r.URL.Query().Has("draft"), LetterModel: letterModel, ProviderReady: providerReady, Match: match, HasFamilies: showMatch}
 	workspace.SubmissionNotice, workspace.SubmissionUncertain = submissionRecoveryNotice(r.URL.Query().Get("submission"))

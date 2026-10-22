@@ -19,6 +19,7 @@ const (
 
 type answerLibrarySuggestion struct {
 	EntryID          int64
+	Revision         int64
 	OriginalQuestion string
 	SourceEmployer   string
 	SourceJobTitle   string
@@ -28,6 +29,7 @@ type answerLibrarySuggestion struct {
 
 type answerLibrarySearchDocument struct {
 	EntryID          int64
+	Revision         int64
 	OriginalQuestion string
 	SourceEmployer   string
 	SourceJobTitle   string
@@ -140,7 +142,7 @@ func answerLibraryTermSet(index string, fallback string) map[string]struct{} {
 
 func newAnswerLibrarySearchDocument(entry AnswerLibraryEntry) answerLibrarySearchDocument {
 	return answerLibrarySearchDocument{
-		EntryID: entry.ID, OriginalQuestion: entry.OriginalQuestion,
+		EntryID: entry.ID, Revision: entry.Revision, OriginalQuestion: entry.OriginalQuestion,
 		SourceEmployer: entry.SourceEmployer, SourceJobTitle: entry.SourceJobTitle,
 		SourceHost: entry.SourceHost, UpdatedAt: entry.UpdatedAt,
 		questionTerms: answerLibraryTermSet(answerLibraryIndexTerms(entry.OriginalQuestion), ""),
@@ -281,7 +283,7 @@ func answerLibraryExcerpt(value string) string {
 }
 
 func (a *App) answerLibrarySearchDocuments() ([]answerLibrarySearchDocument, error) {
-	rows, err := a.db.Query(`SELECT id,original_question,source_employer,source_job_title,source_host,updated_at,question_terms,answer_terms
+	rows, err := a.db.Query(`SELECT id,revision,original_question,source_employer,source_job_title,source_host,updated_at,question_terms,answer_terms
 	 FROM answer_library WHERE search_index_version=? ORDER BY id DESC LIMIT ?`, answerLibrarySearchIndexVersion, answerLibraryCorpusLimit)
 	if err != nil {
 		return nil, err
@@ -291,7 +293,7 @@ func (a *App) answerLibrarySearchDocuments() ([]answerLibrarySearchDocument, err
 	for rows.Next() {
 		var doc answerLibrarySearchDocument
 		var questionTerms, answerTerms string
-		if err := rows.Scan(&doc.EntryID, &doc.OriginalQuestion, &doc.SourceEmployer, &doc.SourceJobTitle,
+		if err := rows.Scan(&doc.EntryID, &doc.Revision, &doc.OriginalQuestion, &doc.SourceEmployer, &doc.SourceJobTitle,
 			&doc.SourceHost, &doc.UpdatedAt, &questionTerms, &answerTerms); err != nil {
 			return nil, err
 		}
@@ -312,19 +314,22 @@ func (a *App) answerLibraryExcerpts(ranked []rankedAnswerLibraryDocument) ([]ans
 		placeholders[i] = "?"
 		args[i] = item.document.EntryID
 	}
-	rows, err := a.db.Query(`SELECT id,substr(answer,1,`+fmt.Sprint(answerLibraryExcerptRunes)+`) FROM answer_library WHERE id IN (`+strings.Join(placeholders, ",")+")", args...)
+	rows, err := a.db.Query(`SELECT id,revision,substr(answer,1,`+fmt.Sprint(answerLibraryExcerptRunes)+`) FROM answer_library WHERE id IN (`+strings.Join(placeholders, ",")+")", args...)
 	if err != nil {
 		return nil, err
 	}
 	excerpts := make(map[int64]string, len(ranked))
+	revisions := make(map[int64]int64, len(ranked))
 	for rows.Next() {
 		var id int64
+		var revision int64
 		var excerpt string
-		if err := rows.Scan(&id, &excerpt); err != nil {
+		if err := rows.Scan(&id, &revision, &excerpt); err != nil {
 			rows.Close()
 			return nil, err
 		}
 		excerpts[id] = answerLibraryExcerpt(excerpt)
+		revisions[id] = revision
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
@@ -336,7 +341,7 @@ func (a *App) answerLibraryExcerpts(ranked []rankedAnswerLibraryDocument) ([]ans
 	results := make([]answerLibrarySuggestion, 0, len(ranked))
 	for _, item := range ranked {
 		doc := item.document
-		results = append(results, answerLibrarySuggestion{EntryID: doc.EntryID, OriginalQuestion: doc.OriginalQuestion,
+		results = append(results, answerLibrarySuggestion{EntryID: doc.EntryID, Revision: revisions[doc.EntryID], OriginalQuestion: doc.OriginalQuestion,
 			SourceEmployer: doc.SourceEmployer, SourceJobTitle: doc.SourceJobTitle, SourceHost: doc.SourceHost, Excerpt: excerpts[doc.EntryID]})
 	}
 	return results, nil

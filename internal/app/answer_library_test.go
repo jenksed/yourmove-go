@@ -1,9 +1,7 @@
 package app
 
 import (
-	"bytes"
 	"html"
-	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -388,16 +386,11 @@ func TestAnswerLibraryEligibilityIsConservative(t *testing.T) {
 	}
 }
 
-func TestAnswerLibrarySuggestionFailureIsLoggedWithoutQuestionText(t *testing.T) {
-	a, _, job, _, _ := newAnswerLibraryFixture(t)
+func TestAnswerLibrarySuggestionFailureIsQuestionScopedAndSafe(t *testing.T) {
+	a, _, job, field, key := newAnswerLibraryFixture(t)
 	if _, err := a.db.Exec(`DROP TABLE answer_library`); err != nil {
 		t.Fatal(err)
 	}
-	var output bytes.Buffer
-	previous := log.Writer()
-	log.SetOutput(&output)
-	defer log.SetOutput(previous)
-
 	prepared, err := a.prepareQuestions(job, CandidateProfile{})
 	if err != nil {
 		t.Fatalf("optional suggestion failure blocked question preparation: %v", err)
@@ -405,12 +398,11 @@ func TestAnswerLibrarySuggestionFailureIsLoggedWithoutQuestionText(t *testing.T)
 	if len(prepared.Questions) != 1 {
 		t.Fatalf("questions were not prepared: %+v", prepared.Questions)
 	}
-	logged := output.String()
-	if !strings.Contains(logged, "retrieve Answer Library suggestions:") || !strings.Contains(logged, "no such table") {
-		t.Fatalf("retrieval failure is not diagnosable: %q", logged)
-	}
-	if strings.Contains(logged, answerLibraryStory) {
-		t.Fatalf("private question text appeared in logs: %q", logged)
+	response := postApp(newMux(a), "/jobs/1/answers/help", url.Values{
+		"destination": {job.URL}, "question_key": {key}, "revision": {"0"},
+	}, "", "")
+	if response.Code != http.StatusInternalServerError || !strings.Contains(response.Body.String(), "Unable to retrieve previous writing") || strings.Contains(response.Body.String(), field.Label) {
+		t.Fatalf("question-scoped retrieval failure is not actionable and safe: %d %s", response.Code, response.Body.String())
 	}
 }
 

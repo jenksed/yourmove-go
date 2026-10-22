@@ -134,7 +134,9 @@ func TestControlledAnswerLibraryWorkbench(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	wait(`document.readyState==='complete' && !!document.querySelector('[data-related-answer]')`)
+	wait(`document.readyState==='complete' && !!document.querySelector('[data-question-help]')`)
+	run(`document.querySelector('[data-question-help]').open=true`)
+	wait(`!!document.querySelector('[data-related-answer]')`)
 	assert(`document.querySelector('[data-related-writing-example]').textContent.includes('Describe a production incident you resolved for a customer') && document.querySelector('[data-related-writing-example]').textContent.includes('Fixture Systems')`)
 	// The no-JavaScript path is a real server link to a page that renders the
 	// complete answer in escaped HTML for manual reading and copy/paste.
@@ -158,7 +160,7 @@ func TestControlledAnswerLibraryWorkbench(t *testing.T) {
 	// preserve the current observed question key and revision.
 	run(`(()=>{window.confirm=()=>true;document.querySelector('[data-use-library-answer]').click()})()`)
 	wait(`document.querySelector('textarea[name="answer"]').value.includes('I investigated a challenging Linux incident') && document.querySelector('[data-related-status]').textContent.includes('unsaved answer')`)
-	assert(`document.querySelector('[name="question_key"]').value===` + fmt.Sprintf("%q", key) + ` && document.querySelector('[name="revision"]').value==='1' && document.querySelector('.application-question-form').dataset.dirty==='true'`)
+	assert(`document.querySelector('.application-question-form [name="question_key"]').value===` + fmt.Sprintf("%q", key) + ` && document.querySelector('.application-question-form [name="revision"]').value==='1' && document.querySelector('.application-question-form').dataset.dirty==='true'`)
 	var stored string
 	var storedRevision int64
 	if err := a.db.QueryRow(`SELECT answer,revision FROM application_answers WHERE job_id=2 AND question_key=?`, key).Scan(&stored, &storedRevision); err != nil || stored != initialAnswer || storedRevision != 1 {
@@ -168,7 +170,11 @@ func TestControlledAnswerLibraryWorkbench(t *testing.T) {
 	run(`(()=>{const e=document.querySelector('textarea[name="answer"]');e.value=` + fmt.Sprintf("%q", adapted) + `;e.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('.application-question-form [type="submit"]').click()})()`)
 	page = server.URL + "/jobs/2?question=" + key + "#prepare"
 	wait(`document.readyState==='complete' && document.querySelector('textarea[name="answer"]')?.value===` + fmt.Sprintf("%q", adapted))
-	assert(`document.querySelector('[name="revision"]').value==='2' && document.querySelector('[data-answer-status]').textContent.includes('Saved locally')`)
+	assert(`document.querySelector('.application-question-form [name="revision"]').value==='2' && document.querySelector('.application-question-form [data-answer-status]').textContent.toLowerCase().includes('saved locally')`)
+	run(`(()=>{const h=document.querySelector('[data-question-help]');h.open=true;return true})()`)
+	wait(`!!document.querySelector('.help-tool')`)
+	run(`(()=>{const d=document.querySelector('.help-tool');d.open=true;return true})()`)
+	wait(`!!document.querySelector('.related-previous-writing')`)
 	shot, err := chrome.FixtureScreenshotAt(ctx, page, 390, ".related-previous-writing", "")
 	if err != nil || shot == "" {
 		t.Fatalf("390px Question Workbench rendering: screenshot=%t err=%v", shot != "", err)
