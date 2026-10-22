@@ -60,21 +60,12 @@ func answerLibraryEligible(f schema.Field, unique bool) bool {
 	if !stableQuestionIdentity(f, unique) || (f.Kind != "text" && f.Kind != "textarea") {
 		return false
 	}
-	label := strings.ToLower(strings.TrimSpace(f.Label))
-	for _, blocked := range []string{
-		"authorization", "authorized to work", "eligible to work", "work eligibility", "visa", "sponsor",
-		"immigration", "citizenship", "citizen", "race", "ethnicity", "gender", "sexual orientation",
-		"disability", "accommodation", "veteran", "date of birth", "birth date", "age", "pronoun",
-		"religion", "marital status", "medical", "health condition", "salary", "compensation",
-		"pay expectation", "desired pay", "hourly rate", "wage", "reference", "referee", "email",
-		"phone", "telephone", "street address", "mailing address", "password", "credential", "secret",
-		"api key", "access token", "social security", "ssn", "bank account", "agree to", "i agree",
-		"consent", "attest", "certify", "legally bound", "background check",
-	} {
-		if strings.Contains(label, blocked) {
+	for _, blocked := range answerLibrarySensitivePhrases {
+		if answerLibraryContainsPhrase(f.Label, blocked) {
 			return false
 		}
 	}
+	label := strings.ToLower(strings.TrimSpace(f.Label))
 	words := strings.Fields(label)
 	if len(words) < 3 || len(label) < 15 {
 		return false
@@ -87,6 +78,38 @@ func answerLibraryEligible(f schema.Field, unique bool) bool {
 		"proud of", "motivat", "strength", "improvement", "experience with", "experience in",
 	} {
 		if strings.Contains(label, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+var answerLibrarySensitivePhrases = []string{
+	"authorization", "authorized to work", "eligible to work", "work eligibility", "visa", "sponsor", "sponsors",
+	"immigration", "citizenship", "citizen", "race", "ethnicity", "gender", "sexual orientation",
+	"sponsorship", "work permit", "disability", "disabilities", "accommodation", "accommodations", "veteran", "veterans",
+	"date of birth", "birth date", "birth year", "birthday", "how old", "age", "pronoun", "pronouns",
+	"religion", "marital status", "medical", "health condition", "health conditions", "salary", "salaries", "compensation",
+	"pay expectation", "pay expectations", "desired pay", "hourly rate", "hourly rates", "wage", "wages", "reference", "references", "referee", "referees", "email",
+	"phone", "telephone", "street address", "street addresses", "mailing address", "mailing addresses", "password", "passwords", "credential", "credentials", "secret", "secrets",
+	"api key", "api keys", "access token", "access tokens", "social security", "ssn", "bank account", "bank accounts", "agree to", "i agree",
+	"consent", "attest", "attestation", "attestations", "certify", "certification", "certifications", "legally bound", "background check", "background checks",
+}
+
+func answerLibraryContainsPhrase(text, phrase string) bool {
+	words, blocked := answerLibraryWords(text), answerLibraryWords(phrase)
+	if len(blocked) == 0 || len(blocked) > len(words) {
+		return false
+	}
+	for start := 0; start <= len(words)-len(blocked); start++ {
+		match := true
+		for offset := range blocked {
+			if words[start+offset] != blocked[offset] {
+				match = false
+				break
+			}
+		}
+		if match {
 			return true
 		}
 	}
@@ -353,8 +376,16 @@ func (a *App) updateAnswerLibrary(id, expectedRevision int64, answer string) err
 	return ErrAnswerLibraryStale
 }
 
-func (a *App) deleteAnswerLibrary(id int64) error {
-	result, err := a.db.Exec(`DELETE FROM answer_library WHERE id=?`, id)
+func (a *App) deleteAnswerLibrary(id, expectedRevision int64) error {
+	if id <= 0 || expectedRevision < 1 {
+		return ErrAnswerLibraryInvalid
+	}
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	result, err := tx.Exec(`DELETE FROM answer_library WHERE id=? AND revision=?`, id, expectedRevision)
 	if err != nil {
 		return err
 	}
@@ -362,8 +393,15 @@ func (a *App) deleteAnswerLibrary(id int64) error {
 	if err != nil {
 		return err
 	}
-	if count == 0 {
+	if count == 1 {
+		return tx.Commit()
+	}
+	var exists bool
+	if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM answer_library WHERE id=?)`, id).Scan(&exists); err != nil {
+		return err
+	}
+	if !exists {
 		return sql.ErrNoRows
 	}
-	return nil
+	return ErrAnswerLibraryStale
 }

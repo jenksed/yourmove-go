@@ -279,10 +279,25 @@ func (a *App) deleteAnswerLibraryHandler(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "Check the confirmation to delete this Answer Library example", http.StatusBadRequest)
 		return
 	}
-	if err := a.deleteAnswerLibrary(id); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+	revisionValues := r.PostForm["revision"]
+	if len(revisionValues) != 1 {
+		http.Error(w, "Review the current Answer Library revision before deleting this example", http.StatusBadRequest)
+		return
+	}
+	revision, err := strconv.ParseInt(revisionValues[0], 10, 64)
+	if err != nil || revision < 1 {
+		http.Error(w, "Invalid Answer Library revision", http.StatusBadRequest)
+		return
+	}
+	if err := a.deleteAnswerLibrary(id, revision); err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
 			http.NotFound(w, r)
-		} else {
+		case errors.Is(err, ErrAnswerLibraryStale):
+			http.Error(w, "This library copy changed in another window. Reload the Answer Library before deleting.", http.StatusConflict)
+		case errors.Is(err, ErrAnswerLibraryInvalid):
+			http.Error(w, "Invalid Answer Library revision", http.StatusBadRequest)
+		default:
 			http.Error(w, "Unable to delete this Answer Library example", http.StatusInternalServerError)
 		}
 		return

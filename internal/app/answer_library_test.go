@@ -1,7 +1,9 @@
 package app
 
 import (
+	"bytes"
 	"html"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -244,17 +246,48 @@ func TestAnswerLibraryDeduplicatesBySavedRevisionAndKeepsLifecycleIndependent(t 
 	if secondID == 0 {
 		t.Fatal("new source revision is missing")
 	}
-	missingConfirmation := postApp(newMux(a), "/answer-library/"+strconv.FormatInt(secondID, 10)+"/delete", url.Values{}, "", "")
+	missingConfirmation := postApp(newMux(a), "/answer-library/"+strconv.FormatInt(secondID, 10)+"/delete", url.Values{"revision": {"1"}}, "", "")
 	if missingConfirmation.Code != http.StatusBadRequest {
 		t.Fatalf("unconfirmed library deletion accepted: %d", missingConfirmation.Code)
 	}
-	deleted := postApp(newMux(a), "/answer-library/"+strconv.FormatInt(secondID, 10)+"/delete", url.Values{"confirm": {"yes"}}, "", "")
+	var editedID int64
+	for _, entry := range entries {
+		if entry.SourceRevision == 1 {
+			editedID = entry.ID
+		}
+	}
+	if editedID == 0 {
+		t.Fatal("edited Answer Library entry is missing")
+	}
+	staleDelete := postApp(newMux(a), "/answer-library/"+strconv.FormatInt(editedID, 10)+"/delete", url.Values{"confirm": {"yes"}, "revision": {"1"}}, "", "")
+	if staleDelete.Code != http.StatusConflict {
+		t.Fatalf("stale library delete did not conflict: %d %s", staleDelete.Code, staleDelete.Body.String())
+	}
+	entriesAfterConflict, err := a.answerLibraryEntries()
+	if err != nil || len(entriesAfterConflict) != 2 {
+		t.Fatalf("stale delete changed library contents: %+v %v", entriesAfterConflict, err)
+	}
+	var editedPreserved bool
+	for _, entry := range entriesAfterConflict {
+		if entry.ID == editedID && entry.Answer == edit && entry.Revision == 2 {
+			editedPreserved = true
+		}
+	}
+	if !editedPreserved {
+		t.Fatalf("stale delete did not preserve the newer edit: %+v", entriesAfterConflict)
+	}
+	nonexistentDelete := postApp(newMux(a), "/answer-library/99999/delete", url.Values{"confirm": {"yes"}, "revision": {"1"}}, "", "")
+	if nonexistentDelete.Code != http.StatusNotFound {
+		t.Fatalf("nonexistent library delete status: %d", nonexistentDelete.Code)
+	}
+	deleted := postApp(newMux(a), "/answer-library/"+strconv.FormatInt(secondID, 10)+"/delete", url.Values{"confirm": {"yes"}, "revision": {"1"}}, "", "")
 	if deleted.Code != http.StatusSeeOther {
 		t.Fatalf("delete library copy: %d %s", deleted.Code, deleted.Body.String())
 	}
+	var original string
 	var revision int64
-	if err := a.db.QueryRow(`SELECT revision FROM application_answers WHERE job_id=? AND question_key=?`, job.ID, key).Scan(&revision); err != nil || revision != 2 {
-		t.Fatalf("library deletion changed application answer history: rev=%d err=%v", revision, err)
+	if err := a.db.QueryRow(`SELECT answer,revision FROM application_answers WHERE job_id=? AND question_key=?`, job.ID, key).Scan(&original, &revision); err != nil || original != secondAnswer || revision != 2 {
+		t.Fatalf("library deletion changed application answer history: answer=%q rev=%d err=%v", original, revision, err)
 	}
 	if err := a.db.Close(); err != nil {
 		t.Fatal(err)
@@ -323,9 +356,24 @@ func TestAnswerLibraryEligibilityIsConservative(t *testing.T) {
 		unique, want bool
 	}{
 		{"narrative prompt", schema.Field{ID: "browser:q", Label: "Describe a challenging project you led", Kind: "textarea"}, true, true},
+		{"managed narrative", schema.Field{ID: "browser:q", Label: "Describe how you managed a production incident", Kind: "textarea"}, true, true},
+		{"management narrative", schema.Field{ID: "browser:q", Label: "Explain your project management experience", Kind: "textarea"}, true, true},
+		{"engagement narrative", schema.Field{ID: "browser:q", Label: "How did you improve customer engagement", Kind: "textarea"}, true, true},
 		{"generic experience", schema.Field{ID: "browser:q", Label: "What is your experience?", Kind: "textarea"}, true, false},
+		{"age", schema.Field{ID: "browser:q", Label: "Describe your age and work history", Kind: "textarea"}, true, false},
+		{"date of birth", schema.Field{ID: "browser:q", Label: "Describe your date of birth and work history", Kind: "textarea"}, true, false},
+		{"how old", schema.Field{ID: "browser:q", Label: "Tell us how old you are and your experience", Kind: "textarea"}, true, false},
 		{"salary", schema.Field{ID: "browser:q", Label: "Describe your expected salary and compensation", Kind: "textarea"}, true, false},
-		{"authorization", schema.Field{ID: "browser:q", Label: "Tell us about work authorization status", Kind: "textarea"}, true, false},
+		{"authorization", schema.Field{ID: "browser:q", Label: "Describe your work authorization status and history", Kind: "textarea"}, true, false},
+		{"sponsorship", schema.Field{ID: "browser:q", Label: "Tell us whether you need visa sponsorship to work", Kind: "textarea"}, true, false},
+		{"disability", schema.Field{ID: "browser:q", Label: "Describe any disability and work experience", Kind: "textarea"}, true, false},
+		{"accommodations", schema.Field{ID: "browser:q", Label: "Explain accommodations you may need at work", Kind: "textarea"}, true, false},
+		{"consent", schema.Field{ID: "browser:q", Label: "Describe whether you consent to our process", Kind: "textarea"}, true, false},
+		{"legal attestation", schema.Field{ID: "browser:q", Label: "I certify that this legal attestation is true", Kind: "textarea"}, true, false},
+		{"references", schema.Field{ID: "browser:q", Label: "Describe your professional references", Kind: "textarea"}, true, false},
+		{"demographic", schema.Field{ID: "browser:q", Label: "Describe your race and ethnicity", Kind: "textarea"}, true, false},
+		{"medical", schema.Field{ID: "browser:q", Label: "Explain your medical history and experience", Kind: "textarea"}, true, false},
+		{"contact details", schema.Field{ID: "browser:q", Label: "Describe your email and phone number", Kind: "textarea"}, true, false},
 		{"sensitive flag", schema.Field{ID: "browser:q", Label: "Describe a technical incident", Kind: "textarea", Sensitive: true}, true, false},
 		{"select", schema.Field{ID: "browser:q", Label: "Describe a project you led", Kind: "select"}, true, false},
 		{"ambiguous identity", schema.Field{ID: "browser:q", Label: "Describe a project you led", Kind: "textarea"}, false, false},
@@ -337,6 +385,32 @@ func TestAnswerLibraryEligibilityIsConservative(t *testing.T) {
 				t.Fatalf("eligibility=%v want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestAnswerLibrarySuggestionFailureIsLoggedWithoutQuestionText(t *testing.T) {
+	a, _, job, _, _ := newAnswerLibraryFixture(t)
+	if _, err := a.db.Exec(`DROP TABLE answer_library`); err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	previous := log.Writer()
+	log.SetOutput(&output)
+	defer log.SetOutput(previous)
+
+	prepared, err := a.prepareQuestions(job, CandidateProfile{})
+	if err != nil {
+		t.Fatalf("optional suggestion failure blocked question preparation: %v", err)
+	}
+	if len(prepared.Questions) != 1 {
+		t.Fatalf("questions were not prepared: %+v", prepared.Questions)
+	}
+	logged := output.String()
+	if !strings.Contains(logged, "retrieve Answer Library suggestions:") || !strings.Contains(logged, "no such table") {
+		t.Fatalf("retrieval failure is not diagnosable: %q", logged)
+	}
+	if strings.Contains(logged, answerLibraryStory) {
+		t.Fatalf("private question text appeared in logs: %q", logged)
 	}
 }
 

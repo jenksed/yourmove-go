@@ -39,6 +39,7 @@
         <button type="submit" class="button button-secondary">Save library copy</button>
       </form>
       <form method="POST" action="/answer-library/{{.ID}}/delete" class="answer-library-delete">
+        <input type="hidden" name="revision" value="{{.Revision}}">
         <label class="confirm-row"><input type="checkbox" name="confirm" value="yes" required><span>Delete this saved example from the Answer Library.</span></label>
         <button type="submit" class="button button-danger">Delete example</button>
       </form>

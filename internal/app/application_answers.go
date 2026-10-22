@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -201,7 +202,9 @@ func (a *App) prepareQuestions(job Job, p CandidateProfile) (questionPreparation
 		}
 	}
 	if job.Stage != StageApplied && job.Stage != StageClosed && job.SubmissionCount == 0 {
-		if suggestions, err := a.answerLibrarySuggestionsForQuestions(out.Questions); err == nil {
+		if suggestions, err := a.answerLibrarySuggestionsForQuestions(out.Questions); err != nil {
+			log.Printf("retrieve Answer Library suggestions: %v", err)
+		} else {
 			for i := range out.Questions {
 				out.Questions[i].LibrarySuggestions = suggestions[out.Questions[i].Key]
 			}
