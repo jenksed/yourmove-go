@@ -171,6 +171,10 @@ func (a *App) prepareQuestions(job Job, p CandidateProfile) (questionPreparation
 	for _, f := range item.Fields {
 		counts[f.ID]++
 	}
+	platform := item.Platform
+	if browser.PostingPlatform(job.URL) != platform {
+		platform = ""
+	}
 	used := map[string]bool{}
 	for _, f := range item.Fields {
 		key := questionKey(job.URL, item.Platform, f.Field)
@@ -178,7 +182,7 @@ func (a *App) prepareQuestions(job Job, p CandidateProfile) (questionPreparation
 		memoryKey := reusableAnswerKey(job.URL, f.Field)
 		reusable := memory[memoryKey]
 		value, source := resolveApplicationAnswer(f.Field, answer.Value, exists, p, reusable.Value, reusable.Revision > 0)
-		editable := editableQuestion(f.Field, counts[f.ID] == 1)
+		editable := editableQuestionForPlatform(f.Field, counts[f.ID] == 1, platform, p)
 		if !editable {
 			value = ""
 			source = ""

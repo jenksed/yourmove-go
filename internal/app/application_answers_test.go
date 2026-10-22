@@ -143,3 +143,112 @@ func TestUnstableSensitiveAndAmbiguousQuestionsStayManual(t *testing.T) {
 		}
 	}
 }
+
+func TestPrepareQuestionsLocationComboboxEligibility(t *testing.T) {
+	approved := CandidateProfile{Approved: true, City: "Detroit", Region: "Michigan", Country: "United States"}
+	field := schema.Field{ID: "browser:location-field", Label: "Current location", Kind: "combobox"}
+	greenhouse := "https://job-boards.greenhouse.io/cordance/jobs/5423762008"
+	for _, tc := range []struct {
+		name             string
+		posting          string
+		observedPlatform string
+		profile          CandidateProfile
+		fields           []schema.Field
+		wantEditable     []bool
+		wantValues       []string
+	}{
+		{"approved Ashby location", testAshbyPosting, "ashby", approved, []schema.Field{field}, []bool{true}, []string{"Detroit, Michigan, United States"}},
+		{"approved partial location", testAshbyPosting, "ashby", CandidateProfile{Approved: true, City: "Detroit"}, []schema.Field{field}, []bool{true}, []string{"Detroit"}},
+		{"recognized location labels", testAshbyPosting, "ashby", approved, []schema.Field{
+			{ID: "browser:location", Label: "Location", Kind: "combobox"},
+			{ID: "browser:current-location", Label: "Current location (optional)*", Kind: "combobox"},
+			{ID: "browser:your-location", Label: "Your location (required)", Kind: "combobox"},
+		}, []bool{true, true, true}, []string{"Detroit, Michigan, United States", "Detroit, Michigan, United States", "Detroit, Michigan, United States"}},
+		{"unapproved profile location", testAshbyPosting, "ashby", CandidateProfile{City: approved.City, Region: approved.Region, Country: approved.Country}, []schema.Field{field}, []bool{false}, []string{""}},
+		{"approved profile without location", testAshbyPosting, "ashby", CandidateProfile{Approved: true}, []schema.Field{field}, []bool{false}, []string{""}},
+		{"unrelated combobox labels", testAshbyPosting, "ashby", approved, []schema.Field{
+			{ID: "browser:preferred-work", Label: "Preferred work location", Kind: "combobox"},
+			{ID: "browser:relocation", Label: "Relocation preference", Kind: "combobox"},
+			{ID: "browser:reference-location", Label: "Location of a reference", Kind: "combobox"},
+		}, []bool{false, false, false}, []string{"", "", ""}},
+		{"duplicate field identity", testAshbyPosting, "ashby", approved, []schema.Field{field, field}, []bool{false, false}, []string{"", ""}},
+		{"unstable field identity", testAshbyPosting, "ashby", approved, []schema.Field{{ID: "browser:question-1", Label: "Location", Kind: "combobox"}}, []bool{false}, []string{""}},
+		{"unsupported platform", greenhouse, "greenhouse", approved, []schema.Field{field}, []bool{false}, []string{""}},
+		{"platform does not match saved posting", testAshbyPosting, "greenhouse", approved, []schema.Field{field}, []bool{false}, []string{""}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, _ := testWorkspace(t)
+			postingURL, err := url.Parse(tc.posting)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := a.saveJob(Job{URL: tc.posting, Host: postingURL.Hostname()}); err != nil {
+				t.Fatal(err)
+			}
+			application := tc.posting + "/application"
+			if tc.observedPlatform == "greenhouse" {
+				application = tc.posting + "#application"
+			}
+			if _, err := a.saveInspection(1, schema.Result{Platform: tc.observedPlatform, Source: "browser", ApplicationURL: application, Fields: tc.fields}); err != nil {
+				t.Fatal(err)
+			}
+			job, err := a.jobByID(1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			prepared, err := a.prepareQuestions(job, tc.profile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(prepared.Questions) != len(tc.fields) {
+				t.Fatalf("prepared %d questions for %d fields", len(prepared.Questions), len(tc.fields))
+			}
+			for i, q := range prepared.Questions {
+				if q.Editable != tc.wantEditable[i] || q.Value != tc.wantValues[i] {
+					t.Errorf("field %d: editable=%t value=%q, want editable=%t value=%q", i, q.Editable, q.Value, tc.wantEditable[i], tc.wantValues[i])
+				}
+			}
+		})
+	}
+}
+
+func TestLocationComboboxKeepsApplicationOverridePrecedence(t *testing.T) {
+	a, _ := testWorkspace(t)
+	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com"}); err != nil {
+		t.Fatal(err)
+	}
+	profile := CandidateProfile{FirstName: "Casey", LastName: "Fixture", Email: "casey@example.test", City: "Detroit", Region: "Michigan", Country: "United States", Approved: true}
+	if err := a.saveCandidateProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	field := schema.Field{ID: "browser:location", Label: "Location", Kind: "combobox"}
+	if _, err := a.saveInspection(1, schema.Result{Platform: "ashby", Source: "browser", ApplicationURL: testAshbyPosting + "/application", Fields: []schema.Field{field}}); err != nil {
+		t.Fatal(err)
+	}
+	job, err := a.jobByID(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := a.prepareQuestions(job, profile)
+	if err != nil || len(prepared.Questions) != 1 {
+		t.Fatalf("location not prepared: %+v %v", prepared.Questions, err)
+	}
+	values := url.Values{"question_key": {prepared.Questions[0].Key}, "revision": {"0"}, "destination": {job.URL}, "answer": {"Ann Arbor, Michigan, United States"}}
+	mux := newMux(a)
+	if rec := postApp(mux, "/jobs/1/answers/save", values, "", ""); rec.Code != 303 {
+		t.Fatal(rec.Code, rec.Body.String())
+	}
+	prepared, err = a.prepareQuestions(job, profile)
+	if err != nil || prepared.Questions[0].Value != "Ann Arbor, Michigan, United States" || prepared.Questions[0].Source != "Saved for this application" {
+		t.Fatalf("application override did not take precedence: %+v %v", prepared.Questions, err)
+	}
+	values.Set("revision", "1")
+	values.Set("answer", "")
+	if rec := postApp(mux, "/jobs/1/answers/save", values, "", ""); rec.Code != 303 {
+		t.Fatal(rec.Code, rec.Body.String())
+	}
+	prepared, err = a.prepareQuestions(job, profile)
+	if err != nil || prepared.Questions[0].Value != "" || prepared.Questions[0].Source != "Saved for this application" || len(prepared.ReadyAnswers()) != 0 {
+		t.Fatalf("intentional blank override fell back to the profile: %+v %v", prepared.Questions, err)
+	}
+}

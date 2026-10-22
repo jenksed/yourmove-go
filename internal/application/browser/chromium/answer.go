@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jenksed/yourmove-go/internal/application/browser"
 	"github.com/coder/websocket"
+	"github.com/jenksed/yourmove-go/internal/application/browser"
 )
 
 // FillAnswer reuses the read-only observation as the live identity contract.
@@ -47,7 +47,19 @@ func (s *Session) FillAnswer(ctx context.Context, answer browser.AnswerValue) (b
 	args, _ := json.Marshal([]any{saved.Scheme + "://" + saved.Host, strings.TrimRight(saved.Path, "/"), answer})
 	const operation = `(async function(origin,base,approved){
  const owns=()=>location.origin===origin&&(location.pathname===base||location.pathname.startsWith(base+'/'));
- const locationField=['location','current location','your location'].includes(approved.field.label.toLowerCase().replace(/\s*\*$/, '').trim())&&!!document.querySelector('.ashby-application-form-container');
+ const locationLabel=approved.field.label.toLowerCase().replace(/\s*\*$/, '').replace(/\s+\((?:optional|required)\)$/, '').trim();
+ const locationField=['location','current location','your location'].includes(locationLabel)&&!!document.querySelector('.ashby-application-form-container');
+ const normalized=s=>s.toLowerCase().replace(/united states( of america)?/g,'usa').replace(/[^a-z0-9]/g,'');
+ const suggestionRoot=e=>{
+ const controlled=document.getElementById(e.getAttribute('aria-controls')||e.getAttribute('aria-owns')||'');
+ const lists=[...document.querySelectorAll('[role="listbox"]')].filter(visible);
+ return controlled||(lists.length===1?lists[0]:null);
+ };
+ const selectedLocation=(e,value)=>{
+ const root=suggestionRoot(e);
+ const options=root?[...root.querySelectorAll('[role="option"]')].filter(o=>o.getAttribute('aria-disabled')!=='true'&&normalized(o.innerText)===normalized(value)&&o.getAttribute('aria-selected')==='true'):[];
+ return e.validity.valid&&options.length===1;
+ };
  const normOptions=o=>o||[];
  const same=c=>c&&('browser:'+c.id)===approved.field.id&&c.label===approved.field.label&&c.kind===approved.field.kind&&c.required===approved.field.required&&!!c.sensitive===!!approved.field.sensitive&&JSON.stringify(normOptions(c.options))===JSON.stringify(normOptions(approved.field.options));
  const visible=e=>e.getClientRects().length&&getComputedStyle(e).visibility!=='hidden'&&!e.closest('[inert],[aria-hidden=true]');
@@ -76,6 +88,7 @@ func (s *Session) FillAnswer(ctx context.Context, answer browser.AnswerValue) (b
  return e.value;
  };
  if(read(hits)===value&&!locationField)return result('correct','Already matches the approved answer.');
+ if(locationField&&normalized(e.value)===normalized(value)&&selectedLocation(e,value))return result('correct','Already matches the approved answer and selected location.');
  if(hits.some(e=>document.activeElement===e))return result('manual','Active user entry preserved.');
  if(e.type==='checkbox'){
  if(!['true','false'].includes(value)||e.checked)return result('manual','Existing checkbox choice preserved.');
@@ -96,19 +109,26 @@ func (s *Session) FillAnswer(ctx context.Context, answer browser.AnswerValue) (b
  if(e.maxLength>=0&&value.length>e.maxLength)return result('manual','Answer exceeds the live field limit.');
  const proto=e.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;
  e.focus();
+ if(locationField){const focused=resolve();if(!focused||focused.length!==1||focused[0]!==e||document.activeElement!==e)return result('manual','The location control changed before entry. Review it in Chromium.');}
  Object.getOwnPropertyDescriptor(proto,'value').set.call(e,value);
  e.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:null}));if(e.isConnected&&owns())e.dispatchEvent(new Event('change',{bubbles:true}));
  if(locationField){
    let selected=false;
-   const normalized=s=>s.toLowerCase().replace(/united states( of america)?/g,'usa').replace(/[^a-z0-9]/g,'');
+   const beforeValue=e.value,beforeValid=e.validity.valid;
    for(let attempt=0;attempt<20;attempt++){
      await new Promise(r=>setTimeout(r,150));
      if(!owns()||!e.isConnected||document.activeElement!==e||e.value!==value)return result('uncertain','Location changed during lookup. Review it in Chromium.');
-     const controlled=document.getElementById(e.getAttribute('aria-controls')||e.getAttribute('aria-owns')||'');
-     const lists=[...document.querySelectorAll('[role="listbox"]')].filter(visible);
-     const root=controlled||(lists.length===1?lists[0]:null);
+     const fresh=resolve();if(!fresh||fresh.length!==1||fresh[0]!==e)return result('uncertain','The location control changed during lookup. Review it in Chromium.');
+     const root=suggestionRoot(e);
      const options=root?[...root.querySelectorAll('[role="option"]')].filter(o=>visible(o)&&o.getAttribute('aria-disabled')!=='true'&&normalized(o.innerText)===normalized(value)):[];
-     if(options.length===1){options[0].click();if(!e.isConnected||normalized(e.value)!==normalized(value))return result('uncertain','Review the selected location in Chromium.');expected=e.value;selected=true;break;}
+     if(options.length===1){
+       const option=options[0];option.click();
+       const confirmedValue=e.value!==beforeValue;
+       const confirmedValidity=!beforeValid&&e.validity.valid;
+       const confirmedOption=option.getAttribute('aria-selected')==='true';
+       if(!owns()||!e.isConnected||normalized(e.value)!==normalized(value)||!(confirmedValue||confirmedValidity||confirmedOption))return result('uncertain','The selected location could not be verified. Review it in Chromium.');
+       expected=e.value;selected=true;break;
+     }
    }
    if(!selected){if(e.isConnected)e.blur();return result('uncertain','No unique matching location suggestion. Select your location in Chromium.');}
  }

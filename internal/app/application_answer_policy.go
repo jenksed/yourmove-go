@@ -17,8 +17,7 @@ var namespacedSystemField = regexp.MustCompile(`(?i)^` + formUUID + `__(systemfi
 var namespacedCustomField = regexp.MustCompile(`(?i)^` + formUUID + `_` + formUUID + `$`)
 
 func editableQuestion(f schema.Field, unique bool) bool {
-	id := strings.TrimPrefix(f.ID, "browser:")
-	if !unique || f.Sensitive || id == "" || positionalQuestionID.MatchString(id) || strings.HasPrefix(id, "unidentified-") || strings.Contains(strings.ToLower(f.Label), "cover letter") {
+	if !stableQuestionIdentity(f, unique) {
 		return false
 	}
 	switch f.Kind {
@@ -26,6 +25,46 @@ func editableQuestion(f schema.Field, unique bool) bool {
 		return true
 	}
 	return false
+}
+
+// editableQuestionForPlatform permits only the observed Ashby location
+// autocomplete, which has a dedicated guarded path in the Chromium filler.
+func editableQuestionForPlatform(f schema.Field, unique bool, platform string, p CandidateProfile) bool {
+	if editableQuestion(f, unique) {
+		return true
+	}
+	return platform == "ashby" && stableQuestionIdentity(f, unique) && f.Kind == "combobox" && supportedLocationLabel(f.Label) && candidateLocation(p) != ""
+}
+
+func stableQuestionIdentity(f schema.Field, unique bool) bool {
+	id := strings.TrimPrefix(f.ID, "browser:")
+	return unique && !f.Sensitive && id != "" && !positionalQuestionID.MatchString(id) && !strings.HasPrefix(id, "unidentified-") && !strings.Contains(strings.ToLower(f.Label), "cover letter")
+}
+
+func supportedLocationLabel(label string) bool {
+	switch candidateProfileLabel(label) {
+	case "location", "current location", "your location":
+		return true
+	}
+	return false
+}
+
+func candidateProfileLabel(label string) string {
+	label = strings.ToLower(strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(label), "*")))
+	return strings.TrimSpace(strings.TrimSuffix(strings.TrimSuffix(label, " (optional)"), " (required)"))
+}
+
+func candidateLocation(p CandidateProfile) string {
+	if !p.Approved {
+		return ""
+	}
+	parts := []string{}
+	for _, part := range []string{p.City, p.Region, p.Country} {
+		if part = strings.TrimSpace(part); part != "" {
+			parts = append(parts, part)
+		}
+	}
+	return strings.Join(parts, ", ")
 }
 
 // resolveApplicationAnswer is pure and uses explicit identity plus compatible
@@ -62,22 +101,15 @@ func resolveAdditionalProfileFact(f schema.Field, p CandidateProfile) string {
 	if !p.Approved || f.Sensitive || id == "" || positionalQuestionID.MatchString(id) || strings.HasPrefix(id, "unidentified-") {
 		return ""
 	}
-	label := strings.ToLower(strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(f.Label), "*")))
 	// Ordinary profile fields may have employer-generated opaque identities.
-	label = strings.TrimSpace(strings.TrimSuffix(strings.TrimSuffix(label, " (optional)"), " (required)"))
+	label := candidateProfileLabel(f.Label)
 	linkedin := label == "linkedin" || label == "linkedin url" || label == "linkedin profile" || label == "linkedin profile url" || label == "linkedin profile link" || label == "linkedin link" || label == "your linkedin profile" || label == "your linkedin url"
 	if linkedin {
 		id = "linkedin"
 	}
 	location := label == "location" || label == "current location" || label == "your location"
 	if location && (f.Kind == "text" || f.Kind == "combobox") {
-		parts := []string{}
-		for _, part := range []string{p.City, p.Region, p.Country} {
-			if part = strings.TrimSpace(part); part != "" {
-				parts = append(parts, part)
-			}
-		}
-		return strings.Join(parts, ", ")
+		return candidateLocation(p)
 	}
 
 	pronouns := label == "pronouns" || label == "preferred pronouns" || label == "what are your pronouns?" || label == "what are your pronouns"

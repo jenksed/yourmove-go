@@ -31,7 +31,7 @@ func TestTrialBlurAndLocation(t *testing.T) {
  document.querySelectorAll('input').forEach(e=>e.addEventListener('blur',()=>{window.committed[e.name]=e.value}));
  const locationInput=document.querySelector('[name=location]');
  locationInput.oninput=()=>{document.getElementById('places').hidden=false;locationInput.setCustomValidity('Select a location')};
- document.querySelector('[role=option]').onclick=()=>{window.selection=true;locationInput.value='Cadillac, Michigan, United States';locationInput.setCustomValidity('');document.getElementById('places').hidden=true};
+ document.querySelector('[role=option]').onclick=e=>{window.selection=true;e.currentTarget.setAttribute('aria-selected','true');locationInput.value='Cadillac, Michigan, United States';locationInput.setCustomValidity('');document.getElementById('places').hidden=true};
  </script>`)
 	}))
 	defer fixture.Close()
@@ -58,6 +58,7 @@ func TestTrialBlurAndLocation(t *testing.T) {
 	if len(contacts.Fields) == 0 || contacts.Fields[0].Status != "filled" {
 		t.Fatalf("contacts: %+v", contacts)
 	}
+	var locationField schema.Field
 	for _, key := range []string{"linkedin", "location"} {
 		var field schema.Field
 		for _, c := range observed.Controls {
@@ -68,11 +69,16 @@ func TestTrialBlurAndLocation(t *testing.T) {
 		value := "https://www.linkedin.com/in/fixture"
 		if key == "location" {
 			value = "Cadillac, Michigan, USA"
+			locationField = field
 		}
 		out, err := s.FillAnswer(ctx, browser.AnswerValue{Field: field, Value: value})
 		if err != nil || out.Status != "filled" {
 			t.Fatalf("%s: %+v %v", key, out, err)
 		}
+	}
+	correct, err := s.FillAnswer(ctx, browser.AnswerValue{Field: locationField, Value: "Cadillac, Michigan, USA"})
+	if err != nil || correct.Status != "correct" {
+		t.Fatalf("selected location was not reported as already correct: %+v %v", correct, err)
 	}
 	var state struct {
 		Result struct {
@@ -96,6 +102,41 @@ func TestTrialBlurAndLocation(t *testing.T) {
 				t.Fatalf("manual location: %+v %v", out, err)
 			}
 		}
+	}
+	setFixture := func(expression string) {
+		t.Helper()
+		setup := `(()=>{const e=document.querySelector('[name=location]');if(e){e.blur();e.closest('label').firstChild.textContent='Location'}` + expression + `;return true})()`
+		if err := s.FixtureCall(ctx, posting+"/application", "Runtime.evaluate", map[string]any{"expression": setup, "returnByValue": true}, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tc := range []struct {
+		name       string
+		prepare    string
+		wantStatus string
+	}{
+		{"zero matching suggestions", `(()=>{const e=document.querySelector('[name=location]'),l=document.getElementById('places');e.value='';e.setCustomValidity('');l.innerHTML='<div role="option">Boston, Massachusetts, USA</div>';l.hidden=true;window.selection=false;e.oninput=()=>{l.hidden=false;e.setCustomValidity('Select a location')}})()`, "uncertain"},
+		{"multiple matching suggestions", `(()=>{const e=document.querySelector('[name=location]'),l=document.getElementById('places');e.value='';e.setCustomValidity('');l.innerHTML='<div role="option">Cadillac, Michigan, USA</div><div role="option">Cadillac, Michigan, United States</div>';l.hidden=true;window.selection=false;e.oninput=()=>{l.hidden=false;e.setCustomValidity('Select a location')}})()`, "uncertain"},
+		{"changed control", `(()=>{const e=document.querySelector('[name=location]'),l=document.getElementById('places');e.value='';e.setCustomValidity('');l.hidden=true;window.selection=false;e.oninput=()=>{l.hidden=false;e.setCustomValidity('Select a location');e.closest('label').firstChild.textContent='Preferred work location'}})()`, "uncertain"},
+		{"detached control", `(()=>{const e=document.querySelector('[name=location]'),l=document.getElementById('places');e.value='';e.setCustomValidity('');l.hidden=true;window.selection=false;e.oninput=()=>{l.hidden=false;e.setCustomValidity('Select a location');setTimeout(()=>{const replacement=e.cloneNode(true);replacement.value='';e.replaceWith(replacement)},25)}})()`, "uncertain"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			setFixture(tc.prepare)
+			out, err := s.FillAnswer(ctx, browser.AnswerValue{Field: locationField, Value: "Cadillac, Michigan, USA"})
+			if err != nil || out.Status != tc.wantStatus {
+				t.Fatalf("location outcome: %+v %v", out, err)
+			}
+			if tc.name == "zero matching suggestions" || tc.name == "multiple matching suggestions" {
+				var noGuess struct {
+					Result struct {
+						Value bool `json:"value"`
+					} `json:"result"`
+				}
+				if err := s.FixtureCall(ctx, posting+"/application", "Runtime.evaluate", map[string]any{"expression": `window.selection===false`, "returnByValue": true}, &noGuess); err != nil || !noGuess.Result.Value {
+					t.Fatalf("ambiguous location suggestion was selected: %+v %v", noGuess, err)
+				}
+			}
+		})
 	}
 }
 
