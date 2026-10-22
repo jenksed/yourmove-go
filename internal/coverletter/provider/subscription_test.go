@@ -1,4 +1,4 @@
-package main
+package provider
 
 import (
 	"context"
@@ -54,7 +54,11 @@ printf 'I have supported production incidents and customer-facing Linux systems.
 			if state, detail := coverCLIReadiness(provider); state != "ready" {
 				t.Fatalf("%s: %s", state, detail)
 			}
-			result, err := runCoverSubscription(context.Background(), provider, "default", "private evidence")
+			runner, err := Configure(provider, "default")
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := runner.Generate(context.Background(), "private evidence", "")
 			if err != nil || !strings.Contains(result, "production incidents") {
 				t.Fatalf("%q: %v", result, err)
 			}

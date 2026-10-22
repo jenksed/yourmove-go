@@ -16,15 +16,15 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	coverprovider "example.com/yourmove-lite/internal/coverletter/provider"
 )
 
 const maxLetterBytes = 12000
 
 var (
-	errCoverSources      = errors.New("cover letter sources unavailable")
-	errCoverModel        = errors.New("local Ollama model not configured")
-	errCoverModelMissing = errors.New("Ollama model not installed")
-	errCoverOffline      = errors.New("local Ollama service not reachable")
+	errCoverSources = errors.New("cover letter sources unavailable")
+	errCoverOutput  = errors.New("generated cover letter is not usable")
 )
 
 // Source failures carry a bounded recovery code, never document contents or paths.
@@ -232,13 +232,20 @@ func validateGeneratedLetter(body string) error {
 	return nil
 }
 
+func coverErrorNotice(err error) string {
+	if errors.Is(err, errCoverOutput) {
+		return "output"
+	}
+	return coverprovider.ErrorNotice(err)
+}
+
 // Legacy entry point remains available; all providers share one transport path.
 func localOllamaGenerate(ctx context.Context, model, prompt string) (string, error) {
-	backend, err := configuredCoverBackend("ollama", model)
+	runner, err := coverprovider.Configure("ollama", model)
 	if err != nil {
 		return "", err
 	}
-	return runCoverProvider(ctx, backend, prompt, nil)
+	return runner.Generate(ctx, prompt, coverLetterInstructions)
 }
 
 func coverNoticeURL(id int64, code string) string {
@@ -263,7 +270,7 @@ func (a *App) generateCoverLetterHandler(w http.ResponseWriter, r *http.Request)
 	if provider == "" {
 		provider = "ollama"
 	} // earlier forms and tests
-	if !validCoverProvider(provider) {
+	if !coverprovider.ValidProvider(provider) {
 		http.Redirect(w, r, coverNoticeURL(id, "model"), http.StatusSeeOther)
 		return
 	}
@@ -275,9 +282,9 @@ func (a *App) generateCoverLetterHandler(w http.ResponseWriter, r *http.Request)
 	}
 	model := strings.TrimSpace(r.PostForm.Get("model"))
 	if model == "" && a.coverLetterGenerate == nil {
-		model = coverDefaultModel(provider)
+		model = coverprovider.DefaultModel(provider)
 	}
-	if model != "" && !validCoverModel(model) {
+	if model != "" && !coverprovider.ValidModel(model) {
 		http.Redirect(w, r, coverNoticeURL(id, "model"), http.StatusSeeOther)
 		return
 	}
@@ -288,9 +295,9 @@ func (a *App) generateCoverLetterHandler(w http.ResponseWriter, r *http.Request)
 
 	// Credential validation happens before any outbound requests. A test override
 	// stays self-contained and never requires real API credentials.
-	var backend coverBackend
-	if a.coverLetterGenerate == nil && !coverSubscription(provider) {
-		backend, err = configuredCoverBackend(provider, model)
+	var runner coverprovider.Runner
+	if a.coverLetterGenerate == nil {
+		runner, err = coverprovider.Configure(provider, model)
 		if err != nil {
 			http.Redirect(w, r, coverNoticeURL(id, coverErrorNotice(err)), http.StatusSeeOther)
 			return
@@ -326,10 +333,8 @@ func (a *App) generateCoverLetterHandler(w http.ResponseWriter, r *http.Request)
 	var body string
 	if a.coverLetterGenerate != nil {
 		body, err = a.coverLetterGenerate(r.Context(), evidence.prompt)
-	} else if coverSubscription(provider) {
-		body, err = runCoverSubscription(r.Context(), provider, model, evidence.prompt)
 	} else {
-		body, err = runCoverProvider(r.Context(), backend, evidence.prompt, nil)
+		body, err = runner.Generate(r.Context(), evidence.prompt, coverLetterInstructions)
 	}
 	if err == nil {
 		err = validateGeneratedLetter(body)

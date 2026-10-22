@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	coverprovider "example.com/yourmove-lite/internal/coverletter/provider"
 	"example.com/yourmove-lite/internal/platforms"
 )
 
@@ -257,10 +258,10 @@ func (a *App) jobDetail(w http.ResponseWriter, r *http.Request) {
 		"failed":                   "YourMove could not generate or save a cover letter. The existing draft is unchanged. Check the application log.",
 		"invalid":                  "The draft could not be saved. Check its length and try again.",
 	}[r.URL.Query().Get("cover")]
-	letterModel := coverDefaultModel("ollama")
+	letterModel := coverprovider.DefaultModel("ollama")
 	providerReady := make(map[string]bool)
 	for _, id := range []string{"codex", "claude-cli", "ollama", "openai", "anthropic", "openrouter", "compatible"} {
-		providerReady[id] = coverProviderConfigured(id)
+		providerReady[id] = coverprovider.Configured(id)
 	}
 	letterResumes := make([]documentRow, 0, len(resumeOptions))
 	for _, r := range resumeOptions {

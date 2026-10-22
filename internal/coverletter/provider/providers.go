@@ -1,4 +1,4 @@
-package main
+package provider
 
 import (
 	"bytes"
@@ -14,6 +14,8 @@ import (
 	"time"
 )
 
+const maxLetterBytes = 12000
+
 // Provider endpoints are fixed by the application. The optional compatible
 // endpoint is operator-configured at startup, never supplied by an HTTP form.
 type coverBackend struct {
@@ -24,15 +26,68 @@ type coverBackend struct {
 }
 
 var (
-	errCoverAPIKey      = errors.New("provider API key is not configured")
-	errCoverAuth        = errors.New("provider rejected API credentials")
-	errCoverRate        = errors.New("provider rate limit reached")
-	errCoverCredits     = errors.New("provider account has no available credits")
-	errCoverTimeout     = errors.New("provider timed out")
-	errCoverUnavailable = errors.New("provider is unavailable")
-	errCoverOutput      = errors.New("provider returned no usable text")
-	errCoverEndpoint    = errors.New("compatible provider endpoint is missing or invalid")
+	errCoverAPIKey       = errors.New("provider API key is not configured")
+	errCoverModel        = errors.New("local Ollama model not configured")
+	errCoverModelMissing = errors.New("Ollama model not installed")
+	errCoverOffline      = errors.New("local Ollama service not reachable")
+	errCoverAuth         = errors.New("provider rejected API credentials")
+	errCoverRate         = errors.New("provider rate limit reached")
+	errCoverCredits      = errors.New("provider account has no available credits")
+	errCoverTimeout      = errors.New("provider timed out")
+	errCoverUnavailable  = errors.New("provider is unavailable")
+	errCoverOutput       = errors.New("provider returned no usable text")
+	errCoverEndpoint     = errors.New("compatible provider endpoint is missing or invalid")
 )
+
+// Runner contains validated provider configuration without exposing endpoint
+// or credential details to application callers.
+type Runner struct {
+	provider string
+	backend  coverBackend
+}
+
+// Configure validates a provider/model pair and captures its startup
+// configuration. Subscription CLI availability and sign-in are checked when
+// Generate runs, as before.
+func Configure(provider, model string) (Runner, error) {
+	if !validCoverProvider(provider) {
+		return Runner{}, errCoverEndpoint
+	}
+	if coverSubscription(provider) {
+		if !validCoverModel(model) {
+			return Runner{}, errCoverModel
+		}
+		return Runner{provider: provider, backend: coverBackend{Provider: provider, Model: model}}, nil
+	}
+	backend, err := configuredCoverBackend(provider, model)
+	if err != nil {
+		return Runner{}, err
+	}
+	return Runner{provider: provider, backend: backend}, nil
+}
+
+// Generate sends the supplied evidence prompt to the configured provider.
+// Instructions stay application-owned and are passed only for HTTP providers
+// that carry them in a separate system/instructions field.
+func (r Runner) Generate(ctx context.Context, prompt, instructions string) (string, error) {
+	if coverSubscription(r.provider) {
+		return runCoverSubscription(ctx, r.provider, r.backend.Model, prompt)
+	}
+	return runCoverProvider(ctx, r.backend, prompt, instructions, nil)
+}
+
+func ValidProvider(provider string) bool { return validCoverProvider(provider) }
+
+func ValidModel(model string) bool { return validCoverModel(model) }
+
+func DefaultModel(provider string) string { return coverDefaultModel(provider) }
+
+func Configured(provider string) bool { return coverProviderConfigured(provider) }
+
+func SubscriptionReadiness(provider string) (string, string) { return coverCLIReadiness(provider) }
+
+// ErrorNotice returns the stable application notice code for provider errors.
+func ErrorNotice(err error) string { return coverErrorNotice(err) }
 
 func validCoverProvider(provider string) bool {
 	switch provider {
@@ -120,7 +175,7 @@ func coverProviderConfigured(provider string) bool {
 
 // One bounded request, no redirects, no retries (and therefore no double charge).
 // Provider response and request bodies are never logged, including on failures.
-func runCoverProvider(ctx context.Context, backend coverBackend, prompt string, client *http.Client) (string, error) {
+func runCoverProvider(ctx context.Context, backend coverBackend, prompt, instructions string, client *http.Client) (string, error) {
 	if !validCoverProvider(backend.Provider) || !validCoverModel(backend.Model) || backend.URL == "" {
 		return "", errCoverModel
 	}
@@ -142,13 +197,13 @@ func runCoverProvider(ctx context.Context, backend coverBackend, prompt string, 
 			"options": map[string]any{"temperature": 0.35, "num_predict": budget}}
 	case "openai":
 		// The API's output_text is an SDK convenience; parse output[] in raw HTTP.
-		request = map[string]any{"model": backend.Model, "input": prompt, "instructions": coverLetterInstructions, "store": false, "max_output_tokens": 1400}
+		request = map[string]any{"model": backend.Model, "input": prompt, "instructions": instructions, "store": false, "max_output_tokens": 1400}
 	case "anthropic":
-		request = map[string]any{"model": backend.Model, "max_tokens": 900, "system": coverLetterInstructions,
+		request = map[string]any{"model": backend.Model, "max_tokens": 900, "system": instructions,
 			"messages": []map[string]string{{"role": "user", "content": prompt}}}
 	default:
 		request = map[string]any{"model": backend.Model, "stream": false, "max_tokens": 900,
-			"messages": []map[string]string{{"role": "system", "content": coverLetterInstructions}, {"role": "user", "content": prompt}}}
+			"messages": []map[string]string{{"role": "system", "content": instructions}, {"role": "user", "content": prompt}}}
 	}
 	data, err := json.Marshal(request)
 	if err != nil {
