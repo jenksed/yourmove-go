@@ -19,7 +19,6 @@ const (
 	careerEvidencePeriodRunes         = 120
 	careerEvidenceSourceNotesRunes    = 3000
 	careerEvidenceSourceQuestionRunes = 4000
-	careerEvidenceSourceLimit         = 1000
 )
 
 var (

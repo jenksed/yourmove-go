@@ -118,6 +118,7 @@
                 {{template "application-question" .}}
                 {{if eq .Source "Approved candidate information"}}</details>{{end}}
                 {{if .LibrarySuggestions}}{{template "related-answer-library" .}}{{end}}
+                {{if .CareerEvidenceSuggestions}}{{template "related-career-evidence" .}}{{end}}
               {{else}}<h4>{{.Field.Label}}{{if .Field.Required}} (required){{end}}</h4><p>Requires manual completion in Chromium.</p><p class="small-muted">This control is sensitive, unsupported, or cannot be identified safely. Complete it in the employer browser.</p>{{end}}
             </div>
             {{end}}
@@ -350,6 +351,40 @@
             <p><a href="/answer-library/{{.EntryID}}" target="_blank" rel="noopener noreferrer">Open full example and source context ↗</a></p>
             <button type="button" class="button button-secondary" data-use-library-answer data-entry-id="{{.EntryID}}" data-startpoint-url="/jobs/{{$.JobID}}/answers/starting-point" hidden>Use as starting point</button>
             <p class="small-muted" role="status" aria-live="polite" data-related-status></p>
+          </details>
+        </article>
+        {{end}}
+      </section>
+{{end}}
+
+{{define "related-career-evidence"}}
+      <section class="related-career-evidence" aria-label="Relevant career experiences">
+        <h4>Relevant career experiences</h4>
+        <p class="small-muted">Applicant-reviewed records you can consult while writing. They are reference material, not a completed answer, and are not inserted or saved automatically.</p>
+        {{range .CareerEvidenceSuggestions}}
+        <article class="career-evidence-example">
+          <h5>{{.Evidence.Title}}</h5>
+          {{if or .Evidence.RoleContext .Evidence.EmployerContext}}<p class="career-evidence-example-context">{{if .Evidence.RoleContext}}{{.Evidence.RoleContext}}{{end}}{{if and .Evidence.RoleContext .Evidence.EmployerContext}} · {{end}}{{if .Evidence.EmployerContext}}{{.Evidence.EmployerContext}}{{end}}</p>{{end}}
+          <p class="career-evidence-example-actions"><strong>Actions</strong> · {{.ActionsExcerpt}}</p>
+          <p class="career-evidence-example-outcome"><strong>Outcome</strong> · {{if eq .Evidence.OutcomeState "recorded"}}{{.Evidence.Outcome}}{{else if eq .Evidence.OutcomeState "unknown"}}Unknown{{else}}Not recorded{{end}}</p>
+          <details class="career-evidence-full">
+            <summary>Inspect complete experience</summary>
+            <dl>
+              <dt>Situation or context</dt><dd class="career-evidence-preserve-lines">{{.Evidence.Situation}}</dd>
+              <dt>Actions taken</dt><dd class="career-evidence-preserve-lines">{{.Evidence.Actions}}</dd>
+              {{if .Evidence.EmployerContext}}<dt>Employer, project, or organization</dt><dd>{{.Evidence.EmployerContext}}</dd>{{end}}
+              {{if .Evidence.RoleContext}}<dt>Role or responsibility</dt><dd>{{.Evidence.RoleContext}}</dd>{{end}}
+              {{if .Evidence.Technologies}}<dt>Technologies or tools</dt><dd class="career-evidence-preserve-lines">{{.Evidence.Technologies}}</dd>{{end}}
+              {{if .Evidence.Period}}<dt>Approximate date or period</dt><dd>{{.Evidence.Period}}</dd>{{end}}
+              <dt>Outcome status</dt><dd>{{if eq .Evidence.OutcomeState "recorded"}}{{.Evidence.Outcome}}{{else if eq .Evidence.OutcomeState "unknown"}}Unknown{{else}}Not recorded{{end}}</dd>
+              {{if .Evidence.SourceNotes}}<dt>Source notes</dt><dd class="career-evidence-preserve-lines">{{.Evidence.SourceNotes}}</dd>{{end}}
+            </dl>
+            {{if or .Evidence.SourceQuestion .Evidence.SourceWriting}}<div class="career-evidence-source-snapshot">
+              <p class="small-muted">Original writing snapshot{{if .Evidence.SourceEmployer}} · {{.Evidence.SourceEmployer}}{{else if .Evidence.SourceHost}} · {{.Evidence.SourceHost}}{{end}}{{if .Evidence.SourceJobTitle}} · {{.Evidence.SourceJobTitle}}{{end}}</p>
+              {{if .Evidence.SourceQuestion}}<h6>Original employer question</h6><pre class="evidence-text">{{.Evidence.SourceQuestion}}</pre>{{end}}
+              {{if .Evidence.SourceWriting}}<h6>Original writing</h6><pre class="evidence-text">{{.Evidence.SourceWriting}}</pre>{{end}}
+            </div>{{end}}
+            <p><a href="/career-evidence/{{.Evidence.ID}}" target="_blank" rel="noopener noreferrer">Open this experience to manage it ↗</a></p>
           </details>
         </article>
         {{end}}

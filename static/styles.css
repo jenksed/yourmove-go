@@ -808,6 +808,21 @@ small,.small-muted{font-size:12px;line-height:1.55;color:var(--color-muted)}
 .related-writing-full-answer {max-height:24rem;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}
 .related-writing-full [data-related-status] {margin:6px 0;font-size:12px}
 .related-writing-full button {margin:5px 0}
+.related-career-evidence {max-width:780px;margin:18px 0 4px;padding:12px 0 0;border-top:1px solid var(--color-border)}
+.related-career-evidence > h4 {margin:0 0 8px;font-size:13px}
+.career-evidence-example {border-top:1px solid var(--color-border);padding:11px 0;min-width:0}
+.career-evidence-example h5 {font-size:13px;margin:0 0 5px;overflow-wrap:anywhere}
+.career-evidence-example p {max-width:72ch;margin:5px 0;font-size:12px;overflow-wrap:anywhere}
+.career-evidence-example-context {color:var(--color-muted)}
+.career-evidence-full {margin-top:7px}
+.career-evidence-full summary {cursor:pointer;color:var(--color-primary);font-size:12px;font-weight:650;padding:5px 0}
+.career-evidence-full dl {display:grid;grid-template-columns:minmax(125px,0.35fr) minmax(0,1fr);gap:7px 12px;margin:8px 0;font-size:12px}
+.career-evidence-full dt {font-weight:650;color:var(--color-muted)}
+.career-evidence-full dd {margin:0;min-width:0;overflow-wrap:anywhere}
+.career-evidence-preserve-lines {white-space:pre-wrap}
+.career-evidence-source-snapshot {border-top:1px solid var(--color-border);margin-top:10px;padding-top:6px;min-width:0}
+.career-evidence-source-snapshot h6 {font-size:12px;margin:9px 0 3px}
+.career-evidence-source-snapshot .evidence-text {max-height:14rem;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}
 @media(max-width:480px) {
   .answer-library-entry { padding:17px 0 20px; }
   .answer-library-edit button,.answer-library-delete button { width:100%; }
@@ -817,6 +832,8 @@ small,.small-muted{font-size:12px;line-height:1.55;color:var(--color-muted)}
   .career-evidence-editor-heading {flex-direction:column}
   .career-evidence-form-actions {flex-direction:column}
   .career-evidence-form-actions .button,.career-evidence-delete .button {width:100%}
+  .career-evidence-full dl {grid-template-columns:1fr;gap:3px}
+  .career-evidence-full dd + dt {margin-top:5px}
   .related-previous-writing {padding:12px}
 }
 

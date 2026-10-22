@@ -169,24 +169,12 @@ func answerLibraryTermWeight(librarySize, documentFrequency int) int {
 	return 2 + bits.Len(uint(ratio)) - 1
 }
 
-func answerLibraryPhraseMatches(query, originalQuestion string) int {
-	words := answerLibraryWords(query)
-	questionWords := answerLibraryWords(originalQuestion)
-	if len(words) < 2 || len(questionWords) < 2 {
-		return 0
+func answerLibraryWordPairs(value string) map[string]struct{} {
+	words := answerLibraryWords(value)
+	if len(words) < 2 {
+		return nil
 	}
-	questionPairs := make(map[string]struct{})
-	for i := 0; i+1 < len(questionWords); i++ {
-		if _, firstStop := answerLibraryStopwords[questionWords[i]]; firstStop {
-			continue
-		}
-		if _, secondStop := answerLibraryStopwords[questionWords[i+1]]; secondStop {
-			continue
-		}
-		questionPairs[questionWords[i]+"\x00"+questionWords[i+1]] = struct{}{}
-	}
-	seen := make(map[string]struct{})
-	matches := 0
+	pairs := make(map[string]struct{})
 	for i := 0; i+1 < len(words); i++ {
 		if _, firstStop := answerLibraryStopwords[words[i]]; firstStop {
 			continue
@@ -194,20 +182,27 @@ func answerLibraryPhraseMatches(query, originalQuestion string) int {
 		if _, secondStop := answerLibraryStopwords[words[i+1]]; secondStop {
 			continue
 		}
-		pair := words[i] + "\x00" + words[i+1]
-		if _, exists := questionPairs[pair]; !exists {
+		pairs[words[i]+"\x00"+words[i+1]] = struct{}{}
+	}
+	return pairs
+}
+
+func answerLibrarySharedPhraseMatches(left, right map[string]struct{}, limit int) int {
+	matches := 0
+	for pair := range left {
+		if _, exists := right[pair]; !exists {
 			continue
 		}
-		if _, exists := seen[pair]; exists {
-			continue
-		}
-		seen[pair] = struct{}{}
 		matches++
-		if matches == 2 {
-			return matches
+		if limit > 0 && matches >= limit {
+			return limit
 		}
 	}
 	return matches
+}
+
+func answerLibraryPhraseMatches(query, originalQuestion string) int {
+	return answerLibrarySharedPhraseMatches(answerLibraryWordPairs(query), answerLibraryWordPairs(originalQuestion), 2)
 }
 
 func rankAnswerLibraryDocuments(query string, docs []answerLibrarySearchDocument, limit int) []rankedAnswerLibraryDocument {

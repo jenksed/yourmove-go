@@ -21,16 +21,17 @@ import (
 // An answer belongs to the exact destination and question definition. Identity
 // changes create a separate answer, leaving earlier user work intact.
 type preparedQuestion struct {
-	ReusableRevision   int64
-	ReusableKey        string
-	JobID              int64
-	Destination        string
-	Field              schema.Field
-	Key, Value, Source string
-	Revision           int64
-	Editable           bool
-	LibraryEligible    bool
-	LibrarySuggestions []answerLibrarySuggestion
+	ReusableRevision          int64
+	ReusableKey               string
+	JobID                     int64
+	Destination               string
+	Field                     schema.Field
+	Key, Value, Source        string
+	Revision                  int64
+	Editable                  bool
+	LibraryEligible           bool
+	LibrarySuggestions        []answerLibrarySuggestion
+	CareerEvidenceSuggestions []careerEvidenceSuggestion
 }
 type questionPreparation struct {
 	InspectionID int64
@@ -207,6 +208,13 @@ func (a *App) prepareQuestions(job Job, p CandidateProfile) (questionPreparation
 		} else {
 			for i := range out.Questions {
 				out.Questions[i].LibrarySuggestions = suggestions[out.Questions[i].Key]
+			}
+		}
+		if suggestions, err := a.careerEvidenceSuggestionsForQuestions(out.Questions); err != nil {
+			log.Printf("retrieve Career Evidence suggestions: %v", err)
+		} else {
+			for i := range out.Questions {
+				out.Questions[i].CareerEvidenceSuggestions = suggestions[out.Questions[i].Key]
 			}
 		}
 	}

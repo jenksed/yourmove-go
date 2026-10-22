@@ -88,6 +88,13 @@ The main persisted records map to these tables and files:
 - Explicit library search posts its query in the request body so it does not appear in the URL. Results retain the original question and source context and link to a server-rendered full entry for manual reading/copying without JavaScript.
 - Creating Career Evidence from a library entry stores an independent snapshot of the original question, writing, and source labels. The applicant rewrites that material into situation, actions, and any actual outcome; the server does not extract claims. Repeated creation while the evidence record exists opens that same draft, and deleting either record does not cascade to the other.
 
+### Question Workbench writing references
+
+- `internal/app/application_answers.go: prepareQuestions` requests Answer Library matches and Career Evidence matches independently for active application questions. Each retrieval failure is logged without question or answer content and does not stop preparation.
+- `internal/app/career_evidence_search.go` loads at most 1,000 recently updated reviewed records once per preparation, reuses Answer Library tokenization and stopwords, and ranks title, context/actions, and technology overlap deterministically. It returns at most two entries per eligible narrative question and does not combine its score with previous-writing matches.
+- The Career Evidence section in `templates/job.html` is read-only reference material. It renders action excerpts, actual/unknown/not-recorded outcome status, and complete evidence with any source-writing snapshot inside native `<details>`. Its manage link opens separately; no evidence is copied into the application editor.
+- Saving an employer answer remains the explicit `/jobs/{id}/answers/save` action. Career Evidence is not part of answer resolution, approved profile data, transfer scope, employer form submission, or AI provider input.
+
 - An app restart does not restore an in-memory employer browser session, its unsubmitted form changes or its last transient transfer statuses. Never make a UI promise to the contrary.
 
 ## What to edit, by goal
