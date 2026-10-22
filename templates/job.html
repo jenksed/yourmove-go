@@ -77,7 +77,7 @@
         {{end}}
         {{if .Preparation.IncludeAnswers}}
         <input type="hidden" name="include_answers" value="yes"><input type="hidden" name="review_hash" value="{{.Preparation.AnswerReviewHash}}">
-        <p><strong>Saved answers to fill</strong></p><dl class="contact-facts pending-answer-scope">{{range .Preparation.PendingAnswers}}<dt>{{.Field.Label}}</dt><dd>{{.Value}} — {{if eq .Source "Approved candidate information"}}Approved candidate profile{{else}}{{.Source}}{{end}} · Eligible for transfer</dd>{{end}}</dl>
+        <p><strong>{{len .Preparation.PendingAnswers}} saved {{if eq (len .Preparation.PendingAnswers) 1}}answer{{else}}answers{{end}} ready for transfer</strong></p><dl class="contact-facts pending-answer-scope">{{range .Preparation.PendingAnswers}}<dt>{{.Field.Label}}</dt><dd>{{.Value}} — {{if eq .Source "Approved candidate information"}}Approved candidate profile{{else}}{{.Source}}{{end}} · Eligible for transfer</dd>{{end}}</dl>
         {{end}}
         <p class="small-muted">The employer may receive this material immediately. Existing manual entries and attachments are preserved. You review and submit personally.</p>
       </form>
@@ -103,7 +103,7 @@
       <div class="question-heading"><h3 id="application-questions-title">Application questions</h3>{{if .AnswerEditingAllowed}}<a href="#prepare" data-review-ready>Review ready material ↑</a>{{end}}</div>
       {{if .AnswerEditingAllowed}}
         {{if not .Questions.EmployerQuestions}}<p class="small-muted">No additional questions to answer in this observed form.</p>{{end}}
-        <p class="small-muted">Save answers locally; filling the employer form is a separate action. Later steps may add questions.</p>
+        <p class="small-muted">These questions were captured from the employer form. Saving an answer keeps it in YourMove; filling the employer form is a separate action that requires your authorization. AI drafting needs a supported observed narrative question; other fields stay manual.</p>
         {{if .Questions.ReturnNotice}}<p role="status">{{.Questions.ReturnNotice}}</p>{{end}}
         <p class="small-muted" data-question-summary></p>
         <div class="question-layout">
@@ -131,6 +131,24 @@
         {{range .Questions.EmployerQuestions}}{{if and .Revision .LibraryEligible}}
         <div class="question-panel completed-answer-example"><h4>Original question</h4><p>{{.Field.Label}}</p><p class="small-muted">Saved application answer · revision {{.Revision}}</p><pre class="evidence-text">{{.Value}}</pre>{{template "answer-library-promotion" .}}</div>
         {{end}}{{end}}
+      {{end}}
+    </section>
+    {{else if .AnswerEditingAllowed}}
+    <section class="prepare-handoff application-questions" id="application-questions" aria-labelledby="application-questions-title">
+      <h3 id="application-questions-title">Application questions</h3>
+      {{if eq .Questions.InspectionID 0}}
+      <p role="status">No application questions captured yet. Open the application to inspect them.</p>
+      <p class="small-muted">AI drafting needs a supported question observed in the managed employer browser.</p>
+      {{else}}
+      <p role="status">The last browser check found no supported editable questions. Complete unsupported fields in Chromium, or recheck after the employer form changes.</p>
+      <p class="small-muted">AI drafting needs a supported observed narrative question.</p>
+      {{end}}
+      {{if .BrowserState.Active}}
+      <form method="POST" action="/jobs/{{.ID}}/browser/observe"><input type="hidden" name="return_to" value="prepare"><button type="submit" class="button button-secondary">Recheck application form</button></form>
+      {{else if .Desktop}}
+      <form method="POST" action="/jobs/{{.ID}}/open"><button type="submit" class="button button-primary">Open application to inspect questions ↗</button></form>
+      {{else}}
+      <a class="button button-primary" href="{{.URL}}" target="_blank" rel="noopener noreferrer">Open employer site ↗</a>
       {{end}}
     </section>
     {{end}}
@@ -237,7 +255,7 @@
       {{if .BrowserState.ResumeStatus}}<p><strong>Resume · Browser selection result</strong><br>{{.BrowserState.ResumeName}} · {{.BrowserState.ResumeMessage}}</p>{{end}}
       {{if .BrowserState.ContactSummary}}<p>{{.BrowserState.ContactSummary}}</p>{{template "contact-outcomes" .BrowserState.ContactOutcomes}}{{end}}
       {{if .BrowserState.LetterStatus}}<p><strong>Cover letter · {{.BrowserState.LetterStatus}}</strong> · {{.BrowserState.LetterMessage}}</p>{{if or (eq .BrowserState.LetterStatus "complete") (eq .BrowserState.LetterStatus "attention")}}<p class="small-muted">The saved local draft may differ from the letter previously sent. Inspect the existing employer attachment or text manually; local edits do not authorize automatic replacement.</p>{{end}}{{end}}
-      {{if .BrowserState.AnswerStatus}}<details><summary>Answer transfer results · {{.BrowserState.AnswerStatus}}</summary>{{if eq .BrowserState.AnswerStatus "complete"}}<p>Review the results below and continue in Chromium.</p>{{end}}<ul class="transfer-contact-outcomes">{{range .BrowserState.AnswerOutcomes}}<li><strong>{{.Label}}</strong><span>{{if or (eq .Status "filled") (eq .Status "correct")}}Filled and observed in Chromium{{else if eq .Status "uncertain"}}Uncertain transfer outcome{{else}}Manual completion required{{end}}{{if ne .Status "filled"}} · {{.Detail}}{{end}}</span></li>{{end}}</ul></details>{{end}}
+      {{if .BrowserState.AnswerStatus}}<details {{if eq .BrowserState.AnswerStatus "complete"}}open{{end}}><summary>Answer transfer · {{if eq .BrowserState.AnswerStatus "complete"}}processing finished{{else if eq .BrowserState.AnswerStatus "checking"}}checking current form{{else if eq .BrowserState.AnswerStatus "waiting"}}waiting for current form{{else}}{{.BrowserState.AnswerStatus}}{{end}}</summary>{{if eq .BrowserState.AnswerStatus "complete"}}<p>{{if .Preparation.AnswerSummary}}{{.Preparation.AnswerSummary}}.{{else}}No field outcomes were returned.{{end}} Review these observed outcomes in Chromium. They do not establish employer acceptance.</p>{{end}}<ul class="transfer-contact-outcomes">{{range .BrowserState.AnswerOutcomes}}<li><strong>{{.Label}}</strong><span>{{if eq .Status "filled"}}Filled and verified in Chromium{{else if eq .Status "correct"}}Already correct in Chromium; left unchanged{{else if eq .Status "uncertain"}}Uncertain; inspect this field in Chromium before continuing{{else}}Manual completion required in Chromium{{end}}{{if .Detail}} · {{.Detail}}{{end}}</span></li>{{end}}</ul></details>{{end}}
       <p class="small-muted">Employer acceptance not established. Review attachments, filled text and manual fields in the employer browser; submit personally.</p>
       {{if not .Preparation.OpenExternally}}<div class="prepare-handoff-links"><a class="text-link" href="/jobs/{{.ID}}/inspection">Browser details and troubleshooting →</a>{{if not .BrowserState.Active}}{{if .Desktop}}<form method="POST" action="/jobs/{{.ID}}/open" class="external-application-action"><button class="button button-secondary" type="submit">Open employer site ↗</button></form>{{else}}<a class="text-link" href="{{.URL}}" target="_blank" rel="noopener noreferrer">Open employer site ↗</a>{{end}}{{end}}</div>{{end}}
     </section>
@@ -316,7 +334,7 @@
         <select name="answer" id="answer-{{.Key}}"><option value="">Unanswered</option><option value="true" {{if eq .Value "true"}}selected{{end}}>Yes</option><option value="false" {{if eq .Value "false"}}selected{{end}}>No</option></select>
         {{else}}<textarea name="answer" id="answer-{{.Key}}" rows="3" maxlength="12000">{{.Value}}</textarea>{{end}}
         </div>
-        <p class="question-save-status small-muted" data-answer-status role="status">{{if .Revision}}Saved locally{{if eq .Value ""}} · empty; needs local answer{{end}}{{else if .Source}}{{.Source}}{{else}}Needs local answer{{end}}</p>
+        <p class="question-save-status small-muted" data-answer-status role="status">{{.LocalStatus}}</p>
         {{if and .ReusableKey (ne .Source "Approved candidate information")}}<input type="hidden" name="reusable_revision" value="{{.ReusableRevision}}"><details class="question-reuse"><summary>Reuse at this employer</summary><label class="confirm-row"><input type="checkbox" name="reusable" value="yes"><span>Reuse this answer for the exact same question at this employer. Application-specific edits keep the reusable original unless I select this again.</span></label></details>{{end}}
         <button type="submit" class="button button-primary">Save answer locally</button>
       </form>

@@ -13,9 +13,11 @@ import (
 
 func TestQuestionWorkbenchLocalStatusAndReturnContext(t *testing.T) {
 	editable := preparedQuestion{Key: strings.Repeat("a", 64), Editable: true, Source: "Saved for this application", Revision: 1}
-	ready := preparedQuestion{Key: strings.Repeat("b", 64), Editable: true, Value: "false"}
+	ready := preparedQuestion{Key: strings.Repeat("b", 64), Editable: true, Value: "false", Revision: 2}
+	profile := preparedQuestion{Key: strings.Repeat("d", 64), Editable: true, Value: "casey@example.test", Source: "Approved candidate information"}
 	manual := preparedQuestion{Key: strings.Repeat("c", 64), Value: "ignored", Field: schema.Field{Sensitive: true}}
-	if editable.LocalStatus() != "Needs local answer" || ready.LocalStatus() != "Saved locally or provided by an approved source" || manual.LocalStatus() != "Requires manual completion in Chromium" {
+	if editable.LocalStatus() != "Needs local answer" || ready.LocalStatus() != "Answer saved locally. It has not been filled on the employer website." ||
+		profile.LocalStatus() != "Approved candidate information; transfer requires your authorization" || manual.LocalStatus() != "Requires manual completion in Chromium" {
 		t.Fatal("categories misrepresent empty or manual values")
 	}
 	ambiguous := questionPreparation{Questions: []preparedQuestion{manual, manual}}
@@ -114,7 +116,7 @@ func TestQuestionSaveReturnAndRecoverableFailures(t *testing.T) {
 	// GET/no-JS exposes every authoritative editor with exact options and identity.
 	page := httptest.NewRecorder()
 	mux.ServeHTTP(page, httptest.NewRequest("GET", "http://localhost/jobs/1?question="+key, nil))
-	for _, text := range []string{`name="question_key" value="` + key + `"`, `<option value="Hybrid"`, "Saved locally · empty; needs local answer", "Requires manual completion in Chromium", "Save answer locally"} {
+	for _, text := range []string{`name="question_key" value="` + key + `"`, `<option value="Hybrid"`, "Needs local answer", "Requires manual completion in Chromium", "Save answer locally"} {
 		if !strings.Contains(page.Body.String(), text) {
 			t.Fatalf("missing %s", text)
 		}

@@ -695,7 +695,7 @@ small,.small-muted{font-size:12px;line-height:1.55;color:var(--color-muted)}
 .transfer-contact-facts dd { overflow-wrap: anywhere; }
 .transfer-contact-outcomes { list-style: none; padding: 0; margin: 12px 0; }
 .transfer-contact-outcomes li { display: flex; gap: 12px; padding-block: 6px; }
-.transfer-contact-outcomes strong { flex: 0 0 6rem; }
+.transfer-contact-outcomes strong { flex: 0 0 min(14rem, 35%); }
 .transfer-contact-outcomes span { min-width: 0; overflow-wrap: anywhere; }
 @media (max-width: 480px) { .transfer-contact-outcomes li { display: block; } .transfer-contact-outcomes strong { display: block; } }
 

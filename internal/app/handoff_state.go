@@ -11,6 +11,7 @@ type HandoffPresentation struct {
 	OpenExternally                               bool               `json:"-"`
 	IncludeResume, IncludeLetter, IncludeAnswers bool               `json:"-"`
 	PendingAnswers                               []preparedQuestion `json:"-"`
+	AnswerSummary                                string             `json:"-"`
 }
 
 func summarizeHandoff(s browserRunState) HandoffPresentation {

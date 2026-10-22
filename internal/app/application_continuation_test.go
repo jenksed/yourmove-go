@@ -65,6 +65,24 @@ func renderedContinuation(t *testing.T, a *App) (url.Values, string) {
 	values.Set("mode", "file")
 	return values, form
 }
+
+func TestAnswerTransferSummaryDoesNotImplyEveryFieldWasFilled(t *testing.T) {
+	outcomes := []browser.AnswerOutcome{
+		{Label: "Narrative", Status: "filled"},
+		{Label: "Work pattern", Status: "correct"},
+		{Label: "Unsupported", Status: "manual"},
+		{Label: "Changed field", Status: "uncertain"},
+	}
+	want := "1 filled and verified; 1 already correct; 1 needs manual completion; 1 uncertain and needs inspection"
+	if got := summarizeAnswerOutcomes(outcomes); got != want {
+		t.Fatalf("summary=%q, want %q", got, want)
+	}
+	presentation := summarizePreparation(jobWorkspace{Job: Job{URL: testAshbyPosting}, BrowserState: browserRunState{Active: true, Destination: testAshbyPosting, AnswerStatus: "complete", AnswerOutcomes: outcomes}})
+	if presentation.Title != "Answer transfer processing finished" || !strings.Contains(presentation.Detail, want) || !strings.Contains(presentation.Detail, "submit personally") {
+		t.Fatalf("answer processing status is inaccurate or incomplete: %+v", presentation)
+	}
+}
+
 func TestCombinedApplicationScopeAndIndependentFailures(t *testing.T) {
 	for _, tc := range []struct{ posting, platform, suffix string }{
 		{testAshbyPosting, "ashby", "/application"},

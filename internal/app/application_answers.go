@@ -64,7 +64,13 @@ func (q preparedQuestion) LocalStatus() string {
 	if q.Value == "" {
 		return "Needs local answer"
 	}
-	return "Saved locally or provided by an approved source"
+	if q.Source == "Approved candidate information" {
+		return "Approved candidate information; transfer requires your authorization"
+	}
+	if q.Revision > 0 {
+		return "Answer saved locally. It has not been filled on the employer website."
+	}
+	return "Answer available locally; transfer requires your authorization"
 }
 
 func (p questionPreparation) WorkbenchQuestions() []preparedQuestion {

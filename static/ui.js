@@ -287,8 +287,13 @@
         if (bounds.top < 0 || bounds.top >= innerHeight) panels[selected].scrollIntoView({block:'start', behavior:'instant'});
       }
     };
-    for (const status of ['Needs local answer', 'Saved locally or provided by an approved source', 'Requires manual completion in Chromium']) {
-      const members = panels.filter(panel => panel.dataset.questionStatus === status);
+    const statusGroups = [
+      {label: 'Needs local answer', matches: status => status === 'Needs local answer'},
+      {label: 'Prepared locally or provided by an approved source', matches: status => status.startsWith('Answer saved locally.') || status.startsWith('Answer available locally') || status.startsWith('Approved candidate information;')},
+      {label: 'Requires manual completion in Chromium', matches: status => status.startsWith('Requires manual completion')}
+    ];
+    for (const {label: status, matches} of statusGroups) {
+      const members = panels.filter(panel => matches(panel.dataset.questionStatus || ''));
       if (!members.length) continue;
       const group = document.createElement('div');
       const heading = document.createElement('h4');
@@ -313,7 +318,7 @@
       chooser.append(options);
       groups.set(status, members.length);
     }
-    workbench.querySelector('[data-question-summary]').textContent = `${groups.get('Needs local answer') || 0} need a local answer · ${groups.get('Saved locally or provided by an approved source') || 0} prepared · ${groups.get('Requires manual completion in Chromium') || 0} manual`;
+    workbench.querySelector('[data-question-summary]').textContent = `${groups.get('Needs local answer') || 0} need a local answer · ${groups.get('Prepared locally or provided by an approved source') || 0} prepared · ${groups.get('Requires manual completion in Chromium') || 0} manual`;
     chooser.addEventListener('change', () => show(panels.findIndex(panel => panel.dataset.questionKey === chooser.value)));
     previous.addEventListener('click', () => show(selected - 1));
     next.addEventListener('click', () => show(selected + 1));

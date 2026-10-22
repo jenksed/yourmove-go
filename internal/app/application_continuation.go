@@ -95,10 +95,49 @@ func pendingAnswers(ready, attempted []preparedQuestion, contactsHandled bool) [
 	return pending
 }
 
+func summarizeAnswerOutcomes(outcomes []browser.AnswerOutcome) string {
+	filled, correct, manual, uncertain := 0, 0, 0, 0
+	for _, outcome := range outcomes {
+		switch outcome.Status {
+		case "filled":
+			filled++
+		case "correct":
+			correct++
+		case "uncertain":
+			uncertain++
+		default:
+			manual++
+		}
+	}
+	var parts []string
+	if filled > 0 {
+		parts = append(parts, fmt.Sprintf("%d filled and verified", filled))
+	}
+	if correct > 0 {
+		parts = append(parts, fmt.Sprintf("%d already correct", correct))
+	}
+	if manual > 0 {
+		if manual == 1 {
+			parts = append(parts, "1 needs manual completion")
+		} else {
+			parts = append(parts, fmt.Sprintf("%d need manual completion", manual))
+		}
+	}
+	if uncertain > 0 {
+		if uncertain == 1 {
+			parts = append(parts, "1 uncertain and needs inspection")
+		} else {
+			parts = append(parts, fmt.Sprintf("%d uncertain and need inspection", uncertain))
+		}
+	}
+	return strings.Join(parts, "; ")
+}
+
 // summarizePreparation is read-only. Only command handlers confer authority.
 func summarizePreparation(w jobWorkspace) HandoffPresentation {
 	s := w.BrowserState
 	out := summarizeHandoff(s)
+	out.AnswerSummary = summarizeAnswerOutcomes(s.AnswerOutcomes)
 	if w.Stage == StageClosed || w.Stage == StageApplied || w.SubmissionCount > 0 {
 		return out
 	}
@@ -155,9 +194,16 @@ func summarizePreparation(w jobWorkspace) HandoffPresentation {
 		case s.LetterStatus == "attention" || s.LetterStatus == "review":
 			out.Title = "Cover letter needs inspection"
 			out.Detail = "Review the letter result and existing employer attachment in Chromium. An uncertain upload will not be retried."
-		case s.AnswerStatus == "complete" || s.LetterStatus == "complete":
-			out.Title = "Supported transfers completed"
-			out.Detail = "Review each result, complete any manual fields, and submit personally in the same employer browser."
+		case s.AnswerStatus == "complete":
+			out.Title = "Answer transfer processing finished"
+			if out.AnswerSummary != "" {
+				out.Detail = out.AnswerSummary + ". Review the listed fields in Chromium, complete any manual or uncertain fields, and submit personally."
+			} else {
+				out.Detail = "Review the answer results in Chromium, complete any manual fields, and submit personally."
+			}
+		case s.LetterStatus == "complete":
+			out.Title = "Cover letter transfer finished"
+			out.Detail = "Inspect the employer attachment or text in Chromium, then submit personally. YourMove cannot confirm employer acceptance."
 		}
 	}
 	if out.Action == "" && (s.LetterStatus == "checking" || s.LetterStatus == "waiting" || s.AnswerStatus == "waiting" || s.AnswerStatus == "checking") {
