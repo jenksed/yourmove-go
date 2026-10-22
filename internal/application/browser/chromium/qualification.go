@@ -20,6 +20,8 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/jenksed/yourmove-go/internal/application/browser"
+	"github.com/jenksed/yourmove-go/internal/application/schema"
 )
 
 func fixtureURL(raw string) bool {
@@ -66,6 +68,36 @@ func LaunchFixture(ctx context.Context, posting string) (*Session, error) {
 		case <-time.After(50 * time.Millisecond):
 		}
 	}
+}
+
+// PreviewFixture exercises the production read-only DOM projection against a
+// local page while preserving a synthetic Ashby posting identity. It is only
+// available in qualification builds and removes its temporary profile before
+// returning.
+func PreviewFixture(ctx context.Context, savedPosting, fixturePosting string) (schema.Result, error) {
+	if browser.PostingPlatform(savedPosting) != "ashby" || !browser.OwnsPostingURL(savedPosting, savedPosting) {
+		return schema.Result{}, errors.New("qualification requires an exact synthetic Ashby posting")
+	}
+	session, err := LaunchFixture(ctx, fixturePosting)
+	if err != nil {
+		return schema.Result{}, err
+	}
+	dir := session.dir
+	observation, observeErr := observePreviewPage(ctx, session)
+	closeErr := session.Close()
+	if observeErr != nil {
+		return schema.Result{}, fmt.Errorf("observe controlled preview fixture: %w", observeErr)
+	}
+	if closeErr != nil {
+		return schema.Result{}, closeErr
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		return schema.Result{}, errors.New("qualification preview profile was not removed")
+	}
+	// The fixture served at loopback is a controlled surrogate for this exact
+	// saved Ashby posting; no network request is made to a real employer.
+	observation.URL = strings.TrimSuffix(savedPosting, "/") + "/application"
+	return browser.AsPreviewResult(savedPosting, observation)
 }
 
 // FixtureCall drives only explicitly named local fixture tabs. Production has

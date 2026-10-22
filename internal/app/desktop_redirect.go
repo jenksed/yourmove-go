@@ -156,6 +156,10 @@ func safeDesktopRedirectTarget(target string) bool {
 		id, idErr := strconv.ParseInt(strings.TrimPrefix(parsed.Path, "/jobs/"), 10, 64)
 		if err == nil && idErr == nil && id > 0 && parsed.Path == "/jobs/"+strconv.FormatInt(id, 10) &&
 			parsed.Scheme == "" && parsed.Host == "" && parsed.User == nil && len(query) == 1 {
+			if len(query["early_preview"]) == 1 && query.Get("early_preview") == "failed" &&
+				target == parsed.Path+"?early_preview=failed#prepare" {
+				return true
+			}
 			for _, param := range []string{"question", "early_question"} {
 				if len(query[param]) == 1 && questionReturnKey.MatchString(query.Get(param)) &&
 					target == parsed.Path+"?"+param+"="+query.Get(param)+"#prepare" {

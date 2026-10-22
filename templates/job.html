@@ -103,9 +103,12 @@
       <div class="question-heading"><h3 id="early-application-questions-title">Prepare application answers early</h3><a class="text-link" href="/jobs/{{.ID}}/inspection">Rendered-form inspection →</a></div>
       {{if .EarlyQuestions.Notice}}<p role="status" class="inline-hint">{{.EarlyQuestions.Notice}}</p>{{end}}
       {{if .EarlyQuestions.Item}}
-        <p role="status"><strong>{{len .EarlyQuestions.Questions}} questions discovered</strong> · {{.EarlyQuestions.Item.Source}} · {{.EarlyQuestions.Item.CheckedAt}}</p>
+        {{if eq .EarlyQuestions.Item.Source "preview"}}<p role="status"><strong>{{len .EarlyQuestions.Item.Fields}} visible controls observed</strong> · rendered preview · {{.EarlyQuestions.Item.CheckedAt}}</p>
+        <p class="small-muted">{{.EarlyQuestions.Item.Note}}</p>
+        <form method="POST" action="/jobs/{{.ID}}/answers/preview" class="early-discovery-refresh"><input type="hidden" name="return_to" value="prepare"><button type="submit" class="button button-secondary">Preview application questions again</button></form>
+        {{else}}<p role="status"><strong>{{len .EarlyQuestions.Questions}} questions discovered</strong> · {{.EarlyQuestions.Item.Source}} · {{.EarlyQuestions.Item.CheckedAt}}</p>
         <p class="small-muted">{{.EarlyQuestions.Item.Note}} These are published question definitions. They may not include conditional controls, custom fields, or later steps on the actual employer form.</p>
-        <form method="POST" action="/jobs/{{.ID}}/inspect" class="early-discovery-refresh"><input type="hidden" name="return_to" value="prepare"><button type="submit" class="button button-secondary">Refresh discovered questions</button></form>
+        <form method="POST" action="/jobs/{{.ID}}/inspect" class="early-discovery-refresh"><input type="hidden" name="return_to" value="prepare"><button type="submit" class="button button-secondary">Refresh discovered questions</button></form>{{end}}
         {{if .EarlyQuestions.Questions}}
         <div data-question-workbench data-question-param="early_question" data-selected-question="{{.EarlyQuestions.SelectedKey}}">
         <div class="question-heading"><p class="small-muted" data-question-summary></p><p class="small-muted">Early answers are saved only in YourMove. They are not live application answers and do not authorize browser filling.</p></div>
@@ -143,6 +146,9 @@
       {{else if .EarlyQuestions.PublicDiscoveryAllowed}}
         <p>Discover the published question definitions before opening the employer form. The actual live form can include additional or conditional questions.</p>
         <form method="POST" action="/jobs/{{.ID}}/inspect"><input type="hidden" name="return_to" value="prepare"><button type="submit" class="button button-primary">Discover application questions</button></form>
+      {{else if .EarlyQuestions.PreviewDiscoveryAllowed}}
+        <p>Ashby's documented public posting API does not include the full application question schema. Preview the publicly rendered application page once in an isolated, temporary Chromium profile. This is read-only; opening the page can still create ordinary network traffic and analytics. The preview does not traverse later steps or bypass authentication, CAPTCHA, or browser challenges.</p>
+        <form method="POST" action="/jobs/{{.ID}}/answers/preview"><input type="hidden" name="return_to" value="prepare"><button type="submit" class="button button-primary">Preview application questions</button></form>
       {{else}}
         <p role="status">Public question discovery is unavailable for this provider. Use the rendered-form inspection path or open the employer site manually. YourMove will not show an empty question workbench.</p>
         <a href="/jobs/{{.ID}}/inspection" class="button button-secondary">Open rendered-form inspection</a>

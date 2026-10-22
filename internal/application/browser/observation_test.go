@@ -1,6 +1,9 @@
 package browser
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestAshbyPostingOwnership(t *testing.T) {
 	saved := "https://jobs.ashbyhq.com/render/e1f2d6a2-b9e2-4f16-b863-3ca228c83e75"
@@ -24,5 +27,20 @@ func TestBrowserResultKeepsStructuralEvidenceOnly(t *testing.T) {
 	}
 	if r.Source != "browser" || r.Completeness != "rendered_partial" || len(r.Fields) != 2 || !r.Fields[1].Sensitive || len(r.Steps) != 2 || r.Steps[1].Action != "human · submission" {
 		t.Fatalf("bad observation: %+v", r)
+	}
+}
+
+func TestPreviewResultIsPartialAndUsesSeparateIdentitySource(t *testing.T) {
+	s := "https://jobs.ashbyhq.com/render/e1f2d6a2-b9e2-4f16-b863-3ca228c83e75"
+	o := Observation{URL: s + "/application", Title: "Ashby", Heading: "Complete CAPTCHA to continue", Controls: []Control{{ID: "candidate_email", Label: "Email address", Kind: "email", Required: true}}}
+	r, err := AsPreviewResult(s, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Source != "preview" || r.Completeness != "rendered_preview_partial" || len(r.Fields) != 1 || r.Fields[0].ID != "preview:candidate_email" {
+		t.Fatalf("bad preview observation: %+v", r)
+	}
+	if !strings.Contains(r.Note, "authentication or anti-bot boundary") || !strings.Contains(r.Note, "ordinary website network traffic") {
+		t.Fatalf("preview limitations were not retained: %s", r.Note)
 	}
 }

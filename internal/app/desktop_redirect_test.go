@@ -128,6 +128,17 @@ func TestContinuationRedirectTargetsStayLocalAndCanonical(t *testing.T) {
 	}
 }
 
+func TestDesktopRedirectAcceptsOnlyKnownAshbyPreviewFailure(t *testing.T) {
+	if !safeDesktopRedirectTarget("/jobs/1?early_preview=failed#prepare") {
+		t.Fatal("known preview failure did not return to Prepare")
+	}
+	for _, target := range []string{"/jobs/1?early_preview=other#prepare", "/jobs/1?early_preview=failed&next=elsewhere#prepare", "/jobs/01?early_preview=failed#prepare"} {
+		if safeDesktopRedirectTarget(target) {
+			t.Fatalf("accepted unsafe preview redirect %q", target)
+		}
+	}
+}
+
 // Exercise the actual completion handler, not just an artificial redirect:
 // persistence succeeds once and desktop navigation returns to rendered history.
 func TestDesktopRecordCompletionReturnsToHistory(t *testing.T) {

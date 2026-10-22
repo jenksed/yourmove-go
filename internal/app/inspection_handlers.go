@@ -3,12 +3,14 @@ package app
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"net/url"
 	"strconv"
 
 	browser "github.com/jenksed/yourmove-go/internal/application/browser"
+	"github.com/jenksed/yourmove-go/internal/application/browser/chromium"
 	"github.com/jenksed/yourmove-go/internal/application/discovery"
 )
 
@@ -185,4 +187,62 @@ func (a *App) inspectJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/jobs/"+strconv.FormatInt(id, 10)+"/inspection", http.StatusSeeOther)
+}
+
+// previewEarlyQuestions opens one isolated public Ashby application page,
+// observes its current visible controls once, and stores only structural
+// evidence. It never registers a managed watcher or authorizes browser writes.
+func (a *App) previewEarlyQuestions(w http.ResponseWriter, r *http.Request) {
+	id, err := parseJobID(r)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if !parseLocalForm(w, r, 2<<10) {
+		return
+	}
+	job, err := a.jobByID(id)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		http.Error(w, "Unable to load job", http.StatusInternalServerError)
+		return
+	}
+	if job.Stage == StageApplied || job.Stage == StageClosed || job.SubmissionCount > 0 {
+		http.Error(w, "Preview is limited to active applications", http.StatusConflict)
+		return
+	}
+	if browser.PostingPlatform(job.URL) != "ashby" || !browser.OwnsPostingURL(job.URL, job.URL) {
+		http.Error(w, "Read-only question preview is available only for saved Ashby postings", http.StatusUnprocessableEntity)
+		return
+	}
+	fetch := a.previewApplication
+	if fetch == nil {
+		fetch = chromium.Preview
+	}
+	result, err := fetch(r.Context(), job.URL)
+	if err != nil {
+		log.Printf("read-only Ashby preview for job %d: %v", id, err)
+		if r.PostForm.Get("return_to") == "prepare" {
+			http.Redirect(w, r, fmt.Sprintf("/jobs/%d?early_preview=failed#prepare", id), http.StatusSeeOther)
+			return
+		}
+		http.Error(w, "Read-only preview did not complete. Saved questions and answers were not changed. Continue through the rendered-form inspection path.", http.StatusBadGateway)
+		return
+	}
+	if result.Platform != "ashby" || result.Source != "preview" || result.Completeness != "rendered_preview_partial" || !browser.OwnsPostingURL(job.URL, result.ApplicationURL) {
+		http.Error(w, "Preview did not return a partial structural snapshot for the saved Ashby posting. Nothing was saved.", http.StatusConflict)
+		return
+	}
+	if len(result.Fields) > 200 || len(result.Steps) > 30 {
+		http.Error(w, "Preview exceeded the observation limit. Nothing was saved.", http.StatusUnprocessableEntity)
+		return
+	}
+	if _, err := a.saveInspection(id, result); err != nil {
+		http.Error(w, "Unable to save preview questions", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, fmt.Sprintf("/jobs/%d#prepare", id), http.StatusSeeOther)
 }

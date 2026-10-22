@@ -19,9 +19,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/jenksed/yourmove-go/internal/application/browser"
 	"github.com/jenksed/yourmove-go/internal/application/providers/ashby"
-	"github.com/coder/websocket"
+	"github.com/jenksed/yourmove-go/internal/application/schema"
 )
 
 // These errors distinguish a closed application tab from temporary navigation
@@ -106,6 +107,55 @@ func Launch(ctx context.Context, posting string) (*Session, error) {
 			s.Close()
 			return nil, errors.New("Chromium did not expose a debugging port; verify it can launch a visible window")
 		case <-tick.C:
+		}
+	}
+}
+
+// Preview opens one public Ashby application route in an isolated temporary
+// Chromium profile, observes its current DOM once, and closes only that process.
+// It does not join the managed application watcher or expose mutation methods.
+func Preview(ctx context.Context, posting string) (schema.Result, error) {
+	if browser.PostingPlatform(posting) != "ashby" || !browser.OwnsPostingURL(posting, posting) {
+		return schema.Result{}, errors.New("read-only preview supports only the saved Ashby posting")
+	}
+	bounded, cancel := context.WithTimeout(ctx, 25*time.Second)
+	defer cancel()
+	session, err := Launch(bounded, posting)
+	if err != nil {
+		return schema.Result{}, err
+	}
+	defer session.Close()
+	observation, err := observePreviewPage(bounded, session)
+	if err != nil {
+		return schema.Result{}, err
+	}
+	return browser.AsPreviewResult(posting, observation)
+}
+
+func observePreviewPage(ctx context.Context, session *Session) (browser.Observation, error) {
+	bounded, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	started := time.Now()
+	var last browser.Observation
+	haveSnapshot := false
+	for {
+		observation, err := session.Observe(bounded)
+		if err != nil {
+			if haveSnapshot && errors.Is(err, context.DeadlineExceeded) {
+				return last, nil
+			}
+			return browser.Observation{}, err
+		}
+		last, haveSnapshot = observation, true
+		if observation.ReadyState == "complete" && (len(observation.Controls) > 0 || observation.Forms > 0 || len(observation.Frames) > 0 || time.Since(started) >= 5*time.Second) {
+			return observation, nil
+		}
+		timer := time.NewTimer(100 * time.Millisecond)
+		select {
+		case <-bounded.Done():
+			timer.Stop()
+			return last, nil
+		case <-timer.C:
 		}
 	}
 }
@@ -276,11 +326,26 @@ func (s *Session) Observe(ctx context.Context) (browser.Observation, error) {
 		if s.fixtureOwner != nil {
 			owns = s.fixtureOwner
 		}
+		// Chromium can expose the owned destination target a moment before its
+		// first document replaces about:blank. The target itself was ownership
+		// checked by s.target; the bounded preview readiness loop will wait for
+		// the document URL before producing a result.
+		if snapshot.URL == "about:blank" && owns(t.URL) {
+			return snapshot, nil
+		}
 		if !owns(snapshot.URL) {
-			return browser.Observation{}, errors.New("current browser page changed to another job or origin; nothing saved")
+			return browser.Observation{}, fmt.Errorf("current browser page changed to another job or origin (%s); nothing saved", safeObservedAddress(snapshot.URL))
 		}
 		return snapshot, nil
 	}
+}
+
+func safeObservedAddress(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "unknown address"
+	}
+	return u.Scheme + "://" + u.Host + u.EscapedPath()
 }
 
 // lockContext serializes live observation and mutation without making callers

@@ -103,3 +103,27 @@ func AsResult(jobURL string, o Observation) (schema.Result, error) {
 	}
 	return schema.Result{Platform: PostingPlatform(jobURL), Source: "browser", Completeness: "rendered_partial", ApplicationURL: o.URL, Note: note, Fields: fields, Steps: steps}, nil
 }
+
+// AsPreviewResult records only the same structural snapshot used by ordinary
+// browser inspection, under a separate source and identity namespace. A later
+// live observation can reconcile only the exact DOM identity captured here.
+func AsPreviewResult(jobURL string, o Observation) (schema.Result, error) {
+	result, err := AsResult(jobURL, o)
+	if err != nil {
+		return schema.Result{}, err
+	}
+	result.Source = "preview"
+	result.Completeness = "rendered_preview_partial"
+	result.Note = "Read-only rendered preview. No controls were filled, files attached, consent clicked, or application submitted. This captures only the currently visible page; later and conditional steps remain uninspected. Opening the public employer page can still generate ordinary website network traffic and analytics. " + result.Note
+	blockedText := strings.ToLower(o.Title + " " + o.Heading)
+	for _, marker := range []string{"captcha", "verify you are human", "checking your browser", "sign in", "log in", "login", "authentication"} {
+		if strings.Contains(blockedText, marker) {
+			result.Note = "Read-only preview stopped at a possible authentication or anti-bot boundary. No interaction was attempted. Captured controls, if any, are preserved; continue with the normal rendered-form inspection path. " + result.Note
+			break
+		}
+	}
+	for i := range result.Fields {
+		result.Fields[i].ID = "preview:" + strings.TrimPrefix(result.Fields[i].ID, "browser:")
+	}
+	return result, nil
+}

@@ -98,7 +98,7 @@ func reconcileEarlyAnswer(job Job, answer earlyApplicationAnswer, public *Inspec
 		return earlyReconciliation{Status: "Manual only", Detail: "No provider-specific identity rule supports mapping this question to the live form."}
 	}
 	if name == "" || strings.Contains(name, ":") {
-		return earlyReconciliation{Status: "Manual only", Detail: "This published question does not have a qualified Greenhouse field name."}
+		return earlyReconciliation{Status: "Manual only", Detail: "This discovered question does not have a qualified field identity."}
 	}
 	liveID := "browser:" + name
 	count := 0
@@ -167,7 +167,11 @@ func reconcileEarlyAnswer(job Job, answer earlyApplicationAnswer, public *Inspec
 		return result
 	}
 	result.Status = "Ready for explicit review"
-	result.Detail = "The unique Greenhouse field identity and published question details match this rendered control. Review both questions and choose whether to use the saved answer."
+	if answer.DiscoverySource == "preview" {
+		result.Detail = "The same Ashby control identity is present and the visible question details match. Review both questions and choose whether to use the saved answer."
+	} else {
+		result.Detail = "The unique Greenhouse field identity and published question details match this rendered control. Review both questions and choose whether to use the saved answer."
+	}
 	result.CanAccept = strings.TrimSpace(answer.Answer) != ""
 	if !result.CanAccept {
 		result.Detail += " Save a nonempty early answer before accepting it."

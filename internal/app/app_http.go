@@ -25,6 +25,7 @@ type App struct {
 	chooseExportPath          func(string) (string, error) // trusted desktop Save dialog only
 	openPosting               func(string) error           // desktop-only native default-browser action
 	inspectApplication        func(context.Context, string) (schema.Result, error)
+	previewApplication        func(context.Context, string) (schema.Result, error)
 	browsers                  sessionHost
 	coverLetterGenerate       func(context.Context, string) (string, error) // test override; production uses local Ollama
 }
@@ -69,6 +70,7 @@ func newMux(app *App) http.Handler {
 	mux.HandleFunc("GET /jobs/{id}", app.jobDetail)
 	mux.HandleFunc("GET /jobs/{id}/inspection", app.inspectionPage)
 	mux.HandleFunc("POST /jobs/{id}/inspect", app.inspectJob)
+	mux.HandleFunc("POST /jobs/{id}/answers/preview", app.previewEarlyQuestions)
 	mux.HandleFunc("POST /jobs/{id}/continue", app.continueApplication)
 	mux.HandleFunc("POST /jobs/{id}/handoff", app.startResumeHandoff)
 	mux.HandleFunc("POST /jobs/{id}/browser/{action}", app.browserOperation)
