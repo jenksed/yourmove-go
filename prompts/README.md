@@ -13,3 +13,9 @@
 Do **not** paste private resume text, job applications, credentials, or API responses containing personal data into public issues. A writing instruction cannot guarantee accurate output; always review the generated letter. Malformed responses are rejected by separate Go validation, which should remain strict and shared across providers.
 
 Only consider a provider-specific prompt file after a repeatable provider-specific failure is demonstrated. Otherwise, diverging rules create inconsistent letters and more files to maintain.
+
+## Application-answer instructions
+
+`application_answer.md` independently controls narrative answers in the Question Workbench. It does not change cover letters. Keep it nonempty, valid UTF-8, and at most 8 KiB. Edit the editorial guidance, review `git diff -- prompts/application_answer.md`, and run `go test ./...` and `go test -tags desktop ./...` before rebuilding and restarting. The app embeds both files explicitly; it never loads prompts from the runtime working directory.
+
+Source eligibility, factual authority, consent, budgets, and the reserved `YOURMOVE_INSUFFICIENT_EVIDENCE` result are enforced separately in Go. Editing this prompt cannot weaken those boundaries. Existing drafts do not change after a prompt edit. Provider transport budgets and output validation remain code-owned. Use anonymized examples when tuning instructions and review every generated answer before saving.

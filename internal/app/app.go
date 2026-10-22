@@ -12,44 +12,46 @@ import (
 // Config supplies workspace dependencies, embedded resources, and native callbacks.
 // The caller owns the database and closes it after the application.
 type Config struct {
-	DB                      *sql.DB
-	ResumeDir               string
-	TemplateFiles           fs.FS
-	StaticFiles             fs.FS
-	CoverLetterInstructions string
-	PickResume              func() (string, error)
-	ChooseExportPath        func(string) (string, error)
-	OpenPosting             func(string) error
+	DB                            *sql.DB
+	ResumeDir                     string
+	TemplateFiles                 fs.FS
+	StaticFiles                   fs.FS
+	CoverLetterInstructions       string
+	ApplicationAnswerInstructions string
+	PickResume                    func() (string, error)
+	ChooseExportPath              func(string) (string, error)
+	OpenPosting                   func(string) error
 }
 
 type appResources struct {
-	staticFiles             fs.FS
-	coverLetterInstructions string
-	jobsTemplate            *template.Template
-	jobDetailTemplate       *template.Template
-	resumesTemplate         *template.Template
-	applicationsTemplate    *template.Template
-	candidateTemplate       *template.Template
-	inspectionTemplate      *template.Template
-	aiConnectionsTemplate   *template.Template
-	requirementsTemplate    *template.Template
-	batchResultsTemplate    *template.Template
-	familiesTemplate        *template.Template
-	utilitiesTemplate       *template.Template
-	enrichmentTemplate      *template.Template
-	answerLibraryTemplate   *template.Template
-	careerEvidenceTemplate  *template.Template
+	staticFiles                   fs.FS
+	coverLetterInstructions       string
+	applicationAnswerInstructions string
+	jobsTemplate                  *template.Template
+	jobDetailTemplate             *template.Template
+	resumesTemplate               *template.Template
+	applicationsTemplate          *template.Template
+	candidateTemplate             *template.Template
+	inspectionTemplate            *template.Template
+	aiConnectionsTemplate         *template.Template
+	requirementsTemplate          *template.Template
+	batchResultsTemplate          *template.Template
+	familiesTemplate              *template.Template
+	utilitiesTemplate             *template.Template
+	enrichmentTemplate            *template.Template
+	answerLibraryTemplate         *template.Template
+	careerEvidenceTemplate        *template.Template
 }
 
 // New parses each page with the shared partials once, before serving requests.
 // Resource paths are relative to the supplied filesystems, never the working directory.
 func New(config Config) (*App, error) {
 	if config.DB == nil || config.TemplateFiles == nil || config.StaticFiles == nil ||
-		strings.TrimSpace(config.CoverLetterInstructions) == "" {
+		strings.TrimSpace(config.CoverLetterInstructions) == "" || !validNarrativeInstructions(config.ApplicationAnswerInstructions) {
 		return nil, fmt.Errorf("application requires a database, templates, static assets, and cover-letter instructions")
 	}
 	resources := &appResources{
-		staticFiles: config.StaticFiles, coverLetterInstructions: config.CoverLetterInstructions,
+		staticFiles: config.StaticFiles, coverLetterInstructions: config.CoverLetterInstructions, applicationAnswerInstructions: config.ApplicationAnswerInstructions,
 	}
 	for _, page := range []struct {
 		path   string
@@ -94,4 +96,4 @@ func (a *App) Handler() http.Handler { return newMux(a) }
 func (a *App) DesktopHandler() http.Handler { return newDesktopMux(a) }
 
 // Close terminates all managed browser sessions.
-func (a *App) Close() { a.browsers.closeAll() }
+func (a *App) Close() { a.answerAI.close(); a.browsers.closeAll() }

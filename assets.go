@@ -12,3 +12,6 @@ var templateFiles embed.FS
 //
 //go:embed prompts/cover_letter.md
 var coverLetterInstructions string
+
+//go:embed prompts/application_answer.md
+var applicationAnswerInstructions string

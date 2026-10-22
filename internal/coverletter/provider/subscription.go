@@ -119,6 +119,10 @@ func (b *limitedOutput) Write(p []byte) (int, error) {
 func (b *limitedOutput) String() string { return string(b.b) }
 
 func runCoverSubscription(ctx context.Context, provider, model, prompt string) (string, error) {
+	return runSubscriptionProfile(ctx, provider, model, prompt, false)
+}
+
+func runSubscriptionProfile(ctx context.Context, provider, model, prompt string, narrative bool) (string, error) {
 	if !coverSubscription(provider) || !validCoverModel(model) {
 		return "", errCoverModel
 	}
@@ -153,7 +157,11 @@ func runCoverSubscription(ctx context.Context, provider, model, prompt string) (
 		if model != "default" {
 			args = append(args, "--model", model)
 		}
-		args = append(args, "Write the cover letter using only the supplied text on stdin. Return only the letter body. Do not use tools.")
+		task := "Write the cover letter using only the supplied text on stdin. Return only the letter body. Do not use tools."
+		if narrative {
+			task = "Use only the supplied text on stdin. Return the requested answer or the specified insufficient-evidence marker. Do not use tools."
+		}
+		args = append(args, task)
 	}
 	cmd := exec.CommandContext(ctx, path, args...)
 	cmd.Dir = dir
@@ -170,13 +178,22 @@ func runCoverSubscription(ctx context.Context, provider, model, prompt string) (
 	}
 	text := out.String()
 	if provider == "codex" {
-		body, err := os.ReadFile(outputFile)
+		f, err := os.Open(outputFile)
+		if err != nil {
+			return "", errCoverOutput
+		}
+		defer f.Close()
+		body, err := io.ReadAll(io.LimitReader(f, maxLetterBytes+1))
 		if err != nil || len(body) > maxLetterBytes {
 			return "", errCoverOutput
 		}
 		text = string(body)
 	}
-	if len(text) < 30 || len(text) > maxLetterBytes || strings.ContainsRune(text, 0) {
+	min, max := 30, maxLetterBytes
+	if narrative {
+		min, max = 1, 6000
+	}
+	if len(text) < min || (narrative && strings.TrimSpace(text) == "") || len(text) > max || strings.ContainsRune(text, 0) {
 		return "", errCoverOutput
 	}
 	return text, nil

@@ -76,6 +76,17 @@ func (r Runner) Generate(ctx context.Context, prompt, instructions string) (stri
 	return runCoverProvider(ctx, r.backend, prompt, instructions, nil)
 }
 
+// GenerateNarrative performs one bounded narrative request, independent of letter formatting.
+func (r Runner) GenerateNarrative(ctx context.Context, prompt, instructions string) (string, error) {
+	if coverSubscription(r.provider) {
+		return runSubscriptionProfile(ctx, r.provider, r.backend.Model, prompt+"\n\n"+instructions, true)
+	}
+	if r.provider == "ollama" {
+		prompt += "\n\n" + instructions
+	}
+	return runProviderProfile(ctx, r.backend, prompt, instructions, nil, true)
+}
+
 func ValidProvider(provider string) bool { return validCoverProvider(provider) }
 
 func ValidModel(model string) bool { return validCoverModel(model) }
@@ -176,6 +187,10 @@ func coverProviderConfigured(provider string) bool {
 // One bounded request, no redirects, no retries (and therefore no double charge).
 // Provider response and request bodies are never logged, including on failures.
 func runCoverProvider(ctx context.Context, backend coverBackend, prompt, instructions string, client *http.Client) (string, error) {
+	return runProviderProfile(ctx, backend, prompt, instructions, client, false)
+}
+
+func runProviderProfile(ctx context.Context, backend coverBackend, prompt, instructions string, client *http.Client, narrative bool) (string, error) {
 	if !validCoverProvider(backend.Provider) || !validCoverModel(backend.Model) || backend.URL == "" {
 		return "", errCoverModel
 	}
@@ -193,6 +208,9 @@ func runCoverProvider(ctx context.Context, backend coverBackend, prompt, instruc
 		if backend.Model == "minimax-m3.1-flash:cloud" || backend.Model == "minimax-m3.1-flash" {
 			budget = 16384
 		}
+		if narrative {
+			budget = 1024
+		}
 		request = map[string]any{"model": backend.Model, "prompt": prompt, "stream": false, "think": false,
 			"options": map[string]any{"temperature": 0.35, "num_predict": budget}}
 	case "openai":
@@ -204,6 +222,16 @@ func runCoverProvider(ctx context.Context, backend coverBackend, prompt, instruc
 	default:
 		request = map[string]any{"model": backend.Model, "stream": false, "max_tokens": 900,
 			"messages": []map[string]string{{"role": "system", "content": instructions}, {"role": "user", "content": prompt}}}
+	}
+	if narrative {
+		fields := request.(map[string]any)
+		switch backend.Provider {
+		case "openai":
+			fields["max_output_tokens"] = 1600
+		case "ollama":
+		default:
+			fields["max_tokens"] = 1024
+		}
 	}
 	data, err := json.Marshal(request)
 	if err != nil {
@@ -269,10 +297,15 @@ func runCoverProvider(ctx context.Context, backend coverBackend, prompt, instruc
 	switch backend.Provider {
 	case "ollama":
 		var result struct {
-			Response string `json:"response"`
-			Error    string `json:"error"`
+			Done       *bool  `json:"done"`
+			DoneReason string `json:"done_reason"`
+			Response   string `json:"response"`
+			Error      string `json:"error"`
 		}
 		if json.Unmarshal(limited, &result) != nil || result.Error != "" {
+			return "", errCoverOutput
+		}
+		if narrative && ((result.Done != nil && !*result.Done) || result.DoneReason == "length") {
 			return "", errCoverOutput
 		}
 		text = result.Response
@@ -304,12 +337,16 @@ func runCoverProvider(ctx context.Context, backend coverBackend, prompt, instruc
 		text = strings.Join(parts, "\n")
 	case "anthropic":
 		var result struct {
-			Content []struct {
+			StopReason string `json:"stop_reason"`
+			Content    []struct {
 				Type string `json:"type"`
 				Text string `json:"text"`
 			} `json:"content"`
 		}
 		if json.Unmarshal(limited, &result) != nil {
+			return "", errCoverOutput
+		}
+		if narrative && result.StopReason != "" && result.StopReason != "end_turn" && result.StopReason != "stop_sequence" {
 			return "", errCoverOutput
 		}
 		var parts []string
@@ -341,7 +378,11 @@ func runCoverProvider(ctx context.Context, backend coverBackend, prompt, instruc
 		}
 		text = result.Choices[0].Message.Content
 	}
-	if len(text) < 30 || len(text) > maxLetterBytes || strings.ContainsRune(text, 0) {
+	min, max := 30, maxLetterBytes
+	if narrative {
+		min, max = 1, 6000
+	}
+	if len(text) < min || (narrative && strings.TrimSpace(text) == "") || len(text) > max || strings.ContainsRune(text, 0) {
 		return "", errCoverOutput
 	}
 	return text, nil

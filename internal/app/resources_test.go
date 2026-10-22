@@ -17,9 +17,13 @@ func testConfig(t *testing.T, db *sql.DB, resumeDir string) Config {
 	if err != nil {
 		t.Fatal(err)
 	}
+	narrative, err := fs.ReadFile(files, "prompts/application_answer.md")
+	if err != nil {
+		t.Fatal(err)
+	}
 	return Config{
 		DB: db, ResumeDir: resumeDir, TemplateFiles: files, StaticFiles: files,
-		CoverLetterInstructions: string(instructions),
+		CoverLetterInstructions: string(instructions), ApplicationAnswerInstructions: string(narrative),
 	}
 }
 

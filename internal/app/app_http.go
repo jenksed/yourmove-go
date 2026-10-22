@@ -12,19 +12,21 @@ import (
 )
 
 type App struct {
-	resources           *appResources
-	intakeMu            sync.Mutex
-	enrichmentMu        sync.Mutex
-	enrichment          *enrichmentRun
-	enrichmentFetch     postingFetcher
-	db                  *sql.DB
-	resumeDir           string
-	pickResume          func() (string, error)
-	chooseExportPath    func(string) (string, error) // trusted desktop Save dialog only
-	openPosting         func(string) error           // desktop-only native default-browser action
-	inspectApplication  func(context.Context, string) (schema.Result, error)
-	browsers            sessionHost
-	coverLetterGenerate func(context.Context, string) (string, error) // test override; production uses local Ollama
+	answerAI                  answerAIRegistry
+	applicationAnswerGenerate func(context.Context, string, string) (string, error)
+	resources                 *appResources
+	intakeMu                  sync.Mutex
+	enrichmentMu              sync.Mutex
+	enrichment                *enrichmentRun
+	enrichmentFetch           postingFetcher
+	db                        *sql.DB
+	resumeDir                 string
+	pickResume                func() (string, error)
+	chooseExportPath          func(string) (string, error) // trusted desktop Save dialog only
+	openPosting               func(string) error           // desktop-only native default-browser action
+	inspectApplication        func(context.Context, string) (schema.Result, error)
+	browsers                  sessionHost
+	coverLetterGenerate       func(context.Context, string) (string, error) // test override; production uses local Ollama
 }
 
 func newMux(app *App) http.Handler {
@@ -80,6 +82,7 @@ func newMux(app *App) http.Handler {
 	mux.HandleFunc("GET /jobs/{id}/cover-letter/{draft}/download", app.downloadCoverLetter)
 	mux.HandleFunc("POST /jobs/{id}/cover-letter/transfer", app.transferCoverLetter)
 	mux.HandleFunc("POST /jobs/{id}/answers/save", app.saveApplicationAnswer)
+	mux.HandleFunc("POST /jobs/{id}/answers/ai/{action}", app.applicationAnswerAIHandler)
 	mux.HandleFunc("POST /jobs/{id}/answers/library", app.promoteApplicationAnswerHandler)
 	mux.HandleFunc("POST /jobs/{id}/answers/starting-point", app.answerLibraryStartingPointHandler)
 	mux.HandleFunc("POST /jobs/{id}/answers/transfer", app.transferApplicationAnswers)
