@@ -364,6 +364,72 @@
     const option = panel && workbench?.querySelector(`option[value="${panel.dataset.questionKey}"]`);
     if (option) option.textContent = option.textContent.replace(/ · Unsaved changes$/, '') + (dirty ? ' · Unsaved changes' : '');
   };
+  // Related writing stays read-only until a user opens it. Inserting an
+  // example changes only the current textarea; the existing save form owns
+  // persistence and revision handling.
+  document.querySelectorAll('[data-related-answer]').forEach(details => {
+    details.addEventListener('toggle', async () => {
+      if (!details.open || details.dataset.loaded === 'true') return;
+      const entryID = details.dataset.entryId;
+      const content = details.querySelector('[data-related-content]');
+      const useButton = details.querySelector('[data-use-library-answer]');
+      if (!entryID || !content) return;
+      try {
+        const response = await fetch(`/answer-library/${encodeURIComponent(entryID)}/content`, {headers: {'Accept': 'application/json'}});
+        if (!response.ok) throw new Error('Unable to load this previous example. Open the full library entry to review it.');
+        const example = await response.json();
+        const answer = document.createElement('pre');
+        answer.className = 'evidence-text related-writing-full-answer';
+        answer.setAttribute('aria-label', 'Complete previous answer');
+        answer.textContent = typeof example.answer === 'string' ? example.answer : '';
+        content.replaceChildren(answer);
+        details.dataset.loaded = 'true';
+        if (useButton) useButton.hidden = false;
+      } catch (_) {
+        content.textContent = 'Unable to load this previous example. Open the full library entry to review and copy it.';
+      }
+    });
+  });
+  document.querySelectorAll('[data-use-library-answer]').forEach(button => {
+    button.addEventListener('click', async () => {
+      const panel = button.closest('[data-question-panel]');
+      const form = panel?.querySelector('form[action$="/answers/save"]');
+      const key = form?.querySelector('[name="question_key"]')?.value;
+      const revision = form?.querySelector('[name="revision"]')?.value;
+      const editor = form?.querySelector('textarea[name="answer"]');
+      const status = button.closest('[data-related-answer]')?.querySelector('[data-related-status]');
+      const entryID = button.dataset.entryId;
+      if (!panel || !form || !key || revision === undefined || !editor || !entryID || !status) return;
+      const beforeValue = editor.value;
+      const beforeKey = key;
+      const beforeRevision = revision;
+      if (panel.hidden) return;
+      if ((form.dataset.dirty === 'true' || beforeValue.trim() !== '') &&
+          !window.confirm('Replace the current answer editor text with this previous writing? It will be an unsaved draft. You can still cancel or edit it before choosing Save answer locally.')) return;
+      button.disabled = true;
+      status.textContent = 'Checking the current question…';
+      try {
+        const body = new URLSearchParams({library_entry_id: entryID, question_key: beforeKey, revision: beforeRevision});
+        const response = await fetch(button.dataset.startpointUrl, {
+          method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8', 'Accept': 'application/json'}, body
+        });
+        if (!response.ok) throw new Error(await response.text() || 'The current question changed. Review it before using previous writing.');
+        const selected = await response.json();
+        if (selected.entry_id !== Number(entryID) || selected.question_key !== beforeKey ||
+            String(selected.revision) !== beforeRevision || form.querySelector('[name="question_key"]')?.value !== beforeKey ||
+            form.querySelector('[name="revision"]')?.value !== beforeRevision || editor.value !== beforeValue || panel.hidden) {
+          throw new Error('The current editor changed while the example was loading. Review the question and try again.');
+        }
+        editor.value = typeof selected.answer === 'string' ? selected.answer : '';
+        editor.dispatchEvent(new Event('input', {bubbles: true}));
+        status.textContent = 'Previous writing copied into this unsaved answer. Edit it for this question, then choose Save answer locally.';
+      } catch (error) {
+        status.textContent = error instanceof Error ? error.message : 'Unable to use this previous example. Review the current question and try again.';
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
   for (const type of ['input', 'change']) document.addEventListener(type, event => {
     const form = event.target.closest('form');
     if (initial.has(form)) update(form);

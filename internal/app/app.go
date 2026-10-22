@@ -74,6 +74,9 @@ func New(config Config) (*App, error) {
 		}
 		*page.target = parsed
 	}
+	if err := indexUnindexedAnswerLibraryEntries(config.DB); err != nil {
+		return nil, fmt.Errorf("initialize Answer Library search index: %w", err)
+	}
 	return &App{
 		db: config.DB, resumeDir: config.ResumeDir, resources: resources,
 		pickResume: config.PickResume, chooseExportPath: config.ChooseExportPath,

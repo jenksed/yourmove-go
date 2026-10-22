@@ -29,6 +29,7 @@ type preparedQuestion struct {
 	Revision           int64
 	Editable           bool
 	LibraryEligible    bool
+	LibrarySuggestions []answerLibrarySuggestion
 }
 type questionPreparation struct {
 	InspectionID int64
@@ -197,6 +198,13 @@ func (a *App) prepareQuestions(job Job, p CandidateProfile) (questionPreparation
 	for _, v := range ordered {
 		if !used[v.Key] {
 			out.Previous = append(out.Previous, v)
+		}
+	}
+	if job.Stage != StageApplied && job.Stage != StageClosed && job.SubmissionCount == 0 {
+		if suggestions, err := a.answerLibrarySuggestionsForQuestions(out.Questions); err == nil {
+			for i := range out.Questions {
+				out.Questions[i].LibrarySuggestions = suggestions[out.Questions[i].Key]
+			}
 		}
 	}
 	return out, nil

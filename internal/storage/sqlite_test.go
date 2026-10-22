@@ -58,6 +58,53 @@ func TestAnswerLibrarySchemaMigratesLegacyAnswersWithoutPromotion(t *testing.T) 
 	}
 }
 
+func TestAnswerLibrarySearchIndexMigrationPreservesCuratedSnapshot(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "phase-one-library.db")
+	legacy, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		`CREATE TABLE jobs (id INTEGER PRIMARY KEY,url TEXT NOT NULL,host TEXT NOT NULL)`,
+		`CREATE TABLE answer_library (
+		 id INTEGER PRIMARY KEY, original_question TEXT NOT NULL, answer TEXT NOT NULL,
+		 source_employer TEXT NOT NULL DEFAULT '', source_job_title TEXT NOT NULL DEFAULT '', source_host TEXT NOT NULL DEFAULT '',
+		 source_job_id INTEGER NOT NULL, source_destination TEXT NOT NULL, source_provider TEXT NOT NULL,
+		 source_question_key TEXT NOT NULL, source_revision INTEGER NOT NULL, source_inspection_id INTEGER NOT NULL,
+		 source_inspection_fingerprint TEXT NOT NULL, source_field_id TEXT NOT NULL, source_field_kind TEXT NOT NULL,
+		 created_at TEXT NOT NULL, updated_at TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1,
+		 UNIQUE(source_job_id,source_destination,source_provider,source_question_key,source_revision))`,
+		`INSERT INTO answer_library(id,original_question,answer,source_employer,source_job_title,source_host,source_job_id,source_destination,source_provider,source_question_key,source_revision,source_inspection_id,source_inspection_fingerprint,source_field_id,source_field_kind,created_at,updated_at,revision)
+		 VALUES(7,'Describe a production issue','Synthetic saved snapshot','Fixture Employer','Support Engineer','jobs.example.test',1,'https://jobs.example.test/role','fixture','exact-question-key',2,4,'inspection-fingerprint','stable-field','textarea','2026-10-20T00:00:00.000000000Z','2026-10-20T00:00:00.000000000Z',3)`,
+	} {
+		if _, err := legacy.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := legacy.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	for attempt := 0; attempt < 2; attempt++ {
+		db, err := OpenDB(path)
+		if err != nil {
+			t.Fatalf("open phase-one library database (attempt %d): %v", attempt, err)
+		}
+		var question, answer, employer, questionTerms, answerTerms string
+		var revision, sourceRevision, indexVersion int64
+		if err := db.QueryRow(`SELECT original_question,answer,source_employer,revision,source_revision,question_terms,answer_terms,search_index_version FROM answer_library WHERE id=7`).Scan(
+			&question, &answer, &employer, &revision, &sourceRevision, &questionTerms, &answerTerms, &indexVersion); err != nil {
+			t.Fatal(err)
+		}
+		if question != "Describe a production issue" || answer != "Synthetic saved snapshot" || employer != "Fixture Employer" || revision != 3 || sourceRevision != 2 || questionTerms != "" || answerTerms != "" || indexVersion != 0 {
+			t.Fatalf("phase-one snapshot changed during index migration: %q %q %q rev=%d source=%d terms=%q/%q index=%d", question, answer, employer, revision, sourceRevision, questionTerms, answerTerms, indexVersion)
+		}
+		if err := db.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestApplicationStorageMigratesLegacyDatabase(t *testing.T) {
 	root := t.TempDir()
 	workingDir := filepath.Join(root, "working")

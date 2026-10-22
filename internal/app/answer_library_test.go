@@ -203,6 +203,10 @@ func TestAnswerLibraryDeduplicatesBySavedRevisionAndKeepsLifecycleIndependent(t 
 	if edited.Code != http.StatusSeeOther {
 		t.Fatalf("edit library copy: %d %s", edited.Code, edited.Body.String())
 	}
+	updatedSearch, err := a.searchAnswerLibrary("independently edited library copy", answerLibraryRelatedLimit)
+	if err != nil || len(updatedSearch) != 1 || updatedSearch[0].EntryID != entries[0].ID {
+		t.Fatalf("editing the library copy did not refresh its retrieval index: %+v %v", updatedSearch, err)
+	}
 	if duplicate := promoteLibrarySource(t, a, job.ID, key, 1); duplicate.Code != http.StatusSeeOther || duplicate.Header().Get("Location") != "/answer-library?notice=existing" {
 		t.Fatalf("repeat promotion: %d %s", duplicate.Code, duplicate.Header().Get("Location"))
 	}
@@ -281,7 +285,10 @@ func TestAnswerLibraryRoutesKeepLocalHostOriginAndRedirectBoundaries(t *testing.
 		method, path, host, origin string
 	}{
 		{http.MethodGet, "/answer-library", "evil.test", ""},
+		{http.MethodGet, "/answer-library/1/content", "evil.test", ""},
 		{http.MethodPost, "/jobs/1/answers/library", "localhost", "https://evil.test"},
+		{http.MethodPost, "/jobs/1/answers/starting-point", "localhost", "https://evil.test"},
+		{http.MethodPost, "/answer-library/search", "localhost", "https://evil.test"},
 		{http.MethodPost, "/answer-library/1/edit", "localhost", "https://evil.test"},
 		{http.MethodPost, "/answer-library/1/delete", "localhost", "https://evil.test"},
 	} {

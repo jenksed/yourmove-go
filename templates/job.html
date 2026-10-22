@@ -117,6 +117,7 @@
                 {{if eq .Source "Approved candidate information"}}<p><strong>{{.Field.Label}}</strong> · {{.Value}}</p><p class="small-muted">Prepared locally — Approved candidate profile · <a href="/candidate">Edit candidate profile</a></p><details class="question-override"><summary>Edit answer for this application</summary><p class="small-muted">Saving creates an application-specific override. Your approved profile stays unchanged.</p>{{end}}
                 {{template "application-question" .}}
                 {{if eq .Source "Approved candidate information"}}</details>{{end}}
+                {{if .LibrarySuggestions}}{{template "related-answer-library" .}}{{end}}
               {{else}}<h4>{{.Field.Label}}{{if .Field.Required}} (required){{end}}</h4><p>Requires manual completion in Chromium.</p><p class="small-muted">This control is sensitive, unsupported, or cannot be identified safely. Complete it in the employer browser.</p>{{end}}
             </div>
             {{end}}
@@ -332,6 +333,27 @@
           <button type="submit" class="button button-secondary">Save this example</button>
         </form>
       </details>
+{{end}}
+
+{{define "related-answer-library"}}
+      <section class="related-previous-writing" aria-label="Related previous writing">
+        <h4>Related previous writing</h4>
+        <p class="small-muted">These are your earlier examples. Review the original question and provenance, then adapt any starting point for this employer's question.</p>
+        {{range .LibrarySuggestions}}
+        <article class="related-writing-example" data-related-writing-example>
+          <p><strong>Original question</strong><br>{{.OriginalQuestion}}</p>
+          <p class="related-writing-source"><strong>Source</strong> · {{if .SourceEmployer}}{{.SourceEmployer}}{{else}}{{.SourceHost}}{{end}}{{if .SourceJobTitle}} · {{.SourceJobTitle}}{{end}}</p>
+          <p class="related-writing-excerpt"><strong>Excerpt</strong> · {{.Excerpt}}</p>
+          <details class="related-writing-full" data-related-answer data-entry-id="{{.EntryID}}">
+            <summary>Read the complete answer</summary>
+            <div data-related-content><p class="small-muted">Open the complete example to read and copy it. JavaScript can also load it here.</p></div>
+            <p><a href="/answer-library/{{.EntryID}}" target="_blank" rel="noopener noreferrer">Open full example and source context ↗</a></p>
+            <button type="button" class="button button-secondary" data-use-library-answer data-entry-id="{{.EntryID}}" data-startpoint-url="/jobs/{{$.JobID}}/answers/starting-point" hidden>Use as starting point</button>
+            <p class="small-muted" role="status" aria-live="polite" data-related-status></p>
+          </details>
+        </article>
+        {{end}}
+      </section>
 {{end}}
 
 {{define "answer-save-error"}}

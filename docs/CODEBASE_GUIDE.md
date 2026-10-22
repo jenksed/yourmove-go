@@ -61,6 +61,7 @@ macOS Wails desktop.go ─┘           │
 - `internal/storage/paths.go: storage.ApplicationStorage` selects an absolute workspace location, normally `~/Library/Application Support/YourMove` on macOS, or the `YOURMOVE_DATA_DIR` override, and handles legacy database migration.
 - `internal/storage/sqlite.go: storage.OpenDB` uses one SQLite connection and creates/upgrades the schema through private initialization logic.
 - `internal/app/jobs.go`, `internal/app/resumes.go`, `internal/app/candidate_profile.go`, `internal/app/cover_letters.go`, `internal/app/application_answers.go`, `internal/app/reusable_answers.go`, and `internal/app/application_inspections.go` read/write their durable records.
+- `internal/app/answer_library.go` stores independently curated snapshots. `internal/app/answer_library_handlers.go` owns promotion, listing, editing, and deletion. `internal/app/answer_library_search.go` indexes and ranks only those snapshots; `internal/app/application_answers.go` attaches a bounded, read-only related-writing view to supported active narrative questions.
 - Stored resumes live in a separate `resumes/` directory within the workspace. Back up the database **and** that directory together, with the app stopped.
 
 The main persisted records map to these tables and files:
@@ -73,6 +74,16 @@ The main persisted records map to these tables and files:
 | Cover-letter drafts | `cover_letters` table, including draft text and source resume/job hashes |
 | Observed application form | `application_inspections`, `application_fields` and `application_steps` store observed structure, not a live browser session |
 | Employer answers | `application_answers` stores job/destination/provider-specific answers; `reusable_answers` stores separately approved employer-scoped answers |
+| Curated prior writing | `answer_library` stores user-promoted question-and-answer snapshots with source context, source revision, and an independent library revision |
+
+### Answer Library data flow
+
+- Promotion loads the saved answer and current stored inspection identity on the server. The library row contains its own question/answer copy and source metadata, without a `jobs` foreign key; deleting the job therefore preserves the curated copy.
+- Editing or deleting a library row changes only that row. Re-promoting the same unchanged job/destination/provider/question/revision returns the existing copy. A newer saved source revision creates a separate snapshot instead of overwriting library edits.
+- Startup adds normalized question and answer token columns to older Answer Library tables and backfills only rows already present in `answer_library`. It does not scan or promote `application_answers`.
+- `answer_library_search.go` ranks the original question more heavily than bounded answer-token support and phrase overlap. Prepare renders at most three excerpts for eligible narrative questions. Full answer content is fetched only after the user expands a suggestion, from the local content route.
+- The **Use as starting point** POST revalidates the current active question and source library ID, then returns a local JSON copy. Browser code places it into the current textarea as unsaved text; the normal Save answer locally form remains responsible for persistence. The Answer Library is not consulted by `resolveApplicationAnswer`, `reusable_answers`, or browser transfer authorization.
+- Explicit library search posts its query in the request body so it does not appear in the URL. Results retain the original question and source context and link to a server-rendered full entry for manual reading/copying without JavaScript.
 
 - An app restart does not restore an in-memory employer browser session, its unsubmitted form changes or its last transient transfer statuses. Never make a UI promise to the contrary.
 
@@ -92,6 +103,7 @@ The main persisted records map to these tables and files:
 | Letter editing or save behavior | `internal/app/cover_letters.go` | `templates/job.html`, `static/ui.js`, `internal/app/desktop_redirect.go` | save/reopen/Unicode/error recovery |
 | Letter attachment/text fill | `internal/app/cover_letter_transfer.go` | `internal/app/browser_session.go`, `chromium/cover_letter.go`, `chromium/attachment.go` | controlled fixture checks exact content and repeat-upload suppression |
 | Employer question preparation | `internal/app/application_answers.go` | `internal/app/reusable_answers.go`, `templates/job.html`, `static/ui.js` | identity/revision/option/explicit override checks |
+| Curated previous writing | `internal/app/answer_library.go`, `internal/app/answer_library_search.go` | `internal/app/answer_library_handlers.go`, `templates/answer_library.html`, `templates/job.html`, `static/ui.js`, `internal/storage/sqlite.go` | promotion identity, deterministic retrieval, independent lifecycle, unsaved starting point |
 | Employer answer transfer | `internal/app/application_answer_transfer.go` | `internal/app/browser_session.go`, `chromium/answer.go` | controlled fixture controls, manual value preservation |
 | How one-click continuation is composed | `internal/app/application_continuation.go` | `internal/app/handoff_state.go`, `internal/app/application_handlers.go`, `templates/job.html` | exact flags and independent partial failures |
 | Browser start/stop/recovery | `internal/app/browser_handlers.go` | `internal/app/browser_session.go`, `chromium/chromium.go` | isolated browser session and recovery checks |

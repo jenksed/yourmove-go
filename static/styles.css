@@ -766,9 +766,31 @@ small,.small-muted{font-size:12px;line-height:1.55;color:var(--color-muted)}
 .answer-library-edit button { justify-self:start; }
 .answer-library-delete { border-top:1px solid var(--color-border); margin-top:18px; padding-top:14px; }
 .answer-library-empty { max-width:780px; }
+.answer-library-search {display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:12px;max-width:860px;margin:18px 0 24px}
+.answer-library-search .field {margin:0;min-width:0}
+.answer-library-search input {width:100%;box-sizing:border-box}
+.answer-library-search-results {max-width:860px}
+.answer-library-search-results h2 {font-size:17px;margin:20px 0 8px}
+.answer-library-search-results .answer-library-entry {padding:16px 0}
+.answer-library-search-results h3 {font-size:13px;margin:12px 0 4px}
+.related-previous-writing {max-width:780px;margin:18px 0 4px;padding:14px 16px;border:1px solid var(--color-border);border-radius:10px;background:var(--color-surface-muted)}
+.related-previous-writing > h4 {margin:0 0 10px;font-size:13px}
+.related-writing-example {padding:12px 0;border-top:1px solid var(--color-border);min-width:0}
+.related-writing-example:first-of-type {padding-top:4px;border-top:0}
+.related-writing-example p {margin:6px 0;max-width:72ch;overflow-wrap:anywhere}
+.related-writing-source {color:var(--color-muted);font-size:12px}
+.related-writing-excerpt {font-size:13px}
+.related-writing-full {margin-top:8px}
+.related-writing-full summary {cursor:pointer;color:var(--color-primary);font-size:12px;font-weight:650;padding:5px 0}
+.related-writing-full-answer {max-height:24rem;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}
+.related-writing-full [data-related-status] {margin:6px 0;font-size:12px}
+.related-writing-full button {margin:5px 0}
 @media(max-width:480px) {
   .answer-library-entry { padding:17px 0 20px; }
   .answer-library-edit button,.answer-library-delete button { width:100%; }
+  .answer-library-search {grid-template-columns:1fr}
+  .answer-library-search button {width:100%}
+  .related-previous-writing {padding:12px}
 }
 
 /* Ready profile facts stay outside the employer-question navigator. */

@@ -156,12 +156,13 @@ func (a *App) promoteApplicationAnswer(jobID int64, key string, expectedRevision
 	}
 	result, err := tx.Exec(`INSERT INTO answer_library(original_question,answer,source_employer,source_job_title,source_host,
 	 source_job_id,source_destination,source_provider,source_question_key,source_revision,source_inspection_id,
-	 source_inspection_fingerprint,source_field_id,source_field_kind,created_at,updated_at,revision)
-	 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)
+	 source_inspection_fingerprint,source_field_id,source_field_kind,question_terms,answer_terms,search_index_version,created_at,updated_at,revision)
+	 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)
 	 ON CONFLICT(source_job_id,source_destination,source_provider,source_question_key,source_revision) DO NOTHING`,
 		entry.OriginalQuestion, entry.Answer, entry.SourceEmployer, entry.SourceJobTitle, entry.SourceHost,
 		entry.SourceJobID, entry.SourceDestination, entry.SourceProvider, entry.SourceQuestionKey,
 		entry.SourceRevision, entry.SourceInspectionID, entry.SourceInspectionFingerprint, entry.SourceFieldID, entry.SourceFieldKind,
+		answerLibraryIndexTerms(entry.OriginalQuestion), answerLibraryIndexTerms(entry.Answer), answerLibrarySearchIndexVersion,
 		entry.CreatedAt, entry.UpdatedAt)
 	if err != nil {
 		return AnswerLibraryEntry{}, false, err
@@ -325,8 +326,13 @@ func (a *App) updateAnswerLibrary(id, expectedRevision int64, answer string) err
 	if id <= 0 || expectedRevision < 1 || !validAnswerLibraryText(answer) || strings.TrimSpace(answer) == "" {
 		return ErrAnswerLibraryInvalid
 	}
-	result, err := a.db.Exec(`UPDATE answer_library SET answer=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=?`,
-		answer, answerLibraryTimestamp(), id, expectedRevision)
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	result, err := tx.Exec(`UPDATE answer_library SET answer=?,answer_terms=?,search_index_version=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=?`,
+		answer, answerLibraryIndexTerms(answer), answerLibrarySearchIndexVersion, answerLibraryTimestamp(), id, expectedRevision)
 	if err != nil {
 		return err
 	}
@@ -335,10 +341,10 @@ func (a *App) updateAnswerLibrary(id, expectedRevision int64, answer string) err
 		return err
 	}
 	if count == 1 {
-		return nil
+		return tx.Commit()
 	}
 	var exists bool
-	if err := a.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM answer_library WHERE id=?)`, id).Scan(&exists); err != nil {
+	if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM answer_library WHERE id=?)`, id).Scan(&exists); err != nil {
 		return err
 	}
 	if !exists {

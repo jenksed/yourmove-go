@@ -281,6 +281,9 @@ func initJobsSchema(db *sql.DB) error {
 		 source_inspection_fingerprint TEXT NOT NULL,
 		 source_field_id TEXT NOT NULL,
 		 source_field_kind TEXT NOT NULL,
+		 question_terms TEXT NOT NULL DEFAULT '',
+		 answer_terms TEXT NOT NULL DEFAULT '',
+		 search_index_version INTEGER NOT NULL DEFAULT 0,
 		 created_at TEXT NOT NULL,
 		 updated_at TEXT NOT NULL,
 		 revision INTEGER NOT NULL DEFAULT 1,
@@ -293,6 +296,21 @@ func initJobsSchema(db *sql.DB) error {
 	} {
 		if _, err := db.Exec(statement); err != nil {
 			return fmt.Errorf("initialize application discovery: %w", err)
+		}
+	}
+	for _, column := range []struct{ name, ddl string }{
+		{"question_terms", `ALTER TABLE answer_library ADD COLUMN question_terms TEXT NOT NULL DEFAULT ''`},
+		{"answer_terms", `ALTER TABLE answer_library ADD COLUMN answer_terms TEXT NOT NULL DEFAULT ''`},
+		{"search_index_version", `ALTER TABLE answer_library ADD COLUMN search_index_version INTEGER NOT NULL DEFAULT 0`},
+	} {
+		var exists bool
+		if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM pragma_table_info('answer_library') WHERE name=?)`, column.name).Scan(&exists); err != nil {
+			return fmt.Errorf("inspect Answer Library %s: %w", column.name, err)
+		}
+		if !exists {
+			if _, err := db.Exec(column.ddl); err != nil {
+				return fmt.Errorf("add Answer Library %s: %w", column.name, err)
+			}
 		}
 	}
 	// Add an empty explicit preference without revising or approving existing data.
