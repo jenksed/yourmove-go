@@ -621,6 +621,13 @@ small,.small-muted{font-size:12px;line-height:1.55;color:var(--color-muted)}
 .readiness-heading h2 {font-size:20px;letter-spacing:-.025em;margin:0}
 .readiness-heading .button {min-height:40px;white-space:nowrap}
 .brief-copy-status {font-size:12px;color:var(--color-primary);min-height:0;margin:3px 0 0}
+.prepare-entry-actions {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 24px;margin:3px 0 8px;border-top:1px solid var(--color-border);border-bottom:1px solid var(--color-border)}
+.prepare-entry-action {display:grid;align-content:start;gap:3px;min-width:0;padding:10px 0;color:var(--color-primary);text-decoration:none;overflow-wrap:anywhere}
+.prepare-entry-action strong {font-size:13px;line-height:1.4;font-weight:700}
+.prepare-entry-action small {font-size:11px;line-height:1.45;color:var(--color-muted);font-weight:450}
+.prepare-entry-action:hover strong {text-decoration:underline;text-underline-offset:3px}
+.prepare-entry-action:focus-visible {outline:2px solid var(--color-primary);outline-offset:3px;border-radius:3px}
+.prepare-entry-action:only-child {grid-column:1/-1}
 .readiness-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:28px;margin:0}
 .readiness-grid>div {min-width:0;padding:10px 0;border-top:1px solid var(--color-border)}
 .readiness-grid dt {font-size:11px;color:var(--color-muted);margin-bottom:3px}
@@ -642,6 +649,7 @@ small,.small-muted{font-size:12px;line-height:1.55;color:var(--color-muted)}
 .brief-export-options noscript p {max-width:75ch}
 .transfer-letter-review {margin:0}
 .transfer-letter-review[open]>summary {margin-bottom:7px}
+.prepare-writer {scroll-margin-top:16px}
 .prepare-group-title {font-size:19px;letter-spacing:-.02em;margin:27px 0 0;padding:18px 0 0;border-top:1px solid var(--color-border)}
 .prepare-workspace .g55-handoff-form {max-width:900px}
 .prepare-workspace .g55-handoff-form>.button-primary {justify-self:start;margin-top:3px;min-height:45px}
@@ -653,6 +661,8 @@ small,.small-muted{font-size:12px;line-height:1.55;color:var(--color-muted)}
 .prepare-workspace .pending-answer-scope dd {max-width:82ch}
 .prepare-workspace .prepare-handoff.observed-results {max-width:900px}
 @media(max-width:760px) {
+  .prepare-entry-actions {grid-template-columns:minmax(0,1fr);gap:0}
+  .prepare-entry-action + .prepare-entry-action {border-top:1px solid var(--color-border)}
   .readiness-grid {grid-template-columns:minmax(0,1fr);column-gap:0}
   .readiness-heading {align-items:flex-start;flex-wrap:wrap}
   .readiness-heading .button {width:100%}

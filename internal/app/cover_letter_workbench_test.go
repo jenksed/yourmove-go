@@ -135,6 +135,9 @@ func TestLetterSaveReturnsToExactScopeWithoutBrowserAuthority(t *testing.T) {
 					t.Fatalf("saved return omitted %q", part)
 				}
 			}
+			if !strings.Contains(page, `href="#letter-editor" data-open-details="letter-editor"><strong>Edit cover letter</strong>`) {
+				t.Fatal("saved draft did not lead from the Prepare entry action")
+			}
 			if strings.Contains(page, `id="letter-editor" open`) {
 				t.Fatal("save reopened editor")
 			}

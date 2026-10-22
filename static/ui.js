@@ -113,10 +113,19 @@
     if (addDisclosure) { addDisclosure.open = true; requestAnimationFrame(() => document.getElementById('job_url')?.focus()); }
   }));
   if (addDisclosure && location.hash === '#add-opportunity') addDisclosure.open = true;
-  document.querySelectorAll('[data-open-details]').forEach((link) => link.addEventListener('click', () => {
+  document.querySelectorAll('[data-open-details]').forEach((link) => link.addEventListener('click', (event) => {
     const target = document.getElementById(link.dataset.openDetails);
     if (target) {
       target.open = true;
+      if (target.id === 'letter-editor') {
+        event.preventDefault();
+        try { history.replaceState(null, '', link.hash); } catch (_) {}
+        requestAnimationFrame(() => {
+          const heading = target.querySelector('#letter-studio-title');
+          (heading || target).scrollIntoView({block:'start', behavior:'instant'});
+          heading?.focus({preventScroll:true});
+        });
+      }
       if (target.id === 'record-submission') {
         document.querySelector('[data-tab-target=prepare]')?.click();
         requestAnimationFrame(() => target.scrollIntoView({block:'center'}));
@@ -412,6 +421,22 @@
       else window.addEventListener('load', () => requestAnimationFrame(restore), {once:true});
     }
   }
+  });
+
+  // Keep the selected answer editor in place and bring that workbench into view.
+  document.querySelectorAll('[data-prepare-question-entry]').forEach(link => {
+    link.addEventListener('click', event => {
+      const target = document.getElementById(link.hash.slice(1));
+      if (!target) return;
+      event.preventDefault();
+      try { history.replaceState(null, '', link.hash); } catch (_) {}
+      requestAnimationFrame(() => {
+        const selected = target.querySelector('[data-question-panel]:not([hidden])');
+        const destination = selected || target;
+        destination.focus({preventScroll:true});
+        destination.scrollIntoView({block:'start', behavior:'instant'});
+      });
+    });
   });
 
   // Explicit server saves remain authoritative. Independent material actions

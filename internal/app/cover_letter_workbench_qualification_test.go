@@ -240,6 +240,7 @@ func TestControlledScopeFirstWorkbench(t *testing.T) {
 	navigate("/jobs/1?cover=saved&draft=1#prepare")
 	assert(`(()=>{const e=document.querySelector('.transfer-letter-scope');return e.tabIndex===0 && e.scrollHeight>e.clientHeight && e.textContent.endsWith('Complete final line of the saved letter.')})()`)
 	capture("long-letter")
+	run(`document.querySelector('.transfer-letter-review > summary').click()`)
 	run(`document.querySelector('.transfer-letter-scope').focus()`)
 	assert(`document.activeElement===document.querySelector('.transfer-letter-scope')`)
 	for _, typ := range []string{"keyDown", "keyUp"} {
