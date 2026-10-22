@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"example.com/yourmove-lite/internal/application/providers/ashby"
-	"example.com/yourmove-lite/internal/application/providers/greenhouse"
-	"example.com/yourmove-lite/internal/application/schema"
+	"github.com/jenksed/yourmove-go/internal/application/providers/ashby"
+	"github.com/jenksed/yourmove-go/internal/application/providers/greenhouse"
+	"github.com/jenksed/yourmove-go/internal/application/schema"
 )
 
 var ErrUnsupported = errors.New("application discovery is unsupported for this posting")

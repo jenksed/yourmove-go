@@ -16,8 +16,8 @@ import (
 	"testing"
 	"time"
 
-	"example.com/yourmove-lite/internal/application/browser/chromium"
-	"example.com/yourmove-lite/internal/application/schema"
+	"github.com/jenksed/yourmove-go/internal/application/browser/chromium"
+	"github.com/jenksed/yourmove-go/internal/application/schema"
 )
 
 // All storage is testWorkspace's temporary SQLite database; the only navigable

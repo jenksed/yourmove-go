@@ -15,7 +15,7 @@ import (
 	"strconv"
 	"strings"
 
-	browser "example.com/yourmove-lite/internal/application/browser"
+	browser "github.com/jenksed/yourmove-go/internal/application/browser"
 )
 
 var resumesTemplate = template.Must(template.ParseFS(templateFiles, "templates/resumes.html", "templates/partials.html"))

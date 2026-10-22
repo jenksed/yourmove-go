@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"sort"
 
-	"example.com/yourmove-lite/internal/application/browser"
+	"github.com/jenksed/yourmove-go/internal/application/browser"
 )
 
 func (p questionPreparation) ReadyAnswers() []preparedQuestion {

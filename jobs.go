@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"example.com/yourmove-lite/internal/platforms"
+	"github.com/jenksed/yourmove-go/internal/platforms"
 )
 
 var ErrAppliedWithoutSubmission = errors.New("cannot mark applied without a confirmed submission")

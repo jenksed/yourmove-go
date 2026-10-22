@@ -4,7 +4,7 @@ import (
 	"html/template"
 	"net/http"
 
-	coverprovider "example.com/yourmove-lite/internal/coverletter/provider"
+	coverprovider "github.com/jenksed/yourmove-go/internal/coverletter/provider"
 )
 
 type aiConnection struct {

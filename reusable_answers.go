@@ -7,8 +7,8 @@ import (
 	"net/url"
 	"strings"
 
-	"example.com/yourmove-lite/internal/application/browser"
-	"example.com/yourmove-lite/internal/application/schema"
+	"github.com/jenksed/yourmove-go/internal/application/browser"
+	"github.com/jenksed/yourmove-go/internal/application/schema"
 )
 
 // Reuse is intentionally employer-scoped and exact: provider identity, field

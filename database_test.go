@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"example.com/yourmove-lite/internal/platforms"
+	"github.com/jenksed/yourmove-go/internal/platforms"
 
 	_ "modernc.org/sqlite"
 )

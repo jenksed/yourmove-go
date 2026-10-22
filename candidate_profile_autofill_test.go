@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"testing"
 
-	"example.com/yourmove-lite/internal/application/schema"
+	"github.com/jenksed/yourmove-go/internal/application/schema"
 )
 
 func TestCandidatePronounsMigrationAndRestart(t *testing.T) {

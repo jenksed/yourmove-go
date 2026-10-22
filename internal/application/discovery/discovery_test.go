@@ -3,7 +3,7 @@ package discovery
 import (
 	"context"
 	"errors"
-	"example.com/yourmove-lite/internal/application/schema"
+	"github.com/jenksed/yourmove-go/internal/application/schema"
 	"testing"
 )
 

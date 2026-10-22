@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"example.com/yourmove-lite/internal/application/schema"
+	"github.com/jenksed/yourmove-go/internal/application/schema"
 )
 
 const maxResponse = 32 << 20

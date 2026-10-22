@@ -13,8 +13,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"example.com/yourmove-lite/internal/application/browser"
-	"example.com/yourmove-lite/internal/application/schema"
+	"github.com/jenksed/yourmove-go/internal/application/browser"
+	"github.com/jenksed/yourmove-go/internal/application/schema"
 )
 
 // An answer belongs to the exact destination and question definition. Identity

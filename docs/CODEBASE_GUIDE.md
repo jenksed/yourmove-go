@@ -169,7 +169,7 @@ Check for accidentally tracked `.db`, `.db-wal`, document files, cached browser 
 3. Describe supported employer workflows as qualified per feature; do not equate page metadata support with safe form-filling support.
 4. Provide simple developer orientation: where routes are, how to run tests, where data is saved, and how to build safely.
 5. Add a clear `LICENSE` **only after choosing the intended grant of rights**; don't call an unlicensed repo open source.
-6. Fix the placeholder module identifier: `module example.com/yourmove-lite` and imports in approximately 50 Go files. Prefer a single scoped change to `github.com/jenksed/yourmove-go` **if that is the canonical repo path**. Use `go mod edit -module=...`, update local imports, `gofmt`, and test. This improves public consistency, not behavior.
+6. Keep the Go module identifier and internal imports aligned with the canonical repository path, `github.com/jenksed/yourmove-go`. A module-path change should update imports in production and test files together, without changing package names or dependencies.
 
 ### Pass 2: Reduce contradictory documentation
 

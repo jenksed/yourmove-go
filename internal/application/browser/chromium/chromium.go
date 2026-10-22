@@ -19,8 +19,8 @@ import (
 	"sync"
 	"time"
 
-	"example.com/yourmove-lite/internal/application/browser"
-	"example.com/yourmove-lite/internal/application/providers/ashby"
+	"github.com/jenksed/yourmove-go/internal/application/browser"
+	"github.com/jenksed/yourmove-go/internal/application/providers/ashby"
 	"github.com/coder/websocket"
 )
 

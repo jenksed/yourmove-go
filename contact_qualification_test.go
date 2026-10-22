@@ -22,9 +22,9 @@ import (
 	"testing"
 	"time"
 
-	"example.com/yourmove-lite/internal/application/browser"
-	"example.com/yourmove-lite/internal/application/browser/chromium"
-	"example.com/yourmove-lite/internal/application/schema"
+	"github.com/jenksed/yourmove-go/internal/application/browser"
+	"github.com/jenksed/yourmove-go/internal/application/browser/chromium"
+	"github.com/jenksed/yourmove-go/internal/application/schema"
 )
 
 // This adapter changes only the test observation's origin. Actual mutations

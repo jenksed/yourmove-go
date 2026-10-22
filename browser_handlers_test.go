@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"errors"
-	"example.com/yourmove-lite/internal/application/browser/chromium"
+	"github.com/jenksed/yourmove-go/internal/application/browser/chromium"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	browser "example.com/yourmove-lite/internal/application/browser"
+	browser "github.com/jenksed/yourmove-go/internal/application/browser"
 )
 
 const testAshbyPosting = "https://jobs.ashbyhq.com/render/e1f2d6a2-b9e2-4f16-b863-3ca228c83e75"

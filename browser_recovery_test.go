@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	browser "example.com/yourmove-lite/internal/application/browser"
-	"example.com/yourmove-lite/internal/application/browser/chromium"
+	browser "github.com/jenksed/yourmove-go/internal/application/browser"
+	"github.com/jenksed/yourmove-go/internal/application/browser/chromium"
 )
 
 type lostTabBrowser struct {

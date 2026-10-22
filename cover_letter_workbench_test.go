@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"example.com/yourmove-lite/internal/application/schema"
+	"github.com/jenksed/yourmove-go/internal/application/schema"
 )
 
 // Real local generation/save paths, with synthetic documents and a deterministic

@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"strconv"
 
-	browser "example.com/yourmove-lite/internal/application/browser"
-	"example.com/yourmove-lite/internal/application/discovery"
+	browser "github.com/jenksed/yourmove-go/internal/application/browser"
+	"github.com/jenksed/yourmove-go/internal/application/discovery"
 )
 
 var candidateTemplate = template.Must(template.ParseFS(templateFiles, "templates/candidate.html", "templates/partials.html"))

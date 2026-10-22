@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"strings"
 
-	browser "example.com/yourmove-lite/internal/application/browser"
+	browser "github.com/jenksed/yourmove-go/internal/application/browser"
 )
 
 func writeTransferResult(w http.ResponseWriter, r *http.Request, status int, detail string) {

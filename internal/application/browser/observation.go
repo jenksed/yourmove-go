@@ -8,8 +8,8 @@ import (
 	"net/url"
 	"strings"
 
-	"example.com/yourmove-lite/internal/application/flow"
-	"example.com/yourmove-lite/internal/application/schema"
+	"github.com/jenksed/yourmove-go/internal/application/flow"
+	"github.com/jenksed/yourmove-go/internal/application/schema"
 )
 
 type Control struct {

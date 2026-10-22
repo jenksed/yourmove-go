@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"example.com/yourmove-lite/internal/platforms"
+	"github.com/jenksed/yourmove-go/internal/platforms"
 )
 
 func waitForEnrichment(t *testing.T, a *App, condition func(EnrichmentSnapshot) bool) EnrichmentSnapshot {

@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"example.com/yourmove-lite/internal/application/browser"
-	"example.com/yourmove-lite/internal/application/schema"
+	"github.com/jenksed/yourmove-go/internal/application/browser"
+	"github.com/jenksed/yourmove-go/internal/application/schema"
 )
 
 func TestTrialBlurAndLocation(t *testing.T) {

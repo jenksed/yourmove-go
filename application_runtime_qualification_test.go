@@ -18,8 +18,8 @@ import (
 	"testing"
 	"time"
 
-	"example.com/yourmove-lite/internal/application/browser/chromium"
-	"example.com/yourmove-lite/internal/application/schema"
+	"github.com/jenksed/yourmove-go/internal/application/browser/chromium"
+	"github.com/jenksed/yourmove-go/internal/application/schema"
 )
 
 // Uses the ordinary HTTP executable, its normal port, and an explicitly isolated

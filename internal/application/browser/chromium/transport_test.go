@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"example.com/yourmove-lite/internal/application/browser"
+	"github.com/jenksed/yourmove-go/internal/application/browser"
 )
 
 func TestTransfersCancelWhileSessionBusy(t *testing.T) {

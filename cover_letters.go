@@ -17,7 +17,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	coverprovider "example.com/yourmove-lite/internal/coverletter/provider"
+	coverprovider "github.com/jenksed/yourmove-go/internal/coverletter/provider"
 )
 
 const maxLetterBytes = 12000

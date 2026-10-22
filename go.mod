@@ -1,4 +1,4 @@
-module example.com/yourmove-lite
+module github.com/jenksed/yourmove-go
 
 go 1.27.2
 

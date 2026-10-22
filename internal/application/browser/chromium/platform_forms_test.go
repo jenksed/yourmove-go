@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"example.com/yourmove-lite/internal/application/browser"
-	"example.com/yourmove-lite/internal/application/schema"
+	"github.com/jenksed/yourmove-go/internal/application/browser"
+	"github.com/jenksed/yourmove-go/internal/application/schema"
 )
 
 // Local fixtures exercise the real CDP operations without sending applicant

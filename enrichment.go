@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"example.com/yourmove-lite/internal/platforms"
+	"github.com/jenksed/yourmove-go/internal/platforms"
 )
 
 const (

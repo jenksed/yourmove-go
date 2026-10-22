@@ -12,8 +12,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"example.com/yourmove-lite/internal/application/browser"
-	"example.com/yourmove-lite/internal/application/browser/chromium"
+	"github.com/jenksed/yourmove-go/internal/application/browser"
+	"github.com/jenksed/yourmove-go/internal/application/browser/chromium"
 )
 
 // A letter approval is separate from resume/submission authority and belongs

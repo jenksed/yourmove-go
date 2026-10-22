@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"example.com/yourmove-lite/internal/platforms"
+	"github.com/jenksed/yourmove-go/internal/platforms"
 )
 
 func TestClosedPostingIntakeAndRefresh(t *testing.T) {

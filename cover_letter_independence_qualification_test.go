@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"example.com/yourmove-lite/internal/application/browser/chromium"
+	"github.com/jenksed/yourmove-go/internal/application/browser/chromium"
 )
 
 func TestControlledIndependentCoverLetter(t *testing.T) {

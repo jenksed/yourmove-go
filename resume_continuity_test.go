@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"example.com/yourmove-lite/internal/application/browser/chromium"
+	"github.com/jenksed/yourmove-go/internal/application/browser/chromium"
 )
 
 type delayedResumeBrowser struct {

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"example.com/yourmove-lite/internal/application/schema"
+	"github.com/jenksed/yourmove-go/internal/application/schema"
 	"testing"
 )
 

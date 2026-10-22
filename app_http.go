@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
-	"example.com/yourmove-lite/internal/application/schema"
+	"github.com/jenksed/yourmove-go/internal/application/schema"
 	"net/http"
 	"net/url"
 	"strconv"

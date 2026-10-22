@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	browser "example.com/yourmove-lite/internal/application/browser"
+	browser "github.com/jenksed/yourmove-go/internal/application/browser"
 	"html/template"
 	"log"
 	"net/http"
@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	coverprovider "example.com/yourmove-lite/internal/coverletter/provider"
-	"example.com/yourmove-lite/internal/platforms"
+	coverprovider "github.com/jenksed/yourmove-go/internal/coverletter/provider"
+	"github.com/jenksed/yourmove-go/internal/platforms"
 )
 
 var jobsTemplate = template.Must(

@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"example.com/yourmove-lite/internal/application/browser"
+	"github.com/jenksed/yourmove-go/internal/application/browser"
 	"github.com/coder/websocket"
 )
 
