@@ -12,18 +12,38 @@ YourMove keeps job opportunities, resumes, application preparation, and submissi
 
 YourMove never submits an application for you. Review the employer form and submit it yourself.
 
-## Support and release status
+## Install and platform status
 
-The source-run browser interface has been verified on macOS at `http://127.0.0.1:3000`; other operating systems are not currently qualified. The optional Wails desktop host is macOS-only and currently a development run. The repository includes a local Apple Silicon/macOS 26 candidate-build recipe; it does not provide a public installer. No downloadable release is published yet, and signed, notarized, clean-install acceptance is still outstanding. See the [release status and checklist](docs/RELEASE_CHECKLIST.md).
+**YourMove currently runs from source; there is no public installer or downloadable release.** Install Git and Go 1.27.2 (the version declared in `go.mod`), then use a terminal in macOS or Linux, or PowerShell on Windows:
 
-Posting metadata support covers selected Ashby, Greenhouse, Lever, and Paylocity pages. Browser form inspection and filling are experimental and depend on the exact page and controls. Controlled fixtures cover selected Ashby, Greenhouse, and Lever flows; they do not establish universal ATS compatibility.
+```sh
+git clone https://github.com/jenksed/yourmove-go.git
+cd yourmove-go
+go run .
+```
+
+If the server starts successfully, open `http://127.0.0.1:3000` on the same computer. Stop it with Ctrl+C. Chrome or Chromium is required for assisted employer-form operations, but not basic local organization. Running from source requires the Go toolchain; this is **not** an installed desktop application.
+
+| Operating system | Local browser interface (`go run .`) | Native Wails desktop |
+| --- | --- | --- |
+| **macOS** | **Verified** on Apple Silicon | macOS-only development run; not a qualified public installer |
+| **Windows** | **Not tested**; may not build or run correctly | Not implemented |
+| **Linux** | **Not tested**; may not build or run correctly | Not implemented |
+
+Only macOS has been exercised. In particular, Chromium discovery and employer-form automation have **not** been qualified on Windows or Linux; a running local HTTP server would not establish that those features work. Posting metadata and employer-form filling have different coverage. Selected Ashby, Greenhouse, Lever and Paylocity posting metadata is supported; controlled form fixtures cover selected Ashby, Greenhouse and Lever flows, not universal ATS compatibility.
+
+The macOS Wails host is an optional development run (`go run -tags desktop .`). A local Apple Silicon/macOS 26 candidate-build recipe exists, but no signed/notarized public build or clean-install acceptance is established. See [detailed setup for macOS, Windows and Linux](docs/TRY_IT.md), [release status](docs/RELEASE_CHECKLIST.md) and the [macOS candidate recipe](release/macos/README.md).
 
 ## Data and network activity
 
 Your records and imported resumes are stored on your computer. On macOS, the default data directory is `~/Library/Application Support/YourMove`; `YOURMOVE_DATA_DIR` can select another absolute path. Fetching a posting, using a configured cover-letter provider, and explicitly filling an employer form are separate network actions. A remote AI provider may receive the selected resume and job details when you request a draft.
 
-## Run and contribute
+## Development and feedback
 
-From the repository root, run `go run .` and open `http://127.0.0.1:3000` on the same computer. The full source-run and macOS Wails instructions, isolated data setup, and Go test commands are in [Try YourMove locally](docs/TRY_IT.md). The [codebase guide](docs/CODEBASE_GUIDE.md) maps startup, routes, persistence, browser filling, and common changes.
+See [Run YourMove locally](docs/TRY_IT.md) for per-platform setup, isolated data directories, troubleshooting, and test commands. The [codebase guide](docs/CODEBASE_GUIDE.md) maps startup, routes, persistence, browser filling, and common changes.
 
 [Report a bug](https://github.com/jenksed/yourmove-go/issues/new?template=bug-report.md) · [Share experience feedback](https://github.com/jenksed/yourmove-go/issues/new?template=experience-feedback.md) · [Feedback and privacy guidance](docs/FEEDBACK.md)
+
+## License
+
+Copyright (C) 2026 Joshua Jenks. YourMove's original source code is licensed under the [GNU General Public License version 3 only](LICENSE) (`GPL-3.0-only`). Redistribution of covered modified versions must comply with that license. Third-party dependencies and assets retain their applicable licenses.
