@@ -380,7 +380,7 @@ func TestControlledQuestionWorkbench(t *testing.T) {
 	click(`[data-leave]`)
 	page = server.URL + "/jobs/1"
 	waitJS(`document.readyState==='complete' && document.querySelectorAll('.application-question-form').length===6`)
-	assertJS(`document.querySelector('.writing-context-alternate') && !document.querySelector('.writing-context-alternate').open && document.querySelector('.writing-context-alternate').textContent.includes('Recheck the employer form')`)
+	assertJS(`document.querySelector('.writing-context-alternate') && !document.querySelector('.writing-context-alternate').open && document.querySelector('.writing-context-alternate').textContent.includes('Earlier discovered questions and saved drafts') && document.querySelector('.writing-answers > summary').textContent.includes('review the current form before use')`)
 	click(`.writing-context-alternate > summary`)
 	assertJS(`document.querySelector('.writing-context-alternate').open`)
 	click(`.employer-site-summary > summary`)
