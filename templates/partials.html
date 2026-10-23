@@ -36,4 +36,4 @@
 {{define "priority-badge"}}{{if eq .Priority "high"}}<span class="priority-flag">High priority</span>{{else if eq .Priority "low"}}<span class="priority-quiet">Low priority</span>{{end}}{{end}}
 
 {{define "contact-facts"}}<dl class="fact-list transfer-contact-facts"><div><dt>Name</dt><dd>{{.FirstName}} {{.LastName}}</dd></div><div><dt>Email</dt><dd>{{.Email}}</dd></div>{{if .Phone}}<div><dt>Phone</dt><dd>{{.Phone}}</dd></div>{{end}}</dl>{{end}}
-{{define "contact-outcomes"}}{{if .}}<ul class="transfer-contact-outcomes">{{range .}}{{if and (ne .Status "filled") (ne .Status "correct")}}<li><strong>{{.Label}}</strong><span>{{.Detail}}</span></li>{{end}}{{end}}</ul>{{end}}{{end}}
+{{define "contact-outcomes"}}{{if .}}<ul class="transfer-contact-outcomes">{{range .}}<li><strong>{{.Label}}</strong><span>{{if eq .Status "filled"}}Filled and verified · {{else if eq .Status "correct"}}Already correct; left unchanged · {{end}}{{.Detail}}</span></li>{{end}}</ul>{{end}}{{end}}

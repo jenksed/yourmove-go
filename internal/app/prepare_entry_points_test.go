@@ -27,9 +27,9 @@ func TestPrepareWritingEntryPointsUseCurrentQuestionSourceAndExplainLetterSource
 
 	page := get()
 	for _, want := range []string{
-		`<section class="writing-workspace" id="application-materials"`,
-		`id="application-answers-workspace" name="application-writing" data-writing-activity data-writing-activity-key="answers" open`,
-		`id="letter-editor" name="application-writing" data-writing-activity data-writing-activity-key="letter"`,
+		`id="answers" data-workspace-panel="answers"`,
+		`id="application-answers-workspace" data-writing-activity data-writing-activity-key="answers" open`,
+		`id="letter-editor" data-writing-activity data-writing-activity-key="letter"`,
 		`<nav class="prepare-entry-actions" aria-label="Writing tasks">`,
 		`href="#early-application-questions" data-prepare-question-entry`,
 		`<strong>Prepare answers</strong>`,

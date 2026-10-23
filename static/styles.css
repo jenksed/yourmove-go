@@ -1120,3 +1120,23 @@ h1,.job-hero h1 {font-size:28px;line-height:1.2;margin-bottom:8px}
  .dashboard-next .button{width:auto}.workspace-tabs{flex-wrap:wrap;overflow:visible}
 }
 @media(max-width:480px){.primary-nav{grid-template-columns:1fr}.job-row-actions{justify-content:flex-start}.progress-metric strong,.progress-remaining strong{font-size:18px}}
+
+/* Direct activities keep the original editor DOM and all server-owned forms. */
+.workspace-tabs {flex-wrap:wrap;overflow:visible}
+.workspace-tab {padding:10px 13px}
+.writing-destination {max-width:780px}
+.writing-destination .writing-activity {margin:0;border:0;background:transparent}
+.writing-destination .writing-activity>summary {padding:0 0 14px}
+.writing-destination .writing-activity-body,.writing-destination .letter-studio {padding:0}
+.writing-destination .prepare-handoff {border:0;padding:0;margin-top:12px}
+.writing-destination .question-workspace-layout {grid-template-columns:minmax(0,1fr)}
+.activity-return {font-size:12px;margin-bottom:16px}
+.job-hero {margin-bottom:16px}.job-hero .page-description{margin-bottom:8px}
+.description {max-width:80ch;font-size:14px;line-height:1.75}
+
+.transfer-review {margin-top:24px;padding-top:20px;border-top:2px solid var(--color-border-strong);scroll-margin-top:20px;max-width:880px}
+.transfer-review>.prepare-handoff {padding:0;border:0;background:transparent}
+.prepare-resume-block {margin-top:20px}
+.readiness-grid {gap:0}
+.readiness-grid>div {padding:12px 0;border-bottom:1px solid var(--color-border)}
+.pending-answer-scope dd {white-space:pre-wrap;overflow-wrap:anywhere}

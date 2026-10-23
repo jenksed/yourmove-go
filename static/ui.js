@@ -197,7 +197,7 @@
       if (!activity) return;
       const panel = activity.closest('[data-workspace-panel]');
       if (panel?.hidden) {
-        document.querySelector('.workspace-tab[data-tab-target="prepare"]')?.click();
+        document.querySelector(`.workspace-tab[data-tab-target="${panel.dataset.workspacePanel}"]`)?.click();
         try { history.replaceState(null, '', location.pathname + location.search + location.hash); } catch (_) {}
       }
       openActivity(activity, target);
@@ -298,7 +298,17 @@
   if (tabs.length && panels.length) {
     const names = new Set(panels.map((panel) => panel.dataset.workspacePanel));
     const defaultTab = document.querySelector('[data-workspace-tabs]')?.dataset.defaultTab || 'overview';
-    const current = () => names.has(location.hash.slice(1)) ? location.hash.slice(1) : defaultTab;
+    const panelForHash = hash => {
+      try { return document.getElementById(decodeURIComponent(hash.slice(1)))?.closest('[data-workspace-panel]')?.dataset.workspacePanel; }
+      catch (_) { return null; }
+    };
+    const current = () => {
+      const query = new URLSearchParams(location.search);
+      if (['saved','transferring'].includes(query.get('cover'))) return 'prepare';
+      if (query.has('question') || query.has('early_question')) return 'answers';
+      if (query.has('cover') || query.has('draft')) return panelForHash(location.hash) === 'prepare' ? 'cover-letter' : (panelForHash(location.hash) || 'cover-letter');
+      return panelForHash(location.hash) || defaultTab;
+    };
     const show = (name, focus = false) => {
       const target = names.has(name) ? name : 'overview';
       document.documentElement.classList.add('tabs-enabled');
@@ -309,6 +319,8 @@
         tab.tabIndex = selected ? 0 : -1;
       });
       panels.forEach((panel) => panel.hidden = panel.dataset.workspacePanel !== target);
+      if (target === 'answers') document.getElementById('application-answers-workspace').open = true;
+      if (target === 'cover-letter') document.getElementById('letter-editor').open = true;
       if (focus) document.getElementById(target)?.focus({preventScroll:true});
     };
     tabs.forEach((tab) => {
@@ -336,7 +348,13 @@
       panel.setAttribute('aria-labelledby', `workspace-tab-${panel.dataset.workspacePanel}`);
     });
     show(current());
-    window.addEventListener('hashchange', () => show(current()));
+    window.addEventListener('hashchange', () => show(panelForHash(location.hash) || current()));
+    document.addEventListener('click', event => {
+      const link = event.target.closest('a[href^="#"]');
+      if (!link) return;
+      const target = panelForHash(link.hash);
+      if (target) show(target);
+    });
     document.querySelectorAll('[data-tab-target]:not(.workspace-tab)').forEach((link) => link.addEventListener('click', () => {
       const target = link.dataset.tabTarget;
       if (names.has(target)) show(target);
@@ -830,7 +848,7 @@
   if (!editor) return;
   const show = () => {
     editor.open = true;
-    document.querySelector('[data-tab-target=prepare]')?.click();
+    document.querySelector('[data-tab-target=cover-letter]')?.click();
     editor.scrollIntoView({block:'start',behavior:'instant'});
   };
   if (document.readyState === 'complete') show();
