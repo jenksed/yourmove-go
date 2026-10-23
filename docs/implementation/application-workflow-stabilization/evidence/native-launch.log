@@ -1,0 +1,4 @@
+9:18AM INF Build Info: Wails=v3.0.0-beta.32 Compiler=go1.27.2 GOARM64=v8.0 CGO_ENABLED=1 CGO_CXXFLAGS=-mmacosx-version-min=26.0 vcs=git vcs.time=2026-10-23T13:18:28Z -compiler=gc CGO_CFLAGS=-mmacosx-version-min=26.0 GOARCH=arm64 vcs.revision=222956c56dea8869e95934496aa765b3934e230a -buildmode=exe vcs.modified=true -tags=desktop CGO_CPPFLAGS= CGO_LDFLAGS=-mmacosx-version-min=26.0 GOOS=darwin
+9:18AM INF Platform Info: ID=25F84 Name=MacOS Version=26.5.2 Branding=MacOS 26.5.2
+9:18AM INF AssetServer Info: middleware=true handler=true
+2026/10/23 09:18:46 YourMove Wails compatibility run starting at /jobs

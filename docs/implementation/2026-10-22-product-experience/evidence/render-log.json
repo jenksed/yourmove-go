@@ -1,0 +1,383 @@
+{
+  "engine": "151.0.7922.34",
+  "date": "2026-10-23T08:48:00.709Z",
+  "captures": [
+    {
+      "name": "direction-utility",
+      "url": "http://127.0.0.1:3018/index.html?direction=utility#opportunities",
+      "viewport": [
+        900,
+        700
+      ],
+      "overflow": false,
+      "visibleRows": 2
+    },
+    {
+      "name": "direction-editorial",
+      "url": "http://127.0.0.1:3018/index.html?direction=editorial#opportunities",
+      "viewport": [
+        900,
+        700
+      ],
+      "overflow": false,
+      "visibleRows": 1
+    },
+    {
+      "name": "direction-focus",
+      "url": "http://127.0.0.1:3018/index.html?direction=focus#opportunities",
+      "viewport": [
+        900,
+        700
+      ],
+      "overflow": false,
+      "visibleRows": 1
+    },
+    {
+      "name": "answers-1100-dark",
+      "url": "http://127.0.0.1:3018/index.html?theme=dark#answers",
+      "viewport": [
+        1100,
+        800
+      ],
+      "overflow": false,
+      "textarea": {
+        "x": 252,
+        "y": 442,
+        "width": 780,
+        "height": 200,
+        "top": 442,
+        "right": 1032,
+        "bottom": 642,
+        "left": 252
+      },
+      "visibleRows": 0
+    },
+    {
+      "name": "answers-900-dark",
+      "url": "http://127.0.0.1:3018/index.html?theme=dark#answers",
+      "viewport": [
+        900,
+        700
+      ],
+      "overflow": false,
+      "textarea": {
+        "x": 206,
+        "y": 439,
+        "width": 672,
+        "height": 200,
+        "top": 439,
+        "right": 878,
+        "bottom": 639,
+        "left": 206
+      },
+      "visibleRows": 0
+    },
+    {
+      "name": "answers-750-dark",
+      "url": "http://127.0.0.1:3018/index.html?theme=dark#answers",
+      "viewport": [
+        750,
+        650
+      ],
+      "overflow": false,
+      "textarea": {
+        "x": 20,
+        "y": 435.796875,
+        "width": 710,
+        "height": 200,
+        "top": 435.796875,
+        "right": 730,
+        "bottom": 635.796875,
+        "left": 20
+      },
+      "visibleRows": 0
+    },
+    {
+      "name": "answers-700-dark",
+      "url": "http://127.0.0.1:3018/index.html?theme=dark#answers",
+      "viewport": [
+        700,
+        550
+      ],
+      "overflow": false,
+      "textarea": {
+        "x": 20,
+        "y": 435.796875,
+        "width": 660,
+        "height": 200,
+        "top": 435.796875,
+        "right": 680,
+        "bottom": 635.796875,
+        "left": 20
+      },
+      "visibleRows": 0
+    },
+    {
+      "name": "answers-help-900-light",
+      "url": "http://127.0.0.1:3018/index.html?help=open#answers",
+      "viewport": [
+        900,
+        700
+      ],
+      "overflow": false,
+      "textarea": {
+        "x": 206,
+        "y": -11,
+        "width": 672,
+        "height": 200,
+        "top": -11,
+        "right": 878,
+        "bottom": 189,
+        "left": 206
+      },
+      "visibleRows": 0
+    },
+    {
+      "name": "overview-1100-light",
+      "url": "http://127.0.0.1:3018/index.html#overview",
+      "viewport": [
+        1100,
+        800
+      ],
+      "overflow": false,
+      "visibleRows": 0
+    },
+    {
+      "name": "prepare-1100-light",
+      "url": "http://127.0.0.1:3018/index.html#prepare",
+      "viewport": [
+        1100,
+        800
+      ],
+      "overflow": false,
+      "visibleRows": 0
+    },
+    {
+      "name": "letter-1100-light",
+      "url": "http://127.0.0.1:3018/index.html#letter",
+      "viewport": [
+        1100,
+        800
+      ],
+      "overflow": false,
+      "textarea": {
+        "x": 252,
+        "y": 340.09375,
+        "width": 780,
+        "height": 350,
+        "top": 340.09375,
+        "right": 1032,
+        "bottom": 690.09375,
+        "left": 252
+      },
+      "visibleRows": 0
+    },
+    {
+      "name": "documents-1100-light",
+      "url": "http://127.0.0.1:3018/index.html#documents",
+      "viewport": [
+        1100,
+        800
+      ],
+      "overflow": false,
+      "visibleRows": 0
+    },
+    {
+      "name": "candidate-1100-light",
+      "url": "http://127.0.0.1:3018/index.html#candidate",
+      "viewport": [
+        1100,
+        800
+      ],
+      "overflow": false,
+      "visibleRows": 0
+    },
+    {
+      "name": "library-1100-light",
+      "url": "http://127.0.0.1:3018/index.html#library",
+      "viewport": [
+        1100,
+        800
+      ],
+      "overflow": false,
+      "textarea": {
+        "x": 212,
+        "y": 397.890625,
+        "width": 860,
+        "height": 140,
+        "top": 397.890625,
+        "right": 1072,
+        "bottom": 537.890625,
+        "left": 212
+      },
+      "visibleRows": 0
+    },
+    {
+      "name": "evidence-1100-light",
+      "url": "http://127.0.0.1:3018/index.html#evidence",
+      "viewport": [
+        1100,
+        800
+      ],
+      "overflow": false,
+      "textarea": {
+        "x": 212,
+        "y": 583.890625,
+        "width": 860,
+        "height": 140,
+        "top": 583.890625,
+        "right": 1072,
+        "bottom": 723.890625,
+        "left": 212
+      },
+      "visibleRows": 0
+    },
+    {
+      "name": "ai-1100-light",
+      "url": "http://127.0.0.1:3018/index.html#ai",
+      "viewport": [
+        1100,
+        800
+      ],
+      "overflow": false,
+      "visibleRows": 0
+    },
+    {
+      "name": "history-1100-light",
+      "url": "http://127.0.0.1:3018/index.html#history",
+      "viewport": [
+        1100,
+        800
+      ],
+      "overflow": false,
+      "visibleRows": 0
+    },
+    {
+      "name": "restart-750-dark",
+      "url": "http://127.0.0.1:3018/index.html?state=restart&theme=dark#prepare",
+      "viewport": [
+        750,
+        650
+      ],
+      "overflow": false,
+      "visibleRows": 0
+    },
+    {
+      "name": "empty-900-light",
+      "url": "http://127.0.0.1:3018/index.html?state=empty#opportunities",
+      "viewport": [
+        900,
+        700
+      ],
+      "overflow": false,
+      "visibleRows": 0
+    },
+    {
+      "name": "type-900-light",
+      "url": "http://127.0.0.1:3018/index.html#study",
+      "viewport": [
+        900,
+        700
+      ],
+      "overflow": false,
+      "visibleRows": 0
+    },
+    {
+      "name": "font-weights-900-light",
+      "url": "http://127.0.0.1:3018/index.html#study",
+      "viewport": [
+        900,
+        700
+      ],
+      "overflow": false,
+      "visibleRows": 0
+    },
+    {
+      "name": "comparison",
+      "url": "http://127.0.0.1:3018/compare.html",
+      "viewport": [
+        1700,
+        700
+      ],
+      "overflow": false,
+      "visibleRows": 0
+    },
+    {
+      "name": "baseline-opportunities-900-light",
+      "url": "http://127.0.0.1:3017/jobs",
+      "viewport": [
+        900,
+        700
+      ],
+      "overflow": false,
+      "textarea": {
+        "x": 267,
+        "y": 1111.671875,
+        "width": 574,
+        "height": 167.578125,
+        "top": 1111.671875,
+        "right": 841,
+        "bottom": 1279.25,
+        "left": 267
+      },
+      "visibleRows": 0
+    },
+    {
+      "name": "baseline-letter-900-dark",
+      "url": "http://127.0.0.1:3017/jobs/1#letter-editor",
+      "viewport": [
+        900,
+        700
+      ],
+      "overflow": false,
+      "textarea": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "top": 0,
+        "right": 0,
+        "bottom": 0,
+        "left": 0
+      },
+      "visibleRows": 0
+    },
+    {
+      "name": "proposed-letter-900-dark",
+      "url": "http://127.0.0.1:3018/index.html?theme=dark#letter",
+      "viewport": [
+        900,
+        700
+      ],
+      "overflow": false,
+      "textarea": {
+        "x": 206,
+        "y": 40.09375,
+        "width": 672,
+        "height": 350,
+        "top": 40.09375,
+        "right": 878,
+        "bottom": 390.09375,
+        "left": 206
+      },
+      "visibleRows": 0
+    }
+  ],
+  "checks": [
+    {
+      "dirty": true
+    },
+    {
+      "save": true
+    },
+    {
+      "proposalSeparate": true
+    },
+    {
+      "recordRequiresConfirmation": true
+    },
+    {
+      "recordRoutesToHistory": true
+    }
+  ]
+}

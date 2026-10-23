@@ -1,0 +1,160 @@
+Window: "YourMove", App: YourMove Workflow Qualification.
+0 standard window YourMove, Secondary Actions: Raise
+	1 scroll area
+		2 HTML content Description: Synthetic native workflow · YourMove, URL: wails://localhost/jobs/1#prepare
+			3 link Skip to content, Value: wails://localhost/jobs/1#main-content
+			4 container Primary navigation
+				5 link YourMove — Opportunities, Value: wails://localhost/jobs
+				6 text YOUR WORKSPACE
+				7 container Workspace
+					8 link Opportunities, Value: wails://localhost/jobs
+					9 link Documents, Value: wails://localhost/resumes
+					10 link Answer Library, Value: wails://localhost/answer-library
+					11 link Career Evidence, Value: wails://localhost/career-evidence
+					12 link Candidate profile, Value: wails://localhost/candidate
+					13 link Applications, Value: wails://localhost/applications
+					14 link AI connections, Value: wails://localhost/ai
+					15 link Utilities, Value: wails://localhost/utilities
+				16 text Local workspace Your resumes stay on this device.
+			17 container
+				18 text APPLICATION WORKSPACE  / LOCAL Appearance
+				19 pop up button Appearance, Value: System
+			20 container
+				21 container Breadcrumb
+					22 link Opportunities, Value: wails://localhost/jobs
+					23 text Fixture only
+				24 text JOB WORKSPACE
+				25 heading Synthetic native workflow, Value: 1
+					26 text Synthetic native workflow
+				27 container
+					28 text Fixture only  ·  jobs.ashbyhq.com
+				29 text Review
+				30 button Open employer site ↗
+				31 link Prepare application →, Value: wails://localhost/jobs/1#prepare
+				32 tab group (selectable) Job workspace sections
+					33 tab (selectable) Overview
+					34 tab (selected) Prepare
+					35 tab (selectable) History
+				36 container Prepare
+					37 container Application preparation
+						38 container Application readiness
+							39 heading Application readiness, Value: 2
+								40 text Application readiness
+							41 button Copy application brief
+							42 container Writing tasks
+								43 link Prepare answers Start by discovering supported application questions, Value: wails://localhost/jobs/1#early-application-questions
+								44 link Edit cover letter Saved local draft · review or edit your letter, Value: wails://localhost/jobs/1#letter-editor
+							45 description list
+								46 text Resume
+								47 container
+									48 text Needs attention ·
+									49 link Choose or repair a resume, Value: wails://localhost/jobs/1#prepare-resume-heading
+								50 text Candidate profile
+								51 container
+									52 text Needs approval ·
+									53 link Review candidate information, Value: wails://localhost/candidate
+								54 text Application answers
+								55 text Questions not discovered yet
+								56 text Employer-side work
+								57 text Not assessed
+								58 text Cover letter
+								59 text Saved draft ready to review
+								60 text Browser session
+								61 text Not open
+							62 summary Other copy options and plain-text access, Value: off
+								63 text Other copy options and plain-text access
+							64 container
+								65 text After submitting on the employer site,
+								66 link record the application in YourMove, Value: wails://localhost/jobs/1#record-submission
+								67 text .
+						68 container Ready to prepare
+							69 heading Ready to prepare, Value: 2
+								70 text Ready to prepare
+							71 text Review the exact assigned resume, then authorize opening the employer application.
+							72 summary Saved session context · 2026-10-23T13:18:45.602669000Z, Value: off
+								73 text Saved session context · 2026-10-23T13:18:45.602669000Z
+							74 container
+								75 text Contact filling disabled — candidate profile needs approval.  Resume attachment and eligible saved answers remain available.
+								76 link Complete candidate profile, Value: wails://localhost/candidate
+								77 text .
+							78 text Unsaved edits not transferred: Name. Only the saved scope shown above is authorized.
+							79 text Select a resume before starting a handoff.
+						80 container
+							81 link Edit letter, Value: wails://localhost/jobs/1?draft=1#prepare
+							82 text  ·
+							83 link Download saved letter PDF ↧, Value: wails://localhost/jobs/1/cover-letter/1/download
+						84 container Resume
+							85 heading Resume, Value: 3
+								86 text Resume
+							87 text Choose a resume for this application.
+							88 text Select and save an available resume for this application.
+							89 container
+								90 text Document to use
+								91 pop up button Document to use, Value: No resume selected
+								92 link Manage documents, Value: wails://localhost/resumes
+								93 text . Your choice is saved only when you select Save resume.
+								94 button Save resume
+							95 text You can still open the employer site and select a file manually.
+						96 container Prepare application materials
+							97 text APPLICATION MATERIALS
+							98 heading Prepare application materials, Value: 2
+								99 text Prepare application materials
+							100 container (expanded) Secondary Actions: Collapse
+								101 summary Application answers Discover application questions or review saved drafts, Value: on
+									102 text Application answers
+									103 text Discover application questions or review saved drafts
+								104 container Prepare application answers early
+									105 heading Prepare application answers early, Value: 3
+										106 text Prepare application answers early
+									107 link Rendered-form inspection →, Value: wails://localhost/jobs/1/inspection
+									108 text Ashby's documented public posting API does not include the full application question schema. Preview the publicly rendered application page once in an isolated, temporary Chromium profile. This is read-only; opening the page can still create ordinary network traffic and analytics. The preview does not traverse later steps or bypass authentication, CAPTCHA, or browser challenges.
+									109 button Preview application questions
+								110 summary Previously observed browser questions, Value: on
+									111 text Previously observed browser questions
+								112 text This saved browser-question workbench remains available for recovery. Recheck the employer form in the active managed session before treating an observation as current.
+								113 container Application questions
+									114 heading Application questions, Value: 3
+										115 text Application questions
+									116 link Review ready material ↑, Value: wails://localhost/jobs/1#prepare
+									117 text Save answers here. Filling the employer form is a separate action that requires your authorization.
+									118 text 3 need an answer · 0 prepared locally · 0 from profile · 0 for employer site · 0 need review
+									119 text Questions to prepare
+									120 pop up button Questions to prepare, Value: 1. Name · Unsaved changes
+									121 text Question 1 of 3
+									122 container Name
+										123 container
+											124 text Name
+											125 text entry area (settable) Name, Value: [text entry area]
+												126 text (settable) Synthetic final signed name
+											127 text Unsaved changes
+											128 summary Reuse at this employer, Value: off
+												129 text Reuse at this employer
+											130 button Save answer locally
+									131 button (disabled) ← Previous
+									132 button Next →
+							133 summary Cover letter Draft 1 · Saved locally · now Saved draft, Value: off
+								134 text Cover letter
+								135 text Draft 1 · Saved locally · now
+								136 text Saved draft
+						137 container Last observed browser results
+							138 heading Last observed browser results, Value: 3
+								139 text Last observed browser results
+							140 text Employer acceptance not established. Review attachments, filled text and manual fields in the employer browser; submit personally.
+							141 link Browser details and troubleshooting →, Value: wails://localhost/jobs/1/inspection
+							142 button Open employer site ↗
+						143 summary Record completed application, Value: off
+							144 text Record completed application
+			145 container
+				146 text YourMove · Local-first application workspace You review and submit every application.
+		147 scroll bar (settable, float) 0.656057
+	148 close button
+	149 full screen button Help: this button also has an action to zoom the window, Secondary Actions: zoom the window
+	150 minimize button
+	151 text YourMove
+152 menu bar
+	153 YourMove Workflow Qualification, ID: handleClick
+	154 File, ID: handleClick
+	155 Edit, ID: handleClick
+	156 View, ID: handleClick
+	157 Window, ID: handleClick
+	158 Help, ID: handleClick

@@ -99,6 +99,27 @@ type earlyQuestionPreparation struct {
 	Notice                  string
 }
 
+// AwaitingReconciliation includes preserved older drafts: saving locally never
+// grants authority to copy an early discovery onto a browser control.
+func (p earlyQuestionPreparation) AwaitingReconciliation() []earlyReconciliation {
+	var pending []earlyReconciliation
+	for _, q := range p.Questions {
+		if q.Revision > 0 && q.Value != "" && !q.Reconciliation.Accepted {
+			state := q.Reconciliation
+			state.Detail = q.Field.Label + " — " + state.Detail
+			pending = append(pending, state)
+		}
+	}
+	for _, q := range p.Previous {
+		if q.Answer != "" && !q.Reconciliation.Accepted {
+			state := q.Reconciliation
+			state.Detail = q.QuestionLabel + " — " + state.Detail
+			pending = append(pending, state)
+		}
+	}
+	return pending
+}
+
 func (q earlyApplicationQuestion) NeedsAnswer() bool  { return q.TriageCategory == "answer" }
 func (q earlyApplicationQuestion) FromProfile() bool  { return q.TriageCategory == "profile" }
 func (q earlyApplicationQuestion) EmployerOnly() bool { return q.TriageCategory == "employer" }

@@ -217,6 +217,7 @@ func TestControlledEarlyPreparationWorkbench(t *testing.T) {
 	wait(`!!document.querySelector('.early-application-questions [data-answer-ai]')`)
 	assert(`document.querySelector('.early-application-questions [data-question-panel]:not([hidden]) [data-answer-ai]')`)
 	run(`editor.value+=' I documented the recommendation.';editor.dispatchEvent(new Event('input',{bubbles:true}));editor.closest('form').querySelector('button[type=submit]').click()`)
+	page = server.URL + "/jobs/1?early_question=" + url.QueryEscape(earlyQuestionByID(t, a, job, "application:story", "").Key) + "#prepare"
 	wait(`document.readyState==='complete'&&document.querySelector('.early-application-questions textarea[name=answer]')?.value.includes('documented the recommendation')`)
 	_ = a.db.QueryRow(`SELECT COUNT(*) FROM early_application_answers`).Scan(&earlyCount)
 	_ = a.db.QueryRow(`SELECT COUNT(*) FROM application_answers WHERE job_id=?`, job.ID).Scan(&liveCount)

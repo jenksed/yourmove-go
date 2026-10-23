@@ -1,0 +1,73 @@
+Window: "YourMove", App: YourMove Workflow Qualification.
+0 standard window YourMove, Secondary Actions: Raise
+	1 scroll area
+		2 HTML content Description: Candidate Profile · YourMove, URL: wails://localhost/candidate
+			3 link Skip to content, Value: wails://localhost/candidate#main-content
+			4 container Primary navigation
+				5 link YourMove — Opportunities, Value: wails://localhost/jobs
+				6 text YOUR WORKSPACE
+				7 container Workspace
+					8 link Opportunities, Value: wails://localhost/jobs
+					9 link Documents, Value: wails://localhost/resumes
+					10 link Answer Library, Value: wails://localhost/answer-library
+					11 link Career Evidence, Value: wails://localhost/career-evidence
+					12 link Candidate profile, Value: wails://localhost/candidate
+					13 link Applications, Value: wails://localhost/applications
+					14 link AI connections, Value: wails://localhost/ai
+					15 link Utilities, Value: wails://localhost/utilities
+				16 text Local workspace Your resumes stay on this device.
+			17 container
+				18 text APPLICATION WORKSPACE  / LOCAL Appearance
+				19 pop up button Appearance, Value: System
+			20 container
+				21 text YOUR VERIFIED INFORMATION
+				22 heading Candidate profile, Value: 1
+					23 text Candidate profile
+				24 text Use approved facts to identify ordinary employer questions. This profile stays on your device until you separately authorize an application. Not approved
+				25 heading Contact and professional details, Value: 2
+					26 text Contact and professional details
+				27 text Editing a field replaces the profile revision. Uncheck approval to save a draft. First name
+				28 text field (settable) First name
+				29 text Last name
+				30 text field (settable) Last name
+				31 text Email
+				32 email field (settable) Email
+				33 text Phone
+				34 text field (settable) Phone
+				35 text City
+				36 text field (settable) City
+				37 text State / region
+				38 text field (settable) State / region
+				39 text Country
+				40 text field (settable) Country
+				41 text LinkedIn URL
+				42 text field (settable) LinkedIn URL
+				43 text GitHub URL
+				44 text field (settable) GitHub URL
+				45 text Portfolio URL
+				46 text field (settable) Portfolio URL
+				47 text Pronouns
+				48 pop up button Pronouns, Value: Not specified
+				49 container
+					50 checkbox Value: 0, I have reviewed these facts and approve them for future mapping suggestions. This does not authorize transmission to an employer.
+					51 text I have reviewed these facts and approve them for future mapping suggestions. This does not authorize transmission to an employer.
+				52 button Save profile revision
+				53 heading Privacy and application controls, Value: 2
+					54 text Privacy and application controls
+				55 text Inspection requests contain a saved public job URL only. They do not transmit your candidate profile, documents, or application answers. Work authorization, demographic questions and consent must be reviewed on the employer's form.
+			56 container
+				57 text YourMove · Local-first application workspace You review and submit every application.
+		58 scroll bar (settable, float) 0
+	59 close button
+	60 full screen button Help: this button also has an action to zoom the window, Secondary Actions: zoom the window
+	61 minimize button
+	62 text YourMove
+63 menu bar
+	64 YourMove Workflow Qualification, ID: handleClick
+	65 File, ID: handleClick
+	66 Edit, ID: handleClick
+	67 View, ID: handleClick
+	68 Window, ID: handleClick
+	69 Help, ID: handleClick
+
+The focused UI element is 2 HTML content Description: Candidate Profile · YourMove, URL: wails://localhost/candidate

@@ -1,0 +1,10 @@
+The following is a diff from the previous accessibility tree for Window: "YourMove" with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+Removed element IDs: 87-208, 210-229
++			210 container Leave application materials?
++				211 heading Leave application materials?, Value: 2
++					212 text Leave application materials?
++				213 text You have unsaved changes. Anything already saved locally will remain available, but unsaved changes will be lost if you leave.
++				214 button Stay and edit
++				215 button Leave without saving
+~		209 scroll bar (settable, float) 0.656057
+The focused UI element is 214 button Stay and edit

@@ -178,8 +178,13 @@ func TestControlledQuestionWorkbench(t *testing.T) {
 		encoded, _ := json.Marshal(selector)
 		var point struct{ X, Y float64 }
 		mustEvaluate(`(()=>{const e=document.querySelector(`+string(encoded)+`);if(!e||!e.getClientRects().length)throw Error('unavailable control');e.scrollIntoView({block:'center',behavior:'instant'});const r=e.getBoundingClientRect();return {X:r.x+r.width/2,Y:r.y+r.height/2}})()`, &point)
+		pointer, err := session.FixturePage(ctx, page)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer pointer.Close()
 		for _, typ := range []string{"mousePressed", "mouseReleased"} {
-			if err := session.FixtureCall(ctx, page, "Input.dispatchMouseEvent", map[string]any{"type": typ, "x": point.X, "y": point.Y, "button": "left", "clickCount": 1}, nil); err != nil {
+			if err := pointer.Call(ctx, "Input.dispatchMouseEvent", map[string]any{"type": typ, "x": point.X, "y": point.Y, "button": "left", "clickCount": 1}, nil); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -259,7 +264,8 @@ func TestControlledQuestionWorkbench(t *testing.T) {
 	waitJS(`!window.beforeRefresh && document.readyState==='complete' && document.querySelector('[name=answer]')?.value==='https://alex.example.test/work' && !!document.querySelector('form[data-dirty="true"]')`)
 	mustEvaluate(`window.originalEditor=document.querySelector('[name=answer]');window.confirmCalls=[];window.confirm=message=>{confirmCalls.push(message);return false};true`, nil)
 	click(`a.nav-item[href="/resumes"]`)
-	assertJS(`confirmCalls.length===1 && location.pathname==='/jobs/1'`)
+	assertJS(`document.querySelector('.leave-materials-dialog').open && confirmCalls.length===0 && location.pathname==='/jobs/1'`)
+	click(`[data-stay]`)
 	// Next/Previous retain the exact same input nodes and unsaved values.
 	click(`[data-question-next]`)
 	assertJS(`document.querySelector('[data-question-chooser]').value===document.querySelector('[data-question-panel]:not([hidden])').dataset.questionKey`)
@@ -269,7 +275,8 @@ func TestControlledQuestionWorkbench(t *testing.T) {
 	snapshot("dirty-navigation", ".application-questions")
 	// Saving one question must guard a second unsaved answer instead of losing it.
 	click(`[data-question-panel]:not([hidden]) button[type=submit]`)
-	assertJS(`confirmCalls.length===2 && document.querySelectorAll('form[data-dirty="true"]').length===2`)
+	assertJS(`document.querySelector('.leave-materials-dialog').open && confirmCalls.length===0 && document.querySelectorAll('form[data-dirty="true"]').length===2`)
+	click(`[data-stay]`)
 	// Save the other work later: explicitly clear it in this fixture, leaving only
 	// the selected question dirty. No discard is implicit in question navigation.
 	choose(1)
@@ -367,7 +374,8 @@ func TestControlledQuestionWorkbench(t *testing.T) {
 	// No-JS qualification: serve the exact templates/styles with both progressive
 	// enhancement scripts omitted; all editors and normal POST saves remain usable.
 	noScripts.Store(true)
-	mustEvaluate(`window.confirm=()=>true;document.querySelector('.answer-save-error a').click();true`, nil)
+	mustEvaluate(`document.querySelector('.answer-save-error a').click();true`, nil)
+	click(`[data-leave]`)
 	page = server.URL + "/jobs/1"
 	waitJS(`document.readyState==='complete' && document.querySelectorAll('.application-question-form').length===6`)
 	assertJS(`document.querySelector('.writing-context-alternate') && !document.querySelector('.writing-context-alternate').open && document.querySelector('.writing-context-alternate').textContent.includes('Recheck the employer form')`)
