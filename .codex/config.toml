@@ -1,0 +1,29 @@
+# Codex Go tooling experiment.
+# Overrides inherited MCP configuration for this worktree.
+
+[features]
+hooks = false
+
+[mcp_servers.graft]
+enabled = false
+
+[mcp_servers.serena]
+enabled = false
+
+# Disable unrelated tools during the comparison.
+[mcp_servers.node_repl]
+enabled = false
+
+[mcp_servers.supabase-local]
+enabled = false
+
+# Experimental stack.
+[mcp_servers.trail]
+command = "trail"
+args = ["mcp"]
+startup_timeout_sec = 30
+
+[mcp_servers.gopls]
+command = "gopls"
+args = ["mcp"]
+startup_timeout_sec = 30

@@ -28,3 +28,6 @@ jobs.db-shm
 *.db-journal
 *.db-wal
 *.db-shm
+
+# Local code-quality analysis artifacts
+/.quality/
