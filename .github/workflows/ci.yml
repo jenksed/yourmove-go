@@ -1,3 +1,4 @@
+
 name: CI
 
 on:
@@ -16,28 +17,96 @@ jobs:
     name: Go source verification
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
-      - run: go test -count=1 ./...
+
+      - name: Run Go tests
+        run: go test -count=1 ./...
         env:
           YOURMOVE_DATA_DIR: ${{ runner.temp }}/yourmove-go-ci-workspace
-      - run: go build ./...
+
+      - name: Build Go application
+        run: go build ./...
 
   desktop:
     name: macOS desktop verification
     runs-on: macos-26
     timeout-minutes: 20
+
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
-      - run: go test -count=1 -tags desktop ./...
+
+      - name: Run desktop tests
+        run: go test -count=1 -tags desktop ./...
         env:
           YOURMOVE_DATA_DIR: ${{ runner.temp }}/yourmove-go-ci-workspace
-      - run: go build -tags desktop,production .
+
+      - name: Build desktop executable
+        run: |
+          go build -tags desktop,production \
+            -o "$RUNNER_TEMP/yourmove-desktop" .
+
+      - name: Build macOS application bundle
+        run: |
+          bash release/macos/build.sh \
+            "$RUNNER_TEMP/yourmove-macos-candidate"
+
+      - name: Verify macOS application bundle
+        run: |
+          set -euo pipefail
+
+          candidate="$RUNNER_TEMP/yourmove-macos-candidate"
+          app="$candidate/YourMove.app"
+
+          echo "Checking bundle structure..."
+          test -d "$app"
+          test -s "$app/Contents/MacOS/YourMove"
+          test -s "$app/Contents/Resources/YourMove.icns"
+
+          echo "Checking Info.plist..."
+          /usr/bin/plutil -lint "$app/Contents/Info.plist"
+
+          icon=$(/usr/libexec/PlistBuddy \
+            -c "Print :CFBundleIconFile" \
+            "$app/Contents/Info.plist")
+          test "$icon" = "YourMove.icns"
+
+          bundle_id=$(/usr/libexec/PlistBuddy \
+            -c "Print :CFBundleIdentifier" \
+            "$app/Contents/Info.plist")
+          test "$bundle_id" = "com.yourmove.go"
+
+          echo "Checking architecture..."
+          /usr/bin/file "$app/Contents/MacOS/YourMove" \
+            | grep -q arm64
+
+          echo "Checking code signature..."
+          /usr/bin/codesign --verify --strict "$app"
+
+          echo "Checking source and artifact integrity..."
+          cmp \
+            "$candidate/source-manifest.json" \
+            "$candidate/source-manifest-after.json"
+
+          (
+            cd "$candidate"
+            shasum -a 256 -c SHA256SUMS.local
+          )
+
+          echo "macOS application bundle verification passed"
+
