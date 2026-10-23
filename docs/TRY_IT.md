@@ -66,7 +66,7 @@ YourMove stores `jobs.db` and imported document files under its workspace. Defau
 | Platform | Default workspace |
 | --- | --- |
 | macOS | `~/Library/Application Support/YourMove` |
-| Windows (untested) | Under the user's roaming configuration directory, normally `%APPDATA%\\YourMove` |
+| Windows (untested) | Under the user's roaming configuration directory, normally `%APPDATA%\YourMove` |
 | Linux (untested) | `$XDG_CONFIG_HOME/YourMove` when set, otherwise `~/.config/YourMove` |
 
 Set `YOURMOVE_DATA_DIR` to an **absolute** path before launch to keep test data separate from a normal workspace.
