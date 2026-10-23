@@ -16,7 +16,8 @@ bundle="$output_root/YourMoveWorkflow.app"
 executable="$bundle/Contents/MacOS/YourMoveWorkflow"
 workspace="$output_root/workspace"
 evidence="$output_root/evidence"
-mkdir -p "$bundle/Contents/MacOS" "$evidence"
+signing_identity=run.yourmove.workflowqualification
+mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources" "$evidence"
 exec > >(tee "$evidence/harness.log") 2>&1
 cd "$source_root"
 echo "Source commit: $(git rev-parse HEAD)"
@@ -49,10 +50,10 @@ YOURMOVE_NATIVE_FIXTURE_DIR="$workspace" go test -count=1 -tags qualification ./
 # This development bundle has exactly one executable, no frameworks/helpers.
 # Sign the inner executable first, then the enclosing bundle. Never use --deep
 # to sign: future nested components must be explicitly signed before this step.
-echo "Signing: codesign --force --sign - --timestamp=none $executable"
-codesign --force --sign - --timestamp=none "$executable"
-echo "Signing: codesign --force --sign - --timestamp=none $bundle"
-codesign --force --sign - --timestamp=none "$bundle"
+echo "Signing: codesign --force --sign - --timestamp=none --identifier $signing_identity $executable"
+codesign --force --sign - --timestamp=none --identifier "$signing_identity" "$executable"
+echo "Signing: codesign --force --sign - --timestamp=none --identifier $signing_identity $bundle"
+codesign --force --sign - --timestamp=none --identifier "$signing_identity" "$bundle"
 echo "Verifying executable and complete bundle before launch:"
 codesign --verify --strict --verbose=4 "$executable"
 codesign --verify --strict --verbose=4 "$bundle"
