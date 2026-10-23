@@ -481,6 +481,8 @@ func (h *sessionHost) watch(jobID int64, jobURL string, save func(browser.Observ
 							}
 						}
 					} else {
+						pending = ""
+						pendingCount = 0
 						h.setState(jobID, "watching", "Monitoring this application. New steps are captured after they settle.", 0, false)
 					}
 				}
