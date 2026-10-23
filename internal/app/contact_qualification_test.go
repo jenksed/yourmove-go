@@ -339,6 +339,10 @@ document.querySelector('[name=resume]').addEventListener('change',async e=>{cons
 		var ready bool
 		return evaluate(ui, `document.body.textContent.includes('Your edits were saved')`, &ready) == nil && ready
 	})
+	wait("save-return focus after the load frame", func() bool {
+		var ready bool
+		return evaluate(ui, `(()=>{const action=document.querySelector('#application-action');const bounds=action.getBoundingClientRect();return bounds.top>=0&&bounds.top<innerHeight})()`, &ready) == nil && ready
+	})
 	var returnedToScope bool
 	if err := evaluate(ui, `(()=>{const action=document.querySelector('#application-action');const form=action.querySelector('form[action$="/continue"]');const body=form.querySelector('.transfer-letter-scope');return location.hash==='#prepare'&&!document.querySelector('.prepare-writer').open&&action.getBoundingClientRect().top>=0&&action.getBoundingClientRect().top<innerHeight&&body.textContent===`+strconv.Quote(letterBody)+`&&!!form.querySelector('button')})()`, &returnedToScope); err != nil || !returnedToScope {
 		t.Fatal("successful save did not return directly to exact scope", err)
@@ -391,6 +395,13 @@ document.querySelector('[name=resume]').addEventListener('change',async e=>{cons
 			t.Fatal(err)
 		}
 		ui = aiPage
+		wait("narrative question help disclosure", func() bool {
+			var ready bool
+			return evaluate(ui, `!!document.querySelector('.question-panel:not([hidden]) [data-question-help]')`, &ready) == nil && ready
+		})
+		if err := evaluate(ui, `document.querySelector('.question-panel:not([hidden]) [data-question-help]').open=true;true`, nil); err != nil {
+			t.Fatal(err)
+		}
 		wait("supported narrative question and AI controls", func() bool {
 			var ready bool
 			return evaluate(ui, `!!document.querySelector('.question-panel:not([hidden]) [data-answer-ai] [name="provider"]')&&!!document.querySelector('.question-panel:not([hidden]) [data-answer-ai-controls]:not([hidden])')`, &ready) == nil && ready
@@ -678,7 +689,7 @@ document.querySelector('[name=resume]').addEventListener('change',async e=>{cons
 	ui = changedQuestionPage
 	wait("new identity answer saved locally", func() bool {
 		var ready bool
-		return evaluate(ui, `document.querySelector('.question-panel:not([hidden]) form[action$="/answers/save"] textarea[name="answer"]')?.value==='`+changedIdentityAnswer+`'`, &ready) == nil && ready
+		return evaluate(ui, `document.readyState==='complete'&&document.querySelector('.question-panel:not([hidden]) form[action$="/answers/save"] [name="revision"]')?.value==='1'&&document.querySelector('.question-panel:not([hidden]) form[action$="/answers/save"] textarea[name="answer"]')?.value==='`+changedIdentityAnswer+`'`, &ready) == nil && ready
 	})
 	const employerManualAnswer = "Applicant-entered manually before authorized transfer"
 	if err := evaluate(employer, `(()=>{const e=document.querySelector('[name="remote-tools-v2"]');e.value='`+employerManualAnswer+`';e.dispatchEvent(new Event('input',{bubbles:true}));return true})()`, nil); err != nil {

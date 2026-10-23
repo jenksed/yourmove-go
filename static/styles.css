@@ -1056,3 +1056,10 @@ a.progress-metric:hover span {text-decoration:underline;color:var(--color-primar
   .writing-activity-state { padding-top:2px; }
   .writing-workspace-heading h2 { font-size:19px; }
 }
+
+/* Application-owned dirty-editor departure; native dialog supplies inertness. */
+.leave-materials-dialog { max-width: 480px; width: calc(100% - 40px); padding: 24px; border: 1px solid var(--color-border); border-radius: 8px; color: var(--color-text); background: var(--color-surface); }
+.leave-materials-dialog::backdrop { background: rgb(0 0 0 / 40%); }
+.leave-materials-dialog h2 { margin-top: 0; }
+.leave-materials-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+#application-action { scroll-margin-top: 16px; }

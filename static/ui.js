@@ -532,6 +532,12 @@
     if (link) link.textContent = panel.dataset.questionLabel + (dirty ? ' · Unsaved changes' : '');
     const option = workbench?.querySelector(`option[value="${panel.dataset.questionKey}"]`);
     if (option) option.textContent = option.textContent.replace(/ · Unsaved changes$/, '') + (dirty ? ' · Unsaved changes' : '');
+    const excluded = document.querySelector('[data-transfer-unsaved]');
+    if (excluded) {
+      const labels = dirtyForms().map(editor => editor.closest('[data-question-panel]')?.dataset.questionLabel || 'Cover letter');
+      excluded.hidden = labels.length === 0;
+      excluded.textContent = labels.length ? 'Unsaved edits not transferred: ' + labels.join('; ') + '. Only the saved scope shown above is authorized.' : '';
+    }
   };
   // Related writing stays read-only until a user opens it. Inserting an
   // example changes only the current textarea; the existing save form owns
@@ -655,17 +661,59 @@
       }
     }
   } catch (_) {}
-  const allowLeaving = ownForm => {
-    const others = dirtyForms().filter(form => form !== ownForm);
-    if (!others.length && !recovery()) return true;
-    if (window.confirm('Unsaved answer or letter changes will be lost. Leave and discard them? Choose Cancel to stay and save or copy your work first.')) return true;
-    const first = others[0];
-    if (first) {
-      first.dispatchEvent(new CustomEvent('question:reveal', {bubbles:true}));
-      for (let parent = first.parentElement; parent; parent = parent.parentElement) {
-        if (parent.matches('details')) parent.open = true;
+  // Own this decision in the document: WebView native confirms can be
+  // unavailable. Keep one immutable destination until Stay or Leave resolves it.
+  let pendingDeparture = null;
+  const dialog = document.createElement('dialog');
+  dialog.className = 'leave-materials-dialog';
+  dialog.setAttribute('aria-labelledby', 'leave-materials-title');
+  dialog.setAttribute('aria-describedby', 'leave-materials-description');
+  dialog.innerHTML = '<h2 id="leave-materials-title">Leave application materials?</h2><p id="leave-materials-description">You have unsaved changes. Anything already saved locally will remain available, but unsaved changes will be lost if you leave.</p><div class="leave-materials-actions"><button type="button" class="button button-secondary" data-stay>Stay and edit</button><button type="button" class="button button-primary" data-leave>Leave without saving</button></div>';
+  document.body.append(dialog);
+  const stay = dialog.querySelector('[data-stay]');
+  const leave = dialog.querySelector('[data-leave]');
+  const cancelDeparture = () => {
+    const pending = pendingDeparture;
+    pendingDeparture = null;
+    dialog.close();
+    pending?.focus?.focus({preventScroll:true});
+  };
+  stay.addEventListener('click', cancelDeparture);
+  dialog.addEventListener('cancel', event => { event.preventDefault(); cancelDeparture(); });
+  dialog.addEventListener('keydown', event => {
+    if (event.key !== 'Tab') return;
+    // WebKit can skip buttons when macOS full keyboard access is disabled.
+    // Own both directions instead of relying on platform tab preferences.
+    event.preventDefault();
+    (document.activeElement === stay ? leave : stay).focus();
+  });
+  leave.addEventListener('click', () => {
+    const pending = pendingDeparture;
+    if (!pending) return;
+    pendingDeparture = null;
+    // Suppress beforeunload only for this acknowledged transition. Do not clear
+    // saved data or unrelated AI recovery entries from other workspaces.
+    leaving = true;
+    for (const form of pending.discard) { form.reset(); update(form); }
+    try {
+      sessionStorage.removeItem(editKey);
+      const currentPreviews = [];
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const key = sessionStorage.key(i);
+        if (key?.startsWith(editKey + ':ai:')) currentPreviews.push(key);
       }
-      first.querySelector('textarea, select')?.focus();
+      currentPreviews.forEach(key => sessionStorage.removeItem(key));
+    } catch (_) {}
+    dialog.close();
+    pending.run();
+  });
+  const allowLeaving = (ownForm, run) => {
+    const discard = dirtyForms().filter(form => form !== ownForm);
+    if (!discard.length && !recovery()) return true;
+    if (!pendingDeparture) {
+      pendingDeparture = {run, focus: document.activeElement, discard};
+      dialog.showModal();
+      stay.focus();
     }
     return false;
   };
@@ -694,17 +742,27 @@
     if (target.origin === location.origin && target.pathname === location.pathname && target.search === location.search && target.hash && target.hash !== location.hash) return;
     if (link.getAttribute('href').startsWith('#')) return;
     if (link.closest('[data-new-questions]') && target.origin === location.origin && target.pathname === location.pathname && carryEdits(null)) { event.preventDefault(); leaving = true; location.reload(); return; }
-    if (!allowLeaving(null)) { event.preventDefault(); event.stopImmediatePropagation(); }
+    // External operations and downloads do not replace this editor document.
+    if (target.origin !== location.origin || link.hasAttribute('download') || /\/download$/.test(target.pathname)) return;
+    const destination = target.href;
+    if (!allowLeaving(null, () => location.assign(destination))) { event.preventDefault(); event.stopImmediatePropagation(); }
     else leaving = true;
   }, true);
+  let authorizedSubmit = null;
   document.addEventListener('submit', event => {
+    if (authorizedSubmit === event.target) { authorizedSubmit = null; leaving = true; return; }
     // Recording is independent of question completion. Keep Cancel at this
     // decision instead of revealing/focusing an unrelated question editor.
     const recording = event.target.matches('form[data-record-completion]');
-    const independent = event.target.matches('form[data-ai-generate], form[data-ai-draft], form[action$="/continue"], form[action$="/cover-letter/transfer"], form[action$="/browser/observe"], form[action$="/browser/start"]');
+    const independent = event.target.matches('form[data-ai-generate], form[data-ai-draft], form[action$="/continue"], form[action$="/cover-letter/transfer"], form[action$="/browser/observe"], form[action$="/browser/start"], form[action$="/open"]');
     const allowed = independent && carryEdits(event.target) ? true : recording
       ? (!(dirtyForms().length || recovery()) || window.confirm('You have unsaved answer or letter edits. Record completion anyway? Choose OK to record your confirmed employer submission and leave these unsaved edits behind; they will be lost. Choose Cancel to stay and save or copy them first.'))
-      : allowLeaving(event.target);
+      : allowLeaving(event.target, () => {
+        authorizedSubmit = event.target;
+        event.target.requestSubmit(event.submitter || undefined);
+        // Invalid forms stay on the page and must retain unload protection.
+        if (authorizedSubmit) { authorizedSubmit = null; leaving = false; }
+      });
     if (!allowed) { event.preventDefault(); event.stopImmediatePropagation(); }
     else {
       if (recording) {
@@ -726,7 +784,18 @@
 // A letter result belongs at the writing desk; saved edits return to transfer scope.
 (() => {
   const result = new URLSearchParams(location.search).get('cover');
-  if (!result || ['saved','transferring'].includes(result)) return;
+  if (!result) return;
+  if (['saved','transferring'].includes(result)) {
+    const scope = document.getElementById('application-action');
+    if (!scope) return;
+    const restoreScope = () => {
+      scope.focus({preventScroll:true});
+      scope.scrollIntoView({block:'start',behavior:'instant'});
+    };
+    if (document.readyState === 'complete') restoreScope();
+    else window.addEventListener('load', () => requestAnimationFrame(restoreScope), {once:true});
+    return;
+  }
   const editor = document.getElementById('letter-editor');
   if (!editor) return;
   const show = () => {
