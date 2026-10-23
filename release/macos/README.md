@@ -134,3 +134,14 @@ notarization and clean-machine download/install acceptance have not run. The
 native UI tool also lost its transport during export inspection; exact-byte
 handler tests qualify the seam, not the actual native Save/Cancel experience.
 Complete those manual gates before public beta distribution.
+
+## One-command local release preparation
+
+Run `./release/macos/doctor.sh` to check prerequisites.
+
+Run `./release/macos/prepare.sh` from a clean, committed source
+checkout to test, build, verify, and package a local macOS candidate.
+The tool produces an ad-hoc-signed application ZIP, a matching source
+ZIP, checksums, and build evidence. It does not notarize or publish.
+
+Record final manual qualification in `release/macos/ACCEPTANCE.md`.
