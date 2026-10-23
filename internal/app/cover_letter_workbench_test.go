@@ -130,7 +130,7 @@ func TestLetterSaveReturnsToExactScopeWithoutBrowserAuthority(t *testing.T) {
 				}
 			}
 			page := workbenchPage(t, a, r.Header().Get("Location"))
-			for _, part := range []string{"Saved locally", "Draft 1", draft.EditedAt, draft.ContentHash()[:12], body, "Edit letter"} {
+			for _, part := range []string{"Saved locally", "Draft 1", draft.EditedAt, draft.ContentHash()[:12], body, "Edit cover letter"} {
 				if !strings.Contains(page, part) {
 					t.Fatalf("saved return omitted %q", part)
 				}

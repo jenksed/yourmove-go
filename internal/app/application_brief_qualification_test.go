@@ -92,7 +92,7 @@ func TestControlledApplicationBriefClipboardAndWorkspace(t *testing.T) {
 	assertBriefJS(t, ctx, chrome, page, `document.querySelector('#application-action form[action$="/continue"] button[type="submit"]')?.textContent.trim()==='Fill application'`)
 	assertBriefJS(t, ctx, chrome, page, `document.querySelector('#letter-editor') && document.querySelector('#letter-editor').open===false`)
 
-	evidenceDir := filepath.Join("..", "..", "docs", "implementation", "checkpoint3-visuals", "after")
+	evidenceDir := t.TempDir()
 	if err := os.MkdirAll(evidenceDir, 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestControlledApplicationBriefClipboardAndWorkspace(t *testing.T) {
 	capture("prepare-ready-390-dark.png", 390, "#prepare", "dark")
 	clickBriefUI(t, ctx, chrome, page, `a[data-open-details="letter-editor"]`)
 	assertBriefJS(t, ctx, chrome, page, `document.querySelector('#letter-editor').open===true`)
-	if err := evalBriefJS(ctx, chrome, page, `document.querySelector('#letter-editor').open=false;true`, nil); err != nil {
+	if err := evalBriefJS(ctx, chrome, page, `document.querySelector('#letter-editor').open=false;document.querySelector('.workspace-tab[data-tab-target=prepare]').click();true`, nil); err != nil {
 		t.Fatal(err)
 	}
 

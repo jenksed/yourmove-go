@@ -235,7 +235,7 @@ func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
 		t.Fatalf("recording action is not visibly discoverable in Prepare: %+v", firstLink)
 	}
 	capture(chrome, page, "submission-prepare-initial.png")
-	evaluate(chrome, page, `(()=>{const e=document.querySelector('form.application-question-form textarea');e.focus({preventScroll:true});return true})()`, &ignored)
+	evaluate(chrome, page, `(()=>{document.querySelector('.workspace-tab[data-tab-target=answers]')?.click();const e=document.querySelector('form.application-question-form textarea');e.focus({preventScroll:true});return true})()`, &ignored)
 	call(chrome, page, "Input.insertText", map[string]any{"text": "Synthetic unsaved question edit"}, nil)
 	var dirty bool
 	evaluate(chrome, page, `document.querySelector('form.application-question-form').dataset.dirty==='true'`, &dirty)
@@ -243,13 +243,14 @@ func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
 		t.Fatal("synthetic question edit did not enter the unsaved state")
 	}
 	const unsavedLetter = "Synthetic unsaved cover-letter edits remain recoverable after cancellation."
-	evaluate(chrome, page, `(()=>{const e=document.querySelector('form[action$="/cover-letter/save"] textarea');e.focus({preventScroll:true});e.select();return true})()`, &ignored)
+	evaluate(chrome, page, `(()=>{document.querySelector('.workspace-tab[data-tab-target=cover-letter]')?.click();const e=document.querySelector('form[action$="/cover-letter/save"] textarea');e.focus({preventScroll:true});e.select();return true})()`, &ignored)
 	call(chrome, page, "Input.insertText", map[string]any{"text": unsavedLetter}, nil)
 	var dirtyLetter bool
 	evaluate(chrome, page, `document.querySelector('form[action$="/cover-letter/save"]').dataset.dirty==='true'`, &dirtyLetter)
 	if !dirtyLetter {
 		t.Fatal("synthetic cover-letter edit did not enter the unsaved state")
 	}
+	evaluate(chrome, page, `(()=>{document.querySelector('.workspace-tab[data-tab-target=prepare]').click();return true})()`, &ignored)
 	focusVisible(chrome, page, `a[data-open-details="record-submission"]`)
 	press(chrome, page, "Enter", "Enter", 13)
 	waitFor(chrome, page, `(()=>{const e=document.querySelector('#record-submission'),r=e.querySelector('summary').getBoundingClientRect();return e.open&&r.top>=0&&r.bottom<=innerHeight})()`)
@@ -365,7 +366,7 @@ func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
 	activateVisible(chrome, page, `#history form[action="/jobs/1/next"] button`)
 	waitFor(chrome, desktopServer.URL+"/jobs/3", `location.pathname==='/jobs/3'&&location.hash==='#prepare'`)
 	page = desktopServer.URL + "/jobs/3"
-	activateVisible(chrome, page, `.prepare-handoff a[href="/jobs"]`)
+	activateVisible(chrome, page, `.breadcrumbs a[href="/jobs"]`)
 	waitFor(chrome, desktopServer.URL+"/jobs", `location.pathname==='/jobs'&&document.readyState==='complete'`)
 	page = desktopServer.URL + "/jobs"
 	var scoreboard struct {
@@ -514,5 +515,5 @@ func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
 	if history, err := a.jobSubmissions(4); err != nil || len(history) != 1 || history[0].ResumeID != 0 || history[0].Notes != "Synthetic database-recovery note" {
 		t.Fatalf("retry after transaction recovery failed: %+v %v", history, err)
 	}
-	t.Log("Real Chromium showed the completion action at 1100x800 and 700x550, exercised keyboard submission in Wails, verified no-JavaScript browser submission, preserved dirty answer and cover-letter edits on cancellation, applied history and next-job navigation, updated the Opportunities scoreboard, and recovered from missing-resume and transaction failures.")
+	t.Log("Real Chromium showed the completion action at 1100x800 and 700x550, exercised keyboard recording with desktop redirect compatibility, verified no-JavaScript browser submission, preserved dirty answer and cover-letter edits on cancellation, applied history and next-job navigation, updated the Opportunities scoreboard, and recovered from missing-resume and transaction failures.")
 }
