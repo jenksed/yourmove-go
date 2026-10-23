@@ -47,11 +47,11 @@ Window: "YourMove", App: YourMove Workflow Qualification.
 							45 description list
 								46 text Resume
 								47 container
-									48 text Needs attention · 
+									48 text Needs attention ·
 									49 link Choose or repair a resume, Value: wails://localhost/jobs/1#prepare-resume-heading
 								50 text Candidate profile
 								51 container
-									52 text Needs approval · 
+									52 text Needs approval ·
 									53 link Review candidate information, Value: wails://localhost/candidate
 								54 text Application answers
 								55 text Questions not discovered yet
@@ -64,7 +64,7 @@ Window: "YourMove", App: YourMove Workflow Qualification.
 							62 summary Other copy options and plain-text access, Value: off
 								63 text Other copy options and plain-text access
 							64 container
-								65 text After submitting on the employer site, 
+								65 text After submitting on the employer site,
 								66 link record the application in YourMove, Value: wails://localhost/jobs/1#record-submission
 								67 text .
 						68 container Ready to prepare
@@ -81,7 +81,7 @@ Window: "YourMove", App: YourMove Workflow Qualification.
 							79 text Select a resume before starting a handoff.
 						80 container
 							81 link Edit letter, Value: wails://localhost/jobs/1?draft=1#prepare
-							82 text  · 
+							82 text  ·
 							83 link Download saved letter PDF ↧, Value: wails://localhost/jobs/1/cover-letter/1/download
 						84 container Resume
 							85 heading Resume, Value: 3
