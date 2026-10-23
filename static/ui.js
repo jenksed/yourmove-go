@@ -108,6 +108,36 @@
     });
   }
 
+  // Compact navigation is a nonmodal disclosure; desktop and no-JS retain links.
+  const navigation = document.getElementById('workspace-navigation');
+  const navigationToggle = document.querySelector('[data-navigation-toggle]');
+  const navigationClose = document.querySelector('[data-navigation-close]');
+  if (navigation && navigationToggle) {
+    document.documentElement.classList.add('navigation-enabled');
+    navigationToggle.hidden = false;
+    navigationClose.hidden = false;
+    const closeNavigation = (restore = true) => {
+      document.documentElement.classList.remove('navigation-open');
+      navigationToggle.setAttribute('aria-expanded', 'false');
+      if (restore) navigationToggle.focus();
+    };
+    navigationToggle.addEventListener('click', () => {
+      if (navigationToggle.getAttribute('aria-expanded') === 'true') closeNavigation();
+      else {
+        document.documentElement.classList.add('navigation-open');
+        navigationToggle.setAttribute('aria-expanded', 'true');
+        navigation.querySelector('a[aria-current="page"], a')?.focus();
+      }
+    });
+    navigationClose?.addEventListener('click', () => closeNavigation());
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && navigationToggle.getAttribute('aria-expanded') === 'true' && !document.querySelector('dialog[open]')) {
+        event.preventDefault(); closeNavigation();
+      }
+    });
+    window.matchMedia('(min-width: 820px)').addEventListener('change', () => closeNavigation(false));
+  }
+
   const addDisclosure = document.getElementById('add-opportunity');
   document.querySelectorAll('[data-open-add]').forEach((link) => link.addEventListener('click', () => {
     if (addDisclosure) { addDisclosure.open = true; requestAnimationFrame(() => document.getElementById('job_url')?.focus()); }
