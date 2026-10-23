@@ -1140,3 +1140,9 @@ h1,.job-hero h1 {font-size:28px;line-height:1.2;margin-bottom:8px}
 .readiness-grid {gap:0}
 .readiness-grid>div {padding:12px 0;border-bottom:1px solid var(--color-border)}
 .pending-answer-scope dd {white-space:pre-wrap;overflow-wrap:anywhere}
+
+.document-row {align-items:start}
+.document-row .resume-info h3 {font-size:16px;line-height:1.45}
+.document-row .resume-info p {margin-top:4px}
+.family-examples {background:transparent;box-shadow:none}
+.library-import {margin-bottom:20px}

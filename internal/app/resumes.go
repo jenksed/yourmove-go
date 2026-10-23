@@ -31,6 +31,17 @@ type Resume struct {
 	Version      int
 }
 
+// DisplaySize keeps document metadata readable without changing stored bytes.
+func (r Resume) DisplaySize() string {
+	if r.Size < 1024 {
+		return fmt.Sprintf("%d bytes", r.Size)
+	}
+	if r.Size < 1024*1024 {
+		return fmt.Sprintf("%.1f KiB", float64(r.Size)/1024)
+	}
+	return fmt.Sprintf("%.1f MiB", float64(r.Size)/(1024*1024))
+}
+
 func (a *App) importResume(name string, body io.Reader) (Resume, error) {
 	if a.resumeDir == "" {
 		return Resume{}, errors.New("resume storage is not configured")
