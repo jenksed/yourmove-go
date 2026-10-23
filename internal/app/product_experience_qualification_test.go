@@ -151,10 +151,18 @@ func TestControlledProductExperience(t *testing.T) {
 		}
 		if s.name == "recovery" {
 			a.browsers.setState(1, "interrupted", "Synthetic employer browser interrupted; saved materials remain.", 0, false)
+			if err = a.assignResume(1, 0); err != nil {
+				t.Fatal(err)
+			}
 		}
 		navigate(s.path, s.selector)
 		for _, theme := range []string{"light", "dark"} {
 			capture(s.name+"-"+theme, s.selector, 1100, 800, theme)
+		}
+		if s.name == "recovery" {
+			if err = a.assignResume(1, resume.ID); err != nil {
+				t.Fatal(err)
+			}
 		}
 		if s.name == "opportunities" {
 			capture("opportunities-900-light", s.selector, 900, 700, "light")

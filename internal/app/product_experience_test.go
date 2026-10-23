@@ -77,3 +77,39 @@ func TestDocumentDisplaySize(t *testing.T) {
 		}
 	}
 }
+
+func TestDisconnectedTransferReviewShowsRecoveryWithoutEmptyResults(t *testing.T) {
+	a, _, _, _, _ := newAnswerLibraryFixture(t)
+	w := httptest.NewRecorder()
+	newMux(a).ServeHTTP(w, httptest.NewRequest("GET", "http://localhost/jobs/1", nil))
+	if w.Code != 200 {
+		t.Fatal(w.Code)
+	}
+	page := w.Body.String()
+	start := strings.Index(page, `id="transfer-review"`)
+	end := strings.Index(page, `id="record-submission"`)
+	if start < 0 || end < start {
+		t.Fatal("missing transfer review boundaries")
+	}
+	review := page[start:end]
+	for _, want := range []string{"Employer browser disconnected.", "browser-only", `action="/jobs/1/browser/start"`, "Open browser without filling", `<details class="saved-session-context"><summary>Previous browser session</summary>`, "Contact filling disabled.", "Complete candidate profile"} {
+		// Browser-only starts a sentence in the actual copy.
+		if want == "browser-only" {
+			if !strings.Contains(strings.ToLower(review), want) {
+				t.Errorf("missing %s", want)
+			}
+			continue
+		}
+		if !strings.Contains(review, want) {
+			t.Errorf("missing recovery contract %s", want)
+		}
+	}
+	for _, unwanted := range []string{"Ready to prepare", "Last observed browser results", `class="prepare-handoff observed-results"`, `class="letter-material-actions"`, "Select a resume before starting a handoff."} {
+		if strings.Contains(review, unwanted) {
+			t.Errorf("redundant or empty recovery presentation: %s", unwanted)
+		}
+	}
+	if strings.Index(review, `action="/jobs/1/browser/start"`) > strings.Index(review, `<details class="saved-session-context"`) {
+		t.Error("recovery action must remain outside optional session details")
+	}
+}

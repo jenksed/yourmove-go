@@ -1177,3 +1177,11 @@ h1,.job-hero h1 {font-size:28px;line-height:1.2;margin-bottom:8px}
 .ai-connection-card p {font-weight:400}
 
 @media(min-width:820px){.sidebar{overflow-y:auto}.sidebar-bottom{flex-shrink:0}}
+
+/* Recovery leads with its one action; prior observations are secondary. */
+.browser-reconnect {max-width:70ch}
+.browser-reconnect form {display:grid;justify-items:start;gap:8px;margin:12px 0}
+.contact-exclusion {margin:16px 0;font-size:13px}
+.contact-exclusion small {display:block;margin-top:3px}
+.saved-session-context {margin:12px 0;font-size:12px;overflow-wrap:anywhere}
+.transfer-review .observed-results {padding-top:16px;border-top:1px solid var(--color-border)}

@@ -208,11 +208,13 @@ func TestControlledPrepareEntryPoints(t *testing.T) {
 			}
 		}
 	}
+	click(`.workspace-tab[data-tab-target=answers]`)
 	click(`[data-question-panel]:not([hidden]) textarea`)
 	if err := connection.Call(ctx, "Input.insertText", map[string]any{"text": "Unsaved answer stays in this editor."}, nil); err != nil {
 		t.Fatal(err)
 	}
 	evaluate(`window.scrollTo(0,0);true`, nil)
+	click(`.workspace-tab[data-tab-target=prepare]`)
 	click(`[data-prepare-question-entry]`)
 	wait(`document.activeElement===document.querySelector('[data-question-panel]:not([hidden])') && document.querySelector('[data-question-panel]:not([hidden]) textarea')?.value==='Unsaved answer stays in this editor.'`)
 	var questionState struct {
@@ -231,6 +233,7 @@ func TestControlledPrepareEntryPoints(t *testing.T) {
 	captureWorkspace("answers-750x650-dark", 750, 650, "#application-materials", "dark")
 
 	evaluate(`window.scrollTo(0,0);true`, nil)
+	click(`.workspace-tab[data-tab-target=prepare]`)
 	click(`[data-open-details="letter-editor"]`)
 	wait(`document.querySelector('#letter-editor')?.open===true && document.activeElement?.id==='letter-studio-title'`)
 	var letterState struct {
@@ -246,7 +249,7 @@ func TestControlledPrepareEntryPoints(t *testing.T) {
 	}
 	captureWorkspace("generation-1100x800-dark", 1100, 800, "#letter-editor", "dark")
 	captureWorkspace("selection-900x700-light", 900, 700, "#letter-editor", "light")
-	click(`#application-answers-workspace > summary`)
+	click(`.workspace-tab[data-tab-target=answers]`)
 	wait(`document.querySelector('#application-answers-workspace')?.open===true && document.querySelector('#letter-editor')?.open===false && document.querySelector('[data-question-panel]:not([hidden]) textarea')?.value==='Unsaved answer stays in this editor.'`)
 	var switchedState struct {
 		Key   string `json:"key"`
@@ -259,7 +262,7 @@ func TestControlledPrepareEntryPoints(t *testing.T) {
 	if switchedState.Key == "" || !switchedState.Dirty {
 		t.Fatalf("switching activities lost the selected dirty answer: %+v", switchedState)
 	}
-	wait(`location.hash==='#application-answers-workspace'`)
+	wait(`location.hash==='#answers'`)
 	captureWorkspace("answers-return-900x700-light", 900, 700, "#application-materials", "light")
 	var navigation struct {
 		Entries []struct {
@@ -288,18 +291,18 @@ func TestControlledPrepareEntryPoints(t *testing.T) {
 	if err := connection.Call(ctx, "Page.getNavigationHistory", map[string]any{}, &navigation); err != nil {
 		t.Fatal(err)
 	}
-	answerEntry := findHistoryEntry("#application-answers-workspace")
+	answerEntry := findHistoryEntry("#answers")
 	if err := connection.Call(ctx, "Page.navigateToHistoryEntry", map[string]any{"entryId": answerEntry}, nil); err != nil {
 		t.Fatal(err)
 	}
-	wait(`location.hash==='#application-answers-workspace' && document.querySelector('#application-answers-workspace').open && !document.querySelector('#letter-editor').open && document.querySelector('[data-question-panel]:not([hidden]) textarea').value==='Unsaved answer stays in this editor.'`)
+	wait(`location.hash==='#answers' && document.querySelector('#application-answers-workspace').open && !document.querySelector('#letter-editor').open && document.querySelector('[data-question-panel]:not([hidden]) textarea').value==='Unsaved answer stays in this editor.'`)
 	if err := evaluate(`(()=>{const e=document.querySelector('[data-question-panel]:not([hidden]) textarea');e.value='';e.dispatchEvent(new Event('input',{bubbles:true}));return true})()`, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := connection.Call(ctx, "Page.reload", map[string]any{"ignoreCache": true}, nil); err != nil {
 		t.Fatal(err)
 	}
-	wait(`document.readyState==='complete' && location.hash==='#application-answers-workspace' && document.querySelector('#application-answers-workspace').open && !document.querySelector('#letter-editor').open`)
+	wait(`document.readyState==='complete' && location.hash==='#answers' && document.querySelector('#application-answers-workspace').open && !document.querySelector('#letter-editor').open`)
 	noScripts.Store(true)
 	noJSPage := server.URL + "/jobs/1?qualification=nojs"
 	noJSChrome, err := chromium.LaunchFixture(ctx, noJSPage+"#application-materials")
@@ -367,9 +370,13 @@ func TestControlledPrepareEntryPoints(t *testing.T) {
 	if err := evaluateNoJS(`document.querySelector('#letter-editor > summary').click()`, nil); err != nil {
 		t.Fatal(err)
 	}
-	assertNoJS(`document.querySelector('#letter-editor').open && !document.querySelector('#application-answers-workspace').open`)
+	assertNoJS(`document.querySelector('#letter-editor').open && document.querySelector('#application-answers-workspace').open`)
 	if err := evaluateNoJS(`document.querySelector('#application-answers-workspace > summary').click()`, nil); err != nil {
 		t.Fatal(err)
 	}
-	assertNoJS(`document.querySelector('#application-answers-workspace').open && !document.querySelector('#letter-editor').open`)
+	assertNoJS(`!document.querySelector('#application-answers-workspace').open && document.querySelector('#letter-editor').open`)
+	if err := evaluateNoJS(`document.querySelector('#application-answers-workspace > summary').click()`, nil); err != nil {
+		t.Fatal(err)
+	}
+	assertNoJS(`document.querySelector('#application-answers-workspace').open && document.querySelector('#letter-editor').open && document.querySelectorAll('[data-question-panel] textarea').length===1`)
 }

@@ -195,11 +195,6 @@
       const target = fragmentTarget();
       const activity = activityForTarget(target);
       if (!activity) return;
-      const panel = activity.closest('[data-workspace-panel]');
-      if (panel?.hidden) {
-        document.querySelector(`.workspace-tab[data-tab-target="${panel.dataset.workspacePanel}"]`)?.click();
-        try { history.replaceState(null, '', location.pathname + location.search + location.hash); } catch (_) {}
-      }
       openActivity(activity, target);
     };
     const requested = routeActivity();
@@ -333,8 +328,10 @@
         tab.tabIndex = selected ? 0 : -1;
       });
       panels.forEach((panel) => panel.hidden = panel.dataset.workspacePanel !== target);
-      if (target === 'answers') document.getElementById('application-answers-workspace').open = true;
-      if (target === 'cover-letter') document.getElementById('letter-editor').open = true;
+      if (target === 'answers' || target === 'cover-letter') {
+        document.getElementById('application-answers-workspace').open = target === 'answers';
+        document.getElementById('letter-editor').open = target === 'cover-letter';
+      }
       if (focus) document.getElementById(target)?.focus({preventScroll:true});
     };
     tabs.forEach((tab) => {
@@ -344,7 +341,7 @@
       tab.addEventListener('click', (event) => {
         event.preventDefault();
         const target = tab.dataset.tabTarget;
-        try { history.replaceState(null, '', `#${target}`); } catch (_) { location.hash = target; }
+        try { if (location.hash !== `#${target}`) history.pushState(null, '', `#${target}`); } catch (_) { location.hash = target; }
         show(target);
       });
       tab.addEventListener('keydown', (event) => {
