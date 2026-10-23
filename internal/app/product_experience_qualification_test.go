@@ -167,6 +167,10 @@ func TestControlledProductExperience(t *testing.T) {
 		}
 		return
 	}
+	navigate("/jobs/1?draft=1#prepare", "#prepare")
+	assertBriefJS(t, ctx, chrome, page, `!document.querySelector('#prepare').hidden && document.querySelector('#cover-letter').hidden`)
+	navigate("/jobs/1?question="+key+"#cover-letter", "#cover-letter")
+	assertBriefJS(t, ctx, chrome, page, `!document.querySelector('#cover-letter').hidden && document.querySelector('#answers').hidden`)
 	navigate("/jobs/1#answers", "#answers")
 	for _, size := range [][2]int{{900, 700}, {750, 650}, {700, 550}} {
 		capture(fmt.Sprintf("answers-%dx%d", size[0], size[1]), "#answers", size[0], size[1], "dark")

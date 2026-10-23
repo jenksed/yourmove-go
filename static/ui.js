@@ -310,10 +310,15 @@
     };
     const current = () => {
       const query = new URLSearchParams(location.search);
-      if (['saved','transferring'].includes(query.get('cover'))) return 'prepare';
-      if (query.has('question') || query.has('early_question')) return 'answers';
-      if (query.has('cover') || query.has('draft')) return panelForHash(location.hash) === 'prepare' ? 'cover-letter' : (panelForHash(location.hash) || 'cover-letter');
-      return panelForHash(location.hash) || defaultTab;
+      const requested = panelForHash(location.hash);
+      // Existing POST redirects use #prepare. Their result/source selects the
+      // activity, while an explicit activity fragment always remains direct.
+      if (!requested || requested === 'prepare') {
+        if (['saved','transferring'].includes(query.get('cover'))) return 'prepare';
+        if (query.has('question') || query.has('early_question')) return 'answers';
+        if (query.has('cover')) return 'cover-letter';
+      }
+      return requested || (query.has('draft') ? 'cover-letter' : defaultTab);
     };
     const show = (name, focus = false) => {
       const target = names.has(name) ? name : 'overview';
