@@ -1146,3 +1146,11 @@ h1,.job-hero h1 {font-size:28px;line-height:1.2;margin-bottom:8px}
 .document-row .resume-info p {margin-top:4px}
 .family-examples {background:transparent;box-shadow:none}
 .library-import {margin-bottom:20px}
+
+.answer-library-entry {max-width:780px}
+.answer-library-entry .answer-library-question {font-size:20px;line-height:1.45;margin-bottom:8px}
+.answer-library-context {font-size:12px;color:var(--color-muted);margin-bottom:12px}
+.answer-library-full-answer .evidence-text {max-height:none}
+.career-evidence-editor,.career-evidence-list {max-width:780px}
+.career-context {padding:12px 0;border-block:1px solid var(--color-border)}
+.career-context[open] .career-evidence-context-grid {margin-top:12px}
