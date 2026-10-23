@@ -26,6 +26,9 @@ Do not rewrite the frontend. Recompose the existing server-rendered objects and 
 
 ## Package map
 
+For the visual walkthrough, open [PROPOSAL.html](PROPOSAL.html) in a browser. It works offline from this folder and brings together the recommended direction, rendered comparisons, key workflows, screen proposals, design principles, and decision brief.
+
+
 | Deliverable | Location |
 |---|---|
 | A — Executive assessment | This document |
