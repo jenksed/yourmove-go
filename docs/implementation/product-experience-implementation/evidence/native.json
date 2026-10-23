@@ -1,0 +1,17 @@
+{
+  "source": "f050e162d478b8c6ed26c32aebb692967230878a",
+  "tracked_production_diff": "empty",
+  "untracked_during_build": "implementation documentation and screenshots; hence Go vcs.modified=true",
+  "bundle_identifier": "run.yourmove.workflowqualification",
+  "signature": "adhoc",
+  "executable_sha256": "58a3e22cdaf463b0dc46c53c54151126f70e42bc4367f5a0159cdb29894ca7ae",
+  "strict_executable_verification": "PASS before launch; final f050e16 artifact not launched",
+  "strict_bundle_verification": "PASS before launch; final f050e16 artifact not launched",
+  "startup": "PASS at preceding production source f6cc186; native startup/UI at final source f050e16 NOT VERIFIED",
+  "native_interaction": "NOT VERIFIED",
+  "window_dimensions": "NOT VERIFIED",
+  "final_bundle_location": "/private/tmp/yourmove-workflow-native-bs3Imr/YourMoveWorkflow.app",
+  "runtime_storage": "isolated sibling workspace directory; not inside signed bundle",
+  "release_acceptance": "NOT VERIFIED; release tooling unchanged",
+  "preceding_startup_signature": "f6cc186 executable and bundle verified strictly again after startup"
+}

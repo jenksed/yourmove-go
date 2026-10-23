@@ -1,0 +1,61 @@
+Production source: f050e162d478b8c6ed26c32aebb692967230878a
+Controlled qualification harness: 2553ece
+All data synthetic; zero employer submissions.
+
+go test -count=1 ./...
+?   	github.com/jenksed/yourmove-go	[no test files]
+ok  	github.com/jenksed/yourmove-go/internal/app	12.106s
+ok  	github.com/jenksed/yourmove-go/internal/application/browser	0.577s
+ok  	github.com/jenksed/yourmove-go/internal/application/browser/chromium	1.777s
+ok  	github.com/jenksed/yourmove-go/internal/application/discovery	0.216s
+ok  	github.com/jenksed/yourmove-go/internal/application/flow	1.088s
+ok  	github.com/jenksed/yourmove-go/internal/application/providers/ashby	1.823s
+ok  	github.com/jenksed/yourmove-go/internal/application/providers/greenhouse	0.422s
+ok  	github.com/jenksed/yourmove-go/internal/application/schema	0.916s
+ok  	github.com/jenksed/yourmove-go/internal/coverletter/provider	3.098s
+ok  	github.com/jenksed/yourmove-go/internal/documents	0.772s
+ok  	github.com/jenksed/yourmove-go/internal/platforms	2.020s
+ok  	github.com/jenksed/yourmove-go/internal/storage	2.150s
+
+go test -count=1 -tags desktop ./...
+?   	github.com/jenksed/yourmove-go	[no test files]
+ok  	github.com/jenksed/yourmove-go/internal/app	10.154s
+ok  	github.com/jenksed/yourmove-go/internal/application/browser	1.030s
+ok  	github.com/jenksed/yourmove-go/internal/application/browser/chromium	2.004s
+ok  	github.com/jenksed/yourmove-go/internal/application/discovery	0.497s
+ok  	github.com/jenksed/yourmove-go/internal/application/flow	1.192s
+ok  	github.com/jenksed/yourmove-go/internal/application/providers/ashby	1.417s
+ok  	github.com/jenksed/yourmove-go/internal/application/providers/greenhouse	1.620s
+ok  	github.com/jenksed/yourmove-go/internal/application/schema	0.856s
+ok  	github.com/jenksed/yourmove-go/internal/coverletter/provider	3.119s
+ok  	github.com/jenksed/yourmove-go/internal/documents	2.030s
+ok  	github.com/jenksed/yourmove-go/internal/platforms	1.742s
+ok  	github.com/jenksed/yourmove-go/internal/storage	2.072s
+
+Required opt-in safety journeys + product + brief
+--- PASS: TestControlledApplicationBriefClipboardAndWorkspace (3.16s)
+--- PASS: TestControlledContactJourney (12.15s)
+--- PASS: TestControlledCombinedContinuation (14.31s)
+--- PASS: TestControlledEarlyPreparationWorkbench (2.48s)
+--- PASS: TestControlledProductExperience (5.86s)
+--- PASS: TestControlledQuestionWorkbench (6.64s)
+--- PASS: TestControlledUnapprovedProfileJourney (3.93s)
+--- PASS: TestEarlySavedAnswersStayExcludedUntilReconciledAndAuthorized (0.03s)
+
+Prepare entries / dirty activities / Back / no-JS
+--- PASS: TestControlledPrepareEntryPoints (3.53s)
+
+Completion / transaction recovery
+--- PASS: TestControlledSubmissionRecordingWorkflow (3.97s)
+
+Chromium controlled handoff / guarded-control trials
+--- PASS: TestControlledAshbyQuestionNormalization (1.28s)
+--- PASS: TestControlledApplicationHandoff (1.28s)
+--- PASS: TestTrialBlurAndLocation (8.58s)
+--- PASS: TestTrialCopyDescription (0.55s)
+
+PASS: node --check static/ui.js; node --check static/inspection.js; bash -n scripts/qualify-native-workflow.sh; git diff --check; offline gallery script syntax and retained image references.
+
+NOT VERIFIED: TestControlledRuntimeRestart skipped because normal runtime port 3000 was occupied. Existing process left untouched.
+
+Native: f050e16 built and executable/full bundle ad-hoc signed and strictly verified; final artifact not launched. Preceding f6cc186 process startup observed and its signature strictly reverified afterward. Native visual/interaction acceptance remains NOT VERIFIED. See native.json and ACCEPTANCE.md.
