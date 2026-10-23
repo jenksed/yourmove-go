@@ -181,6 +181,9 @@ func TestControlledProductExperience(t *testing.T) {
 	assertBriefJS(t, ctx, chrome, page, `!document.querySelector('#cover-letter').hidden && document.querySelector('#answers').hidden`)
 	navigate("/jobs/1#answers", "#answers")
 	clickBriefUI(t, ctx, chrome, page, "[data-writing-focus]")
+	var focusState string
+	_ = evalBriefJS(ctx, chrome, page, `JSON.stringify({classes:document.documentElement.className,width:innerWidth,display:getComputedStyle(document.querySelector('.sidebar')).display,text:document.querySelector('[data-writing-focus]').textContent})`, &focusState)
+	t.Log("focus state", focusState)
 	assertBriefJS(t, ctx, chrome, page, `document.documentElement.classList.contains('writing-focus') && !document.querySelector('.sidebar').getClientRects().length && document.querySelector('[data-writing-focus]').textContent==='Show navigation'`)
 	clickBriefUI(t, ctx, chrome, page, "[data-writing-focus]")
 	assertBriefJS(t, ctx, chrome, page, `!document.documentElement.classList.contains('writing-focus') && !!document.querySelector('.sidebar').getClientRects().length`)

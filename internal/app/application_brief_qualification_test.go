@@ -365,15 +365,27 @@ func waitBriefJS(t *testing.T, ctx context.Context, chrome *chromium.Session, pa
 func clickBriefUI(t *testing.T, ctx context.Context, chrome *chromium.Session, page, selector string) {
 	t.Helper()
 	encoded, _ := json.Marshal(selector)
-	var point struct {
-		X float64 `json:"x"`
-		Y float64 `json:"y"`
-	}
-	if err := evalBriefJS(ctx, chrome, page, `(()=>{const e=document.querySelector(`+string(encoded)+`);if(!e||e.hidden||!e.getClientRects().length)throw Error('control is not visible');e.scrollIntoView({block:'center',behavior:'instant'});const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`, &point); err != nil {
+	pointer, err := chrome.FixturePage(ctx, page)
+	if err != nil {
 		t.Fatal(err)
 	}
+	defer pointer.Close()
+	var result struct {
+		Result struct {
+			Value struct{ X, Y float64 } `json:"value"`
+		} `json:"result"`
+		Exception any `json:"exceptionDetails"`
+	}
+	script := `(async()=>{const e=document.querySelector(` + string(encoded) + `);if(!e||e.hidden||!e.getClientRects().length)throw Error('control is not visible');e.scrollIntoView({block:'center',behavior:'instant'});await new Promise(requestAnimationFrame);const r=e.getBoundingClientRect();return {X:r.x+r.width/2,Y:r.y+r.height/2}})()`
+	if err = pointer.Call(ctx, "Runtime.evaluate", map[string]any{"expression": script, "returnByValue": true, "awaitPromise": true}, &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Exception != nil {
+		t.Fatalf("visible pointer target %s: %v", selector, result.Exception)
+	}
+	// Keep press/release on the same connection, as in Phase 1 question tests.
 	for _, eventType := range []string{"mousePressed", "mouseReleased"} {
-		if err := chrome.FixtureCall(ctx, page, "Input.dispatchMouseEvent", map[string]any{"type": eventType, "x": point.X, "y": point.Y, "button": "left", "clickCount": 1}, nil); err != nil {
+		if err = pointer.Call(ctx, "Input.dispatchMouseEvent", map[string]any{"type": eventType, "x": result.Result.Value.X, "y": result.Result.Value.Y, "button": "left", "clickCount": 1}, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
