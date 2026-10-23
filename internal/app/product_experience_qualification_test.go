@@ -180,6 +180,11 @@ func TestControlledProductExperience(t *testing.T) {
 	navigate("/jobs/1?question="+key+"#cover-letter", "#cover-letter")
 	assertBriefJS(t, ctx, chrome, page, `!document.querySelector('#cover-letter').hidden && document.querySelector('#answers').hidden`)
 	navigate("/jobs/1#answers", "#answers")
+	clickBriefUI(t, ctx, chrome, page, "[data-writing-focus]")
+	assertBriefJS(t, ctx, chrome, page, `document.documentElement.classList.contains('writing-focus') && !document.querySelector('.sidebar').getClientRects().length && document.querySelector('[data-writing-focus]').textContent==='Show navigation'`)
+	clickBriefUI(t, ctx, chrome, page, "[data-writing-focus]")
+	assertBriefJS(t, ctx, chrome, page, `!document.documentElement.classList.contains('writing-focus') && !!document.querySelector('.sidebar').getClientRects().length`)
+
 	for _, size := range [][2]int{{900, 700}, {750, 650}, {700, 550}} {
 		capture(fmt.Sprintf("answers-%dx%d", size[0], size[1]), "#answers", size[0], size[1], "dark")
 	}
