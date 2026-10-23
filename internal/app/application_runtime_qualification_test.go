@@ -22,17 +22,19 @@ import (
 	"github.com/jenksed/yourmove-go/internal/application/schema"
 )
 
-// Uses the ordinary HTTP executable, its normal port, and an explicitly isolated
-// data directory. Never stops an existing runtime to make the port available.
+// Uses the ordinary HTTP executable, a dynamically allocated loopback port, and
+// an explicitly isolated data directory. Never stops an existing runtime.
 func TestControlledRuntimeRestart(t *testing.T) {
 	if os.Getenv("YOURMOVE_QUALIFY_BROWSER") != "1" {
 		t.Skip("opt-in isolated runtime qualification")
 	}
-	probe, err := net.Listen("tcp", "127.0.0.1:3000")
+	probe, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		t.Skip("normal runtime port already occupied; existing app left untouched")
+		t.Skipf("cannot allocate isolated loopback port; existing processes left untouched: %v", err)
 	}
+	port := probe.Addr().(*net.TCPAddr).Port
 	probe.Close()
+	baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
 	a, dir := testWorkspace(t)
 	requireQualificationStorage(t, a)
 	for i := 1; i <= 2; i++ {
@@ -79,11 +81,12 @@ func TestControlledRuntimeRestart(t *testing.T) {
 		cmd.Dir = dir
 		cmd.Env = make([]string, 0, len(os.Environ())+1)
 		for _, entry := range os.Environ() {
-			if !strings.HasPrefix(entry, "YOURMOVE_DATA_DIR=") {
+			if !strings.HasPrefix(entry, "YOURMOVE_DATA_DIR=") && !strings.HasPrefix(entry, "YOURMOVE_HTTP_PORT=") {
 				cmd.Env = append(cmd.Env, entry)
 			}
 		}
 		cmd.Env = append(cmd.Env, "YOURMOVE_DATA_DIR="+dir)
+		cmd.Env = append(cmd.Env, "YOURMOVE_HTTP_PORT="+fmt.Sprint(port))
 		var logs bytes.Buffer
 		cmd.Stdout = &logs
 		cmd.Stderr = &logs
@@ -100,7 +103,7 @@ func TestControlledRuntimeRestart(t *testing.T) {
 		}
 		t.Cleanup(stop)
 		for deadline := time.Now().Add(10 * time.Second); ; {
-			response, e := client.Get("http://127.0.0.1:3000/jobs/1")
+			response, e := client.Get(baseURL + "/jobs/1")
 			if e == nil {
 				body, _ := io.ReadAll(response.Body)
 				response.Body.Close()
@@ -122,13 +125,13 @@ func TestControlledRuntimeRestart(t *testing.T) {
 	defer stop()
 	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
 	defer cancel()
-	chrome, err := chromium.LaunchFixture(ctx, "http://127.0.0.1:3000")
+	chrome, err := chromium.LaunchFixture(ctx, baseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer chrome.Close()
 	for deadline := time.Now().Add(8 * time.Second); ; {
-		err = chrome.FixtureCall(ctx, "http://127.0.0.1:3000/jobs", "Target.createTarget", map[string]any{"url": "http://127.0.0.1:3000/jobs/2"}, nil)
+		err = chrome.FixtureCall(ctx, baseURL+"/jobs", "Target.createTarget", map[string]any{"url": baseURL + "/jobs/2"}, nil)
 		if err == nil {
 			break
 		}
@@ -137,7 +140,7 @@ func TestControlledRuntimeRestart(t *testing.T) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	page := "http://127.0.0.1:3000/jobs/2"
+	page := baseURL + "/jobs/2"
 	eval := func(script string) bool {
 		var reply struct {
 			Result struct {
@@ -153,15 +156,21 @@ func TestControlledRuntimeRestart(t *testing.T) {
 				return
 			}
 			if time.Now().After(deadline) {
-				t.Fatal("rendered runtime check failed", script)
+				var diagnostic struct {
+					Result struct {
+						Value string `json:"value"`
+					} `json:"result"`
+				}
+				_ = chrome.FixtureCall(ctx, page, "Runtime.evaluate", map[string]any{"expression": `JSON.stringify({url:location.href,title:document.title,text:document.body.innerText.slice(0,1600),prepareHidden:document.querySelector('#prepare')?.hidden,continueText:document.querySelector('form[action$="/continue"]')?.innerText,savedSession:document.querySelector('.saved-session-context')?.innerText})`, "returnByValue": true}, &diagnostic)
+				t.Fatalf("rendered runtime check failed %s; state=%s", script, diagnostic.Result.Value)
 			}
 			time.Sleep(50 * time.Millisecond)
 		}
 	}
 	wait(`document.readyState==='complete'&&!document.querySelector('#history').hidden&&document.querySelector('#history').textContent.includes('Runtime confirmation')&&document.querySelector('#history').textContent.includes('restart-resume.pdf')&&!!document.querySelector('#history form[action="/jobs/2/next"]')`)
 	_ = eval(`document.querySelector('#history form[action="/jobs/2/next"] button').click();true`)
-	page = "http://127.0.0.1:3000/jobs/1"
-	wait(`!document.querySelector('#prepare').hidden&&document.querySelector('form[action$="/continue"]').textContent.includes('Saved runtime answer')&&document.querySelector('form[action$="/continue"]').textContent.includes('runtime@example.test')&&document.querySelector('[name=include_resume]')?.value==='yes'&&document.querySelector('#letter_resume_id').value===document.querySelector('#resume_id').value&&document.querySelector('#letter_resume_id').selectedOptions[0].text===document.querySelector('#resume_id').selectedOptions[0].text&&document.querySelector('.saved-session-context').textContent.includes('Open browser without filling')`)
+	page = baseURL + "/jobs/1"
+	wait(`!document.querySelector('#prepare').hidden&&document.querySelector('form[action$="/continue"]').textContent.includes('Saved runtime answer')&&document.querySelector('form[action$="/continue"]').textContent.includes('runtime@example.test')&&document.querySelector('[name=include_resume]')?.value==='yes'&&document.querySelector('#letter_resume_id').value===document.querySelector('#resume_id').value&&document.querySelector('#letter_resume_id').selectedOptions[0].text===document.querySelector('#resume_id').selectedOptions[0].text&&document.querySelector('.browser-reconnect button').textContent.includes('Open browser without filling')`)
 	// Reproduce a real local blocker without touching a live application.
 	path := filepath.Join(dir, "resumes", resume.StoredName)
 	original, err := os.ReadFile(path)
@@ -172,7 +181,7 @@ func TestControlledRuntimeRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = eval(`location.reload();true`)
-	wait(`document.body.textContent.includes('file is missing or changed')&&!document.querySelector('form[action$="/continue"]')`)
+	wait(`document.body.textContent.includes('The selected resume needs attention.')&&!document.querySelector('form[action$="/continue"]')`)
 	if err = os.WriteFile(path, original, 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +205,7 @@ func TestControlledRuntimeRestart(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
-	response, err := client.Get("http://127.0.0.1:3000/candidate")
+	response, err := client.Get(baseURL + "/candidate")
 	if err != nil {
 		t.Fatal(err)
 	}

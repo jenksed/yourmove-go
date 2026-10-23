@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -36,12 +37,21 @@ func main() {
 	}
 	defer application.Close()
 
-	fmt.Println("Open http://127.0.0.1:3000")
-	server := &http.Server{Addr: "127.0.0.1:3000", Handler: application.Handler()}
+	port := os.Getenv("YOURMOVE_HTTP_PORT")
+	if port == "" {
+		port = "3000"
+	}
+	addr := net.JoinHostPort("127.0.0.1", port)
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		log.Fatalf("YourMove HTTP server listen on %s: %v", addr, err)
+	}
+	fmt.Printf("Open http://%s\n", listener.Addr().String())
+	server := &http.Server{Handler: application.Handler()}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	done := make(chan error, 1)
-	go func() { done <- server.ListenAndServe() }()
+	go func() { done <- server.Serve(listener) }()
 	select {
 	case err := <-done:
 		if err != nil && err != http.ErrServerClosed {
