@@ -1,0 +1,50 @@
+Source commit: 222956c56dea8869e95934496aa765b3934e230a
+?? docs/implementation/application-workflow-stabilization/
+Source changes (empty for a clean source commit):
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  -
+Bundle: /private/tmp/yourmove-workflow-native-FVYI5x/YourMoveWorkflow.app
+Workspace: /private/tmp/yourmove-workflow-native-FVYI5x/workspace
+Evidence: /private/tmp/yourmove-workflow-native-FVYI5x/evidence
+=== RUN   TestPrepareNativeWorkflowFixture
+    workflow_native_fixture_test.go:45: native synthetic workspace: /private/tmp/yourmove-workflow-native-FVYI5x/workspace
+--- PASS: TestPrepareNativeWorkflowFixture (0.03s)
+PASS
+ok  	github.com/jenksed/yourmove-go/internal/app	0.605s
+Signing: codesign --force --sign - --timestamp=none --identifier run.yourmove.workflowqualification /private/tmp/yourmove-workflow-native-FVYI5x/YourMoveWorkflow.app/Contents/MacOS/YourMoveWorkflow
+/private/tmp/yourmove-workflow-native-FVYI5x/YourMoveWorkflow.app/Contents/MacOS/YourMoveWorkflow: replacing existing signature
+Signing: codesign --force --sign - --timestamp=none --identifier run.yourmove.workflowqualification /private/tmp/yourmove-workflow-native-FVYI5x/YourMoveWorkflow.app
+/private/tmp/yourmove-workflow-native-FVYI5x/YourMoveWorkflow.app: replacing existing signature
+Verifying executable and complete bundle before launch:
+/private/tmp/yourmove-workflow-native-FVYI5x/YourMoveWorkflow.app/Contents/MacOS/YourMoveWorkflow: valid on disk
+/private/tmp/yourmove-workflow-native-FVYI5x/YourMoveWorkflow.app/Contents/MacOS/YourMoveWorkflow: satisfies its Designated Requirement
+/private/tmp/yourmove-workflow-native-FVYI5x/YourMoveWorkflow.app: valid on disk
+/private/tmp/yourmove-workflow-native-FVYI5x/YourMoveWorkflow.app: satisfies its Designated Requirement
+Executable=/private/tmp/yourmove-workflow-native-FVYI5x/YourMoveWorkflow.app/Contents/MacOS/YourMoveWorkflow
+Identifier=run.yourmove.workflowqualification
+Format=app bundle with Mach-O thin (arm64)
+CodeDirectory v=20400 size=50555 flags=0x2(adhoc) hashes=1573+3 location=embedded
+VersionPlatform=1
+VersionMin=1703936
+VersionSDK=1705216
+Hash type=sha256 size=32
+CandidateCDHash sha256=829fcbac72cec2324e1582d3805aa7552e577b48
+CandidateCDHashFull sha256=829fcbac72cec2324e1582d3805aa7552e577b48bb1b8b25e5c2b7bb7fa09508
+Hash choices=sha256
+CMSDigest=829fcbac72cec2324e1582d3805aa7552e577b48bb1b8b25e5c2b7bb7fa09508
+CMSDigestType=2
+Executable Segment base=0
+Executable Segment limit=14761984
+Executable Segment flags=0x1
+Page size=16384
+CDHash=829fcbac72cec2324e1582d3805aa7552e577b48
+Signature=adhoc
+Info.plist entries=6
+TeamIdentifier=not set
+Sealed Resources version=2 rules=13 files=0
+Internal requirements count=0 size=12
+69725219f80793ac8b14c1990235d7a430cc4101f40ce8a6ebdf61f16522e054  /private/tmp/yourmove-workflow-native-FVYI5x/YourMoveWorkflow.app/Contents/MacOS/YourMoveWorkflow
+1090bcaf3dab0f1d3521b851bfc4655f4eaf4915998f29216fb4b1df658b5998  /private/tmp/yourmove-workflow-native-FVYI5x/YourMoveWorkflow.app/Contents/Info.plist
+Signature verification: PASS (ad-hoc development identity).
+Launching verified Wails executable at 2026-10-23T13:18:45Z
+Launch: process alive (PID 39077); native interaction NOT YET VERIFIED.
+Interact with this bundle only; record UI evidence separately.

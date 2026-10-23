@@ -1,0 +1,47 @@
+=== RUN   TestControlledContactJourney
+    contact_qualification_test.go:131: isolated Chromium qualification storage: SQLite=/private/var/folders/bq/zfk_hy5x2wq1tv23x8kvz5x40000gn/T/TestControlledContactJourney2323481746/001/jobs.db resumes=/private/var/folders/bq/zfk_hy5x2wq1tv23x8kvz5x40000gn/T/TestControlledContactJourney2323481746/001/resumes root=/private/var/folders/bq/zfk_hy5x2wq1tv23x8kvz5x40000gn/T/TestControlledContactJourney2323481746/001
+    contact_qualification_test.go:350: save → Prepare: zero navigation or disclosure actions to locate current exact scope; authorization remains a separate button
+    contact_qualification_test.go:583: observed per-field answer outcomes: [{Label:Why this team? Status:filled Detail:Filled and independently observed in the live form.} {Label:Preferred interview time Status:filled Detail:Filled and independently observed in the live form.} {Label:Preferred working pattern Status:filled Detail:Filled and independently observed in the live form.} {Label:Available for occasional travel Status:filled Detail:Filled and independently observed in the live form.}]
+    contact_qualification_test.go:758: D: 4 saved question answers observed (rerendered textarea, native select, checkbox, radio); prior manual contact preserved; 1.568s for answer transfer; no submission or duplicate resume upload
+    contact_qualification_test.go:759: B/C continuation: question entered, marked reusable, and saved in 3 actions; answer survived navigation; local saving did not mutate the employer answer; letter transferred with one scoped continuation action, observed in 64ms; original resume preserved; zero duplicate resume uploads or submissions
+    contact_qualification_test.go:761: UI journey: 4 actions (select, save, Prepare, Fill application); transfer verified in 1.591s; result visible in 2.605s; 4 correct contact values, 4 input + 4 change events, 1 exact resume upload, 0 duplicate uploads, 0 unexpected overwrites, 0 submissions; manual correction preserved
+    contact_qualification_test.go:796: next opportunity browser navigation: {FrameID:8EA749BF20026DB458E21EB77D9DDC48 LoaderID:F02AD84763391AD61832E039516AA1B8 ErrorText:}
+    contact_qualification_test.go:831: E: optional reuse selected in the authoritative editor; second saved opportunity displayed the exact qualified answer without retyping; different-employer and local-override boundaries covered in Go storage tests
+    contact_qualification_test.go:869: D negative cases: changed native options, existing manual narrative, and ambiguous question controls preserved without writes
+    contact_qualification_test.go:979: Additional live-CDP cases passed: ambiguous controls, positional-ID abstention, conflicting user values, already-correct value, Ashby full-name controls, rerender loss, sensitive-label abstention, foreign session ownership
+--- PASS: TestControlledContactJourney (13.49s)
+=== RUN   TestControlledCombinedContinuation
+    contact_qualification_test.go:131: isolated Chromium qualification storage: SQLite=/private/var/folders/bq/zfk_hy5x2wq1tv23x8kvz5x40000gn/T/TestControlledCombinedContinuation1968818086/001/jobs.db resumes=/private/var/folders/bq/zfk_hy5x2wq1tv23x8kvz5x40000gn/T/TestControlledCombinedContinuation1968818086/001/resumes root=/private/var/folders/bq/zfk_hy5x2wq1tv23x8kvz5x40000gn/T/TestControlledCombinedContinuation1968818086/001
+    contact_qualification_test.go:350: save → Prepare: zero navigation or disclosure actions to locate current exact scope; authorization remains a separate button
+    contact_qualification_test.go:583: observed per-field answer outcomes: [{Label:Why this team? Status:filled Detail:Filled and independently observed in the live form.} {Label:Describe a difficult support incident you resolved Status:filled Detail:Filled and independently observed in the live form.} {Label:Preferred interview time Status:filled Detail:Filled and independently observed in the live form.} {Label:Preferred working pattern Status:filled Detail:Filled and independently observed in the live form.} {Label:Available for occasional travel Status:filled Detail:Filled and independently observed in the live form.}]
+    contact_qualification_test.go:756: One Continue application action transferred the exact displayed letter and saved answer; no contact replay, resume reupload, or browser restart
+    contact_qualification_test.go:758: D: 4 saved question answers observed (rerendered textarea, native select, checkbox, radio); prior manual contact preserved; 1.213s for answer transfer; no submission or duplicate resume upload
+    contact_qualification_test.go:759: B/C continuation: question entered, marked reusable, and saved in 3 actions; answer survived navigation; local saving did not mutate the employer answer; letter transferred with one scoped continuation action, observed in 795ms; original resume preserved; zero duplicate resume uploads or submissions
+    contact_qualification_test.go:761: UI journey: 4 actions (select, save, Prepare, Fill application); transfer verified in 1.586s; result visible in 2.565s; 4 correct contact values, 4 input + 4 change events, 1 exact resume upload, 0 duplicate uploads, 0 unexpected overwrites, 0 submissions; manual correction preserved
+    contact_qualification_test.go:796: next opportunity browser navigation: {FrameID:C92016C9F327969E3B1C733B08C13C39 LoaderID:38895AC0EAFBD8BF8E7AE7B51781B5AA ErrorText:}
+    contact_qualification_test.go:831: E: optional reuse selected in the authoritative editor; second saved opportunity displayed the exact qualified answer without retyping; different-employer and local-override boundaries covered in Go storage tests
+    contact_qualification_test.go:869: D negative cases: changed native options, existing manual narrative, and ambiguous question controls preserved without writes
+    contact_qualification_test.go:979: Additional live-CDP cases passed: ambiguous controls, positional-ID abstention, conflicting user values, already-correct value, Ashby full-name controls, rerender loss, sensitive-label abstention, foreign session ownership
+    contact_qualification_test.go:1072: Integrated Chromium journey passed: AI preview → explicit adoption → local save → authorized employer fill → rendered Applied/History → Next job; one persisted submission, no employer submit
+--- PASS: TestControlledCombinedContinuation (14.19s)
+=== RUN   TestControlledEarlyPreparationWorkbench
+    early_application_answers_qualification_test.go:96: isolated Greenhouse question-workbench screenshots: /private/tmp/yourmove-checkpoint2-greenhouse-1781103187
+--- PASS: TestControlledEarlyPreparationWorkbench (2.46s)
+=== RUN   TestControlledQuestionWorkbench
+    question_workbench_qualification_test.go:143: screenshot /private/tmp/yourmove-question-workbench/after/questions-1280-light.png
+    question_workbench_qualification_test.go:143: screenshot /private/tmp/yourmove-question-workbench/after/questions-1280-dark.png
+    question_workbench_qualification_test.go:143: screenshot /private/tmp/yourmove-question-workbench/after/questions-1050-light.png
+    question_workbench_qualification_test.go:143: screenshot /private/tmp/yourmove-question-workbench/after/questions-1050-dark.png
+    question_workbench_qualification_test.go:143: screenshot /private/tmp/yourmove-question-workbench/after/questions-800-light.png
+    question_workbench_qualification_test.go:143: screenshot /private/tmp/yourmove-question-workbench/after/questions-800-dark.png
+    question_workbench_qualification_test.go:143: screenshot /private/tmp/yourmove-question-workbench/after/questions-700-light.png
+    question_workbench_qualification_test.go:143: screenshot /private/tmp/yourmove-question-workbench/after/questions-700-dark.png
+    question_workbench_qualification_test.go:143: screenshot /private/tmp/yourmove-question-workbench/after/questions-390-light.png
+    question_workbench_qualification_test.go:143: screenshot /private/tmp/yourmove-question-workbench/after/questions-390-dark.png
+    question_workbench_qualification_test.go:404: UI journey: typed/navigated/saved three exact answers; same-question save focus; explicit Next; ready scope; canceled destructive navigation; dirty poll preservation; profile/manual panels; keyboard Previous; conflict recovery; no-JS POST; zero answer transfer calls
+--- PASS: TestControlledQuestionWorkbench (6.43s)
+=== RUN   TestControlledUnapprovedProfileJourney
+    workflow_stabilization_qualification_test.go:152: approved outcomes: [{Label:Website Status:filled Detail:Filled and independently observed in the live form.} {Label:Why this team? Status:filled Detail:Filled and independently observed in the live form.} {Label:Name Status:filled Detail:Filled and independently observed in the live form.}]
+--- PASS: TestControlledUnapprovedProfileJourney (3.96s)
+PASS
+ok  	github.com/jenksed/yourmove-go/internal/app	41.042s

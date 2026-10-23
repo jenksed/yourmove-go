@@ -1,0 +1,56 @@
+Window: "YourMove", App: YourMove Workflow Qualification.
+0 standard window YourMove, Secondary Actions: Raise
+	1 scroll area
+		2 HTML content Description: Resumes · YourMove, URL: wails://localhost/resumes
+			3 link Skip to content, Value: wails://localhost/resumes#main-content
+			4 container Primary navigation
+				5 link YourMove — Opportunities, Value: wails://localhost/jobs
+				6 text YOUR WORKSPACE
+				7 container Workspace
+					8 link Opportunities, Value: wails://localhost/jobs
+					9 link Documents, Value: wails://localhost/resumes
+					10 link Answer Library, Value: wails://localhost/answer-library
+					11 link Career Evidence, Value: wails://localhost/career-evidence
+					12 link Candidate profile, Value: wails://localhost/candidate
+					13 link Applications, Value: wails://localhost/applications
+					14 link AI connections, Value: wails://localhost/ai
+					15 link Utilities, Value: wails://localhost/utilities
+				16 text Local workspace Your resumes stay on this device.
+			17 container
+				18 text APPLICATION WORKSPACE  / LOCAL Appearance
+				19 pop up button Appearance, Value: System
+			20 container
+				21 text YOUR DOCUMENTS
+				22 heading Document library, Value: 1
+					23 text Document library
+				24 text Keep one master resume as your complete career source for cover letters. Route shorter application resumes by role family.
+				25 link Manage role families →, Value: wails://localhost/families
+				26 text 0 resumes
+				27 container Import a resume
+					28 heading Import a resume, Value: 2
+						29 text Import a resume
+					30 text PDF or DOCX, up to 10 MiB. Stored locally.
+					31 container
+						32 button Choose PDF or DOCX
+						33 text Opens the native macOS picker
+				34 container Saved documents
+					35 heading Saved documents, Value: 2
+						36 text Saved documents
+					37 text Master resume = career evidence for cover letters, not an employer upload. Primary resume = the preferred application document for a role family.
+					38 heading Your document library is empty, Value: 3
+						39 text Your document library is empty
+					40 text Import a PDF or DOCX to start preparing applications.
+			41 container
+				42 text YourMove · Local-first application workspace You review and submit every application.
+		43 scroll bar (settable, float) 0
+	44 close button
+	45 full screen button Help: this button also has an action to zoom the window, Secondary Actions: zoom the window
+	46 minimize button
+	47 text YourMove
+48 menu bar
+	49 YourMove Workflow Qualification, ID: handleClick
+	50 File, ID: handleClick
+	51 Edit, ID: handleClick
+	52 View, ID: handleClick
+	53 Window, ID: handleClick
+	54 Help, ID: handleClick
