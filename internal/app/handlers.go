@@ -307,6 +307,12 @@ func (a *App) jobDetail(w http.ResponseWriter, r *http.Request) {
 	workspace.Preparation = summarizePreparation(workspace)
 	workspace.QuestionSnapshot = chooseApplicationQuestionSnapshot(job, workspace.BrowserState, workspace.Questions, workspace.EarlyQuestions)
 	workspace.WritingAnswerContext = writingAnswerContext(r, workspace.QuestionSnapshot)
+	// A disconnected browser is not current readiness, but its saved writing is
+	// still the first useful artifact when no early question inventory exists.
+	// This changes presentation only; transfer scope stays server-authoritative.
+	if !workspace.QuestionSnapshot.Available && workspace.SavedBrowser != nil && !r.URL.Query().Has("early_question") {
+		workspace.WritingAnswerContext = "live"
+	}
 	workspace.Readiness = prepareReadiness(workspace.ResumeSelectionValid, profile, workspace.BrowserState, workspace.QuestionSnapshot, letter)
 	if err := a.resources.jobDetailTemplate.Execute(w, workspace); err != nil {
 		log.Printf("render job detail: %v", err)

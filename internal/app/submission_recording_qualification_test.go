@@ -341,7 +341,7 @@ func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
 	}
 	evaluate(chrome, page, `(()=>{window.confirm=()=>true;return true})()`, &dirty)
 	press(chrome, page, " ", "Space", 32)
-	waitFor(chrome, page, `location.hash==='#history'&&document.body.textContent.includes('Application recorded as Applied.')`)
+	waitFor(chrome, page, `location.hash==='#history'&&document.body.textContent.includes('Submission recorded locally.')`)
 	job, err := a.jobByID(1)
 	if err != nil || job.Stage != StageApplied {
 		t.Fatalf("desktop submission did not advance to Applied: %+v %v", job, err)
@@ -400,7 +400,7 @@ func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
 	activateVisible(noJS, page, `#record-submission>summary`)
 	activateVisible(noJS, page, `[data-record-completion] [name=confirm]`)
 	activateVisible(noJS, page, `[data-record-completion] button[type=submit]`)
-	waitFor(noJS, page, `location.hash==='#history'&&document.body.textContent.includes('Application recorded as Applied.')`)
+	waitFor(noJS, page, `location.hash==='#history'&&document.body.textContent.includes('Submission recorded locally.')`)
 	history, err = a.jobSubmissions(2)
 	if err != nil || len(history) != 1 || history[0].ResumeID != 0 || history[0].Notes != "" {
 		t.Fatalf("no-JS, no-resume submission failed: %+v %v", history, err)
@@ -461,7 +461,7 @@ func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
 	activateVisible(recovery, page, `a[data-open-details="record-submission"]`)
 	activateVisible(recovery, page, `#record-submission [name=confirm]`)
 	activateVisible(recovery, page, `#record-submission button[type=submit]`)
-	waitFor(recovery, page, `location.hash==='#history'&&document.body.textContent.includes('Application recorded as Applied.')`)
+	waitFor(recovery, page, `location.hash==='#history'&&document.body.textContent.includes('Submission recorded locally.')`)
 	history, err = a.jobSubmissions(3)
 	if err != nil || len(history) != 1 || history[0].ResumeID != 0 || history[0].Notes != "Synthetic stale-recovery note" {
 		t.Fatalf("resume recovery did not permit a valid no-resume submission: %+v %v", history, err)
@@ -510,7 +510,7 @@ func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
 	activateVisible(recovery, page, `a[data-open-details="record-submission"]`)
 	activateVisible(recovery, page, `#record-submission [name=confirm]`)
 	activateVisible(recovery, page, `#record-submission button[type=submit]`)
-	waitFor(recovery, page, `location.hash==='#history'&&document.body.textContent.includes('Application recorded as Applied.')`)
+	waitFor(recovery, page, `location.hash==='#history'&&document.body.textContent.includes('Submission recorded locally.')`)
 	if history, err := a.jobSubmissions(4); err != nil || len(history) != 1 || history[0].ResumeID != 0 || history[0].Notes != "Synthetic database-recovery note" {
 		t.Fatalf("retry after transaction recovery failed: %+v %v", history, err)
 	}

@@ -3,6 +3,7 @@
 {{template "shell-open" "jobs"}}
 <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/jobs">Opportunities</a><span aria-hidden="true">/</span><span>{{if .Company}}{{.Company}}{{else}}{{.Host}}{{end}}</span></nav>
 <header class="job-hero"><div class="job-hero-main"><h1>{{if .Title}}{{.Title}}{{else}}Untitled job{{end}}</h1><p class="page-description">{{if .Company}}{{.Company}}{{else}}{{.Host}}{{end}} <span class="dot-sep">·</span> {{.Host}}</p><div class="hero-tags">{{template "status-badge" .}}{{template "priority-badge" .}}{{if .SalaryText}}<span class="salary-tag">{{.SalaryText}}</span>{{end}}</div></div><div class="heading-actions">{{if .Desktop}}<form method="POST" action="/jobs/{{.ID}}/open"><button class="button button-secondary" type="submit">Open employer site ↗</button></form>{{else}}<a class="button button-secondary" href="{{.URL}}" target="_blank" rel="noopener noreferrer">Open employer site ↗</a>{{end}}{{if eq .Stage "applied"}}<a class="button button-primary" href="#history" data-tab-target="history">View history →</a>{{else}}<a class="text-link" href="#prepare" data-tab-target="prepare">Prepare application →</a>{{end}}</div></header>
+<button type="button" class="button button-secondary writing-focus-control" data-writing-focus aria-pressed="false" hidden>Focus writing</button>
 <div class="workspace-tabs" data-workspace-tabs data-default-tab="{{if eq .Stage "applied"}}history{{else if eq .Stage "closed"}}overview{{else}}prepare{{end}}" aria-label="Job workspace sections"><a href="#overview" class="workspace-tab" data-tab-target="overview">Overview</a><a href="#prepare" class="workspace-tab" data-tab-target="prepare">Prepare</a><a href="#answers" class="workspace-tab" data-tab-target="answers">Answers</a><a href="#cover-letter" class="workspace-tab" data-tab-target="cover-letter">Cover letter</a><a href="#history" class="workspace-tab" data-tab-target="history">History {{if .SubmissionCount}}<span class="tab-count">{{.SubmissionCount}}</span>{{end}}</a></div>
 <div class="workspace-panel" id="overview" data-workspace-panel="overview" tabindex="-1">
   <div class="workspace-grid"><div class="workspace-column">
@@ -213,7 +214,7 @@
     {{if and (eq .WritingAnswerContext "early") .AnswerEditingAllowed}}<details class="writing-context-alternate"><summary>Previously observed browser questions</summary><p class="small-muted">This saved browser-question workbench remains available for recovery. Recheck the employer form in the active managed session before treating an observation as current.</p>{{end}}
     {{if .Questions.WorkbenchQuestions}}
     <section class="prepare-handoff application-questions" id="application-questions" tabindex="-1" aria-labelledby="application-questions-title" data-question-workbench data-selected-question="{{.Questions.SelectedKey}}" data-profile-count="{{len .Questions.ProfileQuestions}}" data-employer-count="{{len .Questions.EmployerSiteQuestions}}" data-review-count="{{len .Questions.ManualReviewQuestions}}">
-      <div class="question-heading"><h3 id="application-questions-title">Application questions</h3>{{if .AnswerEditingAllowed}}<a href="#prepare" data-review-ready>Review ready material ↑</a>{{end}}</div>
+      <div class="question-heading"><h3 id="application-questions-title" class="visually-hidden">Application questions</h3>{{if .AnswerEditingAllowed}}<a href="#prepare" data-review-ready>Review ready material ↑</a>{{end}}</div>
       {{if .AnswerEditingAllowed}}
         {{if not .Questions.EmployerQuestions}}<p role="status">No additional answers to prepare here. Review the employer form for questions that must be completed manually.</p>{{end}}
         <p class="small-muted">Save answers here. Filling the employer form is a separate action that requires your authorization.</p>
@@ -247,7 +248,7 @@
     </section>
     {{else if .AnswerEditingAllowed}}
     <section class="prepare-handoff application-questions" id="application-questions" tabindex="-1" aria-labelledby="application-questions-title">
-      <h3 id="application-questions-title">Application questions</h3>
+      <h3 id="application-questions-title" class="visually-hidden">Application questions</h3>
       {{if eq .Questions.InspectionID 0}}
       <p role="status">No application questions captured yet. Open the application to inspect them.</p>
       <p class="small-muted">AI drafting needs a supported question observed in the managed employer browser.</p>

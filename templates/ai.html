@@ -18,7 +18,7 @@
 {{define "ai-connection"}}
     <article class="ai-connection-card" id="connection-{{.ID}}">
       <div class="ai-connection-top"><h3>{{.Name}}</h3><span class="ai-state ai-state-{{.State}}">{{if eq .State "ready"}}Configured{{else if eq .State "signin"}}Sign in{{else if eq .State "unavailable"}}Not installed{{else}}Setup needed{{end}}</span></div>
-      <p class="ai-connection-access">{{if eq .ID "ollama"}}On this device · {{else if ne .ID "compatible"}}External service · {{end}}{{.Access}}</p>
+      <p class="ai-connection-access">{{if eq .ID "ollama"}}{{else if ne .ID "compatible"}}External service · {{end}}{{.Access}}</p>
       <p class="ai-connection-detail">{{.Detail}}</p>
       <details class="ai-connection-setup"><summary>Setup guidance</summary><p>{{.Setup}}</p></details>
     </article>

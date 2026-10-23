@@ -295,6 +295,12 @@
   // Hash-addressable tabs. Without JavaScript, all three sections remain readable.
   const tabs = Array.from(document.querySelectorAll('.workspace-tab[data-tab-target]'));
   const panels = Array.from(document.querySelectorAll('[data-workspace-panel]'));
+  const writingFocus = document.querySelector('[data-writing-focus]');
+  const setWritingFocus = active => {
+    document.documentElement.classList.toggle('writing-focus', active);
+    if (writingFocus) {writingFocus.textContent = active ? 'Show navigation' : 'Focus writing';writingFocus.setAttribute('aria-pressed',String(active));}
+  };
+  writingFocus?.addEventListener('click', () => setWritingFocus(writingFocus.getAttribute('aria-pressed') !== 'true'));
   if (tabs.length && panels.length) {
     const names = new Set(panels.map((panel) => panel.dataset.workspacePanel));
     const defaultTab = document.querySelector('[data-workspace-tabs]')?.dataset.defaultTab || 'overview';
@@ -312,6 +318,9 @@
     const show = (name, focus = false) => {
       const target = names.has(name) ? name : 'overview';
       document.documentElement.classList.add('tabs-enabled');
+      const writing = target === 'answers' || target === 'cover-letter';
+      if (writingFocus) writingFocus.hidden = !writing;
+      if (!writing) setWritingFocus(false);
       tabs.forEach((tab) => {
         const selected = tab.dataset.tabTarget === target;
         tab.classList.toggle('is-active', selected);
@@ -706,7 +715,9 @@
         text.setAttribute('aria-label', 'Preserved unsaved edits');
         text.value = saved.fields.filter(([name]) => ['answer','body'].includes(name)).map(([,value]) => value).join('\n');
         notice.append(heading,text);
-        document.getElementById('application-action')?.append(notice);
+        const activities = document.querySelector('[data-workspace-tabs]');
+        if (activities) activities.after(notice);
+        else document.getElementById('application-action')?.append(notice);
       }
     }
   } catch (_) {}

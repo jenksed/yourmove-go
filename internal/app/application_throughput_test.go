@@ -73,7 +73,7 @@ func TestCompletionOffersNextActiveJobAndHistory(t *testing.T) {
 	page := httptest.NewRecorder()
 	newMux(a).ServeHTTP(page, httptest.NewRequest("GET", "http://localhost/jobs/1", nil))
 	body := page.Body.String()
-	for _, part := range []string{"Application recorded as Applied.", `action="/jobs/1/next"`, "Next job → Next active", "Submission recorded"} {
+	for _, part := range []string{"Submission recorded locally.", `action="/jobs/1/next"`, "Next job → Next active", "Submission recorded"} {
 		if !strings.Contains(body, part) {
 			t.Fatalf("missing %q: %s", part, body)
 		}

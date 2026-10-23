@@ -1031,7 +1031,7 @@ document.querySelector('[name=resume]').addEventListener('change',async e=>{cons
 		if err := evaluateAppUI(appPage, `document.querySelector('[data-record-completion] button[type="submit"]').click();true`, nil); err != nil {
 			t.Fatal(err)
 		}
-		waitAppUI("completion confirmation and persisted History rendered", appPage, `document.body.textContent.includes('Application recorded as Applied.')&&document.querySelector('#history')?.textContent.includes('Synthetic applicant-confirmed submission')`)
+		waitAppUI("completion confirmation and persisted History rendered", appPage, `document.body.textContent.includes('Submission recorded locally.')&&document.querySelector('#history')?.textContent.includes('Synthetic applicant-confirmed submission')`)
 		job, err := a.jobByID(1)
 		if err != nil || job.Stage != StageApplied {
 			t.Fatalf("integrated application did not reach Applied: %+v %v", job, err)

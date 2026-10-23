@@ -315,6 +315,7 @@ func TestControlledQuestionWorkbench(t *testing.T) {
 	snapshot("ready-scope", "#application-action")
 	// Explicit profile overrides remain separate and manual panels have no forms.
 	assertJS(`!document.querySelector('[data-question-chooser]').textContent.includes('Email') && !!document.querySelector('.profile-question-summary .question-override:not([open])')`)
+	click(`.workspace-tab[data-tab-target=answers]`)
 	click(`.profile-question-summary > summary`)
 	assertJS(`document.querySelector('.profile-question-summary').textContent.includes('alex@example.test')`)
 	snapshot("profile-facts", ".profile-question-summary")
