@@ -26,8 +26,21 @@
 | `f050e16` | Optional focused writing on wide windows; compact navigation remains the sole compact control. |
 | `2553ece` | Stable controlled pointer press/release on one connection; focused-writing regression. |
 | `1635809` | Engineering handoff, acceptance matrix and measured before/after evidence. |
+| `f0100bc` | Dynamic loopback port for runtime restart qualification; refreshed stale recovery assertions. |
 
-Subsequent description-spacing and compensation-capture work is included at the current PR head. See the follow-up section in HANDOFF.md; its ordinary and desktop test suites pass. Existing screenshots/native evidence predate that follow-up.
+Subsequent description-spacing and compensation-capture work is included at `539f952`. See the follow-up section in HANDOFF.md. Final ordinary and desktop suites pass after `f0100bc`; required opt-in product journeys, isolated QuestionWorkbench rerun, dynamic-port RuntimeRestart and guarded Chromium trials pass. One initial combined-run QuestionWorkbench disclosure timeout did not reproduce in isolation.
+
+## Final native qualification run
+
+- Source: `f0100bc57adb47f324222d7b1020830bb12d42fe`; bundle ID `run.yourmove.workflowqualification`.
+- Ad-hoc executable and bundle signature: strict verification passed before launch and after screenshot capture. This is development signing only.
+- Startup: Wails `v3.0.0-beta.32`, PID 46556, isolated synthetic workspace. Process remained alive during native interaction.
+- Native outer dimensions were set/read at 1100×800, 900×700, 750×650 and 700×550. AX scroll-area sizes were respectively 1101×769, 901×669, 751×619 and 701×519; direct WebView `innerWidth`/`innerHeight` were not observed.
+- App-only Wails captures show Opportunities at all four sizes in dark appearance; Prepare and Documents in dark; Answers, Cover letter and Role families in light. The Light choice was made in the native app.
+- Accessibility settings were updated by the user and System Events then exposed the actual Wails accessibility tree. Native interactions included named navigation, opening the synthetic job, selecting Answers and Cover letter, opening Role families and adding built-in examples, native picker cancellation, and importing `Synthetic résumé 漢字.pdf`. The 142-byte imported PDF matched the source SHA-256, and resume association persisted in the synthetic job.
+- Free-form text edit/dirty dialog and multiple dirty editors were not verified. Export/save dialog, History/completion, quit/relaunch recovery, VoiceOver, zoom/enlarged text/reduced motion remain unverified. Native transfer was not attempted because the current fixture is not a safe loopback destination; no native employer fixture/factory was built. Controlled Chromium evidence is separate.
+- Port 3000 remains untouched. The full ordinary-app restart qualification now uses a dynamic loopback port and passed.
+- PR #7 remains draft; no merge or release occurred.
 
 ## Review scope
 
@@ -39,9 +52,11 @@ Screenshots are synthetic before/after production renders, roughly 5.4 MiB total
 
 ## Outstanding merge/release gates
 
-- Actual native interaction and visual acceptance at all four outer sizes, with inner WebView measurements.
-- Native picker/export/cancellation, VoiceOver, 200% zoom, multiple dirty editors, restart and controlled employer transfer.
-- Full HTTP runtime restart test: skipped because port 3000 was occupied; existing process left untouched.
+- Direct WebView `innerWidth`/`innerHeight` measurement; only AX scroll-area dimensions were recorded.
+- Native dirty-editor keyboard/dialog/focus behavior and multiple dirty editors.
+- Native PDF/letter export dialog, History/completion, and quit/relaunch recovery.
+- VoiceOver, 200% zoom, enlarged text and reduced-motion interaction evidence.
+- Dedicated synthetic loopback transfer fixture/factory with exact destination ownership, independent outcomes and zero submissions.
 - Owner review of design, especially the simplified recovery scope and compact navigation.
 - Existing independent release signing/notarization/acceptance requirements.
 

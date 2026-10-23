@@ -20,7 +20,7 @@ Read the approved design package and Phase 1 handoff. The supplied mandate super
 | 4. Documents / families | Filename, version, readable size and download lead; existing Manage document disclosure retained; Unicode filename evidence; family copy explains suggestions and explicit job selection. | Existing byte/revision/archival/association tests retained. Native picker/save/cancel and exact exported bytes remain NOT VERIFIED. |
 | 5. Reusable materials | Library entries lead with the actual question and saved answer; source context stays secondary. Career Evidence keeps situation/actions/outcome prominent, with optional contextual fields disclosed. | Snapshot, revision, unknown-outcome and unsaved insertion behavior retained. Existing contextual Help supplies previous writing, reviewed evidence and separate AI proposals. |
 | 6. Profile / AI | Applicant approval replaces verification claims; approval is explicitly fresh at each save; pronouns labeled optional. Optional AI is grouped by local vs external/custom access; setup is secondary; configuration is not guaranteed access. | No credential storage, discovery, fallback, autosave or mandatory onboarding. Existing generation review/authorization/adoption/save boundaries retained. |
-| 7. Completion / recovery | Menu and page renamed **Submissions** at the user's request; `/applications` retained. Recorded dates come from SQLite. History says “Submission recorded locally” and retains employer-receipt caveat and Next consequences. Refresh/recovery notices remain visible across activities. | Existing tokens, idempotency, pinned resume history and browser ownership retained. Restart persistence is covered by existing storage tests; full native restart journey remains NOT VERIFIED. |
+| 7. Completion / recovery | Menu and page renamed **Submissions** at the user's request; `/applications` retained. Recorded dates come from SQLite. History says “Submission recorded locally” and retains employer-receipt caveat and Next consequences. Refresh/recovery notices remain visible across activities. | Existing tokens, idempotency, pinned resume history and browser ownership retained. Ordinary executable restart now passes on a dynamic port. Full Wails restart journey remains NOT VERIFIED. |
 | 8. Consistency / accessibility | Shared palette and focus tokens; wrapping activities; compact named navigation; reduced-motion support retained; bounded prose; utility/inspection/import wording and direct Posting checks link; short-window navigation and breakpoint focus correction. | Browser layout captures, keyboard/menu/dialog interactions, no-JS question saving and token contrast checks. VoiceOver, native zoom/text resizing, native keyboard and full native visual acceptance remain NOT VERIFIED. |
 
 ## Navigation and authority contracts
@@ -40,6 +40,7 @@ Read the approved design package and Phase 1 handoff. The supplied mandate super
 - Materials/settings: `templates/resumes.html`, `families.html`, `answer_library.html`, `career_evidence.html`, `candidate.html`, `ai.html`.
 - Completion: `templates/applications.html`, `internal/app/jobs.go` (read-only latest-submission timestamp), `internal/app/resumes.go` (display size only).
 - Secondary screens: `templates/inspection.html`, `requirements.html`, `import_results.html`.
+- Restart qualification only: `main.go` accepts optional `YOURMOVE_HTTP_PORT` while retaining loopback binding and default port 3000; `internal/app/application_runtime_qualification_test.go` reserves a free loopback port and checks durable recovery without probing/stopping the application's normal port.
 - Regression additions: `product_experience_test.go`, `product_experience_qualification_test.go`; existing assertions updated for direct activities and accurate local-record labels. No safety assertions were deleted.
 
 ## Design decisions and deviations
@@ -69,15 +70,16 @@ Required opt-in suite (all named tests must run, not skip):
 GOCACHE=/private/tmp/yourmove-phase2-go-cache \
 YOURMOVE_QUALIFY_WORKFLOW=1 YOURMOVE_QUALIFY_EARLY=1 \
 YOURMOVE_QUALIFY_QUESTIONS=1 YOURMOVE_QUALIFY_BROWSER=1 \
-YOURMOVE_QUALIFY_PRODUCT=1 \
+YOURMOVE_QUALIFY_PRODUCT=1 YOURMOVE_QUALIFY_BRIEF=1 \
+YOURMOVE_QUALIFY_PREPARE=1 \
 YOURMOVE_PRODUCT_EVIDENCE=/private/tmp/yourmove-phase2-product-evidence \
 go test -count=1 -tags qualification ./internal/app \
--run 'TestControlled(ProductExperience|UnapprovedProfileJourney|EarlyPreparationWorkbench|QuestionWorkbench|ContactJourney|CombinedContinuation)$|TestEarlySavedAnswersStayExcludedUntilReconciledAndAuthorized' -v
+-run 'TestControlled(ProductExperience|ApplicationBriefClipboardAndWorkspace|UnapprovedProfileJourney|EarlyPreparationWorkbench|QuestionWorkbench|ContactJourney|CombinedContinuation|PrepareEntryPoints|SubmissionRecordingWorkflow|RuntimeRestart|AnswerLibraryWorkbench)$|TestEarlySavedAnswersStayExcludedUntilReconciledAndAuthorized' -v
 ```
 
 The additional activity-entry/history/no-JS test runs with `YOURMOVE_QUALIFY_PREPARE=1`, `-tags qualification`, and `-run '^TestControlledPrepareEntryPoints$'`.
 
-Additional completion, brief/clipboard and Chromium trials passed. The full HTTP runtime restart test skipped because port 3000 was occupied; it remains NOT VERIFIED and the existing process was left untouched. Final outcomes and native evidence are recorded in [ACCEPTANCE.md](ACCEPTANCE.md). Diagnostic failures discovered during implementation were corrected: hidden refresh notices, query-bound return destinations, breakpoint focus, and asynchronous no-script disclosure assertions. A passed process startup or signature check is never counted as a native workflow pass.
+Additional completion, brief/clipboard and Chromium trials passed. `TestControlledRuntimeRestart` previously skipped on busy port 3000; the test and ordinary executable now support a dynamically allocated loopback port (`YOURMOVE_HTTP_PORT`), and the restart journey passes without touching the existing process. One combined-run question-workbench disclosure timeout passed when rerun in isolation; no production defect was reproduced. Final outcomes and native evidence are recorded in [ACCEPTANCE.md](ACCEPTANCE.md). Diagnostic failures discovered during implementation were corrected: hidden refresh notices, query-bound return destinations, breakpoint focus, and asynchronous no-script disclosure assertions. A passed process startup or signature check is never counted as a native workflow pass.
 
 ## Evidence and limits
 
@@ -89,9 +91,9 @@ At a 900×700 CSS viewport and scroll origin zero, the first real opportunity be
 
 ## Native qualification and outstanding gates
 
-The existing `scripts/qualify-native-workflow.sh` safely assembles fresh bundles and signs/verifies the executable and bundle before launching. It was used without changing release signing/notarization or modifying a signed bundle.
+The existing `scripts/qualify-native-workflow.sh` safely assembled a fresh bundle from `f0100bc57adb47f324222d7b1020830bb12d42fe`, strictly verified both executable and bundle before and after launch, and launched the synthetic Wails app. Native Accessibility became available after the user updated macOS accessibility settings. Evidence now covers Opportunities at all four requested outer sizes, dark and light appearance, native Answers and Cover letter, Documents, Role families, native picker cancellation, and import/hash/Unicode/resume association for a synthetic PDF. `evidence/native.json` records the outcomes and measured AX scroll-area dimensions separately from window bounds.
 
-The available tool catalog has no `node_repl`, which the installed Computer Use skill requires for Mac interaction. Therefore native screenshots, outer/inner sizing, menu/dialog keyboard behavior, picker/export cancellation, Unicode file round trips, VoiceOver, 200% zoom, native employer filling and native restart acceptance could not be exercised here. See the explicit procedures in ACCEPTANCE.md. Do not infer these passes from controlled Chromium.
+Native qualification remains incomplete. Free-form editor keyboard entry and the dirty-navigation dialog were not reliably established; native export, History/completion, Wails restart, VoiceOver, 200% zoom, enlarged text and reduced motion remain unverified. No dedicated native loopback employer fixture was completed, so no native transfer was attempted. The navigation fixture's external Ashby destination was not opened. Controlled Chromium results do not substitute for these gates. See ACCEPTANCE.md for status and reproducible remaining checks.
 
 ## Delivery
 

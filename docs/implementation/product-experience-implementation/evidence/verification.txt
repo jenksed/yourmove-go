@@ -56,6 +56,8 @@ Chromium controlled handoff / guarded-control trials
 
 PASS: node --check static/ui.js; node --check static/inspection.js; bash -n scripts/qualify-native-workflow.sh; git diff --check; offline gallery script syntax and retained image references.
 
-NOT VERIFIED: TestControlledRuntimeRestart skipped because normal runtime port 3000 was occupied. Existing process left untouched.
+PASS: TestControlledRuntimeRestart ran after f0100bc switched ordinary runtime qualification to a dynamically allocated loopback port. Existing port 3000 process remained untouched.
 
-Native: f050e16 built and executable/full bundle ad-hoc signed and strictly verified; final artifact not launched. Preceding f6cc186 process startup observed and its signature strictly reverified afterward. Native visual/interaction acceptance remains NOT VERIFIED. See native.json and ACCEPTANCE.md.
+Final source f0100bc built and executable/full bundle ad-hoc signed and strictly verified before and after Wails launch. Native interaction and real app-only captures are recorded in native.json. Requested outer sizes, both themes, native navigation/partial activities, picker cancellation, Unicode import and local resume association have observed evidence; dirty editor dialog, export, native transfer, native completion/restart, VoiceOver and zoom gates remain NOT VERIFIED. See native.json and ACCEPTANCE.md.
+
+Final rerun (2026-10-23): `GOCACHE=/private/tmp/yourmove-phase2-go-cache go test -count=1 ./...` PASS; `go test -count=1 -tags desktop ./...` PASS; all required opt-in `internal/app` journeys PASS in one run, including dynamic-port `TestControlledRuntimeRestart` and `TestControlledQuestionWorkbench`; `YOURMOVE_QUALIFY_BROWSER=1 go test -count=1 -tags qualification ./internal/application/browser/chromium -run 'TestControlled|Test.*Trial' -v` PASS; `node --check static/ui.js`, `node --check static/inspection.js`, `bash -n scripts/qualify-native-workflow.sh`, `python3 -m json.tool evidence/native.json`, and `git diff --check` PASS. No opt-in test was skipped in the final required journey run.

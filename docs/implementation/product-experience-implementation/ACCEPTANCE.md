@@ -24,7 +24,8 @@ Commands and required environment flags are in [HANDOFF.md](HANDOFF.md#verificat
 | Completion and transactional recovery | PASS | `TestControlledSubmissionRecordingWorkflow`; keyboard, multiple dirty editors, no-JS, idempotency, missing-resume and injected transaction-failure recovery. Desktop redirect compatibility exercised in Chromium, not native Wails. |
 | Application brief privacy / clipboard | PASS | `TestControlledApplicationBriefClipboardAndWorkspace`; exact server export, clipboard denial/selectable fallback and privacy boundaries. Evidence now uses a temporary directory rather than overwriting historical captures. |
 | Chromium guarded-control trials | PASS | Documented `TestControlled|Test.*Trial` package suite; one upload, exact control writes/readback and uncertain/detached control protection. |
-| Full HTTP runtime restart | NOT VERIFIED | `TestControlledRuntimeRestart` skipped because normal port 3000 was occupied; existing process deliberately left untouched. A skipped test is not a pass. |
+| Full HTTP runtime restart | PASS | `TestControlledRuntimeRestart` now reserves a dynamic loopback port, passes it via `YOURMOVE_HTTP_PORT`, starts/stops/restarts the isolated ordinary executable, and verifies local persistence plus changed-resume recovery. Port 3000 and its existing process were untouched. |
+| Question workbench final rerun | PASS | An earlier combined run timed out waiting for an optional manual-review disclosure; isolated and final combined reruns passed all assertions. No production defect was confirmed. |
 | Native-only UI and employer interaction | NOT VERIFIED | Separate native matrix below. |
 
 ## Screen and workflow checks
@@ -57,31 +58,34 @@ All PASS entries here refer to Go or controlled Chromium, **not native WebKit**.
 
 ## Description and salary follow-up
 
-PASS: both full ordinary and desktop Go suites, spacing-policy cases, provider fallback/structured precedence, optional JSON-LD salary, benefit-budget exclusions, source provenance, original-description preservation and manual-salary protection. Existing screenshots/native evidence above predate this follow-up; no new native interaction acceptance is implied.
+PASS: both full ordinary and desktop Go suites, spacing-policy cases, provider fallback/structured precedence, optional JSON-LD salary, benefit-budget exclusions, source provenance, original-description preservation and manual-salary protection. Native UI captures below do not qualify salary capture behavior inside Wails.
 
 ## Native gates
 
-The installed Computer Use skill requires `node_repl`; that tool is absent from the available catalog. An existing signed harness can be built/launched from the terminal, but actual native interaction cannot be driven or observed through the required facility here.
+The user enabled macOS accessibility access during qualification. System Events then exposed the real Wails accessibility tree and allowed native navigation and picker interaction. A few controls (notably free-form text entry through this automation route) were not reliably exercised, so dirty-editor behavior remains unverified natively. Evidence uses the isolated synthetic workspace only.
 
 | Gate | Status | Actual evidence / limitation |
 |---|---|---|
-| Fresh Wails desktop build | PASS | Existing repaired harness, isolated fixture. |
-| Explicit executable and bundle ad-hoc signing | PASS | Strict verification before launch; no signed bundle contents changed. |
-| Startup | PASS | Wails startup at `f6cc186`. The final production difference at `f050e16` is the compact focus-control correction, built/signed separately. This establishes process startup only; final-source UI interaction is unverified. |
-| Rendered native window / visual appearance | NOT VERIFIED | No current native screenshot or accessibility tree captured. |
-| Four outer dimensions and corresponding WebView inner dimensions | NOT VERIFIED | Browser viewport measurements do not substitute for native window bounds. |
-| Native menu / direct activities / Back / keyboard / dialog focus | NOT VERIFIED | Covered in controlled Chromium only. |
-| Multiple dirty editors in native host | NOT VERIFIED | Phase 1 Go/Chromium contracts retained; native exercise outstanding. |
-| Native import/save, cancellation, Unicode and exact bytes | NOT VERIFIED | Existing backend handling retained; actual dialogs not operated. |
-| Native resume/contact/answer/late-letter transfer and manual-entry protection | NOT VERIFIED | Controlled employer transfer passes separately; no native-host transfer acceptance established. |
-| Native recording and restart recovery | NOT VERIFIED | Local persistence and nonrestored browser semantics tested outside native host. |
-| VoiceOver and 200% zoom | NOT VERIFIED | No VoiceOver or native zoom evidence available. |
-| Native interaction automation facility | BLOCKED | Required `node_repl`/Computer Use facility unavailable. |
+| Fresh Wails desktop build | PASS | `scripts/qualify-native-workflow.sh --launch`; clean final source `f0100bc57adb47f324222d7b1020830bb12d42fe`; isolated synthetic workspace. |
+| Explicit executable and bundle ad-hoc signing | PASS | `codesign --verify --strict` passed for executable and complete bundle before launch and again after launch. Ad-hoc development identity only. |
+| Startup | PASS | PID `46556`; Wails log reports `Wails=v3.0.0-beta.32`, source revision `f0100bc57adb47f324222d7b1020830bb12d42fe`, and startup at `/jobs`. Process remained alive through capture. |
+| Rendered native window / both appearances | PASS | Actual Wails window captures include [Opportunities at 1100×800 dark](evidence/native-opportunities-1100x800-dark.png), [Prepare dark](evidence/native-prepare-1100x800-dark.png), [Documents dark](evidence/native-documents-1100x800-dark.png), [Answers light](evidence/native-answers-1100x800-light.png), [Cover letter light](evidence/native-cover-letter-1100x800-light.png), and [Role families light](evidence/native-role-families-1100x800-light.png). Appearance selector changed from System to Light in-app. |
+| Requested outer sizes | PASS | Native outer dimensions set/read through macOS Accessibility: 1100×800, 900×700, 750×650, 700×550. Opportunities captures exist at all four sizes in `evidence/`. |
+| Inner WebView size | NOT VERIFIED | Accessibility reported the WebView scroll-area sizes as 1101×769, 901×669, 751×619 and 701×519 respectively. These are AX scroll-area dimensions, not direct JavaScript `innerWidth`/`innerHeight` measurements. |
+| Named navigation and direct job activities | PASS | Native sidebar labels were visible; Opportunities opened the synthetic job; Overview, Prepare, Answers, Cover letter and History tabs were exposed; Answers and Cover letter were selected and rendered. A native History action and every Back/return path remain NOT VERIFIED. |
+| Native keyboard / dirty dialog / multiple dirty editors / focus return | NOT VERIFIED | Accessibility tree worked, but this session did not establish reliable keyboard text entry and did not observe the application-owned dirty-navigation dialog. Chromium Phase 1 assertions still pass. |
+| Native import cancellation, Unicode, exact bytes and resume association | PASS | Native picker Cancel returned to the app; `Synthetic résumé 漢字.pdf` was imported. Stored PDF was 142 bytes and SHA-256 matched the source (`554f5147984d75fe7e43c6f15d08e3d52097907a122299c06613e84b3b4c8749`); selected resume ID 1 persisted for the synthetic job. |
+| Native role-family example action | PASS | Documents → Role families opened and the built-in eight example families were added to the isolated synthetic DB. |
+| Native free-form role-family creation/assignment and document/letter export | NOT VERIFIED | No family was created/assigned and no native export/save round trip was observed. |
+| Native recording, History, next opportunity and Wails relaunch recovery | NOT VERIFIED | Runtime persistence/restart passes outside native Wails; this Wails process was not quit and relaunched. |
+| Native resume/contact/answer/late-letter transfer and manual-entry protection | NOT VERIFIED | No safe native loopback fixture/factory was completed. The existing navigation fixture points at a nonlocal synthetic Ashby URL and was not opened. Controlled Chromium transfer passes are separate evidence. |
+| VoiceOver, 200% zoom, enlarged text and reduced motion | NOT VERIFIED | Accessibility-tree inspection is not VoiceOver acceptance; no actual VoiceOver, zoom, text-size or reduced-motion result was observed. |
+| Native accessibility tree via System Events | PASS | After the user's settings update, System Events exposed the app's accessibility tree. This does not establish VoiceOver acceptance; free-form keyboard interaction was not reliable in this session. |
 | Production signing / notarization / release readiness | NOT VERIFIED | Development ad-hoc qualification does not establish these. Release tooling unchanged. |
 
 ## Reproducible native acceptance
 
-1. Run `GOCACHE=/private/tmp/yourmove-phase2-go-cache bash scripts/qualify-native-workflow.sh --launch`. Use only its unique synthetic bundle/workspace. Stop if strict signing fails. The fixture employer URL is a synthetic identity, **not a safe transfer target**; do not click employer actions against that URL.
+1. Run `GOCACHE=/private/tmp/yourmove-phase2-go-cache bash scripts/qualify-native-workflow.sh --launch`. Use only its unique synthetic bundle/workspace. Stop if strict signing fails. The navigation fixture employer URL is a synthetic identity, **not a safe transfer target**; do not click employer actions against that URL.
 2. Confirm the actual window rendered; record its source commit, outer bounds and WebView `innerWidth`/`innerHeight` separately at 1100×800, 900×700, 750×650 and 700×550. Record light/dark screenshots with scroll origin.
 3. On the synthetic job, use Answers and Cover letter directly. Type into two answers and the letter. Switch activities and return. Confirm every value remains and nothing is saved/transferred.
 4. Open Navigation → Candidate profile. Exercise Stay, Escape, Tab/Shift-Tab and Leave. Confirm exact destination once, no dialog loop, focus restoration and unchanged saved SQLite values. Repeat with Documents.
@@ -92,4 +96,4 @@ The installed Computer Use skill requires `node_repl`; that tool is absent from 
 9. Quit/relaunch the synthetic workspace. Confirm durable materials remain and no browser-only work is claimed as recovered. Reinspect before transfer.
 10. Repeat representative navigation/dialog tasks keyboard-only, with VoiceOver, enlarged text, 200% zoom and reduced motion. Capture actual evidence. Change each NOT VERIFIED status only after observing it.
 
-No unresolved automated product defect is intentionally accepted here. Full native acceptance remains an explicit outstanding gate; the review artifacts do not imply it has passed.
+No unresolved automated product defect is intentionally accepted here. The fixed-port restart-test gap is resolved and passes. Native signing, launch, visual rendering, four outer sizes, both themes, direct Answers/Cover letter views, native picker cancellation, Unicode import, and local resume association have observed evidence. Full native acceptance remains incomplete: a loopback-owned transfer fixture and transfer outcomes, reliable dirty-editor/dialog keyboard interaction, export dialog, native history/completion/restart, and VoiceOver/zoom/reduced-motion gates are still unverified. PR #7 must remain draft.
