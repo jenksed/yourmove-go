@@ -87,7 +87,7 @@ func TestControlledApplicationBriefClipboardAndWorkspace(t *testing.T) {
 	waitBriefPage(t, ctx, chrome, page, "#prepare")
 	currentPage := page
 	assertBriefJS(t, ctx, chrome, page, `document.querySelector('[data-copy-export][data-export-format="brief"]')?.hidden===false`)
-	assertBriefJS(t, ctx, chrome, page, `document.querySelector('#application-readiness-title')?.textContent==='Application readiness'`)
+	assertBriefJS(t, ctx, chrome, page, `document.querySelector('#application-readiness-title')?.textContent==='Prepare application'`)
 	assertBriefJS(t, ctx, chrome, page, `document.querySelector('[data-brief-view]')?.href.endsWith('scope=unanswered')`)
 	assertBriefJS(t, ctx, chrome, page, `document.querySelector('#application-action form[action$="/continue"] button[type="submit"]')?.textContent.trim()==='Fill application'`)
 	assertBriefJS(t, ctx, chrome, page, `document.querySelector('#letter-editor') && document.querySelector('#letter-editor').open===false`)

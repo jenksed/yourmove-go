@@ -4,21 +4,22 @@
 {{template "shell-open" "ai"}}
 <div class="ai-hub">
   <header class="page-heading ai-hub-header">
-    <div><p class="eyebrow">WRITING PROVIDERS</p><h1>AI connections</h1><p class="page-description">Review the services available for cover letters. Generation happens only after you authorize it for a job.</p></div>
+    <div><h1>AI connections</h1><p class="page-description">Optional assistance for answers and cover letters. Manual writing and preparation remain available without AI.</p></div>
     <a href="/jobs" class="button button-secondary">Back to opportunities →</a>
   </header>
-  <div class="ai-mode-heading"><h2>Available connections</h2><span class="ai-muted-inline">Readiness checked when you opened this page</span></div>
-  <div class="ai-connection-grid">
-  {{range .Connections}}
-    <article class="ai-connection-card" id="connection-{{.ID}}">
-      <div class="ai-connection-top"><h3>{{.Name}}</h3><span class="ai-state ai-state-{{.State}}">{{if eq .State "ready"}}Ready{{else if eq .State "signin"}}Sign in{{else if eq .State "unavailable"}}Not installed{{else}}Setup needed{{end}}</span></div>
-      <p class="ai-connection-access">{{.Access}}</p>
-      <p class="ai-connection-detail">{{.Detail}}</p>
-      <div class="ai-connection-setup">{{.Setup}}</div>
-    </article>
-  {{end}}
-  </div>
-  <div class="ai-hub-footer"><h2>How writing works</h2><p>YourMove builds one prompt from your saved job description, master resume, and chosen role resume. Generation only starts when you approve it. Cloud and subscription-backed options send that evidence off-device; Ollama runs locally. Existing drafts are never replaced automatically.</p><p>CLI integrations use your separately installed, unmodified vendor tools. A detected login is not a guarantee of remaining subscription allowance. API keys and usage are separate from ChatGPT and Claude subscriptions. Claude subscription use in a distributed third-party product may require additional permission.</p></div>
+  <div class="ai-mode-heading"><h2>Available connections</h2><span class="ai-muted-inline">Configuration at page load; access checked during generation</span></div>
+  <section aria-labelledby="local-ai-heading"><h2 id="local-ai-heading">On this device</h2><div class="ai-connection-grid">{{range .Connections}}{{if eq .ID "ollama"}}{{template "ai-connection" .}}{{end}}{{end}}</div></section>
+  <section aria-labelledby="external-ai-heading"><h2 id="external-ai-heading">External services and custom endpoints</h2><p class="small-muted">Custom endpoints may be local or external, depending on your configuration.</p><div class="ai-connection-grid">{{range .Connections}}{{if ne .ID "ollama"}}{{template "ai-connection" .}}{{end}}{{end}}</div></section>
+  <div class="ai-hub-footer"><h2>Review sources → Authorize generation → Review proposal → Adopt → Save</h2><p>Answer proposals stay unsaved until you adopt and explicitly save them. Cover-letter generation creates a separate local draft for review.</p><p>YourMove builds one prompt from your saved job description, master resume, and chosen role resume. Generation only starts when you approve it. Cloud and subscription-backed options send that evidence off-device; Ollama runs locally. Existing drafts are never replaced automatically.</p><p>CLI integrations use your separately installed, unmodified vendor tools. A detected login is not a guarantee of remaining subscription allowance. API keys and usage are separate from ChatGPT and Claude subscriptions. Claude subscription use in a distributed third-party product may require additional permission.</p></div>
 </div>
 {{template "shell-close"}}
 </body></html>
+
+{{define "ai-connection"}}
+    <article class="ai-connection-card" id="connection-{{.ID}}">
+      <div class="ai-connection-top"><h3>{{.Name}}</h3><span class="ai-state ai-state-{{.State}}">{{if eq .State "ready"}}Configured{{else if eq .State "signin"}}Sign in{{else if eq .State "unavailable"}}Not installed{{else}}Setup needed{{end}}</span></div>
+      <p class="ai-connection-access">{{if eq .ID "ollama"}}On this device · {{else if ne .ID "compatible"}}External service · {{end}}{{.Access}}</p>
+      <p class="ai-connection-detail">{{.Detail}}</p>
+      <details class="ai-connection-setup"><summary>Setup guidance</summary><p>{{.Setup}}</p></details>
+    </article>
+{{end}}

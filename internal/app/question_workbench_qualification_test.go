@@ -239,6 +239,7 @@ func TestControlledQuestionWorkbench(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	click(`.workspace-tab[data-tab-target=answers]`)
 	assertJS(`document.querySelectorAll('[data-question-panel]:not([hidden])').length===1 && document.querySelector('[data-question-previous]').disabled`)
 	assertJS(`document.querySelectorAll('[data-browser-watch]').length===1`)
 	typeText(`[data-question-panel]:not([hidden]) [name=answer]`, "https://alex.example.test/work")

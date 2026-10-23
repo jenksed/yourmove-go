@@ -516,6 +516,7 @@
     workbench.addEventListener('question:reveal', event => show(panels.indexOf(event.target.closest('[data-question-panel]'))));
     workbench.querySelector('[data-review-ready]')?.addEventListener('click', event => {
       event.preventDefault();
+      document.querySelector('.workspace-tab[data-tab-target=prepare]')?.click();
       const scope = document.getElementById('application-action');
       scope.focus({preventScroll:true});
       scope.scrollIntoView({block:'start', behavior:'instant'});

@@ -1154,3 +1154,11 @@ h1,.job-hero h1 {font-size:28px;line-height:1.2;margin-bottom:8px}
 .career-evidence-editor,.career-evidence-list {max-width:780px}
 .career-context {padding:12px 0;border-block:1px solid var(--color-border)}
 .career-context[open] .career-evidence-context-grid {margin-top:12px}
+
+.g5-profile-grid {max-width:780px}
+.ai-connection-grid {display:block}
+.ai-connection-card {border:0;border-bottom:1px solid var(--color-border);border-radius:0;box-shadow:none;background:transparent;padding:18px 0}
+.ai-connection-top {gap:12px;flex-wrap:wrap}
+.ai-connection-setup {margin-top:10px;font-size:13px}
+.ai-hub-footer {max-width:78ch}
+.ai-hub-footer h2 {font-size:16px;line-height:1.6}
