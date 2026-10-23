@@ -1,18 +1,29 @@
 # Run YourMove locally
 
-This is the authoritative source-run quickstart for contributors and people evaluating YourMove. It does not describe an installer or a public desktop download.
+This is the authoritative source-run quickstart for contributors and people evaluating YourMove. **Only macOS has been tested. Windows and Linux commands below are unverified and may fail.** There is no public installer, downloadable release, or qualified Windows/Linux desktop build.
 
 [Back to README](../README.md) · [Codebase guide](CODEBASE_GUIDE.md) · [Give feedback](FEEDBACK.md)
 
-## Requirements
+## Requirements and supported platforms
 
-- Go 1.27.2, as declared in `go.mod`, and Git.
-- For the Wails desktop development run: macOS and Xcode Command Line Tools. Wails v3 is a beta dependency.
-- For employer-form browser assistance: a supported local Chromium-compatible browser. Other parts of the app remain available without it.
+- Git and **Go 1.27.2**, matching `go.mod`. These commands compile and run from source; they do not install a packaged application.
+- A browser to visit the local interface at `http://127.0.0.1:3000`.
+- To inspect or fill employer forms: a locally installed Chrome/Chromium executable. Basic opportunity, resume and draft management does not require it. The Chromium discovery path is not qualified on Windows or Linux.
+- For the optional Wails desktop development host: **macOS only** with Xcode Command Line Tools. Wails v3 is a beta dependency. No Windows/Linux native entry point is included.
+
+| Platform | Source-run local web interface | Native Wails host | Installable release |
+| --- | --- | --- | --- |
+| macOS (Apple Silicon) | Tested | Development only, not fully accepted for public distribution | None published |
+| Windows | **Not tested** | Not implemented | None |
+| Linux | **Not tested** | Not implemented | None |
+
+Passing a build or opening the local UI does not qualify browser-based employer automation or native file dialogs.
 
 ## Run the local browser interface
 
-From a checkout:
+### macOS (tested)
+
+In Terminal, using an installed Go toolchain and Git:
 
 ```sh
 git clone https://github.com/jenksed/yourmove-go.git
@@ -20,18 +31,63 @@ cd yourmove-go
 go run .
 ```
 
-Open `http://127.0.0.1:3000` in a browser on the same computer. The server listens on loopback; it is not a hosted service. Stop it with Ctrl+C. If port 3000 is already in use, check the terminal output instead of stopping another YourMove process.
+### Windows (not tested)
 
-## Use an isolated data directory
+In PowerShell, with Git and Go installed and available on `PATH`:
 
-By default, macOS stores data in `~/Library/Application Support/YourMove`; other systems use the OS user-config directory under `YourMove`. Set `YOURMOVE_DATA_DIR` to a new absolute path to keep a development run separate from your normal workspace:
-
-```sh
-export YOURMOVE_DATA_DIR="$(mktemp -d /tmp/yourmove-go-dev.XXXXXX)"
+```powershell
+git clone https://github.com/jenksed/yourmove-go.git
+cd yourmove-go
 go run .
 ```
 
-The new directory contains `jobs.db` and a `resumes/` folder. YourMove creates it with owner-only permissions. The same exported `YOURMOVE_DATA_DIR` is used by the Wails command below if you run it in this terminal. If the selected directory is empty and a legacy `jobs.db` exists in the repository's current working directory, startup may import that jobs-only database. Use a clean checkout or make sure no legacy database is present when you need a completely empty test workspace. Do not point test runs at your normal data directory.
+This is an **unverified source-run attempt**, not a Windows installer. In particular, the current Chromium locator has Unix/macOS-oriented executable checks and no qualified Windows browser-discovery path. Employer-form assistance may not work even if the HTTP interface starts.
+
+### Linux (not tested)
+
+In a terminal, with Git and Go installed and available on `PATH`:
+
+```sh
+git clone https://github.com/jenksed/yourmove-go.git
+cd yourmove-go
+go run .
+```
+
+This is an **unverified source-run attempt**, not a Linux installer. A Chrome/Chromium binary on `PATH` may be discoverable, but employer-form assistance has not been qualified.
+
+### After starting
+
+If startup succeeds, open `http://127.0.0.1:3000` on the **same computer**. The server listens only on loopback, not on a public interface. Stop it with Ctrl+C. If port 3000 is occupied, read the terminal error instead of stopping another YourMove process. The app does not automatically submit applications.
+
+## Use an isolated data directory
+
+YourMove stores `jobs.db` and imported document files under its workspace. Default locations are chosen by `internal/storage/paths.go`:
+
+| Platform | Default workspace |
+| --- | --- |
+| macOS | `~/Library/Application Support/YourMove` |
+| Windows (untested) | Under the user's roaming configuration directory, normally `%APPDATA%\\YourMove` |
+| Linux (untested) | `$XDG_CONFIG_HOME/YourMove` when set, otherwise `~/.config/YourMove` |
+
+Set `YOURMOVE_DATA_DIR` to an **absolute** path before launch to keep test data separate from a normal workspace.
+
+macOS or Linux (sh-compatible shell):
+
+```sh
+export YOURMOVE_DATA_DIR="$(mktemp -d)"
+go run .
+```
+
+Windows PowerShell (untested):
+
+```powershell
+$env:YOURMOVE_DATA_DIR = Join-Path $env:LOCALAPPDATA 'YourMove-Source-Test'
+go run .
+```
+
+The Windows example retains test data across restarts; the Unix example uses a fresh temporary directory. These examples assume you are already in the repository root. Both browser mode and macOS Wails mode use the selected path. Quit the app before backing up its workspace, and copy the **whole workspace**, including the database and `resumes/` directory. An open employer browser session will **not** survive restart.
+
+**Legacy-workspace caution:** If the selected directory is empty and a `jobs.db` exists in the current working directory, startup may migrate that old jobs-only database. Use a clean checkout without an existing repository-root database for a completely empty evaluation; never point destructive tests at your normal workspace.
 
 ## Run the macOS Wails development host
 
@@ -50,13 +106,23 @@ go test ./...
 go test -tags desktop ./...
 ```
 
-The first command tests browser mode and shared application logic. The second compiles and tests the macOS desktop build path. Both commands passed on Go 1.27.2, Darwin/arm64, at baseline commit `2345d3157eb61e8ed7633a7ad8d8d5c318b50227`. Opt-in browser qualification tests use local fixtures and extra environment guards; inspect the specific test before enabling one.
+The first command tests browser mode and shared application logic. The second compiles and tests the **macOS-only** desktop build path; do not run it on Windows or Linux. Both commands passed on Go 1.27.2, Darwin/arm64, at baseline commit `2345d3157eb61e8ed7633a7ad8d8d5c318b50227`. Opt-in browser qualification tests use local fixtures and extra environment guards; inspect the specific test before enabling one.
 
 For a focused test while iterating:
 
 ```sh
 go test ./... -run TestName -count=1
 ```
+
+## Troubleshooting and platform limitations
+
+- **`go` or `git` not found:** Install the required tool, restart the terminal and check `go version` / `git --version`.
+- **Port 3000 already in use:** Stop the instance you started or check what else is listening before relaunching. The port is currently fixed.
+- **Chrome/Chromium not found:** Employer-form operations need a local Chromium-compatible executable. You may set `YOURMOVE_CHROMIUM` to an absolute executable path; macOS is the only platform where this path has been exercised. On Windows, the current executable permission check may reject a valid `.exe`, and setting the override is not a verified fix.
+- **An employer form doesn't fill:** Only selected controls/platforms are supported. Do not treat a successful posting fetch or UI startup as proof of live form support.
+- **Windows/Linux issues:** These platforms have not been built or run as part of the qualification evidence. Report the OS/architecture, `go version`, exact command and sanitized error output. Do not include personal resumes or employer form data.
+
+For the macOS candidate package and its signing/installation limitations, see [release/macos/README.md](../release/macos/README.md) and the [release checklist](RELEASE_CHECKLIST.md).
 
 ## Follow a change and debug it
 
