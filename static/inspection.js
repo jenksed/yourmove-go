@@ -19,14 +19,16 @@
     if (e.target.closest('form[action$="/answers/save"], form[action$="/cover-letter/save"]')) unsavedEdits = true;
   });
   function offerRefresh(message) {
-    if (host.querySelector('[data-new-questions]')) return;
+    if (document.querySelector('[data-new-questions]')) return;
     const notice = document.createElement('p');
     notice.dataset.newQuestions = '';
     const link = document.createElement('a');
     link.href = location.href;
     link.textContent = message;
     notice.append(link, ' · Save any edits here first. Your employer browser will stay open.');
-    host.append(notice);
+    const activities = document.querySelector('[data-workspace-tabs]');
+    if (activities) activities.after(notice);
+    else host.append(notice);
   }
   async function poll() {
     if (pending || document.documentElement.dataset.pendingAction === 'yes') return;

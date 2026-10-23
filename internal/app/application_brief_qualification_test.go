@@ -232,7 +232,7 @@ func TestControlledApplicationBriefClipboardAndWorkspace(t *testing.T) {
 	if err := chrome.FixtureCall(ctx, previousPage, "Page.navigate", map[string]any{"url": currentPage + "#history"}, nil); err != nil {
 		t.Fatal(err)
 	}
-	waitBriefJS(t, ctx, chrome, currentPage, `document.body.innerText.includes('Application recorded as Applied.')`)
+	waitBriefJS(t, ctx, chrome, currentPage, `document.body.innerText.includes('Submission recorded locally.')`)
 	encoded, err = chrome.FixtureScreenshotAt(ctx, currentPage, 1280, "#history", "dark")
 	if err != nil {
 		t.Fatal(err)

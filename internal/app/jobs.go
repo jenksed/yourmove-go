@@ -43,6 +43,7 @@ type Job struct {
 	SourceCheckedAt   string
 	SelectedResumeID  int64
 	SubmissionCount   int64
+	LastSubmittedAt   string
 }
 
 func (j Job) StageLabel() string {
@@ -156,7 +157,7 @@ func insertJob(db jobInserter, job Job) (sql.Result, error) {
 
 func (a *App) allJobs() ([]Job, error) {
 	rows, err := a.db.Query(
-		"SELECT id, url, host, title, description, company, stage, priority, salary_text, salary_origin, title_manual, description_manual, company_manual, salary_manual, source_status, source_note, source_checked_at, COALESCE(selected_resume_id,0), (SELECT COUNT(*) FROM submissions WHERE job_id=jobs.id) FROM jobs ORDER BY id",
+		"SELECT id, url, host, title, description, company, stage, priority, salary_text, salary_origin, title_manual, description_manual, company_manual, salary_manual, source_status, source_note, source_checked_at, COALESCE(selected_resume_id,0), (SELECT COUNT(*) FROM submissions WHERE job_id=jobs.id), COALESCE((SELECT MAX(submitted_at) FROM submissions WHERE job_id=jobs.id),'') FROM jobs ORDER BY id",
 	)
 	if err != nil {
 		return nil, fmt.Errorf("query jobs: %w", err)
@@ -166,7 +167,7 @@ func (a *App) allJobs() ([]Job, error) {
 	var jobs []Job
 	for rows.Next() {
 		var job Job
-		if err := rows.Scan(&job.ID, &job.URL, &job.Host, &job.Title, &job.Description, &job.Company, &job.Stage, &job.Priority, &job.SalaryText, &job.SalaryOrigin, &job.TitleManual, &job.DescriptionManual, &job.CompanyManual, &job.SalaryManual, &job.SourceStatus, &job.SourceNote, &job.SourceCheckedAt, &job.SelectedResumeID, &job.SubmissionCount); err != nil {
+		if err := rows.Scan(&job.ID, &job.URL, &job.Host, &job.Title, &job.Description, &job.Company, &job.Stage, &job.Priority, &job.SalaryText, &job.SalaryOrigin, &job.TitleManual, &job.DescriptionManual, &job.CompanyManual, &job.SalaryManual, &job.SourceStatus, &job.SourceNote, &job.SourceCheckedAt, &job.SelectedResumeID, &job.SubmissionCount, &job.LastSubmittedAt); err != nil {
 			return nil, fmt.Errorf("scan job: %w", err)
 		}
 		jobs = append(jobs, job)
@@ -180,8 +181,8 @@ func (a *App) allJobs() ([]Job, error) {
 func (a *App) jobByID(id int64) (Job, error) {
 	var job Job
 	err := a.db.QueryRow(
-		"SELECT id, url, host, title, description, company, stage, priority, salary_text, salary_origin, title_manual, description_manual, company_manual, salary_manual, source_status, source_note, source_checked_at, COALESCE(selected_resume_id,0), (SELECT COUNT(*) FROM submissions WHERE job_id=jobs.id) FROM jobs WHERE id = ?", id,
-	).Scan(&job.ID, &job.URL, &job.Host, &job.Title, &job.Description, &job.Company, &job.Stage, &job.Priority, &job.SalaryText, &job.SalaryOrigin, &job.TitleManual, &job.DescriptionManual, &job.CompanyManual, &job.SalaryManual, &job.SourceStatus, &job.SourceNote, &job.SourceCheckedAt, &job.SelectedResumeID, &job.SubmissionCount)
+		"SELECT id, url, host, title, description, company, stage, priority, salary_text, salary_origin, title_manual, description_manual, company_manual, salary_manual, source_status, source_note, source_checked_at, COALESCE(selected_resume_id,0), (SELECT COUNT(*) FROM submissions WHERE job_id=jobs.id), COALESCE((SELECT MAX(submitted_at) FROM submissions WHERE job_id=jobs.id),'') FROM jobs WHERE id = ?", id,
+	).Scan(&job.ID, &job.URL, &job.Host, &job.Title, &job.Description, &job.Company, &job.Stage, &job.Priority, &job.SalaryText, &job.SalaryOrigin, &job.TitleManual, &job.DescriptionManual, &job.CompanyManual, &job.SalaryManual, &job.SourceStatus, &job.SourceNote, &job.SourceCheckedAt, &job.SelectedResumeID, &job.SubmissionCount, &job.LastSubmittedAt)
 	if err != nil {
 		return Job{}, fmt.Errorf("load job %d: %w", id, err)
 	}
