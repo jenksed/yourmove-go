@@ -2,6 +2,7 @@
 
 - Branch: `feat/phase2-product-experience`.
 - Base: `6709840d70e84e1df0d66425479c1bf3ac17574a` (Phase 1 / PR #6).
+- Initial Phase 2 worktree head for final native qualification: `539f952`; the user-reported PR head at assignment start was `49f7062`. The existing worktree already included the description/salary follow-up.
 - Visual qualification production source: `f050e16`; controlled-test harness: `2553ece` (documentation and evidence commits follow).
 - Target: `main`; draft review only. No merge or release authorized/performed.
 - PR: [#7 — Implement Phase 2 labeled workbench product experience](https://github.com/jenksed/yourmove-go/pull/7) (draft, targeting `main`).
@@ -27,6 +28,8 @@
 | `2553ece` | Stable controlled pointer press/release on one connection; focused-writing regression. |
 | `1635809` | Engineering handoff, acceptance matrix and measured before/after evidence. |
 | `f0100bc` | Dynamic loopback port for runtime restart qualification; refreshed stale recovery assertions. |
+| `bac809c` | Final Wails acceptance evidence, updated status matrix and native screenshots. |
+| `a2ab7da` | Reproducible manual VoiceOver/zoom/reduced-motion and loopback-transfer acceptance procedures. |
 
 Subsequent description-spacing and compensation-capture work is included at `539f952`. See the follow-up section in HANDOFF.md. Final ordinary and desktop suites pass after `f0100bc`; required opt-in product journeys, isolated QuestionWorkbench rerun, dynamic-port RuntimeRestart and guarded Chromium trials pass. One initial combined-run QuestionWorkbench disclosure timeout did not reproduce in isolation.
 
@@ -48,7 +51,7 @@ Production changes are concentrated in existing Go view data, templates and shar
 
 New files include unit/controlled-browser product regression coverage and the implementation handoff/acceptance/gallery. Existing tests are updated for deliberate navigation/copy changes; transfer, revision, dialog, dirty-state and privacy assertions are retained.
 
-Screenshots are synthetic before/after production renders, roughly 5.4 MiB total, with selected compact-window/dialog evidence and measured CSS dimensions. They do not contain applicant data, browser profiles, build outputs or secrets. Historical design/stabilization documents and captures are preserved; the old brief test now writes its regenerated evidence to temporary storage.
+Screenshots are synthetic before/after production renders (roughly 5.4 MiB), plus app-only native Wails captures (roughly 4.5 MiB). They do not contain applicant data, other desktop windows, browser profiles, build outputs or secrets. Historical design/stabilization documents and captures are preserved; the old brief test now writes its regenerated evidence to temporary storage.
 
 ## Outstanding merge/release gates
 
