@@ -2,7 +2,7 @@
 
 **Design investigation, October 22, 2026. Not approved for production.**
 
-Starting local and remote `main`: `add7bd9031fc0d5c466968a0d5f47bcee7d66418` (verified with `git ls-remote`). Exploration branch: `design/astra-product-experience`. Luna source: `46a31d8292887ee158cbdc28f732ab65751b1f00`, read without merging. All changes in this package are isolated documentation, synthetic prototypes, or evidence tools.
+Starting local and remote `main`: `add7bd9031fc0d5c466968a0d5f47bcee7d66418` (verified with `git ls-remote`). Exploration branch: `design/astra-product-experience`. Luna source: `46a31d8292887ee158cbdc28f732ab65751b1f00`, read without merging. All changes in this package are isolated documentation, synthetic prototypes, or evidence tools. `main` advanced during this exploration through a documentation/licensing merge (`af9edfe19830cfbba270500fe61453d8ee358f71`); this branch was rebased onto that updated tip before handoff.
 
 ## Read this first
 
