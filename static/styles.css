@@ -1175,3 +1175,5 @@ h1,.job-hero h1 {font-size:28px;line-height:1.2;margin-bottom:8px}
 @media(min-width:820px){.writing-focus .app-shell{grid-template-columns:minmax(0,1fr)}.writing-focus .sidebar{display:none}.writing-focus .page-container{max-width:1050px}}
 .writing-destination .question-heading {justify-content:flex-end;margin-bottom:8px}
 .ai-connection-card p {font-weight:400}
+
+@media(min-width:820px){.sidebar{overflow-y:auto}.sidebar-bottom{flex-shrink:0}}

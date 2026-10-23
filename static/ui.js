@@ -135,7 +135,7 @@
         event.preventDefault(); closeNavigation();
       }
     });
-    window.matchMedia('(min-width: 820px)').addEventListener('change', () => closeNavigation(false));
+    window.matchMedia('(min-width: 820px)').addEventListener('change', event => closeNavigation(!event.matches && navigation.contains(document.activeElement)));
   }
 
   const addDisclosure = document.getElementById('add-opportunity');
