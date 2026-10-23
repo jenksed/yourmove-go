@@ -11,6 +11,8 @@ mkdir -p "$release_output/YourMove.app/Contents/MacOS"
 cd "$release_repo"
 python3 release/macos/source_manifest.py > "$release_output/source-manifest.json"
 cp release/macos/Info.plist "$release_output/YourMove.app/Contents/Info.plist"
+mkdir -p "$release_output/YourMove.app/Contents/Resources"
+cp release/macos/YourMove.icns "$release_output/YourMove.app/Contents/Resources/YourMove.icns"
 /usr/bin/plutil -lint "$release_output/YourMove.app/Contents/Info.plist"
 # The initial qualification matrix is intentionally the OS and architecture
 # actually tested. Lowering this floor requires a separate compatibility run.
