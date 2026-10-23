@@ -15,9 +15,10 @@ import (
 )
 
 type jobPosting struct {
-	Type        string `json:"@type"`
-	Title       string `json:"title"`
-	Description string `json:"description"`
+	Type        string          `json:"@type"`
+	Title       string          `json:"title"`
+	Description string          `json:"description"`
+	BaseSalary  json.RawMessage `json:"baseSalary"`
 }
 
 func fetchJobMetadata(ctx context.Context, jobURL string) (Metadata, error) {
@@ -121,10 +122,11 @@ func extractJobMetadata(r io.Reader) (Metadata, error) {
 		}
 
 		if posting.Type == "JobPosting" {
-			return Metadata{
+			return completeMetadata(Metadata{
 				Title:       strings.TrimSpace(posting.Title),
 				Description: descriptionText(posting.Description),
-			}, nil
+				SalaryText:  salaryFromJSONLD(posting.BaseSalary),
+			}), nil
 		}
 	}
 

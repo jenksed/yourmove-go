@@ -2,7 +2,7 @@
 
 - Branch: `feat/phase2-product-experience`.
 - Base: `6709840d70e84e1df0d66425479c1bf3ac17574a` (Phase 1 / PR #6).
-- Final production code: `f050e16`; final controlled-test harness: `2553ece` (documentation and evidence commits follow).
+- Visual qualification production source: `f050e16`; controlled-test harness: `2553ece` (documentation and evidence commits follow).
 - Target: `main`; draft review only. No merge or release authorized/performed.
 - PR: [#7 — Implement Phase 2 labeled workbench product experience](https://github.com/jenksed/yourmove-go/pull/7) (draft, targeting `main`).
 
@@ -26,6 +26,8 @@
 | `f050e16` | Optional focused writing on wide windows; compact navigation remains the sole compact control. |
 | `2553ece` | Stable controlled pointer press/release on one connection; focused-writing regression. |
 | `1635809` | Engineering handoff, acceptance matrix and measured before/after evidence. |
+
+Subsequent description-spacing and compensation-capture work is included at the current PR head. See the follow-up section in HANDOFF.md; its ordinary and desktop test suites pass. Existing screenshots/native evidence predate that follow-up.
 
 ## Review scope
 

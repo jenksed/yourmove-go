@@ -80,10 +80,14 @@ func validPriority(s string) bool {
 	return s == PriorityNormal || s == PriorityHigh || s == PriorityLow
 }
 
+func (j Job) DisplayDescription() string { return platforms.NormalizeDescription(j.Description) }
+
 func (j Job) SalaryOriginLabel() string {
 	switch j.SalaryOrigin {
 	case "employer":
 		return "Employer posting"
+	case "description":
+		return "Employer description"
 	case "manual":
 		return "Manually entered"
 	default:
@@ -230,13 +234,17 @@ func (a *App) updateJob(job Job) error {
 // applyPostingRefresh atomically applies an employer observation without touching manually
 // edited values. A failed lookup updates evidence only, never the saved job content.
 func (a *App) applyPostingRefresh(id int64, metadata platforms.Metadata, status, note, checkedAt string) error {
+	salaryOrigin := metadata.SalaryOrigin
+	if salaryOrigin == "" {
+		salaryOrigin = "employer"
+	}
 	result, err := a.db.Exec(`UPDATE jobs SET
 			stage = CASE WHEN ? = 'closed' THEN 'closed' ELSE stage END,
             title = CASE WHEN ? = 'retrieved' AND title_manual = 0 AND ? <> '' THEN ? ELSE title END,
             company = CASE WHEN ? = 'retrieved' AND company_manual = 0 AND ? <> '' THEN ? ELSE company END,
             description = CASE WHEN ? = 'retrieved' AND description_manual = 0 AND ? <> '' THEN ? ELSE description END,
             salary_text = CASE WHEN ? = 'retrieved' AND salary_manual = 0 AND ? <> '' THEN ? ELSE salary_text END,
-            salary_origin = CASE WHEN ? = 'retrieved' AND salary_manual = 0 AND ? <> '' THEN 'employer' ELSE salary_origin END,
+            salary_origin = CASE WHEN ? = 'retrieved' AND salary_manual = 0 AND ? <> '' THEN ? ELSE salary_origin END,
             source_status = ?, source_note = ?, source_checked_at = ?
             WHERE id = ?`,
 		status,
@@ -244,7 +252,7 @@ func (a *App) applyPostingRefresh(id int64, metadata platforms.Metadata, status,
 		status, metadata.Company, metadata.Company,
 		status, metadata.Description, metadata.Description,
 		status, metadata.SalaryText, metadata.SalaryText,
-		status, metadata.SalaryText,
+		status, metadata.SalaryText, salaryOrigin,
 		status, note, checkedAt, id)
 	if err != nil {
 		return fmt.Errorf("refresh job %d: %w", id, err)

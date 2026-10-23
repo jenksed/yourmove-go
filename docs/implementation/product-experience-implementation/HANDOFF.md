@@ -96,3 +96,13 @@ The available tool catalog has no `node_repl`, which the installed Computer Use 
 ## Delivery
 
 Implementation commits and PR metadata are recorded in [DELIVERY.md](DELIVERY.md). Changes are submitted for review, not merged. Native acceptance remains a merge/release review gate; production release readiness is not claimed.
+
+## Follow-up: description spacing and compensation capture
+
+Job description display/copy now keeps one blank line, reduces two blank lines to one, and caps longer gaps at two. This is a presentation transform: original stored descriptions, manual edits and source hashes remain unchanged. Reapplying a non-idempotent blank-line rule at both capture and display is deliberately avoided.
+
+Ashby, Greenhouse, Lever and the existing JSON-LD reader now share a conservative salary fallback when structured pay is absent. It requires an explicit currency plus pay context/period, retains employer wording and distinct regional statements, and excludes unrelated benefits, stipends, bonuses, equity budgets and revenue. No annual/hourly conversion or missing currency is invented. The JSON-LD reader also handles optional `baseSalary` amounts/ranges; malformed optional salary data cannot discard the posting.
+
+Description-sourced salary is labeled **Employer description** and persists its provenance. Structured salary takes precedence. Refresh preserves manually edited salary; blank or failed observations do not erase prior values. Existing postings need a normal posting refresh to populate missing saved salary; no applicant workspace was bulk-modified.
+
+Regression coverage: `internal/platforms/compensation_test.go` and `internal/app/job_description_salary_test.go`. Both complete ordinary/desktop Go suites pass, along with `git diff --check`. Native acceptance gates above remain unchanged.

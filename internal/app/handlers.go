@@ -91,8 +91,8 @@ func (a *App) jobForm(w http.ResponseWriter, r *http.Request) {
 		if jobTitle == "" {
 			jobTitle = metadata.Title
 		}
-		salaryOrigin := ""
-		if metadata.SalaryText != "" {
+		salaryOrigin := metadata.SalaryOrigin
+		if metadata.SalaryText != "" && salaryOrigin == "" {
 			salaryOrigin = "employer"
 		}
 		job := Job{

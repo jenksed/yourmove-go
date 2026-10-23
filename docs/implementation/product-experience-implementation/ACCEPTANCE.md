@@ -55,6 +55,10 @@ All PASS entries here refer to Go or controlled Chromium, **not native WebKit**.
 | Palette contrast subset | PASS | 14 body/muted/surface/selected/control/focus/button combinations in `evidence/contrast.json`. This does not cover every semantic/hover background. |
 | Reduced motion / enlarged system text / 200% zoom | NOT VERIFIED | Reduced-motion CSS remains; no claim of a complete motion or zoom exercise. |
 
+## Description and salary follow-up
+
+PASS: both full ordinary and desktop Go suites, spacing-policy cases, provider fallback/structured precedence, optional JSON-LD salary, benefit-budget exclusions, source provenance, original-description preservation and manual-salary protection. Existing screenshots/native evidence above predate this follow-up; no new native interaction acceptance is implied.
+
 ## Native gates
 
 The installed Computer Use skill requires `node_repl`; that tool is absent from the available catalog. An existing signed harness can be built/launched from the terminal, but actual native interaction cannot be driven or observed through the required facility here.
