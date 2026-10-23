@@ -155,7 +155,9 @@ func TestControlledQuestionWorkbench(t *testing.T) {
 		var ok bool
 		mustEvaluate(script, &ok)
 		if !ok {
-			t.Fatalf("rendered assertion failed: %s", script)
+			var details string
+			_ = evaluate(`JSON.stringify([...document.querySelectorAll(".manual-review-summary,.employer-site-summary,.writing-context-alternate")].map(e=>({html:e.outerHTML,open:e.open})))`, &details)
+			t.Fatalf("rendered assertion failed: %s; details: %s", script, details)
 		}
 	}
 	waitJS := func(script string) {
@@ -384,9 +386,9 @@ func TestControlledQuestionWorkbench(t *testing.T) {
 	click(`.writing-context-alternate > summary`)
 	assertJS(`document.querySelector('.writing-context-alternate').open`)
 	click(`.employer-site-summary > summary`)
-	assertJS(`document.querySelector('.employer-site-summary').open && document.querySelector('.employer-site-summary').textContent.includes('Work authorization') && !document.querySelector('.employer-site-summary form')`)
+	waitJS(`document.querySelector('.employer-site-summary').open && document.querySelector('.employer-site-summary').textContent.includes('Work authorization') && !document.querySelector('.employer-site-summary form')`)
 	click(`.manual-review-summary > summary`)
-	assertJS(`document.querySelector('.manual-review-summary').open && document.querySelector('.manual-review-summary').textContent.includes('Choose a location on the map') && !document.querySelector('.manual-review-summary form')`)
+	waitJS(`document.querySelector('.manual-review-summary').open && document.querySelector('.manual-review-summary').textContent.includes('Choose a location on the map') && !document.querySelector('.manual-review-summary form')`)
 	click(`.question-override summary`)
 	assertJS(`!document.querySelector('.questions-enabled') && [...document.querySelectorAll('.application-question-form')].every(f=>f.getClientRects().length>0) && !document.querySelector('.question-panel[hidden]')`)
 	typeText(`[name=question_key][value="`+p.Questions[0].Key+`"] ~ .field [name=answer]`, " Updated without JavaScript.")
