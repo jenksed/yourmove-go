@@ -1,147 +1,71 @@
-# Local macOS build candidate
+# YourMove macOS packaging and distribution
 
-This recipe prepares a local candidate. Public distribution is gated on signing,
-notarization, and the manual acceptance record below. It does not publish anything.
-The initial matrix is **Apple Silicon, macOS 26 or later**. Only macOS 26 has
-been built and locally exercised; older macOS and Intel support are deferred.
-The bundle identity is `com.yourmove.go`, short version `0.1.0`, build `1`.
-Increment the build in `Info.plist` for every external candidate.
+**Status (October 23, 2026):** The branded Apple Silicon `.app` packaging pipeline is merged into `main` ([PR #4](https://github.com/jenksed/yourmove-go/pull/4)); its [merge CI checks](https://github.com/jenksed/yourmove-go/actions/runs/39908694684) passed. The maintainer reports successful local native testing and one-command release preparation on macOS 26.5.2/arm64. **There is no publicly qualified download or notarized installer yet.** See the [release checklist](../../docs/RELEASE_CHECKLIST.md) and [artifact decision](../decisions/v0.1.0.md).
 
-## Build and freeze
+The initial release target is Apple Silicon **arm64**, **macOS 26 or later**. Intel and older macOS require separate qualification. The bundle identifier is `com.yourmove.go`; initial version is `0.1.0` (inspect `Info.plist` for the current build number). Increment `CFBundleVersion` for each externally offered candidate.
 
-On macOS with Go matching `go.mod`, Apple Command Line Tools, Python 3 and the
-pinned modules already cached:
+## Normal local preparation — recommended
+
+From a clean checkout on a supported Mac with the Go version in `go.mod`, Python 3, Xcode Command Line Tools, and the pinned Go dependencies available:
 
 ```sh
-bash release/macos/build.sh /private/tmp/yourmove-beta-candidate-001
+./release/macos/doctor.sh
+./release/macos/prepare.sh
 ```
 
-Output must be new and outside the repository. The build uses `desktop,production`,
-embedded assets, arm64 and an explicit macOS 26.0 deployment target. It records
-toolchain/module metadata, actual working-tree hashes (including accepted
-uncommitted files), Info.plist and executable hashes. Source changes during the
-build fail the manifest comparison. The candidate has a local ad-hoc signature;
-it is **not the artifact to send testers**. Signed/timestamped artifacts need not
-be byte-for-byte reproducible; the source and artifact manifests identify them.
+`doctor.sh` performs a read-only prerequisite check and reports whether an optional Developer ID signing certificate is available. Lack of Developer ID does **not** prevent an ad-hoc-signed local build.
 
-No Go toolchain, repository, developer Chromium cache or Python is required on
-the tester's Mac. The app needs a supported installed Chromium browser for browser
-operations. Explicitly qualify an installed Google Chrome path on the clean Mac;
-do not treat a developer Playwright cache as proof that this dependency is met.
-Basic local document management should remain usable without browser or AI setup.
+`prepare.sh` refuses uncommitted source; runs `go test -count=1 ./...` and `go test -count=1 -tags desktop ./...` in an isolated test workspace; calls `build.sh`; verifies the arm64 bundle, icon, plist, signature, manifest, and checksums; archives the app and corresponding Git source; extracts and re-verifies the ZIP. It writes a new output directory under `~/Projects/yourmove-builds` by default, or accepts an unused absolute directory as its sole argument.
 
-## Signing and notarization
+Its outputs include `candidate/YourMove.app`, `candidate/source-manifest.json`, build/toolchain evidence, `YourMove-<version>-macOS-arm64-unnotarized.zip`, `YourMove-<version>-source.zip`, `source-commit.txt`, and `SHA256SUMS`. It **does not notarize, upload, install, or publish** anything.
 
-An owner must provision a **Developer ID Application** signing identity and an
-existing `notarytool` keychain profile. Do not put passwords, private keys or API
-credentials in this repository or shell history. Once signing and upload to
-Apple have been authorized, set the identity/profile names and run:
+For a lower-level build only:
 
 ```sh
-export YOURMOVE_SIGN_IDENTITY='Developer ID Application: YOUR ORGANIZATION (TEAMID)'
+bash release/macos/build.sh /private/tmp/yourmove-local-candidate-001
+```
+
+The output path must be new, absolute, and outside the checkout. `build.sh` embeds templates/static assets, copies `YourMove.icns` into `Contents/Resources`, uses `desktop,production`, sets macOS 26.0 minimum deployment target, captures source/toolchain metadata, and ad-hoc signs/verifies the assembled bundle. Source-manifest comparison detects source changes during the build. Signing/timestamps mean separately signed artifacts need not be byte-identical; preserve source and binary hashes for identification.
+
+## Running and acceptance
+
+The compiled `.app` does not require Go, a checkout, Python, or Xcode tools on the destination Mac. It needs a compatible **installed** Chrome/Chromium executable for employer-form assistance. Do not rely on a developer's Playwright cache as proof of a clean user's browser dependency. Basic document and job management work without Chrome or AI setup.
+
+Use [ACCEPTANCE.md](ACCEPTANCE.md) as a template for each *exact candidate*, including commit, ZIP SHA-256, Mac architecture/OS, native file import/export, local persistence, saved letter, optional AI consent/failure, controlled browser handoff, no automatic employer submission, and recovery from missing external dependencies. Perform shareable tests with synthetic data. A successful local run against a copied personal workspace is useful evidence but not publishable applicant-data test material.
+
+A local ZIP extraction and signature verification are **not equivalent** to downloading it through a browser and launching via Finder with normal quarantine/Gatekeeper checks. Test the exact distribution artifact that will be advertised.
+
+## Signing and notarization for ordinary public installation
+
+A normal low-friction macOS download needs a **Developer ID Application** signing identity and a configured `notarytool` keychain profile. Do not commit credentials or write private keys/passwords into logs, scripts, or shell history. After the owner explicitly authorizes Apple signing and notarization of a fresh frozen candidate:
+
+```sh
+export YOURMOVE_SIGN_IDENTITY='Developer ID Application: YOUR NAME (TEAMID)'
 export YOURMOVE_NOTARY_PROFILE='yourmove-notary'
-bash release/macos/distribute.sh /private/tmp/yourmove-beta-candidate-001
+bash release/macos/distribute.sh /absolute/path/to/prepared/output/candidate
 ```
 
-The script checks the frozen local hashes, signs with hardened runtime and a
-secure timestamp, verifies the bundle, uploads a ZIP to Apple, requires an
-Accepted result, staples/validates the ticket, assesses Gatekeeper, and creates
-the final ZIP and release hashes. It requests no debug or relaxed runtime
-entitlements. It never publishes the artifact. A signing/notarization failure
-must be investigated rather than bypassed with quarantine removal or disabled
-Gatekeeper. A failed signing attempt requires a fresh candidate build before
-retrying because the frozen local signature hash has changed.
+`distribute.sh` checks the frozen candidate hashes, signs with hardened runtime/timestamp, uploads a ZIP to Apple's notary service, requires an Accepted result, staples and validates the ticket, assesses Gatekeeper, and produces the signed final distribution ZIP and release hashes. It does **not** publish a release. A signing/notarization failure requires investigation and a fresh candidate before retrying; do not bypass Gatekeeper to call it a pass.
 
-References: Apple's [notarization requirements](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution)
-and [Developer ID distribution](https://developer.apple.com/developer-id/).
+Apple references: [Notarization](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution) and [Developer ID](https://developer.apple.com/developer-id/).
 
-## Acceptance independent of native automation
+### Controlled unnotarized technical alpha
 
-Record the candidate ZIP hash, source manifest hash, bundle/build identity,
-macOS version, architecture, installed Chrome version and every result. Keep
-screenshots and logs with synthetic data. A human can run this entire checklist;
-the temporary native automation harness is not an acceptance dependency.
-
-1. On a separate Mac or clean account with no repository/development caches,
-   download the **final notarized ZIP** through a browser, extract it and copy
-   YourMove.app into Applications. Launch through Finder with normal Gatekeeper
-   protections. Confirm correct identity/version and no missing-asset screen.
-   This must exercise quarantine from an actual download, not just a local copy.
-2. Add a synthetic unsupported opportunity, edit it, import PDF and DOCX, cancel
-   import once, explicitly select a resume, quit all YourMove instances and
-   relaunch. Confirm records, selected identity and exact document hashes persist.
-3. Export each saved PDF/DOCX and a saved-letter PDF. Choose a destination outside
-   the application workspace. Compare each file with its HTTP/saved artifact by
-   SHA-256. Cancel each dialog once; the destination and stored documents must
-   remain unchanged. Repeat replacement of an existing exported copy, and a
-   failed destination. The workspace must remain usable after each operation.
-4. Configure only the AI provider(s) intended to be advertised. Launch from
-   Finder without relying on a terminal's inherited environment. Generate with
-   its existing explicit consent, edit, save, reopen and export the saved letter.
-   Confirm saved identity/revision and return to exact Prepare scope. An existing
-   synthetic draft is sufficient for export-only testing, but does not qualify
-   generation. Defer unqualified providers from beta claims.
-5. Against an isolated local employer fixture, complete native resume/contact
-   filling, a late saved letter and pending answers. Review exact scope before
-   each explicit action. Verify local saves cause zero mutations, one resume
-   upload total, preserved manual browser corrections, independent outcomes,
-   uncertain-transfer suppression and zero automatic employer submissions.
-   Record submission in YourMove only after the explicit human confirmation.
-   Native window/CDP harness failure leaves this native gate pending; passing
-   browser-rendered tests cannot substitute for it.
-6. Run the controlled Chromium qualification suites as the complementary
-   mutation-authority gate. Retain fixture counters/hashes and failed logs.
-   Run Go and desktop-tag suites on the frozen source. Investigate repeatable
-   failures; do not weaken question-save or transfer assertions.
-7. Test missing Chrome and absent AI setup without auto-starting a replacement
-   employer session. Confirm local documents remain accessible. Relaunch again
-   and inspect SQLite integrity and saved document hashes. No real applicant or
-   live employer should be used for this acceptance run.
-
-Recruit only for the qualified OS/architecture/provider matrix. Supply the data
-location, backup procedure, browser prerequisite and feedback route in the beta
-onboarding material. The owner must choose that feedback route before posting;
-this task sends no invitations and creates no public release.
+An ad-hoc-signed ZIP can be considered for a narrowly informed technical audience if the real downloaded-install experience is documented and accepted. First launch may be blocked by Gatekeeper. Do not describe this artifact as a notarized installer; do not instruct recipients to disable Gatekeeper globally or remove quarantine attributes. The owner must approve the audience and known limitations in a version-specific [decision record](../decisions/v0.1.0.md).
 
 ## Backup and restore
 
-The default macOS workspace is
-`~/Library/Application Support/YourMove`. Quit **all** YourMove processes before
-copying. Back up the entire directory together, including `jobs.db`, any SQLite
-sidecar files and `resumes/`; a database-only copy is not a document backup.
-For example, with a fresh destination on a suitable private backup volume:
+Normal macOS storage is `~/Library/Application Support/YourMove`. Quit all YourMove processes before backing up; copy the **complete directory**, including `jobs.db`, SQLite sidecars, and `resumes/`. A database-only copy is not a complete resume backup. For an isolated manual run set an absolute `YOURMOVE_DATA_DIR` prior to launching the app executable. A Finder launch does not inherit shell environment variables automatically; use a separate test account when evaluating default-path installation behavior.
 
-```sh
-app_workspace="$HOME/Library/Application Support/YourMove"
-backup_dir="/Volumes/YOUR_BACKUP/YourMove-2026-10-20"
-test ! -e "$backup_dir" && ditto "$app_workspace" "$backup_dir"
-```
+Never merge a `jobs.db` backup with a different `resumes/` version. Preserve the old workspace until a restore opens and integrity/document hashes pass. Test upgrade and migration behavior before distributing 0.1.1 or later.
 
-For restore, keep YourMove closed, preserve the current whole directory under a
-different name, then copy the whole backup into the original location. Keep
-originals until the restored app opens, SQLite integrity succeeds and document
-hashes verify. Do not combine a database from one backup with documents from
-another. A legacy workspace with document rows is now refused by automatic
-database-only migration; restore its complete matching workspace explicitly.
-Jobs-only legacy migration remains supported. Resume reimport reports damaged
-or missing stored bytes as requiring recovery; it does not silently overwrite
-the registry or claim that a damaged document was repaired.
+## Release management references
 
-## Current qualification limit
+- [Release policy and gate definitions](../../docs/RELEASE_POLICY.md)
+- [First three release targets](../../docs/ROADMAP.md)
+- [Release process](../../docs/RELEASE_PROCESS.md)
+- [Current execution checklist](../../docs/RELEASE_CHECKLIST.md)
+- [v0.1.0 release notes](../../docs/releases/0.1.0-macos.md)
+- [v0.1.0 decision record](../decisions/v0.1.0.md)
 
-No valid code-signing identity was available during implementation. Signing,
-notarization and clean-machine download/install acceptance have not run. The
-native UI tool also lost its transport during export inspection; exact-byte
-handler tests qualify the seam, not the actual native Save/Cancel experience.
-Complete those manual gates before public beta distribution.
-
-## One-command local release preparation
-
-Run `./release/macos/doctor.sh` to check prerequisites.
-
-Run `./release/macos/prepare.sh` from a clean, committed source
-checkout to test, build, verify, and package a local macOS candidate.
-The tool produces an ad-hoc-signed application ZIP, a matching source
-ZIP, checksums, and build evidence. It does not notarize or publish.
-
-Record final manual qualification in `release/macos/ACCEPTANCE.md`.
+**Local packaging is qualified for its tested environment; public installation and the final frozen candidate still require explicit acceptance.**

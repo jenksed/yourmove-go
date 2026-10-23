@@ -1,176 +1,89 @@
-# YourMove Release Process
+# YourMove release process
 
-This is the operational runbook for preparing and publishing YourMove
-releases. The macOS-specific packaging details live in
-[release/macos/README.md](../release/macos/README.md).
+The operational runbook for preparing, accepting, and distributing YourMove. The [release policy](RELEASE_POLICY.md) determines whether a candidate may ship; the [roadmap](ROADMAP.md) sets proposed review dates. macOS-specific details are in [release/macos/README.md](../release/macos/README.md).
 
-## Release principles
+## 1. Identify and freeze the candidate
 
-- Every release corresponds to an identifiable Git commit.
-- Release candidates are built from clean, committed source.
-- Tests and bundle verification run before distribution.
-- Source archives and checksums accompany binary archives.
-- Manual native acceptance supplements automated testing.
-- Signing and notarization are separate from local candidate creation.
-- No release tool silently publishes artifacts or accesses applicant data.
-- User submission authority is never changed by packaging.
+Choose the intended commit, version, build number, platform, supported employer workflows, and distribution audience. Start from a clean checkout. Before an external candidate, increment `CFBundleVersion` in `release/macos/Info.plist` (the initial public version is `0.1.0`). Review untracked source, assets, credentials, resumes, and local databases before committing; none belongs in the distributed source unless it is an intentional sanitized fixture.
 
-## Supported initial platform
+The initial build matrix is **Apple Silicon (arm64), macOS 26+**. Intel Macs, older macOS, Windows, and Linux desktop builds are not qualified. A supported installed Chromium browser is required for employer-form operations, but not local organization. AI connection is optional.
 
-YourMove 0.1.0 targets Apple Silicon (arm64), macOS 26 or later.
+## 2. Prepare the local candidate
 
-Intel Macs, older macOS versions, Windows, and Linux desktop releases
-are outside the initial qualified release scope.
+On a supported Mac with the pinned Go toolchain and Xcode Command Line Tools:
 
-Chrome or another supported Chromium installation is required for
-assisted employer-form operations. Basic local organization does not
-require Chromium or an AI provider.
+```sh
+./release/macos/doctor.sh
+./release/macos/prepare.sh
+```
 
-## 1. Prepare the source
+`doctor.sh` checks system/compiler requirements, icon, plist, and package scripts. `prepare.sh` requires a **clean Git working tree**, runs both Go test suites with isolated data, builds the Wails `desktop,production` executable through `build.sh`, signs the complete bundle ad hoc, checks metadata/hash integrity, packages the application/source ZIPs, then extracts and verifies the ZIP. It does not access the user's normal applicant workspace or publish anything.
 
-Start from a clean checkout of the intended source commit.
+Default output is a newly created directory under `~/Projects/yourmove-builds/`. An absolute unused output directory can be supplied as the one argument to `prepare.sh`.
 
-Verify:
+The output includes:
 
-- No unintended or uncommitted source changes.
-- The release version/build in release/macos/Info.plist is correct.
-- The application icon and assets are present.
-- The intended commit includes all release fixes and documentation.
-- No applicant records, credentials, or private documents are tracked.
+- `candidate/YourMove.app`, `candidate/source-manifest.json`, toolchain and build details.
+- `YourMove-<version>-macOS-arm64-unnotarized.zip`.
+- `YourMove-<version>-source.zip`.
+- `source-commit.txt` and `SHA256SUMS`.
 
-Use a fresh build number for each externally distributed candidate.
+Verify archived contents from the output directory:
 
-## 2. Run release preparation
+```sh
+shasum -a 256 -c SHA256SUMS
+```
 
-From the repository root:
+**These are local, ad-hoc-signed artifacts, not public notarized installers.** Source and binary should be associated by Git commit and manifest, not by assuming timestamped signed binaries are bit-for-bit reproducible.
 
-    ./release/macos/doctor.sh
-    ./release/macos/prepare.sh
+## 3. Record candidate acceptance
 
-doctor.sh validates local prerequisites and packaging configuration.
+Copy [the macOS acceptance template](../release/macos/ACCEPTANCE.md) into a candidate-specific, sanitized record. Include exact source commit, app version/build, ZIP SHA-256, OS/architecture, installed Chrome version, tester/date, observed results, limitations, and failed paths. Never commit private resumes, employer values, cookies, access tokens, or unredacted screenshots.
 
-prepare.sh:
+Required scope includes local native launch, persistence after restart, correct resume/document identity and export bytes, saved letters, a controlled browser handoff that preserves manual values, and no automatic employer submission. Verify failed/absent AI or browser dependencies without losing local work. Existing native tests against a copied workspace are useful **local evidence**, not a substitute for synthetic acceptance of the frozen candidate.
 
-1. Requires a clean Git working tree.
-2. Runs normal and desktop-tagged Go tests with isolated test data.
-3. Builds the production-tagged native macOS application.
-4. Ad-hoc signs and verifies the application bundle.
-5. Verifies bundle ID, icon, architecture, and source hashes.
-6. Produces an application ZIP and matching source ZIP.
-7. Extracts the ZIP and validates the preserved code signature.
-8. Produces SHA-256 checksums and a source-commit record.
+For v0.1.0, use at least two distinct application-preparation journeys, with exact provider/control scope and manual fallbacks recorded. This sample is not proof of universal ATS support.
 
-The output is written under ~/Projects/yourmove-builds unless an
-explicit absolute output directory is supplied.
+## 4. Evaluate release gates
 
-These operations do not publish, notarize, or upload anything.
+Use [the release policy](RELEASE_POLICY.md): frozen candidate, data integrity, applicant authority/privacy, core workflow, distribution, and recoverability. Record PASS, RESTRICTED, or BLOCKED, with evidence and exact exclusions.
 
-## 3. Review artifacts
+Update [`release/decisions/v0.1.0.md`](../release/decisions/v0.1.0.md) for the initial beta; use a new version-specific decision file afterward. A proposed date or green CI result never grants release authorization on its own.
 
-Each prepared candidate includes:
+## 5. Choose distribution deliberately
 
-- candidate/YourMove.app
-- YourMove-<version>-macOS-arm64-unnotarized.zip
-- YourMove-<version>-source.zip
-- SHA256SUMS
-- source-commit.txt
-- candidate/source-manifest.json
-- Candidate build and toolchain metadata
+### Controlled technical alpha — ad-hoc-signed ZIP
 
-From the candidate's output directory:
+May be offered to a small explicitly informed technical audience **only after acceptance of the downloaded ZIP**, accurate warning/installation guidance, and an owner decision. Gatekeeper may block first launch; do not tell users to disable Gatekeeper globally or strip quarantine attributes. Do not describe this as a normal, frictionless Mac installer.
 
-    shasum -a 256 -c SHA256SUMS
+### Normal public macOS download — Developer ID/notarized ZIP
 
-Preserve the release manifest and source commit alongside the
-artifacts. Never describe an ad-hoc signature as Developer ID signing.
+Provision a valid Developer ID Application identity and a `notarytool` keychain profile. Build a fresh frozen candidate, explicitly authorize signing and upload to Apple, and run:
 
-## 4. Manual acceptance
+```sh
+export YOURMOVE_SIGN_IDENTITY='Developer ID Application: YOUR NAME (TEAMID)'
+export YOURMOVE_NOTARY_PROFILE='yourmove-notary'
+bash release/macos/distribute.sh /absolute/path/to/candidate
+```
 
-Use [release/macos/ACCEPTANCE.md](../release/macos/ACCEPTANCE.md)
-as the checklist for the exact candidate being evaluated.
+`distribute.sh` signs with hardened runtime and timestamp, submits to Apple's notary service, requires accepted notarization, staples/validates, runs Gatekeeper assessment, and packages the final ZIP. **It does not publish.** Test a *browser-downloaded* final ZIP on a clean account/Mac with normal security controls; copying a local build does not exercise downloaded quarantine behavior.
 
-Verify at minimum:
+If signing or notarization fails, investigate the reason, correct it, and create a fresh candidate. Do not work around failed security checks.
 
-- Extracted application bundle and Finder launch.
-- Brand icon, bundle identity, and navigation.
-- Startup without the repository or Go toolchain.
-- Isolated SQLite workspace and persistence across restart.
-- Resume PDF/DOCX import, selection, export, and cancellation.
-- Saved cover-letter editing and PDF export.
-- Optional AI behavior and explicit provider consent, if advertised.
-- Supported Chromium handoff on a controlled employer fixture.
-- No automatic employer application submission.
-- Missing Chrome and unconfigured AI behavior.
+## 6. Approve, tag, and publish
 
-Record the candidate SHA-256, commit, operating system, tester,
-date, failures, and qualification limits. Use synthetic test data.
+After the applicable gates pass and a human owner records SHIP or SHIP RESTRICTED:
 
-A passing Go test suite does not establish native UI acceptance.
+- Create a version tag pointing at the exact accepted source commit.
+- Publish the accepted binary, corresponding source, and checksums through GitHub Releases or the chosen download channel.
+- Include [version-specific release notes](releases/0.1.0-macos.md), supported hardware/OS, browser prerequisite, installation guidance, and known exclusions.
+- Meet GPL-3.0-only corresponding-source and notice obligations; third-party dependency licenses remain applicable.
+- Verify the published URLs and the **downloaded** artifact checksum, extraction, and actual launch.
 
-## 5. Choose the distribution channel
+No prepare/distribute script or CI job publishes on its own.
 
-### Local or controlled technical alpha
+## 7. Post-release / next version
 
-An ad-hoc-signed ZIP may be used for controlled technical testing,
-provided recipients are explicitly told it is not notarized and
-macOS may block the initial launch.
+Collect privacy-safe, voluntary tester feedback. Prioritize data integrity and blocked application paths over new feature breadth. Before any upgrade release, test retention of the existing workspace, resume associations, saved answers, letters, and completed application history. Record the release decision and evidence separately for each distributed artifact.
 
-Do not instruct users to disable Gatekeeper globally or remove
-download quarantine attributes.
-
-### Normal public macOS distribution
-
-For a normal downloaded-app installation experience:
-
-1. Obtain a Developer ID Application signing identity.
-2. Configure an authorized notarytool keychain profile.
-3. Prepare a fresh candidate from the intended release commit.
-4. Explicitly authorize and run release/macos/distribute.sh
-   against that candidate's candidate/ directory.
-5. Confirm Apple notarization was accepted.
-6. Verify the stapled application and Gatekeeper assessment.
-7. Test the final browser-downloaded ZIP on a clean Mac/account.
-8. Publish only the accepted final ZIP and matching source.
-
-Do not upload the unnotarized ZIP in place of the final signed ZIP.
-
-The distribution script does not publish a GitHub Release.
-
-## 6. Publish
-
-Only after the applicable distribution and acceptance gates pass:
-
-- Confirm the release version and source commit.
-- Create the release tag on the intended commit.
-- Publish the matching, qualified application ZIP.
-- Publish the corresponding source archive.
-- Include checksums and user-facing release notes.
-- Document supported operating systems and dependencies.
-- Provide a route for reporting issues.
-
-YourMove's original source is licensed under GPL-3.0-only.
-Binary distribution must include access to corresponding source
-and the applicable license notices.
-
-## 7. Post-release verification
-
-Verify:
-
-- Published download URL.
-- Downloaded artifact checksum.
-- Successful extraction and permitted launch path.
-- App identity and version.
-- Release notes and source download accessibility.
-- Privacy-safe feedback channel.
-
-Keep release evidence free of applicant information, credentials,
-cookies, and unredacted employer application screenshots.
-
-## Release failure policy
-
-A failed test, corrupted archive, unexpected source change,
-unverified signature, or rejected notarization blocks that
-candidate's release.
-
-Correct the cause, commit the fix, and prepare a new candidate.
-Do not bypass security controls to turn a failure into a pass.
+**Failure policy:** A source mismatch, failed test, invalid signature, corrupted archive, data-loss risk, unauthorized employer action, or unqualified advertised install blocks the affected candidate. Fix, rebuild, and requalify; never mark a failed gate passed by deleting evidence.
