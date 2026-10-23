@@ -1,0 +1,17 @@
+// Synthetic fixture shared with the baseline capture tool. No applicant data.
+window.fixture = {
+ jobs: [
+ {id:1,company:'Northstar BioSystems',title:'Senior Support Engineer, Clinical Integrations',stage:'ready',priority:'high',resume:true,action:'Review and prepare'},
+ {id:2,company:'Cedar & Finch Analytics Cooperative',title:'Implementation Consultant, Healthcare Data Exchange',stage:'review',priority:'normal',resume:true,action:'Review and prepare'},
+ {id:3,company:'Blue Granite Health Technologies',title:'Technical Account Manager, Enterprise Clinical Systems',stage:'review',priority:'normal',resume:false,action:'Choose a resume'},
+ {id:4,company:'Maple Harbor Software',title:'Customer Reliability Engineer',stage:'applied',priority:'normal',resume:true,action:'Review submission history'},
+ {id:5,company:'Lighthouse & Arbor Health Systems Group',title:'Customer Integration Specialist, Regional Health Networks',stage:'review',priority:'normal',resume:true,action:'Review and prepare'},
+ {id:6,company:'Foster Bend Digital Research Cooperative',title:'Implementation Engineer, Secure Data Exchange',stage:'ready',priority:'high',resume:true,action:'Review and prepare'},
+ {id:7,company:'Sunbeam Health Products',title:'Technical Support Analyst, Customer Operations',stage:'closed',priority:'low',resume:false,action:'Closed'}
+ ],
+ resume:'Alex_Morgan_Clinical_Support_Resume_v4.pdf',
+ description:'Northstar BioSystems is looking for a support engineer to help clinical teams exchange data reliably. You will investigate integration issues, explain technical findings clearly, and collaborate with engineering on durable fixes.\n\nResponsibilities\nInvestigate API and data exchange incidents. Reproduce issues using logs and test environments. Explain next steps to customers and improve support documentation.\n\nExperience\nTechnical troubleshooting, clear written communication, and experience with APIs and SQL. Healthcare experience is helpful.',
+ question:'Describe a time you investigated a difficult technical issue. How did you identify the cause, communicate with others, and decide what to do next?',
+ answer:'At Cedar Systems, I investigated intermittent API timeouts affecting a customer integration. I compared request logs with deployment times and reproduced the issue in a test environment.\n\nI shared the findings with engineering and kept the customer informed about the investigation. We narrowed the problem to a connection configuration. I documented the checks so the support team could use them again. The longer-term impact was not measured.',
+ letter:'Dear Northstar BioSystems team,\n\nI’m interested in the Senior Support Engineer role because it combines careful technical investigation with clear communication. At Cedar Systems, I investigated intermittent API timeouts by comparing request logs with deployment times and reproducing the issue in a test environment. I shared findings with engineering and kept the customer informed while we narrowed the problem to a connection configuration.\n\nYour emphasis on reliable clinical data exchange makes this work especially meaningful to me. My experience with APIs, SQL, and support documentation would help me contribute to investigations and explain practical next steps. I would bring a methodical approach, and I would ask for context where clinical workflows are new to me.\n\nThank you for considering my application. I would welcome a conversation about the team’s support challenges.\n\nAlex Morgan'
+};
