@@ -20,7 +20,7 @@
 - **Source:** `internal/platforms/compensation.go`, `internal/platforms/compensation_test.go`; fix commit `799528e`.
 - **Why:** Description salary extraction can mistake unrelated currency + annual-period text for compensation. Conversely, the immediately preceding benefits sentence may suppress a complete, explicitly labeled salary sentence. These are code-review concerns not yet recorded as failing tests.
 - **Acceptance:** Added focused conference registration and annual service cost abstentions and confirmed extraction for `Benefits include health insurance. Base salary: $100,000 per year`. Existing mixed salary + bonus, structured-salary precedence, literal provenance and manual-edit precedence regressions remain. Full ordinary and desktop suites pass.
-- **Completion:** PR #7 closeout changes in the commit recorded below; `go test -count=1 ./...` and `go test -count=1 -tags desktop ./...` PASS (2026-10-23).
+- **Completion:** Commit `8aad7d5` on PR #7; `go test -count=1 ./...` and `go test -count=1 -tags desktop ./...` PASS (2026-10-23).
 - **Boundary:** No LLM extraction or generalized salary parser in this PR.
 
 ### YM-002 — Exercise actual completion-dialog cancel, Escape and reuse
@@ -28,7 +28,7 @@
 - **Source:** `static/ui.js`, `internal/app/submission_recording_qualification_test.go`; fix commit `02726ab`.
 - **Why:** Closeout required direct exercised cancellation and Escape paths plus dialog reuse evidence.
 - **Acceptance:** `TestControlledSubmissionRecordingWorkflow` activates **Cancel and stay** and Escape, checks exact dirty answer/letter/note values and focus return, confirms zero local history after both paths and after browser validation blocks an unchecked declaration, then checks ordinary navigation copy and performs the affirmative local record. Existing idempotency and no-employer-submit assertions remain. Targeted Chromium and required opt-in runs PASS (2026-10-23); native Wails remains NOT VERIFIED.
-- **Completion:** PR #7 closeout changes in the commit recorded below; controlled Chromium completion qualification PASS.
+- **Completion:** Commit `8aad7d5` on PR #7; targeted and required opt-in controlled Chromium completion qualification PASS (2026-10-23).
 - **Boundary:** Fix lifecycle cleanup if needed; do not introduce a modal framework.
 
 ### YM-003 — Minimum human Wails smoke and honest PR decision
@@ -42,7 +42,7 @@
 ### YM-004 — Close PR #7 with preserved native limitations
 - **Priority:** P1 · **Stage:** PR closeout · **Status:** IN PROGRESS · **Depends on:** owner completion/review of YM-003
 - **Acceptance:** Current PR/CI must be rechecked after push; pending native gates are documented as NOT VERIFIED with an owner-fillable record. Keep PR #7 open/draft for owner review. No agent merges, marks native acceptance PASS, or publishes a release without authorization.
-- **Completion so far:** Latest pre-fix PR run `40051051163` had Go failure (fixed test timing) and desktop PASS. Final-head green CI confirmation and owner review remain pending.
+- **Completion so far:** Fix commit `8aad7d5` is pushed to PR #7. Latest pre-fix run `40051051163` had Go failure (fixed test timing) and desktop PASS. New run `40051722950` is queued on that head; confirm final-head CI before owner review.
 - **Boundary:** Avoid appending unrelated refactors/design work to the 123-file Phase 2 diff.
 
 ## Post-merge maintainability — preferred next development track
