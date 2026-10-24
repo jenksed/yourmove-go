@@ -145,17 +145,7 @@ func (a *App) jobDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	match := matchResume(job, families, resumes)
-	familyNames := make(map[int64]string, len(families))
-	for _, f := range families {
-		familyNames[f.ID] = f.Name
-	}
-	resumeOptions := make([]documentRow, 0, len(resumes))
-	for _, resume := range resumes {
-		if resume.IsMaster || (resume.ArchivedAt != "" && resume.ID != job.SelectedResumeID) {
-			continue
-		}
-		resumeOptions = append(resumeOptions, documentRow{Resume: resume, FamilyName: familyNames[resume.RoleFamilyID]})
-	}
+	resumeOptions := resumeOptionsForJob(job, resumes, families)
 	showMatch := len(families) > 0 && job.SubmissionCount == 0 && job.Stage != StageApplied && job.Stage != StageClosed
 	history, err := a.jobSubmissions(id)
 	if err != nil {
