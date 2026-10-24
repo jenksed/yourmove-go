@@ -42,7 +42,11 @@ func SalaryFromDescription(description string) string {
 		if !context && !payPeriod.MatchString(line) {
 			continue
 		}
-		if (nonSalary.MatchString(line) || (i > 0 && nonSalary.MatchString(units[i-1]))) && !strongPayContext.MatchString(line) {
+		// A strong salary label elsewhere in a sentence does not make every
+		// amount in that sentence base pay (for example, "Salary includes a
+		// $1,000 equipment allowance" or salary plus a signing bonus). Abstain
+		// when benefit language and a candidate amount share the excerpt.
+		if nonSalary.MatchString(line) || (i > 0 && nonSalary.MatchString(units[i-1])) {
 			continue
 		}
 		excerpt := line
