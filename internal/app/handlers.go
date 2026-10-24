@@ -237,9 +237,9 @@ func (a *App) jobDetail(w http.ResponseWriter, r *http.Request) {
 		providerReady[id] = coverprovider.Configured(id)
 	}
 	letterResumes := make([]documentRow, 0, len(resumeOptions))
-	for _, r := range resumeOptions {
-		if r.ArchivedAt == "" && !r.IsMaster {
-			letterResumes = append(letterResumes, r)
+	for _, option := range resumeOptions {
+		if option.ArchivedAt == "" && !option.IsMaster {
+			letterResumes = append(letterResumes, option)
 		}
 	}
 	profile, err := a.candidateProfile()
@@ -260,7 +260,32 @@ func (a *App) jobDetail(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unable to load discovered application questions", 500)
 		return
 	}
-	workspace := jobWorkspace{Questions: questions, EarlyQuestions: earlyQuestions, Job: job, Profile: profile, BrowserState: a.browsers.state(id), Resumes: resumes, ResumeOptions: resumeOptions, LetterResumes: letterResumes, Submissions: history, Desktop: a.openPosting != nil, SubmissionToken: token, SelectedResume: selected, AnswerEditingAllowed: job.Stage != StageApplied && job.Stage != StageClosed && job.SubmissionCount == 0, Handoff: assessResumeHandoff(job, selected), Sources: a.coverLetterSources(job, selected), Letter: letter, Letters: letters, LetterNotice: notice, LetterOpen: notice != "" || r.URL.Query().Has("draft"), LetterModel: letterModel, ProviderReady: providerReady, Match: match, HasFamilies: showMatch}
+
+	workspace := jobWorkspace{
+		Questions:            questions,
+		EarlyQuestions:       earlyQuestions,
+		Job:                  job,
+		Profile:              profile,
+		BrowserState:         a.browsers.state(id),
+		Resumes:              resumes,
+		ResumeOptions:        resumeOptions,
+		LetterResumes:        letterResumes,
+		Submissions:          history,
+		Desktop:              a.openPosting != nil,
+		SubmissionToken:      token,
+		SelectedResume:       selected,
+		AnswerEditingAllowed: job.Stage != StageApplied && job.Stage != StageClosed && job.SubmissionCount == 0,
+		Handoff:              assessResumeHandoff(job, selected),
+		Sources:              a.coverLetterSources(job, selected),
+		Letter:               letter,
+		Letters:              letters,
+		LetterNotice:         notice,
+		LetterOpen:           notice != "" || r.URL.Query().Has("draft"),
+		LetterModel:          letterModel,
+		ProviderReady:        providerReady,
+		Match:                match,
+		HasFamilies:          showMatch,
+	}
 	workspace.SubmissionNotice, workspace.SubmissionUncertain = submissionRecoveryNotice(r.URL.Query().Get("submission"))
 	workspace.TransferNotice = r.URL.Query().Get("transfer_notice")
 	workspace.LetterSaved = r.URL.Query().Get("cover") == "saved" && letter.ID > 0
