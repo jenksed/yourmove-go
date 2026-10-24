@@ -5,7 +5,7 @@
 - Initial Phase 2 worktree head for final native qualification: `539f952`; the user-reported PR head at assignment start was `49f7062`. The existing worktree already included the description/salary follow-up.
 - Visual qualification production source: `f050e16`; controlled-test harness: `2553ece` (documentation and evidence commits follow).
 - Target: `main`; draft review only. No merge or release authorized/performed.
-- PR: [#7 — Implement Phase 2 labeled workbench product experience](https://github.com/jenksed/yourmove-go/pull/7) (draft, targeting `main`).
+- PR: [#7 — Implement Phase 2 labeled workbench product experience](https://github.com/jenksed/yourmove-go/pull/7) (draft, targeting `main`). Closeout diff is uncommitted; native merge gate remains open.
 
 ## Implementation commits
 
@@ -54,6 +54,8 @@ New files include unit/controlled-browser product regression coverage and the im
 Screenshots are synthetic before/after production renders (roughly 5.4 MiB), plus app-only native Wails captures (roughly 4.5 MiB). They do not contain applicant data, other desktop windows, browser profiles, build outputs or secrets. Historical design/stabilization documents and captures are preserved; the old brief test now writes its regenerated evidence to temporary storage.
 
 ## Outstanding merge/release gates
+
+Current closeout verification: salary mixed benefit excerpts abstain and preserve clean salary/structured precedence; dirty completion confirmation uses the application-owned modal. `internal/platforms` and the affected controlled Chromium profile-completion/submission workflows pass. Commits `799528e` and `02726ab` contain those fixes. A fresh Wails bundle launched from a new isolated workspace and passed ad-hoc strict signing. Native attachment failed before reaching YourMove: `osascript` requests for System Events return `-10827`, and LaunchServices reproduces `LSOpenStuffCallLocal` / `kLSNoExecutableErr` for System Events, Accessibility Inspector, Finder and Calculator despite each declared executable being present. Full ordinary/desktop suites and GitHub CI remain to be rerun/checked. Native Journeys A–D remain NOT VERIFIED; this condition prohibits merge.
 
 - Direct WebView `innerWidth`/`innerHeight` measurement; only AX scroll-area dimensions were recorded.
 - Native dirty-editor keyboard/dialog/focus behavior and multiple dirty editors.

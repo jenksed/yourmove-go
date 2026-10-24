@@ -1,5 +1,6 @@
 {
   "source_commit": "f0100bc57adb47f324222d7b1020830bb12d42fe",
+  "closeout_source_under_review": "worktree diff atop b6d8fe51652cb713fe7ad10ebb9dbcdece67dd02; uncommitted and unpushed; SHA-256 of source diff at native build: 7b50f620905fedb0ac598323445dfbba564d0f46940e3bd18c42c34e4fdeedba",
   "bundle_identifier": "run.yourmove.workflowqualification",
   "wails_version": "v3.0.0-beta.32",
   "workspace": "isolated synthetic workspace under /private/tmp/yourmove-workflow-native-96ijBg/workspace",
@@ -38,5 +39,27 @@
   "ordinary_executable_restart": "PASS separately; TestControlledRuntimeRestart uses dynamically allocated loopback port",
   "port_3000": "untouched",
   "employer_submissions": 0,
-  "release_signing_notarization": "NOT VERIFIED; unchanged"
+  "release_signing_notarization": "NOT VERIFIED; unchanged",
+  "closeout_fresh_bundle": {
+    "status": "PASS; fresh bundle built from current worktree including closeout diff",
+    "workspace": "/private/tmp/yourmove-workflow-native-JmmtBK/workspace",
+    "bundle": "/private/tmp/yourmove-workflow-native-JmmtBK/YourMoveWorkflow.app",
+    "strict_ad_hoc_signature_before_launch": "PASS",
+    "launch": "PASS; PID 72282",
+    "native_interaction": "NOT VERIFIED; UI automation returned macOS error -10827; no editor or dialog journey was exercised",
+    "application_process": "terminated after launch attempt"
+  },
+  "automation_diagnostic_retry": {
+    "source_diff_sha256_at_build": "57d0d8f20a549ae085e8525646b7ba088fd49d41dea10541462ed1338685fec7",
+    "bundle": "/private/tmp/yourmove-workflow-native-VBRg4N/YourMoveWorkflow.app",
+    "workspace": "/private/tmp/yourmove-workflow-native-VBRg4N/workspace",
+    "fresh_bundle_strict_signature": "PASS",
+    "direct_executable_launch": "PASS; PID 5456 stayed alive and logged startup at /jobs",
+    "automation_attempt": "osascript: tell application System Events to enumerate visible GUI processes",
+    "returned_error": "-10827",
+    "launchservices_detail": "open on System Events.app returned NSOSStatusErrorDomain -10827, kLSNoExecutableErr, _LSFunction=_LSOpenStuffCallLocal; the same occurred for Accessibility Inspector, Finder and Calculator despite each Info.plist CFBundleExecutable and Mach-O path being present",
+    "attachment": "NOT ACHIEVED; failure occurred while starting the automation/accessibility application, before querying or attaching to YourMove",
+    "result": "host GUI app launch/accessibility automation path failure; no YourMove native journey exercised",
+    "process_cleanup": "PASS; controlled PID 5456 terminated after the retry"
+  }
 }

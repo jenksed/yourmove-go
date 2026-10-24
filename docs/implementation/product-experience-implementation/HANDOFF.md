@@ -1,8 +1,8 @@
 # Product experience implementation handoff
 
-October 23, 2026. Branch: `feat/phase2-product-experience`. Target: `main`.
+October 23, 2026. Branch: `feat/phase2-product-experience`. Target: `main`. Closeout work is in progress on top of recorded head `b6d8fe51652cb713fe7ad10ebb9dbcdece67dd02`; it is not committed or pushed.
 
-Production implementation spans all eight increments. **Native workflow acceptance remains incomplete; this is not release acceptance.** Review the separate [acceptance matrix](ACCEPTANCE.md) before merging. No employer application was submitted, no provider generation was authorized during qualification, and no applicant workspace was used.
+Production implementation spans all eight increments. The current closeout diff adds conservative salary abstention and an application-owned dirty-completion confirmation. Controlled Chromium covers this new dialog path. **Native workflow acceptance remains incomplete; this is not release acceptance.** Review the separate [acceptance matrix](ACCEPTANCE.md) before merging. No employer application was submitted, no provider generation was authorized during qualification, and no applicant workspace was used.
 
 ## Baseline and working boundaries
 
@@ -77,7 +77,7 @@ go test -count=1 -tags qualification ./internal/app \
 -run 'TestControlled(ProductExperience|ApplicationBriefClipboardAndWorkspace|UnapprovedProfileJourney|EarlyPreparationWorkbench|QuestionWorkbench|ContactJourney|CombinedContinuation|PrepareEntryPoints|SubmissionRecordingWorkflow|RuntimeRestart|AnswerLibraryWorkbench)$|TestEarlySavedAnswersStayExcludedUntilReconciledAndAuthorized' -v
 ```
 
-The additional activity-entry/history/no-JS test runs with `YOURMOVE_QUALIFY_PREPARE=1`, `-tags qualification`, and `-run '^TestControlledPrepareEntryPoints$'`.
+The additional activity-entry/history/no-JS test runs with `YOURMOVE_QUALIFY_PREPARE=1`, `-tags qualification`, and `-run '^TestControlledPrepareEntryPoints$'`. The dirty completion test uses the application-owned modal in controlled Chromium; native Wails interaction for that modal remains NOT VERIFIED.
 
 Additional completion, brief/clipboard and Chromium trials passed. `TestControlledRuntimeRestart` previously skipped on busy port 3000; the test and ordinary executable now support a dynamically allocated loopback port (`YOURMOVE_HTTP_PORT`), and the restart journey passes without touching the existing process. One combined-run question-workbench disclosure timeout passed when rerun in isolation; no production defect was reproduced. Final outcomes and native evidence are recorded in [ACCEPTANCE.md](ACCEPTANCE.md). Diagnostic failures discovered during implementation were corrected: hidden refresh notices, query-bound return destinations, breakpoint focus, and asynchronous no-script disclosure assertions. A passed process startup or signature check is never counted as a native workflow pass.
 
@@ -91,7 +91,7 @@ At a 900×700 CSS viewport and scroll origin zero, the first real opportunity be
 
 ## Native qualification and outstanding gates
 
-The existing `scripts/qualify-native-workflow.sh` safely assembled a fresh bundle from `f0100bc57adb47f324222d7b1020830bb12d42fe`, strictly verified both executable and bundle before and after launch, and launched the synthetic Wails app. Native Accessibility became available after the user updated macOS accessibility settings. Evidence now covers Opportunities at all four requested outer sizes, dark and light appearance, native Answers and Cover letter, Documents, Role families, native picker cancellation, and import/hash/Unicode/resume association for a synthetic PDF. `evidence/native.json` records the outcomes and measured AX scroll-area dimensions separately from window bounds.
+The existing `scripts/qualify-native-workflow.sh` safely assembles a fresh bundle and isolated workspace. Earlier native evidence from `f0100bc57adb47f324222d7b1020830bb12d42fe` covers Opportunities at all four requested outer sizes, dark and light appearance, native Answers and Cover letter, Documents, Role families, native picker cancellation, and import/hash/Unicode/resume association for a synthetic PDF. For closeout source hash `57d0d8f20a549ae085e8525646b7ba088fd49d41dea10541462ed1338685fec7`, strict signing and direct Wails launch passed in a new workspace, but the current session could not start System Events or other GUI applications through LaunchServices (`LSOpenStuffCallLocal` / `kLSNoExecutableErr`, `-10827`). No closeout native attachment or interaction is claimed. See `evidence/native.json` for exact paths and outcomes.
 
 Native qualification remains incomplete. Free-form editor keyboard entry and the dirty-navigation dialog were not reliably established; native export, History/completion, Wails restart, VoiceOver, 200% zoom, enlarged text and reduced motion remain unverified. No dedicated native loopback employer fixture was completed, so no native transfer was attempted. The navigation fixture's external Ashby destination was not opened. Controlled Chromium results do not substitute for these gates. See ACCEPTANCE.md for status and reproducible remaining checks.
 
