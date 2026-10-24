@@ -21,6 +21,27 @@ bundle launch does not count as native interaction evidence.
 Use a fresh isolated workspace and synthetic content only. Never open a real
 employer account or submit an application. Do not use applicant data.
 
+For the initial build, run this command once. Copy the exact `Bundle:` and
+`Workspace:` paths it prints into Run identity and leave that app/workspace in
+place for the entire smoke. The script creates a new temporary workspace on
+every execution and seeds it; do not rerun it for the restart step. To test
+persistence, fully quit the running app, confirm its process exited, then
+launch the existing executable from the recorded bundle with the same existing
+workspace:
+
+```sh
+GOCACHE=/private/tmp/yourmove-phase2-go-cache bash scripts/qualify-native-workflow.sh --launch
+```
+
+```sh
+YOURMOVE_DATA_DIR="<recorded Workspace path>" \
+  "<recorded Bundle path>/Contents/MacOS/YourMoveWorkflow"
+```
+
+Do not run two instances against the same workspace, rerun fixture generation,
+or edit the workspace database by hand. A rejected validation attempt is not a
+saved profile and must not be recorded as persisted.
+
 ## Results
 
 For each row, replace `NOT RUN` with `PASS` or `FAIL` and record what was

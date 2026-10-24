@@ -36,13 +36,13 @@
 - **Source:** [PR #7](https://github.com/jenksed/yourmove-go/pull/7), [Phase 2 acceptance](implementation/product-experience-implementation/ACCEPTANCE.md), [native evidence](implementation/product-experience-implementation/evidence/native.json), [owner-fillable native smoke record](implementation/product-experience-implementation/NATIVE_SMOKE_RECORD.md).
 - **Why:** The bundle starts and renders, but final-source dirty editing, local completion/History and restart were not exercised in actual Wails. macOS GUI automation failed before attachment with `-10827`; this is not a demonstrated YourMove defect.
 - **Acceptance:** On a **fresh synthetic isolated workspace**, a human actually enters/saves an answer or letter, exercises dirty navigation cancel/leave, records a synthetic local completion, inspects History, quits/relaunches **the same executable with the same `YOURMOVE_DATA_DIR` (do not rerun the fixture-generating script)**, and checks durable associations. Follow YM-016. Record each observed result, host/build identity and failure; do not infer from Chromium. If a core interaction fails, repair before merge.
-- **Completion so far:** Prepared the owner-fillable record with all steps set to NOT RUN. No native action has been inferred from Chromium; owner execution and review remain pending.
+- **Completion so far:** Prepared the owner-fillable record with all steps set to NOT RUN. It now distinguishes the first seeded qualification workspace from relaunching the same executable with the same existing `YOURMOVE_DATA_DIR`; no native action has been inferred from Chromium. Owner execution and review remain pending.
 - **Boundary:** Manual smoke can close the **source-merge** review; it does not replace complete beta acceptance or authorize public distribution.
 
 ### YM-004 — Close PR #7 with preserved native limitations
 - **Priority:** P1 · **Stage:** PR closeout · **Status:** IN PROGRESS · **Depends on:** owner completion/review of YM-003
 - **Acceptance:** Current PR/CI must be rechecked after push; pending native gates are documented as NOT VERIFIED with an owner-fillable record. Keep PR #7 open/draft for owner review. No agent merges, marks native acceptance PASS, or publishes a release without authorization.
-- **Completion so far:** Fix commit `8aad7d5` is pushed to PR #7. Latest pre-fix run `40051051163` had Go failure (fixed test timing) and desktop PASS. New run `40051722950` is queued on that head; confirm final-head CI before owner review.
+- **Completion so far:** Fix commit `8aad7d5` and verification commit `55bb4b5` are pushed to PR #7; owner added docs commit `1139631` while this work was in progress. Latest pre-fix run `40051051163` had Go failure (fixed test timing) and desktop PASS. Run `40051894077` on `1139631` has Go PASS and desktop verification in progress; confirm CI after the smoke-record update before owner review.
 - **Boundary:** Avoid appending unrelated refactors/design work to the 123-file Phase 2 diff.
 
 ### YM-015 — Recoverable Candidate Profile validation in native Wails
@@ -60,6 +60,7 @@
 - **Acceptance:** Document the exact distinction between a **fresh qualification run** and a **persistence/restart check**. Capture the `Bundle:` and `Workspace:` paths printed by the first successful script execution. Fully stop that app process; confirm it exited; relaunch its **existing executable** with `YOURMOVE_DATA_DIR` set to the **same existing workspace**, without rerunning the seeding script. Verify a successfully saved profile/answer/letter, document selection, and one local History record persist correctly. Record actual source SHA, workspace path and observed results. Clarify that a failed 400 validation save is never persisted.
 - **Safety:** Do not run two YourMove instances simultaneously against the same workspace, re-seed an existing DB, use real applicant data, or manually modify `jobs.db`. Do not add a generic production `--resume` or relaxed fixture safety check merely to simplify this test. A small script help/README note is sufficient if it prevents recurrence.
 - **Boundary:** A new synthetic workspace on every new harness execution is intentional. This is primarily a test-operator documentation and repeatability correction.
+- **Completion so far:** The owner smoke record now documents capturing and reusing the same bundle/workspace and launching the existing executable with the same data directory. Native execution and observed persistence evidence remain pending.
 
 ## Post-merge maintainability — preferred next development track
 
