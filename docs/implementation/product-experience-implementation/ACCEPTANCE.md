@@ -48,6 +48,13 @@ service cost abstentions and extract an explicitly labeled base salary after an
 adjacent benefits sentence. Structured salary precedence, employer wording,
 provenance and manual edit behavior remain covered by the existing cases.
 
+Final code-head check `f6d327d4a6e80974107b1e8bc6f53e8fb95882a8` passed both
+GitHub jobs in [run 40051967937](https://github.com/jenksed/yourmove-go/actions/runs/40051967937):
+Go source verification and macOS desktop verification, including executable,
+bundle, signature and artifact checks. The later change only clarifies this
+documented smoke procedure; its resulting head must also remain green before
+owner review.
+
 ## Screen and workflow checks
 
 All PASS entries here refer to Go or controlled Chromium, **not native WebKit**. [Open comparable evidence](evidence/index.html). Before/after captures use the same synthetic fixture on baseline `6709840` and the implementation; dimensions are CSS viewport sizes.

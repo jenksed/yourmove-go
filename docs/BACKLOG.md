@@ -42,7 +42,7 @@
 ### YM-004 — Close PR #7 with preserved native limitations
 - **Priority:** P1 · **Stage:** PR closeout · **Status:** IN PROGRESS · **Depends on:** owner completion/review of YM-003
 - **Acceptance:** Current PR/CI must be rechecked after push; pending native gates are documented as NOT VERIFIED with an owner-fillable record. Keep PR #7 open/draft for owner review. No agent merges, marks native acceptance PASS, or publishes a release without authorization.
-- **Completion so far:** Fix commit `8aad7d5` and verification commit `55bb4b5` are pushed to PR #7; owner added docs commit `1139631` while this work was in progress. Latest pre-fix run `40051051163` had Go failure (fixed test timing) and desktop PASS. Run `40051894077` on `1139631` has Go PASS and desktop verification in progress; confirm CI after the smoke-record update before owner review.
+- **Completion so far:** Fix commit `8aad7d5`, verification commit `55bb4b5`, and owner documentation commits `1139631` / `f6d327d` are on PR #7. Latest pre-fix run `40051051163` had Go failure (fixed test timing) and desktop PASS. Run `40051967937` on `f6d327d` passed Go and macOS desktop verification, including bundle validation. A docs-only backlog/evidence update will be the new head; check its triggered CI before owner review.
 - **Boundary:** Avoid appending unrelated refactors/design work to the 123-file Phase 2 diff.
 
 ### YM-015 — Recoverable Candidate Profile validation in native Wails
