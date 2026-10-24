@@ -108,3 +108,20 @@ Ashby, Greenhouse, Lever and the existing JSON-LD reader now share a conservativ
 Description-sourced salary is labeled **Employer description** and persists its provenance. Structured salary takes precedence. Refresh preserves manually edited salary; blank or failed observations do not erase prior values. Existing postings need a normal posting refresh to populate missing saved salary; no applicant workspace was bulk-modified.
 
 Regression coverage: `internal/platforms/compensation_test.go` and `internal/app/job_description_salary_test.go`. Both complete ordinary/desktop Go suites pass, along with `git diff --check`. Native acceptance gates above remain unchanged.
+
+## PR #7 closeout follow-up
+
+On PR head `281ed2bf5431b52f5047dc3f84fe8101ee32520b`, CI run
+[40051051163](https://github.com/jenksed/yourmove-go/actions/runs/40051051163)
+reported Go failure and macOS desktop PASS. The failing resume-handoff test
+sampled the normal transient `checking` state after a fixed delay; its
+diagnostic already showed the no-field result. The test now waits on observed
+state transitions and retains its exact-once successful upload assertion.
+The salary regression cases and completion Cancel/Escape/reuse qualification
+are recorded in [ACCEPTANCE.md](ACCEPTANCE.md) and
+`evidence/verification.txt`.
+
+The owner’s native execution form is [NATIVE_SMOKE_RECORD.md](NATIVE_SMOKE_RECORD.md).
+It is deliberately all NOT RUN until the owner performs the steps in a fresh
+synthetic Wails workspace. Keep PR #7 open and draft pending that record and
+owner review; no native Wails result is inferred from Chromium.

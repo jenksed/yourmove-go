@@ -1,6 +1,6 @@
 # Phase 2 acceptance
 
-**Overall: NOT VERIFIED for full native acceptance.** The salary-extraction and dirty-completion fixes are committed and their affected package/Chromium tests pass. A fresh Wails bundle also launched from an isolated workspace, but native interaction could not proceed because macOS LaunchServices returned `-10827` when starting the accessibility automation process. Required native Journeys A–D remain NOT VERIFIED. The PR remains a draft pending native acceptance.
+**Overall: NOT VERIFIED for full native acceptance.** Closeout regression coverage now includes both salary review cases and actual Chromium completion-dialog Cancel, Escape, validation blocking, focus recovery, and reuse. Native Wails smoke for those interactions and restart is still pending owner execution; use the [native manual smoke record](NATIVE_SMOKE_RECORD.md). A fresh Wails bundle launched from an isolated workspace, but the prior native interaction attempt could not proceed because macOS LaunchServices returned `-10827` when starting the accessibility automation process. Required native Journeys A–D remain NOT VERIFIED. PR #7 remains open and draft pending owner review.
 
 Statuses: **PASS** exercised successfully; **FAIL** exercised and incorrect; **BLOCKED** cannot execute because of an identified constraint; **NOT VERIFIED** not actually exercised.
 
@@ -22,11 +22,31 @@ Commands and required environment flags are in [HANDOFF.md](HANDOFF.md#verificat
 | Product-wide production page interaction | PASS | `TestControlledProductExperience`; actual Go pages and scripts, synthetic SQLite/PDF/writing/experience, both themes, direct activities, compact navigation, Escape/focus, Stay/Leave and exact destination. |
 | Preparation entries / Back / no-JS disclosures | PASS | `TestControlledPrepareEntryPoints`; dirty answer survives writing changes and history traversal; no-JS forms remain usable. |
 | Completion and transactional recovery | PASS | `TestControlledSubmissionRecordingWorkflow`; keyboard, multiple dirty editors, no-JS, idempotency, missing-resume and injected transaction-failure recovery. Desktop redirect compatibility exercised in Chromium, not native Wails. |
+| Completion dialog cancellation and reuse | PASS | The same controlled Chromium test opens the completion-specific dialog, activates **Cancel and stay**, presses Escape, checks exact dirty answer/letter/note values and focus return, confirms zero local history records after each cancellation and after browser validation blocks an unchecked declaration, then verifies ordinary navigation copy and successful local recording on dialog reuse. Native Wails remains NOT VERIFIED. |
 | Application brief privacy / clipboard | PASS | `TestControlledApplicationBriefClipboardAndWorkspace`; exact server export, clipboard denial/selectable fallback and privacy boundaries. Evidence now uses a temporary directory rather than overwriting historical captures. |
 | Chromium guarded-control trials | PASS | Documented `TestControlled|Test.*Trial` package suite; one upload, exact control writes/readback and uncertain/detached control protection. |
 | Full HTTP runtime restart | PASS | `TestControlledRuntimeRestart` now reserves a dynamic loopback port, passes it via `YOURMOVE_HTTP_PORT`, starts/stops/restarts the isolated ordinary executable, and verifies local persistence plus changed-resume recovery. Port 3000 and its existing process were untouched. |
 | Question workbench final rerun | PASS | An earlier combined run timed out waiting for an optional manual-review disclosure; isolated and final combined reruns passed all assertions. No production defect was confirmed. |
 | Native-only UI and employer interaction | NOT VERIFIED | Separate native matrix below. |
+
+### PR #7 closeout follow-up (2026-10-23)
+
+At PR head `281ed2bf5431b52f5047dc3f84fe8101ee32520b`, GitHub run
+[40051051163](https://github.com/jenksed/yourmove-go/actions/runs/40051051163)
+failed only in Go source verification; macOS desktop verification passed. The
+Go log showed `TestResumeHandoffPinsSelectedFileAcrossSteps` sampling
+`ResumeStatus=checking` after its fixed 60 ms sleep. Its accompanying message
+already said that the resume field was absent and the watcher was waiting. The
+watcher intentionally returns to `checking` during its next scheduled
+attachment probe, so this was test timing, not evidence of a watcher defect.
+The regression now waits for a recorded no-field attempt to settle in
+`waiting`, then preserves the exact-one successful upload assertion and waits
+for an actual changed-step observation before asserting no repeat upload.
+
+The salary regressions add the requested conference registration and annual
+service cost abstentions and extract an explicitly labeled base salary after an
+adjacent benefits sentence. Structured salary precedence, employer wording,
+provenance and manual edit behavior remain covered by the existing cases.
 
 ## Screen and workflow checks
 
@@ -83,6 +103,7 @@ The user enabled macOS accessibility access during qualification. System Events 
 | VoiceOver, 200% zoom, enlarged text and reduced motion | NOT VERIFIED | Accessibility-tree inspection is not VoiceOver acceptance; no actual VoiceOver, zoom, text-size or reduced-motion result was observed. |
 | Native accessibility tree via System Events | PASS | After the user's settings update, System Events exposed the app's accessibility tree. This does not establish VoiceOver acceptance; free-form keyboard interaction was not reliable in this session. |
 | Current-session System Events attachment | BLOCKED | Reproduced with `osascript`: requesting GUI processes from System Events returns `-10827`. `open` reports `LSOpenStuffCallLocal` / `kLSNoExecutableErr` for System Events, Accessibility Inspector, Finder and Calculator, although their declared executable files exist. YourMove itself was launched directly from its fresh bundle and stayed alive. This isolates the current failure to the host's LaunchServices/accessibility launch path; no app attachment or journey was exercised. |
+| Owner native manual smoke record | NOT RUN | [NATIVE_SMOKE_RECORD.md](NATIVE_SMOKE_RECORD.md) is prepared with run identity, explicit step-by-step result fields and no pre-marked PASS entries. The owner must complete it against a fresh synthetic workspace and exact PR source. |
 | Production signing / notarization / release readiness | NOT VERIFIED | Development ad-hoc qualification does not establish these. Release tooling unchanged. |
 
 ## Reproducible native acceptance

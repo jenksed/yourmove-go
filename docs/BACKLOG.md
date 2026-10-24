@@ -16,29 +16,33 @@
 ## PR #7 closeout — only narrowly scoped work
 
 ### YM-001 — Verify salary fallback against false positives and neighboring context
-- **Priority:** P1 · **Stage:** PR closeout · **Status:** NEEDS VERIFICATION
+- **Priority:** P1 · **Stage:** PR closeout · **Status:** DONE
 - **Source:** `internal/platforms/compensation.go`, `internal/platforms/compensation_test.go`; fix commit `799528e`.
 - **Why:** Description salary extraction can mistake unrelated currency + annual-period text for compensation. Conversely, the immediately preceding benefits sentence may suppress a complete, explicitly labeled salary sentence. These are code-review concerns not yet recorded as failing tests.
-- **Acceptance:** Add focused cases for `Conference registration costs $3,000 per year` (abstain), `Benefits include health insurance. Base salary: $100,000 per year` (extract), mixed salary + bonus (conservative abstention permitted), annual service costs, and structured-salary precedence. Correct only proven faults; preserve literal provenance and manual-edit precedence. Ordinary and desktop suites pass.
+- **Acceptance:** Added focused conference registration and annual service cost abstentions and confirmed extraction for `Benefits include health insurance. Base salary: $100,000 per year`. Existing mixed salary + bonus, structured-salary precedence, literal provenance and manual-edit precedence regressions remain. Full ordinary and desktop suites pass.
+- **Completion:** PR #7 closeout changes in the commit recorded below; `go test -count=1 ./...` and `go test -count=1 -tags desktop ./...` PASS (2026-10-23).
 - **Boundary:** No LLM extraction or generalized salary parser in this PR.
 
 ### YM-002 — Exercise actual completion-dialog cancel, Escape and reuse
-- **Priority:** P1 · **Stage:** PR closeout · **Status:** NEEDS VERIFICATION
+- **Priority:** P1 · **Stage:** PR closeout · **Status:** DONE
 - **Source:** `static/ui.js`, `internal/app/submission_recording_qualification_test.go`; fix commit `02726ab`.
-- **Why:** The controlled Chromium test confirms dirty values while the dialog is open and affirmative local recording, but does not fully assert actual completion-specific Stay/Escape paths or reuse after a prevented submission.
-- **Acceptance:** Tests activate **Cancel and stay** and Escape, assert exact dirty answer/letter values and focus remain, assert zero local history events, and confirm the ordinary navigation dialog copy on the next unrelated departure. Test a validation-prevented submit if reproducible. Confirm affirmative recording remains idempotent, locally scoped, and never invokes an employer submit.
+- **Why:** Closeout required direct exercised cancellation and Escape paths plus dialog reuse evidence.
+- **Acceptance:** `TestControlledSubmissionRecordingWorkflow` activates **Cancel and stay** and Escape, checks exact dirty answer/letter/note values and focus return, confirms zero local history after both paths and after browser validation blocks an unchecked declaration, then checks ordinary navigation copy and performs the affirmative local record. Existing idempotency and no-employer-submit assertions remain. Targeted Chromium and required opt-in runs PASS (2026-10-23); native Wails remains NOT VERIFIED.
+- **Completion:** PR #7 closeout changes in the commit recorded below; controlled Chromium completion qualification PASS.
 - **Boundary:** Fix lifecycle cleanup if needed; do not introduce a modal framework.
 
 ### YM-003 — Minimum human Wails smoke and honest PR decision
-- **Priority:** P1 · **Stage:** PR closeout · **Status:** NEEDS VERIFICATION
-- **Source:** [PR #7](https://github.com/jenksed/yourmove-go/pull/7), [Phase 2 acceptance](implementation/product-experience-implementation/ACCEPTANCE.md), [native evidence](implementation/product-experience-implementation/evidence/native.json).
+- **Priority:** P1 · **Stage:** PR closeout · **Status:** IN PROGRESS
+- **Source:** [PR #7](https://github.com/jenksed/yourmove-go/pull/7), [Phase 2 acceptance](implementation/product-experience-implementation/ACCEPTANCE.md), [native evidence](implementation/product-experience-implementation/evidence/native.json), [owner-fillable native smoke record](implementation/product-experience-implementation/NATIVE_SMOKE_RECORD.md).
 - **Why:** The bundle starts and renders, but final-source dirty editing, local completion/History and restart were not exercised in actual Wails. macOS GUI automation failed before attachment with `-10827`; this is not a demonstrated YourMove defect.
 - **Acceptance:** On a **fresh synthetic isolated workspace**, a human actually enters/saves an answer or letter, exercises dirty navigation cancel/leave, records a synthetic local completion, inspects History, quits/relaunches and checks durable associations. Record each observed result, host/build identity and failure; do not infer from Chromium. If a core interaction fails, repair before merge.
+- **Completion so far:** Prepared the owner-fillable record with all steps set to NOT RUN. No native action has been inferred from Chromium; owner execution and review remain pending.
 - **Boundary:** Manual smoke can close the **source-merge** review; it does not replace complete beta acceptance or authorize public distribution.
 
 ### YM-004 — Close PR #7 with preserved native limitations
-- **Priority:** P1 · **Stage:** PR closeout · **Status:** OPEN · **Depends on:** review of YM-001–003
-- **Acceptance:** Recheck current PR HEAD and CI, classify pending native gates accurately, update handoff/acceptance links and merge decision. Owner explicitly approves merge; no agent merges, marks native acceptance PASS, or publishes a release without authorization.
+- **Priority:** P1 · **Stage:** PR closeout · **Status:** IN PROGRESS · **Depends on:** owner completion/review of YM-003
+- **Acceptance:** Current PR/CI must be rechecked after push; pending native gates are documented as NOT VERIFIED with an owner-fillable record. Keep PR #7 open/draft for owner review. No agent merges, marks native acceptance PASS, or publishes a release without authorization.
+- **Completion so far:** Latest pre-fix PR run `40051051163` had Go failure (fixed test timing) and desktop PASS. Final-head green CI confirmation and owner review remain pending.
 - **Boundary:** Avoid appending unrelated refactors/design work to the 123-file Phase 2 diff.
 
 ## Post-merge maintainability — preferred next development track

@@ -10,7 +10,7 @@ import (
 var payAmount = regexp.MustCompile(`(?i)(?:[$£€]|\b(?:USD|CAD|AUD|GBP|EUR)\s*\$?)[ \t]*[0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?\s*[km]?\b`)
 var payContext = regexp.MustCompile(`(?i)\b(?:salary|salaries|base pay|base compensation|compensation|pay range|pay rate|hourly pay|hourly rate|annual pay|hiring range|pays|paying|wage|wages)\b`)
 var payPeriod = regexp.MustCompile(`(?i)(?:\b(?:per|an?|each)\s+(?:hour|year|annum|month|week)\b|/\s*(?:hr|hour|year|yr|month|week)\b|\b(?:annually|yearly|hourly)\b)`)
-var nonSalary = regexp.MustCompile(`(?i)\b(?:stipend|reimbursement|wellness|insurance|benefits|budget|bonus|equity|stock|revenue|funding|allowance|relocation|tuition|learning|equipment|childcare|child care|pension|retirement|travel|referral|medical|dental|vision)\b`)
+var nonSalary = regexp.MustCompile(`(?i)\b(?:stipend|reimbursement|wellness|insurance|benefits|budget|bonus|equity|stock|revenue|funding|allowance|relocation|tuition|learning|equipment|childcare|child care|pension|retirement|travel|referral|medical|dental|vision|conference registration costs?|annual service costs?)\b`)
 var strongPayContext = regexp.MustCompile(`(?i)\b(?:salary|salaries|base pay|pay range|pay rate|hourly rate|hourly pay|annual pay|total compensation|target compensation|wage|wages)\b`)
 var payHeading = regexp.MustCompile(`(?i)^(?:base salary(?: range)?|salary(?: range)?|compensation(?: range)?|pay range|hourly(?: pay| rate)?|annual salary|wages?)\s*[:–-]?$`)
 var sentenceBreak = regexp.MustCompile(`[.!?][ \t]+`)
@@ -46,7 +46,7 @@ func SalaryFromDescription(description string) string {
 		// amount in that sentence base pay (for example, "Salary includes a
 		// $1,000 equipment allowance" or salary plus a signing bonus). Abstain
 		// when benefit language and a candidate amount share the excerpt.
-		if nonSalary.MatchString(line) || (i > 0 && nonSalary.MatchString(units[i-1])) {
+		if nonSalary.MatchString(line) || (i > 0 && nonSalary.MatchString(units[i-1]) && !strongPayContext.MatchString(line)) {
 			continue
 		}
 		excerpt := line
