@@ -87,12 +87,12 @@ func TestControlledApplicationBriefClipboardAndWorkspace(t *testing.T) {
 	waitBriefPage(t, ctx, chrome, page, "#prepare")
 	currentPage := page
 	assertBriefJS(t, ctx, chrome, page, `document.querySelector('[data-copy-export][data-export-format="brief"]')?.hidden===false`)
-	assertBriefJS(t, ctx, chrome, page, `document.querySelector('#application-readiness-title')?.textContent==='Application readiness'`)
+	assertBriefJS(t, ctx, chrome, page, `document.querySelector('#application-readiness-title')?.textContent==='Prepare application'`)
 	assertBriefJS(t, ctx, chrome, page, `document.querySelector('[data-brief-view]')?.href.endsWith('scope=unanswered')`)
 	assertBriefJS(t, ctx, chrome, page, `document.querySelector('#application-action form[action$="/continue"] button[type="submit"]')?.textContent.trim()==='Fill application'`)
 	assertBriefJS(t, ctx, chrome, page, `document.querySelector('#letter-editor') && document.querySelector('#letter-editor').open===false`)
 
-	evidenceDir := filepath.Join("..", "..", "docs", "implementation", "checkpoint3-visuals", "after")
+	evidenceDir := t.TempDir()
 	if err := os.MkdirAll(evidenceDir, 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestControlledApplicationBriefClipboardAndWorkspace(t *testing.T) {
 	capture("prepare-ready-390-dark.png", 390, "#prepare", "dark")
 	clickBriefUI(t, ctx, chrome, page, `a[data-open-details="letter-editor"]`)
 	assertBriefJS(t, ctx, chrome, page, `document.querySelector('#letter-editor').open===true`)
-	if err := evalBriefJS(ctx, chrome, page, `document.querySelector('#letter-editor').open=false;true`, nil); err != nil {
+	if err := evalBriefJS(ctx, chrome, page, `document.querySelector('#letter-editor').open=false;document.querySelector('.workspace-tab[data-tab-target=prepare]').click();true`, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -232,7 +232,7 @@ func TestControlledApplicationBriefClipboardAndWorkspace(t *testing.T) {
 	if err := chrome.FixtureCall(ctx, previousPage, "Page.navigate", map[string]any{"url": currentPage + "#history"}, nil); err != nil {
 		t.Fatal(err)
 	}
-	waitBriefJS(t, ctx, chrome, currentPage, `document.body.innerText.includes('Application recorded as Applied.')`)
+	waitBriefJS(t, ctx, chrome, currentPage, `document.body.innerText.includes('Submission recorded locally.')`)
 	encoded, err = chrome.FixtureScreenshotAt(ctx, currentPage, 1280, "#history", "dark")
 	if err != nil {
 		t.Fatal(err)
@@ -365,15 +365,27 @@ func waitBriefJS(t *testing.T, ctx context.Context, chrome *chromium.Session, pa
 func clickBriefUI(t *testing.T, ctx context.Context, chrome *chromium.Session, page, selector string) {
 	t.Helper()
 	encoded, _ := json.Marshal(selector)
-	var point struct {
-		X float64 `json:"x"`
-		Y float64 `json:"y"`
-	}
-	if err := evalBriefJS(ctx, chrome, page, `(()=>{const e=document.querySelector(`+string(encoded)+`);if(!e||e.hidden||!e.getClientRects().length)throw Error('control is not visible');e.scrollIntoView({block:'center',behavior:'instant'});const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`, &point); err != nil {
+	pointer, err := chrome.FixturePage(ctx, page)
+	if err != nil {
 		t.Fatal(err)
 	}
+	defer pointer.Close()
+	var result struct {
+		Result struct {
+			Value struct{ X, Y float64 } `json:"value"`
+		} `json:"result"`
+		Exception any `json:"exceptionDetails"`
+	}
+	script := `(async()=>{const e=document.querySelector(` + string(encoded) + `);if(!e||e.hidden||!e.getClientRects().length)throw Error('control is not visible');e.scrollIntoView({block:'center',behavior:'instant'});await new Promise(requestAnimationFrame);const r=e.getBoundingClientRect();return {X:r.x+r.width/2,Y:r.y+r.height/2}})()`
+	if err = pointer.Call(ctx, "Runtime.evaluate", map[string]any{"expression": script, "returnByValue": true, "awaitPromise": true}, &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Exception != nil {
+		t.Fatalf("visible pointer target %s: %v", selector, result.Exception)
+	}
+	// Keep press/release on the same connection, as in Phase 1 question tests.
 	for _, eventType := range []string{"mousePressed", "mouseReleased"} {
-		if err := chrome.FixtureCall(ctx, page, "Input.dispatchMouseEvent", map[string]any{"type": eventType, "x": point.X, "y": point.Y, "button": "left", "clickCount": 1}, nil); err != nil {
+		if err = pointer.Call(ctx, "Input.dispatchMouseEvent", map[string]any{"type": eventType, "x": result.Result.Value.X, "y": result.Result.Value.Y, "button": "left", "clickCount": 1}, nil); err != nil {
 			t.Fatal(err)
 		}
 	}

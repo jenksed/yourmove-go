@@ -235,7 +235,7 @@ func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
 		t.Fatalf("recording action is not visibly discoverable in Prepare: %+v", firstLink)
 	}
 	capture(chrome, page, "submission-prepare-initial.png")
-	evaluate(chrome, page, `(()=>{const e=document.querySelector('form.application-question-form textarea');e.focus({preventScroll:true});return true})()`, &ignored)
+	evaluate(chrome, page, `(()=>{document.querySelector('.workspace-tab[data-tab-target=answers]')?.click();const e=document.querySelector('form.application-question-form textarea');e.focus({preventScroll:true});return true})()`, &ignored)
 	call(chrome, page, "Input.insertText", map[string]any{"text": "Synthetic unsaved question edit"}, nil)
 	var dirty bool
 	evaluate(chrome, page, `document.querySelector('form.application-question-form').dataset.dirty==='true'`, &dirty)
@@ -243,13 +243,14 @@ func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
 		t.Fatal("synthetic question edit did not enter the unsaved state")
 	}
 	const unsavedLetter = "Synthetic unsaved cover-letter edits remain recoverable after cancellation."
-	evaluate(chrome, page, `(()=>{const e=document.querySelector('form[action$="/cover-letter/save"] textarea');e.focus({preventScroll:true});e.select();return true})()`, &ignored)
+	evaluate(chrome, page, `(()=>{document.querySelector('.workspace-tab[data-tab-target=cover-letter]')?.click();const e=document.querySelector('form[action$="/cover-letter/save"] textarea');e.focus({preventScroll:true});e.select();return true})()`, &ignored)
 	call(chrome, page, "Input.insertText", map[string]any{"text": unsavedLetter}, nil)
 	var dirtyLetter bool
 	evaluate(chrome, page, `document.querySelector('form[action$="/cover-letter/save"]').dataset.dirty==='true'`, &dirtyLetter)
 	if !dirtyLetter {
 		t.Fatal("synthetic cover-letter edit did not enter the unsaved state")
 	}
+	evaluate(chrome, page, `(()=>{document.querySelector('.workspace-tab[data-tab-target=prepare]').click();return true})()`, &ignored)
 	focusVisible(chrome, page, `a[data-open-details="record-submission"]`)
 	press(chrome, page, "Enter", "Enter", 13)
 	waitFor(chrome, page, `(()=>{const e=document.querySelector('#record-submission'),r=e.querySelector('summary').getBoundingClientRect();return e.open&&r.top>=0&&r.bottom<=innerHeight})()`)
@@ -323,9 +324,9 @@ func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
 		t.Fatal("keyboard did not explicitly confirm employer submission")
 	}
 	capture(chrome, page, "submission-700x550-action.png")
-	evaluate(chrome, page, `(()=>{window.__recordConfirmMessages=[];window.confirm=message=>{window.__recordConfirmMessages.push(message);return false};return true})()`, &dirty)
+	evaluate(chrome, page, `(()=>{window.__recordConfirmMessages=[];return true})()`, &dirty)
 	press(chrome, page, " ", "Space", 32)
-	waitFor(chrome, page, `window.__recordConfirmMessages.length===1`)
+	waitFor(chrome, page, `document.querySelector('.leave-materials-dialog[open]')?.textContent.includes('Record completion')`)
 	var cancelledState struct {
 		OnPrepare   bool
 		DirtyAnswer bool
@@ -335,13 +336,69 @@ func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
 		Note        string
 		Prompt      string
 	}
-	evaluate(chrome, page, `({OnPrepare:location.pathname==='/jobs/1',DirtyAnswer:document.querySelector('form.application-question-form').dataset.dirty==='true',DirtyLetter:document.querySelector('form[action$="/cover-letter/save"]').dataset.dirty==='true',Answer:document.querySelector('form.application-question-form textarea').value,Letter:document.querySelector('form[action$="/cover-letter/save"] textarea').value,Note:document.querySelector('#notes').value,Prompt:window.__recordConfirmMessages[0]})`, &cancelledState)
-	if !cancelledState.OnPrepare || !cancelledState.DirtyAnswer || !cancelledState.DirtyLetter || !strings.Contains(cancelledState.Answer, "Synthetic unsaved question edit") || cancelledState.Letter != unsavedLetter || cancelledState.Note != "Synthetic confirmation SG-1100" || !strings.Contains(cancelledState.Prompt, "unsaved answer or letter edits") {
+	evaluate(chrome, page, `({OnPrepare:location.pathname==='/jobs/1',DirtyAnswer:document.querySelector('form.application-question-form').dataset.dirty==='true',DirtyLetter:document.querySelector('form[action$="/cover-letter/save"]').dataset.dirty==='true',Answer:document.querySelector('form.application-question-form textarea').value,Letter:document.querySelector('form[action$="/cover-letter/save"] textarea').value,Note:document.querySelector('#notes').value,Prompt:document.querySelector('.leave-materials-dialog').textContent})`, &cancelledState)
+	if !cancelledState.OnPrepare || !cancelledState.DirtyAnswer || !cancelledState.DirtyLetter || !strings.Contains(cancelledState.Answer, "Synthetic unsaved question edit") || cancelledState.Letter != unsavedLetter || cancelledState.Note != "Synthetic confirmation SG-1100" || !strings.Contains(cancelledState.Prompt, "does not submit an employer form") {
 		t.Fatalf("cancel did not preserve the recoverable unsaved form: %+v", cancelledState)
 	}
-	evaluate(chrome, page, `(()=>{window.confirm=()=>true;return true})()`, &dirty)
-	press(chrome, page, " ", "Space", 32)
-	waitFor(chrome, page, `location.hash==='#history'&&document.body.textContent.includes('Application recorded as Applied.')`)
+	evaluate(chrome, page, `document.querySelector('.leave-materials-dialog [data-stay]').click();true`, &dirty)
+	waitFor(chrome, page, `!document.querySelector('.leave-materials-dialog').open`)
+	var cancelState struct {
+		Answer, Letter, Note                    string
+		AnswerDirty, LetterDirty, FocusReturned bool
+	}
+	evaluate(chrome, page, `(()=>({Answer:document.querySelector('form.application-question-form textarea').value,Letter:document.querySelector('form[action$="/cover-letter/save"] textarea').value,Note:document.querySelector('#notes').value,AnswerDirty:document.querySelector('form.application-question-form').dataset.dirty==='true',LetterDirty:document.querySelector('form[action$="/cover-letter/save"]').dataset.dirty==='true',FocusReturned:document.activeElement.matches('[data-record-completion] button[type="submit"]')}))()`, &cancelState)
+	if cancelState.Answer != cancelledState.Answer || cancelState.Letter != unsavedLetter || cancelState.Note != "Synthetic confirmation SG-1100" || !cancelState.AnswerDirty || !cancelState.LetterDirty || !cancelState.FocusReturned {
+		t.Fatalf("Cancel and stay did not preserve exact edits and return focus: %+v", cancelState)
+	}
+	if history, err := a.jobSubmissions(1); err != nil || len(history) != 0 {
+		t.Fatalf("completion cancellation recorded local history: %+v %v", history, err)
+	}
+
+	// An unchecked required confirmation is blocked by the browser before the
+	// submit event. It must not open the dirty-completion dialog or record.
+	evaluate(chrome, page, `(()=>{document.querySelector('[data-record-completion] [name="confirm"]').checked=false;document.querySelector('[data-record-completion] button[type="submit"]').click();return true})()`, &dirty)
+	var validationBlocked struct{ Invalid, DialogOpen bool }
+	evaluate(chrome, page, `({Invalid:!document.querySelector('[data-record-completion]').checkValidity(),DialogOpen:document.querySelector('.leave-materials-dialog').open})`, &validationBlocked)
+	if !validationBlocked.Invalid || validationBlocked.DialogOpen {
+		t.Fatalf("invalid confirmation was not blocked before the completion dialog: %+v", validationBlocked)
+	}
+	if history, err := a.jobSubmissions(1); err != nil || len(history) != 0 {
+		t.Fatalf("validation-blocked completion recorded local history: %+v %v", history, err)
+	}
+	evaluate(chrome, page, `(()=>{document.querySelector('[data-record-completion] [name="confirm"]').checked=true;document.querySelector('[data-record-completion] button[type="submit"]').click();return true})()`, &dirty)
+	waitFor(chrome, page, `document.querySelector('.leave-materials-dialog[open]')?.textContent.includes('Record completion')`)
+	press(chrome, page, "Escape", "Escape", 27)
+	waitFor(chrome, page, `!document.querySelector('.leave-materials-dialog').open`)
+	evaluate(chrome, page, `(()=>({Answer:document.querySelector('form.application-question-form textarea').value,Letter:document.querySelector('form[action$="/cover-letter/save"] textarea').value,Note:document.querySelector('#notes').value,AnswerDirty:document.querySelector('form.application-question-form').dataset.dirty==='true',LetterDirty:document.querySelector('form[action$="/cover-letter/save"]').dataset.dirty==='true',FocusReturned:document.activeElement.matches('[data-record-completion] button[type="submit"]')}))()`, &cancelState)
+	if cancelState.Answer != cancelledState.Answer || cancelState.Letter != unsavedLetter || cancelState.Note != "Synthetic confirmation SG-1100" || !cancelState.AnswerDirty || !cancelState.LetterDirty || !cancelState.FocusReturned {
+		t.Fatalf("Escape did not preserve exact edits and return focus: %+v", cancelState)
+	}
+	if history, err := a.jobSubmissions(1); err != nil || len(history) != 0 {
+		t.Fatalf("Escape recorded local history: %+v %v", history, err)
+	}
+
+	// Reusing the same dialog for an ordinary departure must restore its normal
+	// copy and labels after either completion-specific cancellation path.
+	setViewport(chrome, page, 1100, 800)
+	focusVisible(chrome, page, `a[href="/jobs"]`)
+	activateVisible(chrome, page, `a[href="/jobs"]`)
+	waitFor(chrome, page, `document.querySelector('.leave-materials-dialog[open]')?.textContent.includes('Leave application materials?')&&!document.querySelector('.leave-materials-dialog').textContent.includes('Record completion')`)
+	var ordinaryDialogCopy struct{ Stay, Leave, Description string }
+	evaluate(chrome, page, `({Stay:document.querySelector('.leave-materials-dialog [data-stay]').textContent,Leave:document.querySelector('.leave-materials-dialog [data-leave]').textContent,Description:document.querySelector('.leave-materials-dialog #leave-materials-description').textContent})`, &ordinaryDialogCopy)
+	if ordinaryDialogCopy.Stay != "Stay and edit" || ordinaryDialogCopy.Leave != "Leave without saving" || !strings.Contains(ordinaryDialogCopy.Description, "unsaved changes will be lost") {
+		t.Fatalf("ordinary navigation dialog copy was not restored: %+v", ordinaryDialogCopy)
+	}
+	evaluate(chrome, page, `document.querySelector('.leave-materials-dialog [data-stay]').click();true`, &dirty)
+	waitFor(chrome, page, `!document.querySelector('.leave-materials-dialog').open`)
+	var ordinaryFocusReturned bool
+	evaluate(chrome, page, `document.activeElement.matches('a[href="/jobs"]')`, &ordinaryFocusReturned)
+	if !ordinaryFocusReturned {
+		t.Fatal("ordinary navigation cancel did not return focus to its initiating link")
+	}
+	evaluate(chrome, page, `document.querySelector('[data-record-completion] button[type="submit"]').click();true`, &dirty)
+	waitFor(chrome, page, `document.querySelector('.leave-materials-dialog[open]')?.textContent.includes('Record completion')`)
+	evaluate(chrome, page, `(()=>{document.querySelector('.leave-materials-dialog [data-leave]').click();return true})()`, &dirty)
+	waitFor(chrome, page, `location.hash==='#history'&&document.body.textContent.includes('Submission recorded locally.')`)
 	job, err := a.jobByID(1)
 	if err != nil || job.Stage != StageApplied {
 		t.Fatalf("desktop submission did not advance to Applied: %+v %v", job, err)
@@ -365,7 +422,7 @@ func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
 	activateVisible(chrome, page, `#history form[action="/jobs/1/next"] button`)
 	waitFor(chrome, desktopServer.URL+"/jobs/3", `location.pathname==='/jobs/3'&&location.hash==='#prepare'`)
 	page = desktopServer.URL + "/jobs/3"
-	activateVisible(chrome, page, `.prepare-handoff a[href="/jobs"]`)
+	activateVisible(chrome, page, `.breadcrumbs a[href="/jobs"]`)
 	waitFor(chrome, desktopServer.URL+"/jobs", `location.pathname==='/jobs'&&document.readyState==='complete'`)
 	page = desktopServer.URL + "/jobs"
 	var scoreboard struct {
@@ -400,7 +457,7 @@ func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
 	activateVisible(noJS, page, `#record-submission>summary`)
 	activateVisible(noJS, page, `[data-record-completion] [name=confirm]`)
 	activateVisible(noJS, page, `[data-record-completion] button[type=submit]`)
-	waitFor(noJS, page, `location.hash==='#history'&&document.body.textContent.includes('Application recorded as Applied.')`)
+	waitFor(noJS, page, `location.hash==='#history'&&document.body.textContent.includes('Submission recorded locally.')`)
 	history, err = a.jobSubmissions(2)
 	if err != nil || len(history) != 1 || history[0].ResumeID != 0 || history[0].Notes != "" {
 		t.Fatalf("no-JS, no-resume submission failed: %+v %v", history, err)
@@ -461,7 +518,7 @@ func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
 	activateVisible(recovery, page, `a[data-open-details="record-submission"]`)
 	activateVisible(recovery, page, `#record-submission [name=confirm]`)
 	activateVisible(recovery, page, `#record-submission button[type=submit]`)
-	waitFor(recovery, page, `location.hash==='#history'&&document.body.textContent.includes('Application recorded as Applied.')`)
+	waitFor(recovery, page, `location.hash==='#history'&&document.body.textContent.includes('Submission recorded locally.')`)
 	history, err = a.jobSubmissions(3)
 	if err != nil || len(history) != 1 || history[0].ResumeID != 0 || history[0].Notes != "Synthetic stale-recovery note" {
 		t.Fatalf("resume recovery did not permit a valid no-resume submission: %+v %v", history, err)
@@ -510,9 +567,9 @@ func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
 	activateVisible(recovery, page, `a[data-open-details="record-submission"]`)
 	activateVisible(recovery, page, `#record-submission [name=confirm]`)
 	activateVisible(recovery, page, `#record-submission button[type=submit]`)
-	waitFor(recovery, page, `location.hash==='#history'&&document.body.textContent.includes('Application recorded as Applied.')`)
+	waitFor(recovery, page, `location.hash==='#history'&&document.body.textContent.includes('Submission recorded locally.')`)
 	if history, err := a.jobSubmissions(4); err != nil || len(history) != 1 || history[0].ResumeID != 0 || history[0].Notes != "Synthetic database-recovery note" {
 		t.Fatalf("retry after transaction recovery failed: %+v %v", history, err)
 	}
-	t.Log("Real Chromium showed the completion action at 1100x800 and 700x550, exercised keyboard submission in Wails, verified no-JavaScript browser submission, preserved dirty answer and cover-letter edits on cancellation, applied history and next-job navigation, updated the Opportunities scoreboard, and recovered from missing-resume and transaction failures.")
+	t.Log("Real Chromium showed the completion action at 1100x800 and 700x550, exercised keyboard recording with desktop redirect compatibility, verified no-JavaScript browser submission, preserved dirty answer and cover-letter edits on cancellation, applied history and next-job navigation, updated the Opportunities scoreboard, and recovered from missing-resume and transaction failures.")
 }

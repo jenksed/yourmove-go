@@ -2,26 +2,28 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f7f7f4"><title>Opportunities · YourMove</title><link rel="stylesheet" href="/static/styles.css"><script defer src="/static/ui.js"></script></head><body>
 {{template "shell-open" "jobs"}}
 <div class="page-heading">
-  <div><p class="eyebrow">YOUR OPPORTUNITIES</p><h1>Find your next move.</h1><p class="page-description">Track what matters, prepare your documents, and decide when to apply.</p></div>
+  <div><h1>Opportunities</h1></div>
   <div class="heading-actions"><a class="button button-secondary" href="/resumes">Document library</a><a class="button button-primary" href="#add-opportunity" data-open-add>+ Add opportunity</a></div>
 </div>
 <section class="panel opportunity-dashboard" aria-labelledby="opportunity-progress-title">
   <div class="queue-progress">
-    <p class="eyebrow" id="opportunity-progress-title">YOUR PROGRESS</p>
+    <h2 class="visually-hidden" id="opportunity-progress-title">Queue progress</h2>
     <div class="progress-metrics">
       <a class="progress-metric progress-remaining" href="#saved-jobs-title" data-remaining-count><strong>{{.Remaining}}</strong> <span>left to work on</span></a>
       <div class="progress-metric"><strong data-recorded-today>{{.RecordedToday}}</strong> <span>recorded today</span></div>
       <a class="progress-metric" href="/applications"><strong data-recorded-overall>{{.Applied}}</strong> <span>recorded overall</span></a>
     </div>
+    <details class="queue-details"><summary>Progress details</summary>
     {{if .QueueTotal}}
     <div class="queue-progress-caption"><span>Current queue</span><strong>{{.RecordedPercent}}% recorded</strong></div>
     <progress class="queue-progress-bar" value="{{.Applied}}" max="{{.QueueTotal}}" aria-label="Applications recorded out of active and applied opportunities">{{.Applied}} of {{.QueueTotal}}</progress>
     <p class="queue-progress-note">{{.Applied}} of {{.QueueTotal}} opportunities in your current queue. Closed jobs excluded.</p>
     {{else}}<p class="queue-progress-note">Save an opportunity to start your next application.</p>{{end}}
+    </details>
   </div>
   <div class="dashboard-next">
     {{if .Next}}
-    <p class="eyebrow">SUGGESTED NEXT MOVE</p>
+    <p class="eyebrow">Suggested next opportunity</p>
     <h2 id="next-move-title">{{.Next.Title}}</h2>
     <p class="dashboard-next-company">{{.Next.Company}}</p>
     <p class="small-muted">{{.Next.Reason}}</p>
@@ -41,7 +43,7 @@
 </details></div>
 </details>
 <section class="panel list-panel" aria-labelledby="saved-jobs-title">
-  <div class="section-heading"><div><h2 id="saved-jobs-title">Opportunities</h2><p class="small-muted" id="results-status" role="status" aria-live="polite">{{.Total}} saved in total</p></div></div>
+  <div class="section-heading"><div><h2 id="saved-jobs-title" class="visually-hidden">Saved opportunities</h2><p class="small-muted" id="results-status" role="status" aria-live="polite">{{.Total}} saved in total</p></div></div>
   <div class="list-toolbar" data-job-filters><div class="field search-field"><label for="job-search">Search opportunities</label><input id="job-search" type="search" placeholder="Role, company or source" autocomplete="off" data-job-search></div>
     <div class="field select-field"><label for="job-stage-filter">Stage</label><select id="job-stage-filter" data-job-stage><option value="active" selected>Still to work on</option><option value="all">All stages</option><option value="review">Review</option><option value="ready">Marked ready</option><option value="applied">Applied</option><option value="closed">Closed</option></select></div>
     <div class="field select-field"><label for="job-sort">Order</label><select id="job-sort" data-job-sort><option value="priority">Priority &amp; next steps</option><option value="newest">Recently saved</option><option value="company">Company A–Z</option></select></div>

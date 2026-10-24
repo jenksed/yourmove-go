@@ -121,10 +121,10 @@ func fetchLever(ctx context.Context, client *http.Client, site, postingID, apiHo
 	if additional != "" {
 		sections = append(sections, additional)
 	}
-	return Metadata{
+	return completeMetadata(Metadata{
 		Title:       strings.TrimSpace(posting.Text),
 		Company:     boardNameSuggestion(site),
 		Description: strings.TrimSpace(strings.Join(sections, "\n\n")),
 		SalaryText:  posting.SalaryRange.display(),
-	}, nil
+	}), nil
 }

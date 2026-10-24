@@ -1,0 +1,303 @@
+[
+  {
+    "capture": "empty-light",
+    "firstJobTop": null,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "empty-dark",
+    "firstJobTop": null,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "opportunities-light",
+    "firstJobTop": 550.96875,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "opportunities-dark",
+    "firstJobTop": 550.96875,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "opportunities-900-light",
+    "firstJobTop": 550.96875,
+    "innerHeight": 700,
+    "innerWidth": 900,
+    "scrollWidth": 900
+  },
+  {
+    "capture": "overview-light",
+    "firstJobTop": null,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "overview-dark",
+    "firstJobTop": null,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "prepare-light",
+    "firstJobTop": null,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "prepare-dark",
+    "firstJobTop": null,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "answers-light",
+    "firstJobTop": null,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "answers-dark",
+    "firstJobTop": null,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "letter-light",
+    "firstJobTop": null,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "letter-dark",
+    "firstJobTop": null,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "documents-light",
+    "firstJobTop": null,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "documents-dark",
+    "firstJobTop": null,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "candidate-light",
+    "firstJobTop": null,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "candidate-dark",
+    "firstJobTop": null,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "library-light",
+    "firstJobTop": null,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "library-dark",
+    "firstJobTop": null,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "career-evidence-light",
+    "firstJobTop": null,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "career-evidence-dark",
+    "firstJobTop": null,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "history-light",
+    "firstJobTop": null,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "history-dark",
+    "firstJobTop": null,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "applications-light",
+    "firstJobTop": null,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "applications-dark",
+    "firstJobTop": null,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "recovery-light",
+    "firstJobTop": null,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "recovery-dark",
+    "firstJobTop": null,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "ai-light",
+    "firstJobTop": null,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "ai-dark",
+    "firstJobTop": null,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "families-light",
+    "firstJobTop": null,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "families-dark",
+    "firstJobTop": null,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "inspection-light",
+    "firstJobTop": null,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "inspection-dark",
+    "firstJobTop": null,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "utilities-light",
+    "firstJobTop": null,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "utilities-dark",
+    "firstJobTop": null,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "posting-checks-light",
+    "firstJobTop": null,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "posting-checks-dark",
+    "firstJobTop": null,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "requirements-light",
+    "firstJobTop": null,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "requirements-dark",
+    "firstJobTop": null,
+    "innerHeight": 800,
+    "innerWidth": 1100,
+    "scrollWidth": 1100
+  },
+  {
+    "capture": "answers-900x700",
+    "firstJobTop": null,
+    "innerHeight": 700,
+    "innerWidth": 900,
+    "scrollWidth": 900
+  },
+  {
+    "capture": "answers-750x650",
+    "firstJobTop": null,
+    "innerHeight": 650,
+    "innerWidth": 750,
+    "scrollWidth": 750
+  },
+  {
+    "capture": "answers-700x550",
+    "firstJobTop": null,
+    "innerHeight": 550,
+    "innerWidth": 700,
+    "scrollWidth": 700
+  },
+  {
+    "capture": "unsaved-dialog",
+    "firstJobTop": null,
+    "innerHeight": 550,
+    "innerWidth": 700,
+    "scrollWidth": 700
+  }
+]

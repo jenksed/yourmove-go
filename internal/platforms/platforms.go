@@ -16,8 +16,9 @@ type Metadata struct {
 	Title       string
 	Company     string
 	Description string
-	// SalaryText is supplied by the employer posting API, not inferred from the description.
-	SalaryText string
+	// SalaryText is structured employer pay or an explicit description excerpt.
+	SalaryText   string
+	SalaryOrigin string // employer (structured) or description (literal excerpt)
 }
 
 func FetchJob(ctx context.Context, jobURL string) (Metadata, error) {

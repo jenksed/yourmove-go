@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Resume handoff · YourMove</title><link rel="stylesheet" href="/static/styles.css"><script defer src="/static/ui.js"></script><script defer src="/static/inspection.js"></script></head>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Employer browser details · YourMove</title><link rel="stylesheet" href="/static/styles.css"><script defer src="/static/ui.js"></script><script defer src="/static/inspection.js"></script></head>
 <body>
 {{template "shell-open" "jobs"}}
 <nav class="breadcrumbs"><a href="/jobs">Opportunities</a><span>/</span><a href="/jobs/{{.Job.ID}}#prepare">{{if .Job.Title}}{{.Job.Title}}{{else}}Saved job{{end}}</a><span>/</span>Inspection</nav>
-<header class="page-heading g53-heading"><div><p class="eyebrow">APPLICATION WORKSPACE</p><h1>Employer application</h1><p class="page-description">{{if .Job.Title}}{{.Job.Title}}{{else}}{{.Job.Host}}{{end}} · You review and submit the employer form.</p></div></header>
+<header class="page-heading g53-heading"><div><p class="eyebrow">APPLICATION WORKSPACE</p><h1>Employer browser details</h1><p class="page-description">{{if .Job.Title}}{{.Job.Title}}{{else}}{{.Job.Host}}{{end}} · You review and submit the employer form.</p></div></header>
 <section class="panel g53-panel inspection-primary" aria-labelledby="inspection-live-title">
-  <div class="section-heading"><div><h2 id="inspection-live-title">Resume handoff</h2><p class="section-subtitle">YourMove transfers only the contacts and resume approved for this handoff. Complete other questions, advance steps, and submit personally.</p></div></div>
+  <div class="section-heading"><div><h2 id="inspection-live-title">Browser session and resume</h2><p class="section-subtitle">This browser belongs to the job named above. Resume selection, contacts, saved answers and letters have independent outcomes. Complete remaining fields and submit personally.</p></div></div>
   {{if .BrowserSupported}}
   <div class="g53-state" role="status" {{if .BrowserOpen}}data-browser-watch data-job-id="{{.Job.ID}}" data-observed-id="{{.BrowserState.LatestID}}" data-contact-status="{{.BrowserState.ContactStatus}}" data-resume-status="{{.BrowserState.ResumeStatus}}" data-phase="{{.BrowserState.Phase}}"{{end}}>
     <div><strong data-handoff-title>{{.BrowserState.HandoffTitle}}</strong><p data-handoff-detail aria-live="polite">{{.BrowserState.HandoffDetail}}</p></div>

@@ -157,7 +157,7 @@ func TestControlledOpportunityQueue(t *testing.T) {
 	page = server.URL + "/jobs/1"
 	wait("!!document.querySelector('[data-record-completion]')")
 	evaluate("(()=>{const d=document.querySelector('#record-submission');d.open=true;document.querySelector('[data-record-completion] [name=confirm]').checked=true;document.querySelector('[data-record-completion] button[type=submit]').click();return true})()")
-	wait("location.hash==='#history' && !!document.querySelector('#history') && !document.querySelector('#history').hidden && document.querySelector('#history').textContent.includes('Application recorded as Applied.')")
+	wait("location.hash==='#history' && !!document.querySelector('#history') && !document.querySelector('#history').hidden && document.querySelector('#history').textContent.includes('Submission recorded locally.')")
 	// Reusing the opportunity list refreshes the actual server-computed queue.
 	evaluate("(()=>{location.href='/jobs';return true})()")
 	page = server.URL + "/jobs"

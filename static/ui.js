@@ -108,6 +108,36 @@
     });
   }
 
+  // Compact navigation is a nonmodal disclosure; desktop and no-JS retain links.
+  const navigation = document.getElementById('workspace-navigation');
+  const navigationToggle = document.querySelector('[data-navigation-toggle]');
+  const navigationClose = document.querySelector('[data-navigation-close]');
+  if (navigation && navigationToggle) {
+    document.documentElement.classList.add('navigation-enabled');
+    navigationToggle.hidden = false;
+    navigationClose.hidden = false;
+    const closeNavigation = (restore = true) => {
+      document.documentElement.classList.remove('navigation-open');
+      navigationToggle.setAttribute('aria-expanded', 'false');
+      if (restore) navigationToggle.focus();
+    };
+    navigationToggle.addEventListener('click', () => {
+      if (navigationToggle.getAttribute('aria-expanded') === 'true') closeNavigation();
+      else {
+        document.documentElement.classList.add('navigation-open');
+        navigationToggle.setAttribute('aria-expanded', 'true');
+        navigation.querySelector('a[aria-current="page"], a')?.focus();
+      }
+    });
+    navigationClose?.addEventListener('click', () => closeNavigation());
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && navigationToggle.getAttribute('aria-expanded') === 'true' && !document.querySelector('dialog[open]')) {
+        event.preventDefault(); closeNavigation();
+      }
+    });
+    window.matchMedia('(min-width: 820px)').addEventListener('change', event => closeNavigation(!event.matches && navigation.contains(document.activeElement)));
+  }
+
   const addDisclosure = document.getElementById('add-opportunity');
   document.querySelectorAll('[data-open-add]').forEach((link) => link.addEventListener('click', () => {
     if (addDisclosure) { addDisclosure.open = true; requestAnimationFrame(() => document.getElementById('job_url')?.focus()); }
@@ -165,11 +195,6 @@
       const target = fragmentTarget();
       const activity = activityForTarget(target);
       if (!activity) return;
-      const panel = activity.closest('[data-workspace-panel]');
-      if (panel?.hidden) {
-        document.querySelector('.workspace-tab[data-tab-target="prepare"]')?.click();
-        try { history.replaceState(null, '', location.pathname + location.search + location.hash); } catch (_) {}
-      }
       openActivity(activity, target);
     };
     const requested = routeActivity();
@@ -265,13 +290,37 @@
   // Hash-addressable tabs. Without JavaScript, all three sections remain readable.
   const tabs = Array.from(document.querySelectorAll('.workspace-tab[data-tab-target]'));
   const panels = Array.from(document.querySelectorAll('[data-workspace-panel]'));
+  const writingFocus = document.querySelector('[data-writing-focus]');
+  const setWritingFocus = active => {
+    document.documentElement.classList.toggle('writing-focus', active);
+    if (writingFocus) {writingFocus.textContent = active ? 'Show navigation' : 'Focus writing';writingFocus.setAttribute('aria-pressed',String(active));}
+  };
+  writingFocus?.addEventListener('click', () => setWritingFocus(writingFocus.getAttribute('aria-pressed') !== 'true'));
   if (tabs.length && panels.length) {
     const names = new Set(panels.map((panel) => panel.dataset.workspacePanel));
     const defaultTab = document.querySelector('[data-workspace-tabs]')?.dataset.defaultTab || 'overview';
-    const current = () => names.has(location.hash.slice(1)) ? location.hash.slice(1) : defaultTab;
+    const panelForHash = hash => {
+      try { return document.getElementById(decodeURIComponent(hash.slice(1)))?.closest('[data-workspace-panel]')?.dataset.workspacePanel; }
+      catch (_) { return null; }
+    };
+    const current = () => {
+      const query = new URLSearchParams(location.search);
+      const requested = panelForHash(location.hash);
+      // Existing POST redirects use #prepare. Their result/source selects the
+      // activity, while an explicit activity fragment always remains direct.
+      if (!requested || requested === 'prepare') {
+        if (['saved','transferring'].includes(query.get('cover'))) return 'prepare';
+        if (query.has('question') || query.has('early_question')) return 'answers';
+        if (query.has('cover')) return 'cover-letter';
+      }
+      return requested || (query.has('draft') ? 'cover-letter' : defaultTab);
+    };
     const show = (name, focus = false) => {
       const target = names.has(name) ? name : 'overview';
       document.documentElement.classList.add('tabs-enabled');
+      const writing = target === 'answers' || target === 'cover-letter';
+      if (writingFocus) writingFocus.hidden = !writing;
+      if (!writing) setWritingFocus(false);
       tabs.forEach((tab) => {
         const selected = tab.dataset.tabTarget === target;
         tab.classList.toggle('is-active', selected);
@@ -279,6 +328,10 @@
         tab.tabIndex = selected ? 0 : -1;
       });
       panels.forEach((panel) => panel.hidden = panel.dataset.workspacePanel !== target);
+      if (target === 'answers' || target === 'cover-letter') {
+        document.getElementById('application-answers-workspace').open = target === 'answers';
+        document.getElementById('letter-editor').open = target === 'cover-letter';
+      }
       if (focus) document.getElementById(target)?.focus({preventScroll:true});
     };
     tabs.forEach((tab) => {
@@ -288,7 +341,7 @@
       tab.addEventListener('click', (event) => {
         event.preventDefault();
         const target = tab.dataset.tabTarget;
-        try { history.replaceState(null, '', `#${target}`); } catch (_) { location.hash = target; }
+        try { if (location.hash !== `#${target}`) history.pushState(null, '', `#${target}`); } catch (_) { location.hash = target; }
         show(target);
       });
       tab.addEventListener('keydown', (event) => {
@@ -306,7 +359,13 @@
       panel.setAttribute('aria-labelledby', `workspace-tab-${panel.dataset.workspacePanel}`);
     });
     show(current());
-    window.addEventListener('hashchange', () => show(current()));
+    window.addEventListener('hashchange', () => show(panelForHash(location.hash) || current()));
+    document.addEventListener('click', event => {
+      const link = event.target.closest('a[href^="#"]');
+      if (!link) return;
+      const target = panelForHash(link.hash);
+      if (target) show(target);
+    });
     document.querySelectorAll('[data-tab-target]:not(.workspace-tab)').forEach((link) => link.addEventListener('click', () => {
       const target = link.dataset.tabTarget;
       if (names.has(target)) show(target);
@@ -468,6 +527,7 @@
     workbench.addEventListener('question:reveal', event => show(panels.indexOf(event.target.closest('[data-question-panel]'))));
     workbench.querySelector('[data-review-ready]')?.addEventListener('click', event => {
       event.preventDefault();
+      document.querySelector('.workspace-tab[data-tab-target=prepare]')?.click();
       const scope = document.getElementById('application-action');
       scope.focus({preventScroll:true});
       scope.scrollIntoView({block:'start', behavior:'instant'});
@@ -657,7 +717,9 @@
         text.setAttribute('aria-label', 'Preserved unsaved edits');
         text.value = saved.fields.filter(([name]) => ['answer','body'].includes(name)).map(([,value]) => value).join('\n');
         notice.append(heading,text);
-        document.getElementById('application-action')?.append(notice);
+        const activities = document.querySelector('[data-workspace-tabs]');
+        if (activities) activities.after(notice);
+        else document.getElementById('application-action')?.append(notice);
       }
     }
   } catch (_) {}
@@ -672,10 +734,17 @@
   document.body.append(dialog);
   const stay = dialog.querySelector('[data-stay]');
   const leave = dialog.querySelector('[data-leave]');
+  const setDialogCopy = (title, description, stayLabel, leaveLabel) => {
+    dialog.querySelector('#leave-materials-title').textContent = title;
+    dialog.querySelector('#leave-materials-description').textContent = description;
+    stay.textContent = stayLabel;
+    leave.textContent = leaveLabel;
+  };
   const cancelDeparture = () => {
     const pending = pendingDeparture;
     pendingDeparture = null;
     dialog.close();
+    if (pending?.completion) setDialogCopy('Leave application materials?', 'You have unsaved changes. Anything already saved locally will remain available, but unsaved changes will be lost if you leave.', 'Stay and edit', 'Leave without saving');
     pending?.focus?.focus({preventScroll:true});
   };
   stay.addEventListener('click', cancelDeparture);
@@ -691,6 +760,20 @@
     const pending = pendingDeparture;
     if (!pending) return;
     pendingDeparture = null;
+    if (pending.completion) {
+      // Completion is an independent local record. Confirming it leaves dirty
+      // writing in the current document and never invokes employer controls.
+      try {
+        const note = completionForm?.querySelector('[name="notes"]')?.value || '';
+        if (note) sessionStorage.setItem(`yourmove:submission-note:${completionForm.dataset.jobId}`, note);
+        else sessionStorage.removeItem(`yourmove:submission-note:${completionForm.dataset.jobId}`);
+      } catch (_) {}
+      authorizedSubmit = completionForm;
+      dialog.close();
+      completionForm.requestSubmit(pending.submitter || undefined);
+      if (authorizedSubmit) { authorizedSubmit = null; leaving = false; }
+      return;
+    }
     // Suppress beforeunload only for this acknowledged transition. Do not clear
     // saved data or unrelated AI recovery entries from other workspaces.
     leaving = true;
@@ -755,8 +838,18 @@
     // decision instead of revealing/focusing an unrelated question editor.
     const recording = event.target.matches('form[data-record-completion]');
     const independent = event.target.matches('form[data-ai-generate], form[data-ai-draft], form[action$="/continue"], form[action$="/cover-letter/transfer"], form[action$="/browser/observe"], form[action$="/browser/start"], form[action$="/open"]');
-    const allowed = independent && carryEdits(event.target) ? true : recording
-      ? (!(dirtyForms().length || recovery()) || window.confirm('You have unsaved answer or letter edits. Record completion anyway? Choose OK to record your confirmed employer submission and leave these unsaved edits behind; they will be lost. Choose Cancel to stay and save or copy them first.'))
+    const hasPendingEdits = dirtyForms().length || recovery();
+    const allowed = independent && carryEdits(event.target) ? true : recording && hasPendingEdits
+      ? (() => {
+        if (!pendingDeparture) {
+          pendingDeparture = {completion:true, focus:event.submitter || document.activeElement, submitter:event.submitter};
+          setDialogCopy('Record completion and leave unsaved edits?', 'This records only your confirmation that you submitted on the employer website. It does not submit an employer form or verify receipt. Your unsaved answer or letter edits will remain unsaved and may be lost when this page changes.', 'Cancel and stay', 'Record completion');
+          dialog.showModal();
+          stay.focus();
+        }
+        return false;
+      })()
+      : recording ? true
       : allowLeaving(event.target, () => {
         authorizedSubmit = event.target;
         event.target.requestSubmit(event.submitter || undefined);
@@ -800,7 +893,7 @@
   if (!editor) return;
   const show = () => {
     editor.open = true;
-    document.querySelector('[data-tab-target=prepare]')?.click();
+    document.querySelector('[data-tab-target=cover-letter]')?.click();
     editor.scrollIntoView({block:'start',behavior:'instant'});
   };
   if (document.readyState === 'complete') show();

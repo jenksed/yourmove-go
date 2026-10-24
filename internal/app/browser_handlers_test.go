@@ -219,12 +219,14 @@ type attachmentFake struct {
 	fakeBrowser
 	attachMu sync.Mutex
 	paths    []string
+	attempts int
 	ready    bool
 }
 
 func (f *attachmentFake) AttachResume(_ context.Context, path string) (chromium.AttachmentResult, error) {
 	f.attachMu.Lock()
 	defer f.attachMu.Unlock()
+	f.attempts++
 	if !f.ready {
 		return chromium.AttachmentResult{}, chromium.ErrNoResumeInput
 	}
@@ -242,6 +244,11 @@ func (f *attachmentFake) count() int {
 	f.attachMu.Lock()
 	defer f.attachMu.Unlock()
 	return len(f.paths)
+}
+func (f *attachmentFake) attemptCount() int {
+	f.attachMu.Lock()
+	defer f.attachMu.Unlock()
+	return f.attempts
 }
 func TestResumeHandoffPinsSelectedFileAcrossSteps(t *testing.T) {
 	a, _ := testWorkspace(t)
@@ -272,22 +279,43 @@ func TestResumeHandoffPinsSelectedFileAcrossSteps(t *testing.T) {
 		t.Fatalf("bad Wails handoff %d %s", good.Code, good.Body.String())
 	}
 	t.Cleanup(a.browsers.closeAll)
-	time.Sleep(60 * time.Millisecond)
-	if a.browsers.state(1).ResumeStatus != "waiting" {
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) && (f.attemptCount() == 0 || a.browsers.state(1).ResumeStatus != "waiting") {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if f.attemptCount() == 0 || a.browsers.state(1).ResumeStatus != "waiting" {
 		t.Fatalf("missing field should wait %+v", a.browsers.state(1))
 	}
 	f.attachMu.Lock()
 	f.ready = true
 	f.attachMu.Unlock()
-	deadline := time.Now().Add(time.Second)
+	deadline = time.Now().Add(time.Second)
 	for time.Now().Before(deadline) && a.browsers.state(1).ResumeStatus != "selected" {
 		time.Sleep(10 * time.Millisecond)
 	}
 	if a.browsers.state(1).ResumeStatus != "selected" || f.count() != 1 {
 		t.Fatalf("resume not attached exactly once: %+v attempts %d", a.browsers.state(1), f.count())
 	}
+	f.mu.Lock()
+	observesBeforeStep := f.observes
+	f.mu.Unlock()
 	f.changeURL(testAshbyPosting + "/application?step=2")
-	time.Sleep(70 * time.Millisecond)
+	deadline = time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		f.mu.Lock()
+		observes := f.observes
+		f.mu.Unlock()
+		if observes > observesBeforeStep {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	f.mu.Lock()
+	observedChangedStep := f.observes > observesBeforeStep
+	f.mu.Unlock()
+	if !observedChangedStep {
+		t.Fatal("watcher did not inspect the changed employer step")
+	}
 	if f.count() != 1 {
 		t.Fatal("reuploaded after step change")
 	}

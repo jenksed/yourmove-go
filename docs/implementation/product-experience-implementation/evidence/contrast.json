@@ -1,0 +1,128 @@
+[
+  {
+    "theme": "light",
+    "combination": "body",
+    "foreground": "#202b27",
+    "background": "#f7f8f5",
+    "ratio": 13.72,
+    "minimum": 4.5,
+    "status": "PASS"
+  },
+  {
+    "theme": "light",
+    "combination": "muted",
+    "foreground": "#59675f",
+    "background": "#f7f8f5",
+    "ratio": 5.58,
+    "minimum": 4.5,
+    "status": "PASS"
+  },
+  {
+    "theme": "light",
+    "combination": "surface text",
+    "foreground": "#202b27",
+    "background": "#ffffff",
+    "ratio": 14.62,
+    "minimum": 4.5,
+    "status": "PASS"
+  },
+  {
+    "theme": "light",
+    "combination": "selected link",
+    "foreground": "#245f4c",
+    "background": "#e5eee7",
+    "ratio": 6.29,
+    "minimum": 4.5,
+    "status": "PASS"
+  },
+  {
+    "theme": "light",
+    "combination": "input boundary",
+    "foreground": "#89998d",
+    "background": "#ffffff",
+    "ratio": 3.0,
+    "minimum": 3,
+    "status": "PASS"
+  },
+  {
+    "theme": "light",
+    "combination": "focus",
+    "foreground": "#2468ae",
+    "background": "#f7f8f5",
+    "ratio": 5.37,
+    "minimum": 3,
+    "status": "PASS"
+  },
+  {
+    "theme": "light",
+    "combination": "primary button",
+    "foreground": "#ffffff",
+    "background": "#265e4b",
+    "ratio": 7.54,
+    "minimum": 4.5,
+    "status": "PASS"
+  },
+  {
+    "theme": "dark",
+    "combination": "body",
+    "foreground": "#edf2eb",
+    "background": "#171d1b",
+    "ratio": 15.07,
+    "minimum": 4.5,
+    "status": "PASS"
+  },
+  {
+    "theme": "dark",
+    "combination": "muted",
+    "foreground": "#afbbb1",
+    "background": "#171d1b",
+    "ratio": 8.6,
+    "minimum": 4.5,
+    "status": "PASS"
+  },
+  {
+    "theme": "dark",
+    "combination": "surface text",
+    "foreground": "#edf2eb",
+    "background": "#202824",
+    "ratio": 13.31,
+    "minimum": 4.5,
+    "status": "PASS"
+  },
+  {
+    "theme": "dark",
+    "combination": "selected link",
+    "foreground": "#acd6b6",
+    "background": "#2e4436",
+    "ratio": 6.54,
+    "minimum": 4.5,
+    "status": "PASS"
+  },
+  {
+    "theme": "dark",
+    "combination": "input boundary",
+    "foreground": "#7b8f80",
+    "background": "#202824",
+    "ratio": 4.37,
+    "minimum": 3,
+    "status": "PASS"
+  },
+  {
+    "theme": "dark",
+    "combination": "focus",
+    "foreground": "#91bcf0",
+    "background": "#171d1b",
+    "ratio": 8.68,
+    "minimum": 3,
+    "status": "PASS"
+  },
+  {
+    "theme": "dark",
+    "combination": "primary button",
+    "foreground": "#ffffff",
+    "background": "#265e4b",
+    "ratio": 7.54,
+    "minimum": 4.5,
+    "status": "PASS"
+  }
+]

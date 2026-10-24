@@ -1,0 +1,127 @@
+# Product experience implementation handoff
+
+October 23, 2026. Branch: `feat/phase2-product-experience`. Target: `main`. Closeout work is in progress on top of recorded head `b6d8fe51652cb713fe7ad10ebb9dbcdece67dd02`; it is not committed or pushed.
+
+Production implementation spans all eight increments. The current closeout diff adds conservative salary abstention and an application-owned dirty-completion confirmation. Controlled Chromium covers this new dialog path. **Native workflow acceptance remains incomplete; this is not release acceptance.** Review the separate [acceptance matrix](ACCEPTANCE.md) before merging. No employer application was submitted, no provider generation was authorized during qualification, and no applicant workspace was used.
+
+## Baseline and working boundaries
+
+Started clean at `6709840d70e84e1df0d66425479c1bf3ac17574a`, the PR #6 merge. History already included `74b7b05`, `4619551`, and `8d71fde`; none was reapplied. Used the existing dedicated worktree. The original checkout's `AGENTS.md` and `opencode.json` were not changed, stashed, restored, or copied. Git operations necessarily update shared linked-worktree metadata.
+
+Read the approved design package and Phase 1 handoff. The supplied mandate supersedes the historical prototype's increment-by-increment approval policy. `graft map` could not run (`graft` is not installed and no graph directory is checked in); direct repository inspection was used. Historical research and stabilization documents are unchanged.
+
+## Implementation by increment
+
+| Increment | Production behavior | Qualification / limits |
+|---|---|---|
+| 1. Shell and Opportunities | 184px grouped labeled navigation; Work, Your materials, Preferences/tools; named compact Navigation below 820 CSS px; Escape and focus return; short-window sidebar scrolling; compact counters and optional progress details; shorter suggested opportunity. | Same-fixture baseline/after at 900×700; real row appears in the first viewport. Existing filtering, sorting, recommendation and deletion semantics retained. Native dimensions remain unmeasured. |
+| 2. Job and writing | Overview, Prepare, Answers, Cover letter, History; existing editors moved into direct activities; bounded writing; optional Focus writing / Show navigation; activity history and deep links; saved disconnected-browser writing leads when no early inventory exists. | Same DOM editor survives activity switches. Existing save/revision/conflict and application-owned departure dialog remain. Query-bound redirects and direct fragments are covered separately. |
+| 3. Preparation / review | Resume selection precedes exact transfer review. Independent profile exclusion, saved values, review hashes and existing consent forms remain. Outcomes stay per material/field. Disconnected recovery leads with one no-fill action; prior session metadata is collapsed; empty results and duplicate letter/contact copy are omitted. | Required controlled transfer journeys cover one resume upload, saved-answer eligibility, manual-value preservation and zero employer submissions. Native employer transfer remains NOT VERIFIED. |
+| 4. Documents / families | Filename, version, readable size and download lead; existing Manage document disclosure retained; Unicode filename evidence; family copy explains suggestions and explicit job selection. | Existing byte/revision/archival/association tests retained. Native picker/save/cancel and exact exported bytes remain NOT VERIFIED. |
+| 5. Reusable materials | Library entries lead with the actual question and saved answer; source context stays secondary. Career Evidence keeps situation/actions/outcome prominent, with optional contextual fields disclosed. | Snapshot, revision, unknown-outcome and unsaved insertion behavior retained. Existing contextual Help supplies previous writing, reviewed evidence and separate AI proposals. |
+| 6. Profile / AI | Applicant approval replaces verification claims; approval is explicitly fresh at each save; pronouns labeled optional. Optional AI is grouped by local vs external/custom access; setup is secondary; configuration is not guaranteed access. | No credential storage, discovery, fallback, autosave or mandatory onboarding. Existing generation review/authorization/adoption/save boundaries retained. |
+| 7. Completion / recovery | Menu and page renamed **Submissions** at the user's request; `/applications` retained. Recorded dates come from SQLite. History says “Submission recorded locally” and retains employer-receipt caveat and Next consequences. Refresh/recovery notices remain visible across activities. | Existing tokens, idempotency, pinned resume history and browser ownership retained. Ordinary executable restart now passes on a dynamic port. Full Wails restart journey remains NOT VERIFIED. |
+| 8. Consistency / accessibility | Shared palette and focus tokens; wrapping activities; compact named navigation; reduced-motion support retained; bounded prose; utility/inspection/import wording and direct Posting checks link; short-window navigation and breakpoint focus correction. | Browser layout captures, keyboard/menu/dialog interactions, no-JS question saving and token contrast checks. VoiceOver, native zoom/text resizing, native keyboard and full native visual acceptance remain NOT VERIFIED. |
+
+## Navigation and authority contracts
+
+- Server-rendered Go forms and existing POST routes remain authoritative. No SPA, client router, new dependency, migration, autosave or remote persistence was introduced.
+- Job activities progressively enhance normal anchors. Without JavaScript all panels remain in the document and disclosures/forms remain operable. Activity changes preserve editor nodes and text; Back reveals the addressed activity.
+- Existing return URLs remain accepted by the Wails redirect layer. `?question=...#prepare` returns to Answers; `?cover=saved#prepare` returns to transfer review; `?draft=...#prepare` remains Prepare. An explicit activity fragment outranks old source queries.
+- A disconnected browser's saved answers may lead the writing view, but do not become current readiness. Strict employer/provider/field definition/revision policy and transmission checks are unchanged.
+- Resume, approved contacts, letter and saved answers retain their independent inclusion flags and hashes. Unsaved editor text never enters scope. Reconciliation remains a local operation requiring separate transfer authorization.
+- Global notices appear above the activities rather than inside a hidden panel. Polling offers refresh instead of replacing dirty editors.
+- Transfer results are displayed only when there are actual results. Missing browser state is not presented as restored. Session URL/timestamp/control counts are secondary details; the no-fill recovery action remains visible without JavaScript.
+
+## Production files
+
+- Shell and navigation: `templates/partials.html`, `templates/jobs.html`, `static/ui.js`, `static/styles.css`.
+- Job preparation/writing/results/history: `templates/job.html`, `static/inspection.js`, `internal/app/handlers.go` (presentation context only).
+- Materials/settings: `templates/resumes.html`, `families.html`, `answer_library.html`, `career_evidence.html`, `candidate.html`, `ai.html`.
+- Completion: `templates/applications.html`, `internal/app/jobs.go` (read-only latest-submission timestamp), `internal/app/resumes.go` (display size only).
+- Secondary screens: `templates/inspection.html`, `requirements.html`, `import_results.html`.
+- Restart qualification only: `main.go` accepts optional `YOURMOVE_HTTP_PORT` while retaining loopback binding and default port 3000; `internal/app/application_runtime_qualification_test.go` reserves a free loopback port and checks durable recovery without probing/stopping the application's normal port.
+- Regression additions: `product_experience_test.go`, `product_experience_qualification_test.go`; existing assertions updated for direct activities and accurate local-record labels. No safety assertions were deleted.
+
+## Design decisions and deviations
+
+Transfer review is a distinct section of Prepare, not another modal/wizard or route. This keeps authoritative consent and outcomes together and preserves normal POST return behavior. Recovery copy follows the current decision: disconnected sessions lead with reconnecting without sending material, rather than an empty transfer dashboard. The user's crowded-section feedback is incorporated into this composition.
+
+System typography and the existing wordmark remain; no external fonts are downloaded. Compact navigation is nonmodal: it does not trap focus and all eight destinations remain named. Optional writing focus hides only shell framing and has an explicit Show navigation control. The two writing disclosures no longer share a native exclusive-name group; JavaScript activity selection reveals the corresponding artifact, and no-JS users may open both.
+
+The proposed 820px threshold is measured in browser CSS pixels. It is **not** claimed to be qualified against native outer-window sizes. Review [the screenshot gallery](evidence/index.html) at original image size before judging text density.
+
+## Verification
+
+Use a temporary Go cache where sandboxing prevents the default cache. Full test commands require permission for synthetic loopback HTTP listeners; the first sandboxed attempt failed to bind IPv6 loopback. Both baseline suites passed when run with that access.
+
+```sh
+GOCACHE=/private/tmp/yourmove-phase2-go-cache go test -count=1 ./...
+GOCACHE=/private/tmp/yourmove-phase2-go-cache go test -count=1 -tags desktop ./...
+node --check static/ui.js
+node --check static/inspection.js
+bash -n scripts/qualify-native-workflow.sh
+git diff --check
+```
+
+Required opt-in suite (all named tests must run, not skip):
+
+```sh
+GOCACHE=/private/tmp/yourmove-phase2-go-cache \
+YOURMOVE_QUALIFY_WORKFLOW=1 YOURMOVE_QUALIFY_EARLY=1 \
+YOURMOVE_QUALIFY_QUESTIONS=1 YOURMOVE_QUALIFY_BROWSER=1 \
+YOURMOVE_QUALIFY_PRODUCT=1 YOURMOVE_QUALIFY_BRIEF=1 \
+YOURMOVE_QUALIFY_PREPARE=1 \
+YOURMOVE_PRODUCT_EVIDENCE=/private/tmp/yourmove-phase2-product-evidence \
+go test -count=1 -tags qualification ./internal/app \
+-run 'TestControlled(ProductExperience|ApplicationBriefClipboardAndWorkspace|UnapprovedProfileJourney|EarlyPreparationWorkbench|QuestionWorkbench|ContactJourney|CombinedContinuation|PrepareEntryPoints|SubmissionRecordingWorkflow|RuntimeRestart|AnswerLibraryWorkbench)$|TestEarlySavedAnswersStayExcludedUntilReconciledAndAuthorized' -v
+```
+
+The additional activity-entry/history/no-JS test runs with `YOURMOVE_QUALIFY_PREPARE=1`, `-tags qualification`, and `-run '^TestControlledPrepareEntryPoints$'`. The dirty completion test uses the application-owned modal in controlled Chromium; native Wails interaction for that modal remains NOT VERIFIED.
+
+Additional completion, brief/clipboard and Chromium trials passed. `TestControlledRuntimeRestart` previously skipped on busy port 3000; the test and ordinary executable now support a dynamically allocated loopback port (`YOURMOVE_HTTP_PORT`), and the restart journey passes without touching the existing process. One combined-run question-workbench disclosure timeout passed when rerun in isolation; no production defect was reproduced. Final outcomes and native evidence are recorded in [ACCEPTANCE.md](ACCEPTANCE.md). Diagnostic failures discovered during implementation were corrected: hidden refresh notices, query-bound return destinations, breakpoint focus, and asynchronous no-script disclosure assertions. A passed process startup or signature check is never counted as a native workflow pass.
+
+## Evidence and limits
+
+The browser fixture uses temporary SQLite, a synthetic PDF, a Unicode filename, saved narrative writing, reviewed experience with an unknown outcome, a saved letter, and local submission confirmation. Both revisions use the same test fixture. Baseline source was exported to a temporary directory with `git archive 6709840`; neither checkout was replaced or reset.
+
+At a 900×700 CSS viewport and scroll origin zero, the first real opportunity begins at approximately **1055px before / 551px after**. These are renderer measurements from one synthetic fixture, not native measurements or user-study speed claims. Measurements and before/after PNGs are retained under `evidence/`.
+
+`evidence/contrast.json` checks body, muted, surface, selected-link, control-border, focus and primary-button combinations in both themes. This is not a full automated or manual accessibility audit.
+
+## Native qualification and outstanding gates
+
+The existing `scripts/qualify-native-workflow.sh` safely assembles a fresh bundle and isolated workspace. Earlier native evidence from `f0100bc57adb47f324222d7b1020830bb12d42fe` covers Opportunities at all four requested outer sizes, dark and light appearance, native Answers and Cover letter, Documents, Role families, native picker cancellation, and import/hash/Unicode/resume association for a synthetic PDF. For closeout source hash `57d0d8f20a549ae085e8525646b7ba088fd49d41dea10541462ed1338685fec7`, strict signing and direct Wails launch passed in a new workspace, but the current session could not start System Events or other GUI applications through LaunchServices (`LSOpenStuffCallLocal` / `kLSNoExecutableErr`, `-10827`). No closeout native attachment or interaction is claimed. See `evidence/native.json` for exact paths and outcomes.
+
+Native qualification remains incomplete. Free-form editor keyboard entry and the dirty-navigation dialog were not reliably established; native export, History/completion, Wails restart, VoiceOver, 200% zoom, enlarged text and reduced motion remain unverified. No dedicated native loopback employer fixture was completed, so no native transfer was attempted. The navigation fixture's external Ashby destination was not opened. Controlled Chromium results do not substitute for these gates. See ACCEPTANCE.md for status and reproducible remaining checks.
+
+## Delivery
+
+Implementation commits and PR metadata are recorded in [DELIVERY.md](DELIVERY.md). Changes are submitted for review, not merged. Native acceptance remains a merge/release review gate; production release readiness is not claimed.
+
+## Follow-up: description spacing and compensation capture
+
+Job description display/copy now keeps one blank line, reduces two blank lines to one, and caps longer gaps at two. This is a presentation transform: original stored descriptions, manual edits and source hashes remain unchanged. Reapplying a non-idempotent blank-line rule at both capture and display is deliberately avoided.
+
+Ashby, Greenhouse, Lever and the existing JSON-LD reader now share a conservative salary fallback when structured pay is absent. It requires an explicit currency plus pay context/period, retains employer wording and distinct regional statements, and excludes unrelated benefits, stipends, bonuses, equity budgets and revenue. No annual/hourly conversion or missing currency is invented. The JSON-LD reader also handles optional `baseSalary` amounts/ranges; malformed optional salary data cannot discard the posting.
+
+Description-sourced salary is labeled **Employer description** and persists its provenance. Structured salary takes precedence. Refresh preserves manually edited salary; blank or failed observations do not erase prior values. Existing postings need a normal posting refresh to populate missing saved salary; no applicant workspace was bulk-modified.
+
+Regression coverage: `internal/platforms/compensation_test.go` and `internal/app/job_description_salary_test.go`. Both complete ordinary/desktop Go suites pass, along with `git diff --check`. Native acceptance gates above remain unchanged.
+
+## PR #7 closeout follow-up
+
+On PR head `281ed2bf5431b52f5047dc3f84fe8101ee32520b`, CI run
+[40051051163](https://github.com/jenksed/yourmove-go/actions/runs/40051051163)
+reported Go failure and macOS desktop PASS. The failing resume-handoff test
+sampled the normal transient `checking` state after a fixed delay; its
+diagnostic already showed the no-field result. The test now waits on observed
+state transitions and retains its exact-once successful upload assertion.
+The salary regression cases and completion Cancel/Escape/reuse qualification
+are recorded in [ACCEPTANCE.md](ACCEPTANCE.md) and
+`evidence/verification.txt`.
+
+The owner’s native execution form is [NATIVE_SMOKE_RECORD.md](NATIVE_SMOKE_RECORD.md).
+It is deliberately all NOT RUN until the owner performs the steps in a fresh
+synthetic Wails workspace. Keep PR #7 open and draft pending that record and
+owner review; no native Wails result is inferred from Chromium.

@@ -14,8 +14,8 @@
   {{if .SearchResults}}
   {{range .SearchResults}}
   <article class="answer-library-entry">
+    <h3 class="answer-library-question">{{.OriginalQuestion}}</h3>
     <div class="answer-library-context"><strong>{{if .SourceJobTitle}}{{.SourceJobTitle}}{{else}}Untitled job{{end}}</strong><span>{{if .SourceEmployer}}{{.SourceEmployer}}{{else}}{{.SourceHost}}{{end}}</span></div>
-    <h3>Original question</h3><p class="answer-library-question">{{.OriginalQuestion}}</p>
     <p class="related-writing-excerpt"><strong>Previous writing excerpt</strong> · {{.Excerpt}}</p>
     <p><a href="/answer-library/{{.EntryID}}">Open full example and source context →</a></p>
   </article>
@@ -27,9 +27,9 @@
 <section class="answer-library-list" aria-label="Saved writing examples">
   {{range .Entries}}
   <article class="answer-library-entry" id="library-entry-{{.ID}}">
+    <h2 class="answer-library-question">{{.OriginalQuestion}}</h2>
     <div class="answer-library-context"><strong>{{if .SourceJobTitle}}{{.SourceJobTitle}}{{else}}Untitled job{{end}}</strong><span>{{if .SourceEmployer}}{{.SourceEmployer}}{{else}}{{.SourceHost}}{{end}}</span></div>
-    <h2>Original question</h2><p class="answer-library-question">{{.OriginalQuestion}}</p>
-    <details class="answer-library-full-answer"><summary>Read the complete saved answer</summary><pre class="evidence-text">{{.Answer}}</pre></details>
+    <details class="answer-library-full-answer" open><summary>Read the complete saved answer</summary><pre class="evidence-text">{{.Answer}}</pre></details>
     <p class="small-muted">Previous writing from {{if .SourceEmployer}}{{.SourceEmployer}}{{else}}{{.SourceHost}}{{end}} · saved {{.CreatedAt}}{{if ne .UpdatedAt .CreatedAt}} · library copy edited {{.UpdatedAt}}{{end}}</p>
     <form method="POST" action="/answer-library/{{.ID}}/career-evidence" class="answer-library-evidence-source">
       <button type="submit" class="button button-secondary">Create career evidence from this writing</button>

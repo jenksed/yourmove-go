@@ -85,11 +85,11 @@ func extractAshbyMetadata(data []byte, postingID string) (Metadata, error) {
 			if description == "" {
 				description = descriptionText(job.DescriptionHTML)
 			}
-			return Metadata{
+			return completeMetadata(Metadata{
 				Title:       job.Title,
 				Description: description,
 				SalaryText:  salary,
-			}, nil
+			}), nil
 		}
 	}
 

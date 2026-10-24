@@ -168,7 +168,7 @@ func TestDesktopRecordCompletionReturnsToHistory(t *testing.T) {
 	}
 	page := httptest.NewRecorder()
 	newDesktopMux(a).ServeHTTP(page, httptest.NewRequest("GET", "http://localhost/jobs/1", nil))
-	if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), "Application recorded as Applied.") || !strings.Contains(page.Body.String(), "Completed in employer browser") {
+	if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), "Submission recorded locally.") || !strings.Contains(page.Body.String(), "Completed in employer browser") {
 		t.Fatalf("history destination unavailable: %d %s", page.Code, page.Body.String())
 	}
 }

@@ -155,7 +155,9 @@ func TestControlledQuestionWorkbench(t *testing.T) {
 		var ok bool
 		mustEvaluate(script, &ok)
 		if !ok {
-			t.Fatalf("rendered assertion failed: %s", script)
+			var details string
+			_ = evaluate(`JSON.stringify([...document.querySelectorAll(".manual-review-summary,.employer-site-summary,.writing-context-alternate")].map(e=>({html:e.outerHTML,open:e.open})))`, &details)
+			t.Fatalf("rendered assertion failed: %s; details: %s", script, details)
 		}
 	}
 	waitJS := func(script string) {
@@ -239,6 +241,7 @@ func TestControlledQuestionWorkbench(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	click(`.workspace-tab[data-tab-target=answers]`)
 	assertJS(`document.querySelectorAll('[data-question-panel]:not([hidden])').length===1 && document.querySelector('[data-question-previous]').disabled`)
 	assertJS(`document.querySelectorAll('[data-browser-watch]').length===1`)
 	typeText(`[data-question-panel]:not([hidden]) [name=answer]`, "https://alex.example.test/work")
@@ -314,6 +317,7 @@ func TestControlledQuestionWorkbench(t *testing.T) {
 	snapshot("ready-scope", "#application-action")
 	// Explicit profile overrides remain separate and manual panels have no forms.
 	assertJS(`!document.querySelector('[data-question-chooser]').textContent.includes('Email') && !!document.querySelector('.profile-question-summary .question-override:not([open])')`)
+	click(`.workspace-tab[data-tab-target=answers]`)
 	click(`.profile-question-summary > summary`)
 	assertJS(`document.querySelector('.profile-question-summary').textContent.includes('alex@example.test')`)
 	snapshot("profile-facts", ".profile-question-summary")
@@ -378,13 +382,13 @@ func TestControlledQuestionWorkbench(t *testing.T) {
 	click(`[data-leave]`)
 	page = server.URL + "/jobs/1"
 	waitJS(`document.readyState==='complete' && document.querySelectorAll('.application-question-form').length===6`)
-	assertJS(`document.querySelector('.writing-context-alternate') && !document.querySelector('.writing-context-alternate').open && document.querySelector('.writing-context-alternate').textContent.includes('Recheck the employer form')`)
+	assertJS(`document.querySelector('.writing-context-alternate') && !document.querySelector('.writing-context-alternate').open && document.querySelector('.writing-context-alternate').textContent.includes('Earlier discovered questions and saved drafts') && document.querySelector('.writing-answers > summary').textContent.includes('review the current form before use')`)
 	click(`.writing-context-alternate > summary`)
 	assertJS(`document.querySelector('.writing-context-alternate').open`)
 	click(`.employer-site-summary > summary`)
-	assertJS(`document.querySelector('.employer-site-summary').open && document.querySelector('.employer-site-summary').textContent.includes('Work authorization') && !document.querySelector('.employer-site-summary form')`)
+	waitJS(`document.querySelector('.employer-site-summary').open && document.querySelector('.employer-site-summary').textContent.includes('Work authorization') && !document.querySelector('.employer-site-summary form')`)
 	click(`.manual-review-summary > summary`)
-	assertJS(`document.querySelector('.manual-review-summary').open && document.querySelector('.manual-review-summary').textContent.includes('Choose a location on the map') && !document.querySelector('.manual-review-summary form')`)
+	waitJS(`document.querySelector('.manual-review-summary').open && document.querySelector('.manual-review-summary').textContent.includes('Choose a location on the map') && !document.querySelector('.manual-review-summary form')`)
 	click(`.question-override summary`)
 	assertJS(`!document.querySelector('.questions-enabled') && [...document.querySelectorAll('.application-question-form')].every(f=>f.getClientRects().length>0) && !document.querySelector('.question-panel[hidden]')`)
 	typeText(`[name=question_key][value="`+p.Questions[0].Key+`"] ~ .field [name=answer]`, " Updated without JavaScript.")

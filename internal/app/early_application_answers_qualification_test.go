@@ -389,7 +389,7 @@ func TestControlledEarlyPreparationWorkbench(t *testing.T) {
 	}
 	historyPage := httptest.NewRecorder()
 	newMux(a).ServeHTTP(historyPage, httptest.NewRequest("GET", "http://localhost/jobs/1", nil))
-	if !strings.Contains(historyPage.Body.String(), "Application recorded as Applied") || !strings.Contains(historyPage.Body.String(), "Applicant submitted the controlled fixture personally") || !strings.Contains(historyPage.Body.String(), "/jobs/1/next") {
+	if !strings.Contains(historyPage.Body.String(), "Submission recorded locally") || !strings.Contains(historyPage.Body.String(), "Applicant submitted the controlled fixture personally") || !strings.Contains(historyPage.Body.String(), "/jobs/1/next") {
 		t.Fatal("Applied history or Next job action missing after local completion")
 	}
 	applicationsPage := httptest.NewRecorder()

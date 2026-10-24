@@ -61,9 +61,9 @@ func fetchGreenhouse(ctx context.Context, client *http.Client, board, jobID stri
 	if strings.TrimSpace(posting.Title) == "" {
 		return Metadata{}, fmt.Errorf("Greenhouse posting has no title")
 	}
-	return Metadata{
+	return completeMetadata(Metadata{
 		Title:       strings.TrimSpace(posting.Title),
 		Company:     boardNameSuggestion(board),
 		Description: descriptionText(posting.Content),
-	}, nil
+	}), nil
 }

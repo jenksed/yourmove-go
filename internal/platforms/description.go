@@ -80,3 +80,31 @@ func descriptionText(raw string) string {
 	}
 	return strings.Join(lines, "\n")
 }
+
+// NormalizeDescription compacts excessive blank lines without flattening lists,
+// indentation, or paragraph boundaries. Existing source text can be displayed
+// through this function without rewriting its persisted evidence or hashes.
+func NormalizeDescription(text string) string {
+	text = strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\r", "\n")
+	lines := strings.Split(text, "\n")
+	var out []string
+	blanks := 0
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			blanks++
+			continue
+		}
+		if len(out) > 0 && blanks > 0 {
+			count := 1
+			if blanks >= 3 {
+				count = 2
+			}
+			for i := 0; i < count; i++ {
+				out = append(out, "")
+			}
+		}
+		out = append(out, strings.TrimRight(line, " \t"))
+		blanks = 0
+	}
+	return strings.Join(out, "\n")
+}

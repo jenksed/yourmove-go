@@ -43,3 +43,15 @@ no API key, $0).
 ## Application UI design decisions
 
 Before changing a user-facing template or its styles, read `docs/design/DESIGN_SYSTEM.md` and `docs/design/RULES.md`. Start with R1 (the current decision) and R6 (existing artifacts before their generators); apply R7–R10 where control parity, prose width, duplicated copy, or overcrowded object lists are relevant. Prefer scoped composition changes over a new component library. Preserve the existing Go POST handlers, Wails redirect behavior, consent boundaries, and explicit submission confirmation.
+
+## Backlog intake and prioritization
+
+The maintained engineering backlog is [`docs/BACKLOG.md`](docs/BACKLOG.md). It records unfinished Phase 2 items, PR closeout, refactoring, beta-release gates and deliberately deferred native automation work. **Read it before selecting work whenever the user asks for backlog items, priorities, next tasks, cleanup/refactors or release readiness.** Also read `docs/RELEASE_POLICY.md` / `docs/RELEASE_CHECKLIST.md` for release choices, and the linked acceptance evidence for any proposed gate.
+
+1. Verify the current branch, PR/CI and relevant implementation first: backlog priorities and snapshot SHAs can become stale. Respect unrelated worktree modifications.
+2. Establish the user's **current objective** (PR closeout, refactoring, beta qualification or later research). Filter by stage, dependencies and actionable status; recommend the top **2–3** with user impact, evidence and acceptance conditions. P0 safety/data integrity defects outrank all work. Do not blindly sort by P1 or expand a focused request into an unrelated release effort.
+3. Distinguish demonstrated failures, code-review hypotheses and **NOT VERIFIED** host testing. Do not present a blocked automation harness as a YourMove product defect or convert Chromium/Go tests into native Wails acceptance. Unverified core workflow remains a beta release gate, even if separately accepted for source merge.
+4. Work on one bounded, owner-authorized item at a time, in a suitable branch. Preserve existing Go handlers/SQLite, consent and explicit manual employer submission boundaries. Do not autonomously merge, release, delete user data or submit employer applications.
+5. After completing an item, update `docs/BACKLOG.md` with its status, commit/PR and tests/evidence; keep deferred work discoverable. Use a separate PR for unrelated refinements rather than growing a closeout diff.
+
+If the user asks to **refactor**, favor the maintainability items after Phase 2 is merged and avoid creating a new framework or browser stack. If the user asks for a **beta release**, evaluate the actual frozen artifact against `docs/RELEASE_POLICY.md` regardless of a green CI or source-merge decision.

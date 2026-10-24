@@ -113,15 +113,15 @@ func TestControlledProfileCompletion(t *testing.T) {
 		}
 	}
 	wait(page, `document.readyState==='complete'&&!!document.querySelector('[name=answer]')`)
-	run(page, `(()=>{document.querySelector('[data-tab-target=prepare]').click();const e=document.querySelector('[name=answer]');e.value='Unsaved pronoun edit';e.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('#record-submission').open=true;document.querySelector('.submission-form [name=confirm]').checked=true;window.messages=[];window.confirm=m=>{messages.push(m);return false};document.querySelector('.submission-form button').click()})()`)
+	run(page, `(()=>{document.querySelector('[data-tab-target=prepare]').click();const e=document.querySelector('[name=answer]');e.value='Unsaved pronoun edit';e.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('#record-submission').open=true;document.querySelector('.submission-form [name=confirm]').checked=true;window.messages=[];document.querySelector('.submission-form button').click()})()`)
 	if os.Getenv("YOURMOVE_COMPLETION_BASELINE") == "1" {
-		check(page, `messages[0].includes('Leave and discard')&&document.activeElement===document.querySelector('[name=answer]')`)
+		check(page, `document.querySelector('.leave-materials-dialog[open]')&&document.activeElement===document.querySelector('[name=answer]')`)
 		t.Log("Reproduced: completion POST cancelled by generic leave/discard prompt; focus jumps to dirty Pronouns editor; no submission recorded")
 		return
 	}
-	check(page, `messages.length===1&&messages[0].includes('Record completion anyway')&&document.querySelector('[name=answer]').value==='Unsaved pronoun edit'&&document.activeElement!==document.querySelector('[name=answer]')`)
+	check(page, `document.querySelector('.leave-materials-dialog[open]')?.textContent.includes('does not submit an employer form')&&document.querySelector('[name=answer]').value==='Unsaved pronoun edit'&&document.activeElement!==document.querySelector('[name=answer]')`)
 	capture("completion-cancel-preserves-edits", "#record-submission")
-	run(page, `window.confirm=m=>{messages.push(m);return true};document.querySelector('.submission-form button').click()`)
+	run(page, `document.querySelector('.leave-materials-dialog [data-leave]').click()`)
 	wait(page, `document.body.textContent.includes('Submission recorded')&&document.querySelectorAll('#history .timeline li').length===1`)
 	job, _ := a.jobByID(1)
 	if job.Stage != StageApplied || job.SubmissionCount != 1 {
@@ -139,7 +139,7 @@ func TestControlledProfileCompletion(t *testing.T) {
 	page = app.URL + "/candidate"
 	wait(page, `!!document.querySelector('#pronouns')`)
 	run(page, `(()=>{for(const [id,value] of Object.entries({first_name:'Casey',last_name:'Fixture',email:'casey@example.test',linkedin:'https://www.linkedin.com/in/synthetic-fixture',pronouns:'He/him'}))document.getElementById(id).value=value;document.querySelector('[name=approve]').checked=true;document.querySelector('form[action="/candidate"] button').click()})()`)
-	wait(page, `document.body.textContent.includes('Approved · Revision 1')&&document.querySelector('#pronouns').value==='He/him'`)
+	wait(page, `document.body.textContent.includes('Approved by you · Revision 1')&&document.querySelector('#pronouns').value==='He/him'`)
 	capture("approved-profile", ".field:has(#pronouns)")
 	run(page, `location.reload()`)
 	wait(page, `document.querySelector('#pronouns')?.value==='He/him'`)
@@ -200,7 +200,7 @@ func TestControlledProfileCompletion(t *testing.T) {
 	check(page, `document.querySelector('.pending-answer-scope').textContent.includes('Approved candidate profile')&&document.querySelector('.pending-answer-scope').textContent.includes('He/Him/His')`)
 	capture("prepared-profile-facts", "#application-action")
 	run(page, `document.querySelector('form[action$="/continue"] button').click()`)
-	wait(page, `document.body.textContent.includes('Filled and observed in Chromium')`)
+	wait(page, `document.body.textContent.includes('Filled and verified in Chromium')`)
 	for deadline := time.Now().Add(10 * time.Second); a.browsers.state(2).AnswerStatus != "complete"; {
 		if time.Now().After(deadline) {
 			t.Fatal("answer transfer timeout")

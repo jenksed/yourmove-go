@@ -192,7 +192,7 @@ func TestTriageRouteAndTemplate(t *testing.T) {
 	}
 	rec := httptest.NewRecorder()
 	newMux(a).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "http://localhost/jobs", nil))
-	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "SUGGESTED NEXT MOVE") || !strings.Contains(rec.Body.String(), "Import multiple job URLs") || !strings.Contains(rec.Body.String(), "Choose a resume") {
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "Suggested next opportunity") || !strings.Contains(rec.Body.String(), "Import multiple job URLs") || !strings.Contains(rec.Body.String(), "Choose a resume") {
 		t.Fatalf("missing triage or import: %d %s", rec.Code, rec.Body.String())
 	}
 }
