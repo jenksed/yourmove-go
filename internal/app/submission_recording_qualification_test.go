@@ -324,9 +324,9 @@ func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
 		t.Fatal("keyboard did not explicitly confirm employer submission")
 	}
 	capture(chrome, page, "submission-700x550-action.png")
-	evaluate(chrome, page, `(()=>{window.__recordConfirmMessages=[];window.confirm=message=>{window.__recordConfirmMessages.push(message);return false};return true})()`, &dirty)
+	evaluate(chrome, page, `(()=>{window.__recordConfirmMessages=[];return true})()`, &dirty)
 	press(chrome, page, " ", "Space", 32)
-	waitFor(chrome, page, `window.__recordConfirmMessages.length===1`)
+	waitFor(chrome, page, `document.querySelector('.leave-materials-dialog[open]')?.textContent.includes('Record completion')`)
 	var cancelledState struct {
 		OnPrepare   bool
 		DirtyAnswer bool
@@ -336,12 +336,11 @@ func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
 		Note        string
 		Prompt      string
 	}
-	evaluate(chrome, page, `({OnPrepare:location.pathname==='/jobs/1',DirtyAnswer:document.querySelector('form.application-question-form').dataset.dirty==='true',DirtyLetter:document.querySelector('form[action$="/cover-letter/save"]').dataset.dirty==='true',Answer:document.querySelector('form.application-question-form textarea').value,Letter:document.querySelector('form[action$="/cover-letter/save"] textarea').value,Note:document.querySelector('#notes').value,Prompt:window.__recordConfirmMessages[0]})`, &cancelledState)
-	if !cancelledState.OnPrepare || !cancelledState.DirtyAnswer || !cancelledState.DirtyLetter || !strings.Contains(cancelledState.Answer, "Synthetic unsaved question edit") || cancelledState.Letter != unsavedLetter || cancelledState.Note != "Synthetic confirmation SG-1100" || !strings.Contains(cancelledState.Prompt, "unsaved answer or letter edits") {
+	evaluate(chrome, page, `({OnPrepare:location.pathname==='/jobs/1',DirtyAnswer:document.querySelector('form.application-question-form').dataset.dirty==='true',DirtyLetter:document.querySelector('form[action$="/cover-letter/save"]').dataset.dirty==='true',Answer:document.querySelector('form.application-question-form textarea').value,Letter:document.querySelector('form[action$="/cover-letter/save"] textarea').value,Note:document.querySelector('#notes').value,Prompt:document.querySelector('.leave-materials-dialog').textContent})`, &cancelledState)
+	if !cancelledState.OnPrepare || !cancelledState.DirtyAnswer || !cancelledState.DirtyLetter || !strings.Contains(cancelledState.Answer, "Synthetic unsaved question edit") || cancelledState.Letter != unsavedLetter || cancelledState.Note != "Synthetic confirmation SG-1100" || !strings.Contains(cancelledState.Prompt, "does not submit an employer form") {
 		t.Fatalf("cancel did not preserve the recoverable unsaved form: %+v", cancelledState)
 	}
-	evaluate(chrome, page, `(()=>{window.confirm=()=>true;return true})()`, &dirty)
-	press(chrome, page, " ", "Space", 32)
+	evaluate(chrome, page, `(()=>{document.querySelector('.leave-materials-dialog [data-leave]').click();return true})()`, &dirty)
 	waitFor(chrome, page, `location.hash==='#history'&&document.body.textContent.includes('Submission recorded locally.')`)
 	job, err := a.jobByID(1)
 	if err != nil || job.Stage != StageApplied {

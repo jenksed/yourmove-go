@@ -734,10 +734,17 @@
   document.body.append(dialog);
   const stay = dialog.querySelector('[data-stay]');
   const leave = dialog.querySelector('[data-leave]');
+  const setDialogCopy = (title, description, stayLabel, leaveLabel) => {
+    dialog.querySelector('#leave-materials-title').textContent = title;
+    dialog.querySelector('#leave-materials-description').textContent = description;
+    stay.textContent = stayLabel;
+    leave.textContent = leaveLabel;
+  };
   const cancelDeparture = () => {
     const pending = pendingDeparture;
     pendingDeparture = null;
     dialog.close();
+    if (pending?.completion) setDialogCopy('Leave application materials?', 'You have unsaved changes. Anything already saved locally will remain available, but unsaved changes will be lost if you leave.', 'Stay and edit', 'Leave without saving');
     pending?.focus?.focus({preventScroll:true});
   };
   stay.addEventListener('click', cancelDeparture);
@@ -753,6 +760,20 @@
     const pending = pendingDeparture;
     if (!pending) return;
     pendingDeparture = null;
+    if (pending.completion) {
+      // Completion is an independent local record. Confirming it leaves dirty
+      // writing in the current document and never invokes employer controls.
+      try {
+        const note = completionForm?.querySelector('[name="notes"]')?.value || '';
+        if (note) sessionStorage.setItem(`yourmove:submission-note:${completionForm.dataset.jobId}`, note);
+        else sessionStorage.removeItem(`yourmove:submission-note:${completionForm.dataset.jobId}`);
+      } catch (_) {}
+      authorizedSubmit = completionForm;
+      dialog.close();
+      completionForm.requestSubmit(pending.submitter || undefined);
+      if (authorizedSubmit) { authorizedSubmit = null; leaving = false; }
+      return;
+    }
     // Suppress beforeunload only for this acknowledged transition. Do not clear
     // saved data or unrelated AI recovery entries from other workspaces.
     leaving = true;
@@ -817,8 +838,18 @@
     // decision instead of revealing/focusing an unrelated question editor.
     const recording = event.target.matches('form[data-record-completion]');
     const independent = event.target.matches('form[data-ai-generate], form[data-ai-draft], form[action$="/continue"], form[action$="/cover-letter/transfer"], form[action$="/browser/observe"], form[action$="/browser/start"], form[action$="/open"]');
-    const allowed = independent && carryEdits(event.target) ? true : recording
-      ? (!(dirtyForms().length || recovery()) || window.confirm('You have unsaved answer or letter edits. Record completion anyway? Choose OK to record your confirmed employer submission and leave these unsaved edits behind; they will be lost. Choose Cancel to stay and save or copy them first.'))
+    const hasPendingEdits = dirtyForms().length || recovery();
+    const allowed = independent && carryEdits(event.target) ? true : recording && hasPendingEdits
+      ? (() => {
+        if (!pendingDeparture) {
+          pendingDeparture = {completion:true, focus:event.submitter || document.activeElement, submitter:event.submitter};
+          setDialogCopy('Record completion and leave unsaved edits?', 'This records only your confirmation that you submitted on the employer website. It does not submit an employer form or verify receipt. Your unsaved answer or letter edits will remain unsaved and may be lost when this page changes.', 'Cancel and stay', 'Record completion');
+          dialog.showModal();
+          stay.focus();
+        }
+        return false;
+      })()
+      : recording ? true
       : allowLeaving(event.target, () => {
         authorizedSubmit = event.target;
         event.target.requestSubmit(event.submitter || undefined);
