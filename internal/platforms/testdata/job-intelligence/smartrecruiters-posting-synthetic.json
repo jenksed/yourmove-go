@@ -1,0 +1,57 @@
+{
+  "id": "744000123456789",
+  "uuid": "d8bb6f62-8934-4fed-a532-8d8c968b7c12",
+  "name": "Senior API Engineer",
+  "jobId": "f94d3f12-f8da-46f8-8f1c-8d0b897abafe",
+  "jobAdId": "4be4c419-cd50-4dd8-81b7-f87e889d61da",
+  "company": {
+    "identifier": "sampleco",
+    "name": "Sample Company"
+  },
+  "location": {
+    "city": "Montreal",
+    "region": "QC",
+    "country": "ca",
+    "fullLocation": "Montreal, QC, Canada",
+    "remote": true,
+    "hybrid": false
+  },
+  "typeOfEmployment": {
+    "id": "toe_perm",
+    "label": "Full-time"
+  },
+  "compensation": {
+    "min": 100000,
+    "max": 125000,
+    "currency": "CAD",
+    "period": "YEARLY"
+  },
+  "jobAd": {
+    "sections": {
+      "companyDescription": {
+        "title": "Company Description",
+        "text": "<p>We build tools &amp; services.</p>"
+      },
+      "jobDescription": {
+        "title": "Job Description",
+        "text": "<p>Own the API.</p><ul><li>Ship safely</li><li>Keep latency low</li></ul>"
+      },
+      "qualifications": {
+        "title": "Qualifications",
+        "text": "<p>Three years of Go.</p>"
+      },
+      "additionalInformation": {
+        "title": "Additional Information",
+        "text": "<p>Remote within Canada.</p>"
+      },
+      "videos": {
+        "title": "Videos to Watch",
+        "urls": ["https://video.example.invalid/watch/1"]
+      }
+    }
+  },
+  "postingUrl": "https://jobs.smartrecruiters.com/sampleco/744000123456789-senior-api-engineer",
+  "applyUrl": "https://jobs.smartrecruiters.com/sampleco/744000123456789-senior-api-engineer?oga=true",
+  "active": true,
+  "visibility": "PUBLIC"
+}

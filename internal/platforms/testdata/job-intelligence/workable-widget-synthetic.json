@@ -1,0 +1,48 @@
+{
+  "name": "Northstar Systems",
+  "description": "A synthetic employer summary that must not replace a job description.",
+  "jobs": [
+    {
+      "title": "Another public role",
+      "shortcode": "AA00000001",
+      "employment_type": "Full-time",
+      "telecommuting": false,
+      "city": "Chicago",
+      "state": "Illinois",
+      "country": "United States",
+      "description": "<p>Decoy description.</p>"
+    },
+    {
+      "title": "Senior Site Reliability Engineer",
+      "shortcode": "9AB12CD345",
+      "code": "SRE-04",
+      "department": "Platform Engineering",
+      "employment_type": "Full-time",
+      "telecommuting": true,
+      "city": "Detroit",
+      "state": "Michigan",
+      "country": "United States",
+      "locations": [
+        {
+          "city": "Detroit",
+          "region": "Michigan",
+          "country": "United States",
+          "countryCode": "US",
+          "hidden": false
+        },
+        {
+          "city": "Ann Arbor",
+          "region": "Michigan",
+          "country": "United States",
+          "countryCode": "US",
+          "hidden": true
+        }
+      ],
+      "published_on": "2026-10-01",
+      "url": "https://northstar.workable.com/jobs/12345/candidates/new",
+      "application_url": "https://apply.workable.com/northstar/j/9AB12CD345/apply/",
+      "shortlink": "https://apply.workable.com/j/9AB12CD345",
+      "description": "<p>Help keep Northstar's platform reliable and secure.</p><h2>Responsibilities</h2><ul><li>Improve service health checks.</li><li>Review incident patterns.</li></ul><h2>Qualifications</h2><p>Experience operating production services.</p><h2>Benefits</h2><p>Flexible leave and learning time.</p>"
+    }
+  ]
+}

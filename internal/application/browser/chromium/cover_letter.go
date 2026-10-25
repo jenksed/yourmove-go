@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/jenksed/yourmove-go/internal/application/browser"
 )
 
 // FillCoverLetter handles only an explicitly labeled native cover-letter text
@@ -36,10 +37,21 @@ func (s *Session) FillCoverLetter(ctx context.Context, body string) (AttachmentR
 	if err != nil {
 		return AttachmentResult{}, err
 	}
-	args, _ := json.Marshal([]string{saved.Scheme + "://" + saved.Host, strings.TrimRight(saved.Path, "/"), body})
+	origin, base, platform := saved.Scheme+"://"+saved.Host, strings.TrimRight(saved.Path, "/"), browser.PostingPlatform(s.postingURL)
+	if s.fixtureContactOrigin != "" {
+		origin, base, platform = s.fixtureContactOrigin, s.fixtureContactBase, s.fixtureContactPlatform
+	}
+	args, _ := json.Marshal([]any{origin, base, platform, body})
 	// Re-resolve after events, preserving React rerenders and conditional changes.
-	const operation = `(function(origin,base,body){
- const owns=()=>location.origin===origin&&(location.pathname===base||location.pathname.startsWith(base+'/'));
+	const operation = `(function(origin,base,platform,body){
+ const owns=()=>{
+ const path=location.pathname.replace(/\/$/,'');
+ if(location.origin!==origin)return false;
+ if(path===base)return true;
+ if(platform==='ashby')return path.startsWith(base+'/');
+ if(platform==='lever')return path===base+'/apply';
+ return false;
+ };
  const resolve=()=>{
  if(!owns()) throw Error('application changed');
  const hits=[...document.querySelectorAll('textarea,input[type=text]')].filter(e=>{
@@ -54,6 +66,7 @@ func (s *Session) FillCoverLetter(ctx context.Context, body string) (AttachmentR
  if(e.value===body) return {selected:true,verified:true,detail:'Saved cover-letter text already matches the live form.'};
  if(e.value!==''||document.activeElement===e) return {selected:false,detail:'Existing or active cover-letter entry preserved. Review it in Chromium.'};
  if(e.maxLength>=0&&body.length>e.maxLength) return {selected:false,detail:'Saved letter exceeds this field’s limit. Complete it in Chromium.'};
+ if(!e.isConnected||!owns()) return {selected:false,detail:'Application changed before letter entry. Review it in Chromium.'};
  const proto=e.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;
  Object.getOwnPropertyDescriptor(proto,'value').set.call(e,body);
  e.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:null}));

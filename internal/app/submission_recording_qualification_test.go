@@ -138,7 +138,7 @@ func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
 			time.Sleep(50 * time.Millisecond)
 		}
 		var diagnostic string
-		evaluate(chrome, page, `JSON.stringify({url:location.href,title:document.title,ready:document.readyState,body:document.body.innerText.slice(0,400)})`, &diagnostic)
+		evaluate(chrome, page, `JSON.stringify({url:location.href,title:document.title,ready:document.readyState,body:document.body.innerText.slice(0,400),recordOpen:document.querySelector('#record-submission')?.open,summaryTop:document.querySelector('#record-submission>summary')?.getBoundingClientRect().top,summaryBottom:document.querySelector('#record-submission>summary')?.getBoundingClientRect().bottom,active:document.activeElement.outerHTML.slice(0,250),dialog:document.querySelector('dialog[open]')?.textContent})`, &diagnostic)
 		t.Fatalf("timed out waiting for browser state: %s; current page: %s", script, diagnostic)
 	}
 	setViewport := func(chrome *chromium.Session, page string, width, height int) {
@@ -226,13 +226,14 @@ func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
 	setViewport(chrome, page, 1100, 800)
 	var ignored bool
 	evaluate(chrome, page, `(()=>{const c=document.querySelector('[data-theme-choice]');if(c){c.value='light';c.dispatchEvent(new Event('change'))}return true})()`, &ignored)
-	var firstLink struct {
+	focusVisible(chrome, page, `#record-submission>summary`)
+	var recordingSummary struct {
 		Visible bool
 		Text    string
 	}
-	evaluate(chrome, page, `(()=>{const e=document.querySelector('a[data-open-details="record-submission"]');const r=e.getBoundingClientRect();return {Visible:r.width>0&&r.height>0&&r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight,Text:e.innerText}})()`, &firstLink)
-	if !firstLink.Visible || !strings.Contains(firstLink.Text, "Record completed application") {
-		t.Fatalf("recording action is not visibly discoverable in Prepare: %+v", firstLink)
+	evaluate(chrome, page, `(()=>{const e=document.querySelector('#record-submission>summary');const r=e.getBoundingClientRect();return {Visible:r.width>0&&r.height>0&&r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight,Text:e.innerText}})()`, &recordingSummary)
+	if !recordingSummary.Visible || !strings.Contains(recordingSummary.Text, "Record completed application") {
+		t.Fatalf("recording disclosure is not visibly reachable after scrolling: %+v", recordingSummary)
 	}
 	capture(chrome, page, "submission-prepare-initial.png")
 	evaluate(chrome, page, `(()=>{document.querySelector('.workspace-tab[data-tab-target=answers]')?.click();const e=document.querySelector('form.application-question-form textarea');e.focus({preventScroll:true});return true})()`, &ignored)
@@ -251,8 +252,8 @@ func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
 		t.Fatal("synthetic cover-letter edit did not enter the unsaved state")
 	}
 	evaluate(chrome, page, `(()=>{document.querySelector('.workspace-tab[data-tab-target=prepare]').click();return true})()`, &ignored)
-	focusVisible(chrome, page, `a[data-open-details="record-submission"]`)
-	press(chrome, page, "Enter", "Enter", 13)
+	focusVisible(chrome, page, `#record-submission>summary`)
+	press(chrome, page, " ", "Space", 32)
 	waitFor(chrome, page, `(()=>{const e=document.querySelector('#record-submission'),r=e.querySelector('summary').getBoundingClientRect();return e.open&&r.top>=0&&r.bottom<=innerHeight})()`)
 	var disclosureState struct {
 		Open           bool
@@ -264,8 +265,8 @@ func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
 	}
 	evaluate(chrome, page, `(()=>{const e=document.querySelector('#record-submission'),r=e.querySelector('summary').getBoundingClientRect();return {Open:e.open,Hash:location.hash,ScrollY:scrollY,Top:r.top,Bottom:r.bottom,ActiveTagName:document.activeElement.tagName,SummaryVisible:r.top>=0&&r.bottom<=innerHeight}})()`, &disclosureState)
 	if !disclosureState.Open || !disclosureState.SummaryVisible {
-		capture(chrome, page, "submission-after-record-link.png")
-		t.Fatalf("keyboard activation of the visible recording link did not reveal the disclosure: %+v", disclosureState)
+		capture(chrome, page, "submission-after-record-summary.png")
+		t.Fatalf("keyboard activation of the visible recording summary did not reveal the disclosure: %+v", disclosureState)
 	}
 	capture(chrome, page, "submission-1100x800-expanded.png")
 	setViewport(chrome, page, 700, 550)
@@ -453,7 +454,6 @@ func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
 	navigate(noJS, browserBase, page+"#prepare")
 	waitFor(noJS, page, `document.readyState==='complete'&&!!document.querySelector('[data-record-completion]')`)
 	setViewport(noJS, page, 700, 550)
-	activateVisible(noJS, page, `a[data-open-details="record-submission"]`)
 	activateVisible(noJS, page, `#record-submission>summary`)
 	activateVisible(noJS, page, `[data-record-completion] [name=confirm]`)
 	activateVisible(noJS, page, `[data-record-completion] button[type=submit]`)
@@ -482,7 +482,7 @@ func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
 	if err := os.Remove(filepath.Join(a.resumeDir, resume.StoredName)); err != nil {
 		t.Fatal(err)
 	}
-	activateVisible(recovery, page, `a[data-open-details="record-submission"]`)
+	activateVisible(recovery, page, `#record-submission>summary`)
 	focusVisible(recovery, page, `#record-submission #notes`)
 	call(recovery, page, "Input.insertText", map[string]any{"text": "Synthetic stale-recovery note"}, nil)
 	var typedNote string
@@ -515,7 +515,7 @@ func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
 	}
 	activateVisible(recovery, stalePage, `form[action="/jobs/3/resume"] button[type=submit]`)
 	waitFor(recovery, page, `location.hash==='#prepare'&&document.querySelector('#resume_id').value==='0'`)
-	activateVisible(recovery, page, `a[data-open-details="record-submission"]`)
+	activateVisible(recovery, page, `#record-submission>summary`)
 	activateVisible(recovery, page, `#record-submission [name=confirm]`)
 	activateVisible(recovery, page, `#record-submission button[type=submit]`)
 	waitFor(recovery, page, `location.hash==='#history'&&document.body.textContent.includes('Submission recorded locally.')`)
@@ -537,7 +537,7 @@ func TestControlledSubmissionRecordingWorkflow(t *testing.T) {
 	navigate(recovery, page, failedPage+"#prepare")
 	page = failedPage
 	waitFor(recovery, page, `document.readyState==='complete'&&!!document.querySelector('[data-record-completion]')`)
-	activateVisible(recovery, page, `a[data-open-details="record-submission"]`)
+	activateVisible(recovery, page, `#record-submission>summary`)
 	focusVisible(recovery, page, `#record-submission #notes`)
 	call(recovery, page, "Input.insertText", map[string]any{"text": "Synthetic database-recovery note"}, nil)
 	activateVisible(recovery, page, `#record-submission [name=confirm]`)

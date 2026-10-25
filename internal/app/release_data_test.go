@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/jenksed/yourmove-go/internal/storage"
 )
 
 func TestReimportRequiresIntactStoredDocument(t *testing.T) {
@@ -45,6 +47,57 @@ func TestReimportRequiresIntactStoredDocument(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestWorkspaceRestartKeepsMultipleJobResumeAssociations(t *testing.T) {
+	a, dir := testWorkspace(t)
+	for _, job := range []Job{
+		{URL: "https://example.test/role-one", Host: "example.test", Title: "Synthetic role one"},
+		{URL: "https://example.test/role-two", Host: "example.test", Title: "Synthetic role two"},
+		{URL: "https://example.test/role-three", Host: "example.test", Title: "Synthetic role three"},
+	} {
+		if err := a.saveJob(job); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	contents := [][]byte{
+		[]byte("%PDF-1.4\nsynthetic resume alpha"),
+		[]byte("%PDF-1.4\nsynthetic resume beta"),
+	}
+	resumes := make([]Resume, len(contents))
+	for i, content := range contents {
+		resume, err := a.importResume("synthetic-resume-"+string(rune('a'+i))+".pdf", bytes.NewReader(content))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resumes[i] = resume
+	}
+	for jobID, resumeID := range map[int64]int64{1: resumes[0].ID, 2: resumes[1].ID, 3: resumes[0].ID} {
+		if err := a.assignResume(jobID, resumeID); err != nil {
+			t.Fatalf("assign job %d to resume %d: %v", jobID, resumeID, err)
+		}
+	}
+	if err := a.db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopenedDB, err := storage.OpenDB(filepath.Join(dir, "jobs.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reopened := newTestApp(t, reopenedDB, a.resumeDir)
+	t.Cleanup(func() { _ = reopenedDB.Close() })
+	for jobID, resumeIndex := range map[int64]int{1: 0, 2: 1, 3: 0} {
+		job, err := reopened.jobByID(jobID)
+		if err != nil || job.SelectedResumeID != resumes[resumeIndex].ID {
+			t.Fatalf("job %d selected resume = %d, want %d: %v", jobID, job.SelectedResumeID, resumes[resumeIndex].ID, err)
+		}
+		stored, err := reopened.readResumeBytes(resumes[resumeIndex])
+		if err != nil || !bytes.Equal(stored, contents[resumeIndex]) {
+			t.Fatalf("job %d resume bytes mismatch: %v", jobID, err)
+		}
 	}
 }
 

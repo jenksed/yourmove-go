@@ -114,7 +114,10 @@ func TestControlledApplicationHandoff(t *testing.T) {
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("launch controlled Chromium: %v", err)
 	}
-	s := &Session{cmd: cmd, dir: dir, postingURL: posting, fixtureOwner: owns}
+	s := &Session{
+		cmd: cmd, dir: dir, postingURL: posting, fixtureOwner: owns,
+		fixtureContactOrigin: srv.URL, fixtureContactBase: base, fixtureContactPlatform: "ashby",
+	}
 	defer s.Close()
 	deadline := time.Now().Add(12 * time.Second)
 	for time.Now().Before(deadline) {

@@ -15,7 +15,7 @@ func TestDescriptionSpacingPreservesStoredSourceAndSalaryManualEdits(t *testing.
 		t.Fatal(err)
 	}
 	meta := platforms.Metadata{Description: raw, SalaryText: platforms.SalaryFromDescription(raw), SalaryOrigin: "description"}
-	if err := a.applyPostingRefresh(1, meta, "retrieved", "fixture", "now"); err != nil {
+	if err := a.applyPostingRefresh(1, meta, "retrieved", "fixture", "2026-10-24T14:00:00Z"); err != nil {
 		t.Fatal(err)
 	}
 	job, err := a.jobByID(1)
@@ -37,7 +37,7 @@ func TestDescriptionSpacingPreservesStoredSourceAndSalaryManualEdits(t *testing.
 	if err = a.updateJob(job); err != nil {
 		t.Fatal(err)
 	}
-	if err = a.applyPostingRefresh(1, meta, "retrieved", "fixture", "later"); err != nil {
+	if err = a.applyPostingRefresh(1, meta, "retrieved", "fixture", "2026-10-24T14:01:00Z"); err != nil {
 		t.Fatal(err)
 	}
 	job, err = a.jobByID(1)

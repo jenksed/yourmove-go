@@ -3,8 +3,10 @@
 {{template "shell-open" "jobs"}}
 <div class="page-heading">
   <div><h1>Opportunities</h1></div>
-  <div class="heading-actions"><a class="button button-secondary" href="/resumes">Document library</a><a class="button button-primary" href="#add-opportunity" data-open-add>+ Add opportunity</a></div>
+  <div class="heading-actions"><a class="button button-secondary" href="/resumes">Document library</a>{{if .Total}}<a class="button button-secondary" href="#add-opportunity" data-open-add>+ Add opportunity</a>{{end}}</div>
 </div>
+{{if not .Total}}<p class="first-job-intro">Save any job posting here. Add a resume when you’re ready to prepare it, and reuse saved materials on later applications.</p>{{end}}
+{{if .Total}}
 <section class="panel opportunity-dashboard" aria-labelledby="opportunity-progress-title">
   <div class="queue-progress">
     <h2 class="visually-hidden" id="opportunity-progress-title">Queue progress</h2>
@@ -32,16 +34,22 @@
     {{else}}<p class="eyebrow">YOUR NEXT STEP</p><h2>Start with a job you want.</h2><a class="button button-primary" href="#add-opportunity" data-open-add>Save an opportunity →</a>{{end}}
   </div>
 </section>
-<details class="panel create-panel" id="add-opportunity">
-  <summary><span class="summary-icon">+</span><span><strong>Add an opportunity</strong><small>Save a job posting and fetch supported metadata.</small></span><span class="summary-chevron" aria-hidden="true">⌄</span></summary>
-  <div class="create-body"><form class="job-form" method="POST" action="/jobs">
-    <div class="field"><label for="job_url">Job posting URL</label><input id="job_url" name="job_url" type="url" placeholder="https://jobs.ashbyhq.com/..." required autocomplete="url"></div>
-    <div class="field"><label for="job_title">Job title <span class="muted">(optional)</span></label><input id="job_title" name="job_title" type="text" placeholder="Fetched automatically when available" maxlength="200"></div>
-    <div class="form-actions"><button class="button button-primary" type="submit">Save opportunity</button></div>
+{{end}}
+{{if .Total}}<details class="panel create-panel" id="add-opportunity" {{if .CreateFormOpen}}open{{end}}>
+  <summary><span class="summary-icon">+</span><span><strong>Add an opportunity</strong><small>Save any job posting. Add details when automatic retrieval is unavailable.</small></span><span class="summary-chevron" aria-hidden="true">⌄</span></summary>
+  <div class="create-body">
+{{else}}<section class="panel create-panel first-job-form" id="add-opportunity"><div class="create-body">
+{{end}}
+  <form class="job-form" method="POST" action="/jobs"><input type="hidden" name="save_first" value="1">
+    {{if or .JobURLError .JobTitleError}}<div class="job-form-error" role="alert"><strong>Job was not saved.</strong> Correct the highlighted field and try again.</div>{{end}}
+    <div class="field"><label for="job_url">Job posting URL</label><input id="job_url" name="job_url" type="url" value="{{.NewJobURL}}" placeholder="https://careers.example.com/jobs/..." required autocomplete="url" {{if .JobURLError}}aria-invalid="true" aria-describedby="job-url-error"{{end}}>{{if .JobURLError}}<small class="field-error" id="job-url-error">{{.JobURLError}}</small>{{end}}</div>
+    <div class="field"><label for="job_title">Job title <span class="muted">(optional)</span></label><input id="job_title" name="job_title" type="text" value="{{.NewJobTitle}}" placeholder="Add a title now or later" maxlength="200" {{if .JobTitleError}}aria-invalid="true" aria-describedby="job-title-error"{{end}}>{{if .JobTitleError}}<small class="field-error" id="job-title-error">{{.JobTitleError}}</small>{{end}}</div>
+    <div class="form-actions"><button class="button button-primary" type="submit">Save job</button></div>
   </form><details class="batch-disclosure"><summary><strong>Import multiple job URLs</strong><span class="muted">Up to 50 at once</span></summary>
 <form method="POST" action="/jobs/import" class="job-form batch-import-form"><div class="field field-full"><label for="job_urls">One job posting URL per line</label><textarea id="job_urls" name="job_urls" rows="7" maxlength="128000" placeholder="https://jobs.ashbyhq.com/...&#10;https://jobs.lever.co/..." required></textarea><small>Duplicates are skipped. Batch import saves URLs locally; use Posting checks to retrieve supported details without opening each job.</small></div><div class="form-actions"><button class="button button-secondary" type="submit">Import opportunities</button></div></form>
-</details></div>
 </details>
+{{if .Total}}</div></details>{{else}}</div></section>{{end}}
+{{if .Total}}
 <section class="panel list-panel" aria-labelledby="saved-jobs-title">
   <div class="section-heading"><div><h2 id="saved-jobs-title" class="visually-hidden">Saved opportunities</h2><p class="small-muted" id="results-status" role="status" aria-live="polite">{{.Total}} saved in total</p></div></div>
   <div class="list-toolbar" data-job-filters><div class="field search-field"><label for="job-search">Search opportunities</label><input id="job-search" type="search" placeholder="Role, company or source" autocomplete="off" data-job-search></div>
@@ -57,10 +65,8 @@
         <h3><a class="job-title" href="/jobs/{{.ID}}">{{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}}</a></h3>
         <p class="job-row-detail">{{if gt .SelectedResumeID 0}}Resume selected{{else}}{{with index $.Matches .ID}}{{if eq .Status "matched"}}Suggested: {{.ResumeName}}{{else}}No resume selected{{end}}{{else}}No resume selected{{end}}{{end}} <span class="dot-sep" aria-hidden="true">·</span> {{.ActionLabel}}</p>
       </div>
-      <div class="job-row-actions">{{if $.Desktop}}<button type="submit" form="open-posting-{{.ID}}" class="text-link row-secondary posting-open-button">Posting ↗</button>{{else}}<a class="text-link row-secondary" href="{{.URL}}" target="_blank" rel="noopener noreferrer">Posting ↗</a>{{end}}<a class="button button-secondary row-primary" href="/jobs/{{.ID}}">Open workspace <span aria-hidden="true">→</span></a></div>
+      <div class="job-row-actions">{{if $.Desktop}}<button type="submit" form="open-posting-{{.ID}}" class="text-link row-secondary posting-open-button">Posting ↗</button>{{else}}<a class="text-link row-secondary" href="{{.URL}}" target="_blank" rel="noopener noreferrer">Posting ↗</a>{{end}}<a class="button button-secondary row-primary" href="/jobs/{{.ID}}{{if gt .SubmissionCount 0}}#history{{end}}">{{if gt .SubmissionCount 0}}View history{{else}}Open workspace{{end}} <span aria-hidden="true">→</span></a></div>
     </article>
-    {{else}}
-    <div class="empty-state"><div class="empty-mark" aria-hidden="true">↗</div><h3>No opportunities yet</h3><p>Start by saving a job posting. YourMove will keep the details together.</p><a href="#add-opportunity" class="button button-primary" data-open-add>Save your first job</a></div>
     {{end}}
   </div>
   {{if .Jobs}}<details class="bulk-remove"><summary>Delete selected jobs <span class="muted">(test and unwanted records)</span></summary>
@@ -73,5 +79,6 @@
   {{if .Desktop}}{{range .Jobs}}<form id="open-posting-{{.ID}}" method="POST" action="/jobs/{{.ID}}/open"></form>{{end}}{{end}}
   {{if .Jobs}}<div class="empty-state" id="filtered-empty" hidden><h3>No matching opportunities</h3><p>Try a different search or stage.</p><button class="button button-secondary" type="button" data-clear-filters>Clear filters</button></div>{{end}}
 </section>
+{{end}}
 {{template "shell-close" .}}
 </body></html>

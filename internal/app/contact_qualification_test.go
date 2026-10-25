@@ -119,9 +119,12 @@ document.querySelector('[name=resume]').addEventListener('change',async e=>{cons
 	}))
 	defer fixture.Close()
 	base := fixture.URL + "/fixture/job"
+	if !browser.OwnsPostingURL(testAshbyPosting, testAshbyPosting+"/application") {
+		t.Fatal("controlled journey fixture must model the same-origin Ashby application descendant")
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	chrome, err := chromium.LaunchFixture(ctx, base)
+	chrome, err := chromium.LaunchFixtureForPosting(ctx, base, testAshbyPosting)
 	if err != nil {
 		t.Fatal(err)
 	}

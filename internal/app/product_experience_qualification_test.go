@@ -96,6 +96,16 @@ func TestControlledProductExperience(t *testing.T) {
 	var measurements []map[string]any
 	capture := func(name, selector string, width, height int, theme string) {
 		t.Helper()
+		if conceptPath := os.Getenv("YOURMOVE_PRODUCT_CONCEPT_CSS"); conceptPath != "" {
+			css, err := os.ReadFile(conceptPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var ignored any
+			if err := evalBriefJS(ctx, chrome, page, `(()=>{let s=document.getElementById('concept-treatment');if(!s){s=document.createElement('style');s.id='concept-treatment';document.head.append(s)}s.textContent=`+fmt.Sprintf("%q", string(css))+`;return true})()`, &ignored); err != nil {
+				t.Fatal(err)
+			}
+		}
 		conn, err := chrome.FixturePage(ctx, page)
 		if err != nil {
 			t.Fatal(err)
@@ -158,6 +168,10 @@ func TestControlledProductExperience(t *testing.T) {
 		navigate(s.path, s.selector)
 		for _, theme := range []string{"light", "dark"} {
 			capture(s.name+"-"+theme, s.selector, 1100, 800, theme)
+			if os.Getenv("YOURMOVE_PRODUCT_MATRIX") == "1" {
+				capture(s.name+"-900-"+theme, s.selector, 900, 700, theme)
+				capture(s.name+"-700-"+theme, s.selector, 700, 550, theme)
+			}
 		}
 		if s.name == "recovery" {
 			if err = a.assignResume(1, resume.ID); err != nil {
@@ -214,7 +228,23 @@ func TestControlledProductExperience(t *testing.T) {
 	clickBriefUI(t, ctx, chrome, page, "[data-navigation-toggle]")
 	clickBriefUI(t, ctx, chrome, page, ".nav-item[href='/candidate']")
 	assertBriefJS(t, ctx, chrome, page, `document.querySelector('.leave-materials-dialog').open`)
+	capture("unsaved-dialog-light", ".leave-materials-dialog", 700, 550, "light")
 	capture("unsaved-dialog", ".leave-materials-dialog", 700, 550, "dark")
+	assertBriefJS(t, ctx, chrome, page, `document.activeElement.matches('[data-stay]')`)
+	// The initially focused action keeps work; Enter must never discard it.
+	if err = chrome.FixtureCall(ctx, page, "Input.dispatchKeyEvent", map[string]any{"type": "keyDown", "key": "Enter", "code": "Enter", "windowsVirtualKeyCode": 13, "text": "\r"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err = chrome.FixtureCall(ctx, page, "Input.dispatchKeyEvent", map[string]any{"type": "keyUp", "key": "Enter", "code": "Enter", "windowsVirtualKeyCode": 13}, nil); err != nil {
+		t.Fatal(err)
+	}
+	assertBriefJS(t, ctx, chrome, page, `!document.querySelector('.leave-materials-dialog').open && productEditor.value==='Unsaved synthetic adaptation'`)
+	clickBriefUI(t, ctx, chrome, page, ".nav-item[href='/candidate']")
+	if err = chrome.FixtureCall(ctx, page, "Input.dispatchKeyEvent", map[string]any{"type": "keyDown", "key": "Escape", "code": "Escape", "windowsVirtualKeyCode": 27}, nil); err != nil {
+		t.Fatal(err)
+	}
+	assertBriefJS(t, ctx, chrome, page, `!document.querySelector('.leave-materials-dialog').open && productEditor.value==='Unsaved synthetic adaptation' && document.activeElement.matches('.nav-item[href="/candidate"]')`)
+	clickBriefUI(t, ctx, chrome, page, ".nav-item[href='/candidate']")
 	clickBriefUI(t, ctx, chrome, page, "[data-stay]")
 	assertBriefJS(t, ctx, chrome, page, `productEditor.value==='Unsaved synthetic adaptation' && !document.querySelector('.leave-materials-dialog').open`)
 	clickBriefUI(t, ctx, chrome, page, ".nav-item[href='/candidate']")

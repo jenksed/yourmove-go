@@ -233,6 +233,9 @@ func initJobsSchema(db *sql.DB) error {
 			return fmt.Errorf("migrate cover letter provider schema: %w", err)
 		}
 	}
+	if err := allowManualCoverLetterSources(db); err != nil {
+		return err
+	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS cover_letters_by_job ON cover_letters(job_id,id DESC)`); err != nil {
 		return fmt.Errorf("index cover letters: %w", err)
 	}
@@ -372,6 +375,26 @@ func initJobsSchema(db *sql.DB) error {
 		if _, err := db.Exec(`ALTER TABLE candidate_profile ADD COLUMN pronouns TEXT NOT NULL DEFAULT ''`); err != nil {
 			return fmt.Errorf("migrate candidate pronouns: %w", err)
 		}
+	}
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS job_posting_sources (
+		job_id INTEGER PRIMARY KEY REFERENCES jobs(id),
+		latest_success_at TEXT NOT NULL CHECK(length(latest_success_at) BETWEEN 1 AND 80),
+		availability TEXT NOT NULL CHECK(availability IN ('available','unavailable')),
+		unavailable_reason TEXT NOT NULL DEFAULT '',
+		source_json BLOB,
+		source_content_sha256 TEXT,
+		description_confirmed INTEGER NOT NULL CHECK(description_confirmed IN (0,1)),
+		salary_confirmed INTEGER NOT NULL CHECK(salary_confirmed IN (0,1)),
+		CHECK (
+			(availability='available' AND unavailable_reason='' AND source_json IS NOT NULL
+			 AND source_content_sha256 IS NOT NULL AND length(source_content_sha256)=64
+			 AND length(CAST(source_json AS BLOB)) BETWEEN 1 AND 1048576)
+			OR
+			(availability='unavailable' AND unavailable_reason IN ('absent','too_large','invalid','unsupported')
+			 AND source_json IS NULL AND source_content_sha256 IS NULL)
+		)
+	)`); err != nil {
+		return fmt.Errorf("create job posting sources table: %w", err)
 	}
 	return nil
 }

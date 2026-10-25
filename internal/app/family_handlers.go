@@ -181,5 +181,5 @@ func (a *App) setResumeFamily(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Cannot update resume routing", 500)
 		return
 	}
-	http.Redirect(w, r, "/resumes", http.StatusSeeOther)
+	http.Redirect(w, r, sharedMaterialLocation("/resumes", a.sharedMaterialReturnJob(r), ""), http.StatusSeeOther)
 }

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jenksed/yourmove-go/internal/application/schema"
+	"github.com/jenksed/yourmove-go/internal/platforms"
 )
 
 const maxResponse = 32 << 20
@@ -25,43 +26,11 @@ func New(client *http.Client) *Inspector {
 	return &Inspector{client: client}
 }
 func posting(raw string) (string, string, error) {
-	u, e := url.Parse(raw)
-	if e != nil || u.Scheme != "https" || u.User != nil || u.Port() != "" || u.Hostname() != "jobs.ashbyhq.com" {
-		return "", "", errors.New("unsupported Ashby URL")
+	identity, err := platforms.AshbyPostingIdentity(raw)
+	if err != nil {
+		return "", "", err
 	}
-	p := strings.Split(strings.Trim(u.Path, "/"), "/")
-	if len(p) != 2 || !token(p[0]) || !uuid(p[1]) {
-		return "", "", errors.New("invalid Ashby posting path")
-	}
-	return p[0], p[1], nil
-}
-func token(s string) bool {
-	if s == "" {
-		return false
-	}
-	for _, c := range s {
-		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_') {
-			return false
-		}
-	}
-	return true
-}
-func uuid(s string) bool {
-	if len(s) != 36 {
-		return false
-	}
-	for i, c := range s {
-		if i == 8 || i == 13 || i == 18 || i == 23 {
-			if c != '-' {
-				return false
-			}
-			continue
-		}
-		if !((c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') || (c >= '0' && c <= '9')) {
-			return false
-		}
-	}
-	return true
+	return identity.Board, identity.PostingID, nil
 }
 func (i *Inspector) Inspect(ctx context.Context, raw string) (schema.Result, error) {
 	board, id, err := posting(raw)
@@ -91,37 +60,80 @@ func (i *Inspector) Inspect(ctx context.Context, raw string) (schema.Result, err
 	if len(data) > maxResponse {
 		return schema.Result{}, errors.New("Ashby board exceeds bounded limit")
 	}
+	type postingRecord struct {
+		ID       string          `json:"id"`
+		JobURL   string          `json:"jobUrl"`
+		ApplyURL json.RawMessage `json:"applyUrl"`
+	}
 	var doc struct {
-		Jobs []struct {
-			ID       string `json:"id"`
-			JobURL   string `json:"jobUrl"`
-			ApplyURL string `json:"applyUrl"`
-		} `json:"jobs"`
+		Jobs []postingRecord `json:"jobs"`
 	}
 	if err := json.Unmarshal(data, &doc); err != nil {
 		return schema.Result{}, fmt.Errorf("decode Ashby board: %w", err)
 	}
-	for _, j := range doc.Jobs {
-		found := j.ID == id
-		if !found && j.JobURL != "" {
-			if u, err := url.Parse(j.JobURL); err == nil && u.Hostname() == "jobs.ashbyhq.com" {
-				parts := strings.Split(strings.Trim(u.Path, "/"), "/")
-				found = len(parts) == 2 && parts[1] == id
+	selected := -1
+	for index, candidate := range doc.Jobs {
+		matched, err := postingRecordMatches(board, id, candidate.ID, candidate.JobURL)
+		if err != nil {
+			return schema.Result{}, err
+		}
+		if matched {
+			if selected >= 0 {
+				return schema.Result{}, fmt.Errorf("Ashby posting identity is ambiguous on board %q", board)
 			}
+			selected = index
 		}
-		if !found {
-			continue
-		}
-		apply := j.ApplyURL
-		if apply != "" {
-			if u, err := url.Parse(apply); err != nil || u.Scheme != "https" || u.User != nil || u.Hostname() == "" {
-				apply = ""
-			}
-		}
-		if apply == "" {
-			apply = raw
-		}
-		return schema.Result{Platform: "ashby", Source: "public_api", Completeness: "partial", ApplicationURL: apply, Note: "Ashby's documented public posting API does not expose application questions. The application and possible later steps require rendered, read-only inspection; no employer fields were inferred.", Fields: []schema.Field{}, Steps: []schema.Step{{Key: "posting", Label: "Job posting", State: "observed", Action: "none"}, {Key: "application", Label: "Application form (uninspected)", State: "anticipated", Action: "inspect"}, {Key: "conditional", Label: "Conditional or subsequent steps (unknown)", State: "unknown", Action: "human"}}}, nil
 	}
-	return schema.Result{}, errors.New("Ashby posting was not found on its public job board")
+	if selected < 0 {
+		return schema.Result{}, errors.New("Ashby posting was not found on its public job board")
+	}
+	job := doc.Jobs[selected]
+	apply := optionalURLString(job.ApplyURL)
+	if !matchesApplicationDestination(board, id, apply) {
+		apply = raw
+	}
+	return schema.Result{Platform: "ashby", Source: "public_api", Completeness: "partial", ApplicationURL: apply, Note: "Ashby's documented public posting API does not expose application questions. The application and possible later steps require rendered, read-only inspection; no employer fields were inferred.", Fields: []schema.Field{}, Steps: []schema.Step{{Key: "posting", Label: "Job posting", State: "observed", Action: "none"}, {Key: "application", Label: "Application form (uninspected)", State: "anticipated", Action: "inspect"}, {Key: "conditional", Label: "Conditional or subsequent steps (unknown)", State: "unknown", Action: "human"}}}, nil
+}
+
+func optionalURLString(raw json.RawMessage) string {
+	var value string
+	if len(raw) == 0 || json.Unmarshal(raw, &value) != nil {
+		return ""
+	}
+	return value
+}
+
+func postingRecordMatches(requestedBoard, requestedID, returnedID, returnedURL string) (bool, error) {
+	idMatches := returnedID != "" && returnedID == requestedID
+	if returnedURL == "" {
+		if idMatches {
+			return false, fmt.Errorf("Ashby selected posting %s has an ID but no qualified jobUrl", requestedID)
+		}
+		return false, nil
+	}
+	returnedBoard, returnedPostingID, err := posting(returnedURL)
+	if err != nil {
+		if idMatches || ashbyURLHasPostingID(returnedURL, requestedID) {
+			return false, fmt.Errorf("Ashby selected posting has an invalid jobUrl: %w", err)
+		}
+		return false, nil
+	}
+	urlHasRequestedID := returnedPostingID == requestedID
+	urlMatches := returnedBoard == requestedBoard && urlHasRequestedID
+	if (idMatches && !urlMatches) || (urlHasRequestedID && returnedBoard != requestedBoard) {
+		return false, fmt.Errorf("Ashby selected posting ID/jobUrl conflicts with requested board %q and posting %q", requestedBoard, requestedID)
+	}
+	if urlMatches && returnedID != "" && returnedID != requestedID {
+		return false, fmt.Errorf("Ashby selected posting id %q conflicts with matching jobUrl", returnedID)
+	}
+	return urlMatches, nil
+}
+
+func ashbyURLHasPostingID(rawURL, postingID string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	return len(parts) == 2 && parts[1] == postingID
 }

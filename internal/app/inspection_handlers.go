@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 
 	browser "github.com/jenksed/yourmove-go/internal/application/browser"
 	"github.com/jenksed/yourmove-go/internal/application/browser/chromium"
@@ -20,22 +21,113 @@ func (a *App) candidatePage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unable to load candidate profile", 500)
 		return
 	}
+	a.renderCandidatePage(w, candidateProfilePageModel{
+		CandidateProfile: p,
+		SavedApproved:    p.Approved,
+		SavedRevision:    p.Revision,
+		FieldErrors:      map[string]string{},
+		ReturnJob:        a.sharedMaterialReturnJob(r),
+		SavedLocally:     r.URL.Query().Get("notice") == "saved",
+	}, http.StatusOK)
+}
+
+type candidateProfilePageModel struct {
+	CandidateProfile
+	SavedApproved    bool
+	SavedRevision    int64
+	Submitted        bool
+	SaveStatus       string
+	SaveMessage      string
+	ValidationErrors []candidateProfileValidationError
+	FieldErrors      map[string]string
+	ReturnJob        *Job
+	SavedLocally     bool
+}
+
+type candidateProfileValidationError struct {
+	Field   string
+	Message string
+}
+
+func (a *App) renderCandidatePage(w http.ResponseWriter, page candidateProfilePageModel, status int) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	if err := a.resources.candidateTemplate.Execute(w, p); err != nil {
+	w.WriteHeader(status)
+	if err := a.resources.candidateTemplate.Execute(w, page); err != nil {
 		log.Printf("render profile: %v", err)
 	}
 }
+
 func (a *App) updateCandidate(w http.ResponseWriter, r *http.Request) {
 	if !parseLocalForm(w, r, 12<<10) {
 		return
 	}
 	p := CandidateProfile{FirstName: r.PostForm.Get("first_name"), LastName: r.PostForm.Get("last_name"), Email: r.PostForm.Get("email"), Phone: r.PostForm.Get("phone"), City: r.PostForm.Get("city"), Region: r.PostForm.Get("region"), Country: r.PostForm.Get("country"), LinkedIn: r.PostForm.Get("linkedin"), GitHub: r.PostForm.Get("github"), Portfolio: r.PostForm.Get("portfolio"), Pronouns: r.PostForm.Get("pronouns"), Approved: r.PostForm.Get("approve") == "yes"}
 	if err := a.saveCandidateProfile(p); err != nil {
-		http.Error(w, "Profile was not saved: "+err.Error(), 400)
+		saved, loadErr := a.candidateProfile()
+		if loadErr != nil {
+			log.Printf("load saved candidate profile after save error: %v", loadErr)
+		}
+		validationErrors := candidateProfileValidationErrors(p, err)
+		fieldErrors := make(map[string]string, len(validationErrors))
+		for _, item := range validationErrors {
+			fieldErrors[item.Field] = item.Message
+		}
+		status, saveStatus, saveMessage := http.StatusInternalServerError, "Save not confirmed", "Your entries are still here. YourMove could not confirm this save; try again."
+		if len(validationErrors) > 0 {
+			status, saveStatus, saveMessage = http.StatusBadRequest, "Profile was not saved", "Correct the highlighted fields and save again. No facts were approved or transmitted."
+		}
+		a.renderCandidatePage(w, candidateProfilePageModel{
+			CandidateProfile: p,
+			SavedApproved:    saved.Approved,
+			SavedRevision:    saved.Revision,
+			Submitted:        true,
+			SaveStatus:       saveStatus,
+			SaveMessage:      saveMessage,
+			ValidationErrors: validationErrors,
+			FieldErrors:      fieldErrors,
+			ReturnJob:        a.sharedMaterialReturnJob(r),
+		}, status)
 		return
 	}
-	http.Redirect(w, r, "/candidate", http.StatusSeeOther)
+	http.Redirect(w, r, sharedMaterialLocation("/candidate", a.sharedMaterialReturnJob(r), "saved"), http.StatusSeeOther)
+}
+
+func candidateProfileValidationErrors(p CandidateProfile, err error) []candidateProfileValidationError {
+	var result []candidateProfileValidationError
+	add := func(field, message string) {
+		result = append(result, candidateProfileValidationError{Field: field, Message: message})
+	}
+	switch err.Error() {
+	case "first name, last name and email are required for profile approval":
+		if strings.TrimSpace(p.FirstName) == "" {
+			add("first_name", "Enter a first name before approving this profile.")
+		}
+		if strings.TrimSpace(p.LastName) == "" {
+			add("last_name", "Enter a last name before approving this profile.")
+		}
+		if strings.TrimSpace(p.Email) == "" {
+			add("email", "Enter an email address before approving this profile.")
+		}
+	case "email address is invalid":
+		add("email", "Enter a valid email address.")
+	case "invalid pronouns preference":
+		add("pronouns", "Choose one of the listed pronoun options.")
+	case "invalid profile field (length or line breaks)":
+		for _, field := range []struct {
+			id    string
+			value string
+		}{
+			{"first_name", strings.TrimSpace(p.FirstName)}, {"last_name", strings.TrimSpace(p.LastName)}, {"email", strings.TrimSpace(p.Email)},
+			{"phone", p.Phone}, {"city", p.City}, {"region", p.Region}, {"country", p.Country},
+			{"linkedin", p.LinkedIn}, {"github", p.GitHub}, {"portfolio", p.Portfolio},
+		} {
+			if len(field.value) > 320 || strings.ContainsAny(field.value, "\x00\r\n") {
+				add(field.id, "Use at most 320 characters and remove line breaks.")
+			}
+		}
+	}
+	return result
 }
 
 type inspectionPageModel struct {

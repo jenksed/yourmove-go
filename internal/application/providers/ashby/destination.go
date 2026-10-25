@@ -50,7 +50,7 @@ func (i *Inspector) ApplicationDestination(ctx context.Context, postingURL strin
 // operator review instead of automatic résumé delivery.
 func matchesApplicationDestination(board, id, raw string) bool {
 	u, err := url.Parse(raw)
-	if err != nil || u.Scheme != "https" || u.Hostname() != "jobs.ashbyhq.com" || u.Port() != "" || u.User != nil || u.Fragment != "" {
+	if err != nil || u.Scheme != "https" || u.Hostname() != "jobs.ashbyhq.com" || u.Port() != "" || u.User != nil || u.Fragment != "" || u.RawPath != "" || u.Opaque != "" {
 		return false
 	}
 	base := "/" + board + "/" + id

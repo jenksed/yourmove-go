@@ -72,7 +72,7 @@ func New(config Config) (*App, error) {
 		{"templates/answer_library.html", &resources.answerLibraryTemplate},
 		{"templates/career_evidence.html", &resources.careerEvidenceTemplate},
 	} {
-		parsed, err := template.ParseFS(config.TemplateFiles, page.path, "templates/partials.html")
+		parsed, err := template.New(strings.TrimPrefix(page.path, "templates/")).Funcs(template.FuncMap{"humanDate": humanDate}).ParseFS(config.TemplateFiles, page.path, "templates/partials.html")
 		if err != nil {
 			return nil, fmt.Errorf("parse application template %s: %w", page.path, err)
 		}

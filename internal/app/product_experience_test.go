@@ -41,8 +41,10 @@ func TestProductExperienceShellActivitiesAndSavedBrowserWriting(t *testing.T) {
 			t.Errorf("missing workspace contract %s", want)
 		}
 	}
-	if !strings.Contains(page, "Questions not discovered yet") {
-		t.Error("saved disconnected browser must not become current question readiness")
+	if !strings.Contains(page, "Start by discovering supported application questions") ||
+		!strings.Contains(page, "Saved browser-question workbench · review the current form before use") ||
+		strings.Contains(page, `name="include_answers" value="yes"`) {
+		t.Error("saved disconnected browser must remain recoverable without becoming current transfer-ready answers")
 	}
 	profile := get("/candidate")
 	if strings.Contains(profile, "VERIFIED INFORMATION") || !strings.Contains(profile, "saving without it removes approval") {

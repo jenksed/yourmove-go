@@ -105,6 +105,30 @@ func TestControlledScopeFirstWorkbench(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	press := func(key, code string, number int) {
+		t.Helper()
+		for _, kind := range []string{"keyDown", "keyUp"} {
+			if err := chrome.FixtureCall(ctx, page, "Input.dispatchKeyEvent", map[string]any{"type": kind, "key": key, "code": code, "windowsVirtualKeyCode": number}, nil); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	clickWithMouse := func(selector string) {
+		t.Helper()
+		run(`document.querySelector(` + fmt.Sprintf("%q", selector) + `).scrollIntoView({block:'center',behavior:'instant'})`)
+		var point struct {
+			X float64 `json:"x"`
+			Y float64 `json:"y"`
+		}
+		if err := evaluate(`(()=>{const r=document.querySelector(`+fmt.Sprintf("%q", selector)+`).getBoundingClientRect();return{x:r.left+r.width/2,y:r.top+r.height/2}})()`, &point); err != nil {
+			t.Fatal(err)
+		}
+		for _, kind := range []string{"mousePressed", "mouseReleased"} {
+			if err := chrome.FixtureCall(ctx, page, "Input.dispatchMouseEvent", map[string]any{"type": kind, "x": point.X, "y": point.Y, "button": "left", "clickCount": 1}, nil); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 	navigate := func(path string) {
 		t.Helper()
 		run(`window.scopePreviousDocument=true`)
@@ -120,6 +144,10 @@ func TestControlledScopeFirstWorkbench(t *testing.T) {
 		wait(`!window.scopePreviousDocument && document.readyState==='complete' && !!document.querySelector('#letter-editor')`)
 	}
 	wait(`document.readyState==='complete' && !!document.querySelector('#letter-body')`)
+	// The letter editor is present in the DOM while its workspace tab may be
+	// hidden. Select the actual activity before exercising focus or typing.
+	run(`document.querySelector('.workspace-tab[data-tab-target="cover-letter"]').click()`)
+	wait(`!document.querySelector('#cover-letter').hidden && document.querySelector('#letter-body').getClientRects().length>0`)
 	evidenceDir := os.Getenv("YOURMOVE_WRITING_EVIDENCE")
 	if evidenceDir == "" {
 		evidenceDir = "/private/tmp/yourmove-writing-workspace-evidence"
@@ -142,7 +170,10 @@ func TestControlledScopeFirstWorkbench(t *testing.T) {
 	run(`(()=>{const e=document.querySelector('#letter-body');window.originalSavedLetter=e.defaultValue;e.value+=' Unsaved cover-letter text stays local.';e.dispatchEvent(new Event('input',{bubbles:true}))})()`)
 	assert(`document.querySelector('#letter-editor').open && document.querySelector('[data-ai-draft] [data-answer-status]').textContent==='Unsaved changes'`)
 	run(`document.querySelector('#application-answers-workspace > summary').click()`)
-	assert(`document.querySelector('#application-answers-workspace').open && !document.querySelector('#letter-editor').open && document.querySelector('#letter-body').value.includes('Unsaved cover-letter text stays local.') && document.querySelector('[data-ai-draft] [data-answer-status]').textContent==='Unsaved changes'`)
+	assert(`document.querySelector('#application-answers-workspace').open`)
+	assert(`!document.querySelector('#letter-editor').open`)
+	assert(`document.querySelector('#letter-body').value.includes('Unsaved cover-letter text stays local.')`)
+	assert(`document.querySelector('[data-ai-draft] [data-answer-status]').textContent==='Unsaved changes'`)
 	run(`document.querySelector('#letter-editor > summary').click()`)
 	assert(`document.querySelector('#letter-editor').open && !document.querySelector('#application-answers-workspace').open && document.querySelector('#letter-body').value.includes('Unsaved cover-letter text stays local.')`)
 	run(`(()=>{const e=document.querySelector('#letter-body');e.value=window.originalSavedLetter;e.dispatchEvent(new Event('input',{bubbles:true}))})()`)
@@ -155,15 +186,42 @@ func TestControlledScopeFirstWorkbench(t *testing.T) {
 	assert(`document.querySelector('#letter-editor').open`)
 	const edited = "Dear Hiring Team, this is the selected draft edited through the rendered local workspace."
 	run(`(()=>{const e=document.querySelector('#letter-body');e.focus();e.select()})()`)
+	assert(`document.activeElement===document.querySelector('#letter-body') && document.querySelector('#letter-body').getClientRects().length>0`)
 	if err := chrome.FixtureCall(ctx, page, "Input.insertText", map[string]any{"text": edited}, nil); err != nil {
 		t.Fatal(err)
 	}
+	assert(`document.querySelector('#letter-body').value===` + fmt.Sprintf("%q", edited))
 	assert(`document.querySelector('[data-ai-draft] [data-answer-status]').textContent==='Unsaved changes' && !document.querySelector('.transfer-letter-scope').textContent.includes('edited through')`)
-	run(`document.querySelector('[data-ai-draft] button[type=submit]').click()`)
+	assert(`!document.querySelector('.local-save-confirmation')`)
+	clickWithMouse(`[data-ai-draft] button[type="submit"]`)
 	page = server.URL + "/jobs/1?cover=saved&draft=1"
-	wait(`document.readyState==='complete' && !!document.querySelector('.local-save-confirmation')`)
-	assert(`location.hash==='#prepare' && !document.querySelector('#letter-editor').open && document.querySelector('.transfer-letter-scope').textContent===` + fmt.Sprintf("%q", edited))
-	t.Log("existing draft → input → Save my edits → canonical selected-draft Prepare; 0 extra navigation/disclosure actions to scope")
+	wait(`document.readyState==='complete' && !!document.querySelector('.local-save-confirmation') && document.activeElement===document.querySelector('.local-save-confirmation [data-focus-after-save][tabindex="-1"]')`)
+	assert(`location.hash==='#prepare'`)
+	assert(`(()=>{const target=document.querySelector('.local-save-confirmation [data-focus-after-save][tabindex="-1"]');return document.activeElement===target&&target.textContent.includes('Saved locally')})()`)
+	assert(`document.activeElement.getClientRects().length>0`)
+	var focusPosition struct {
+		Top, Bottom, InnerHeight, ScrollY float64
+		Text                              string `json:"text"`
+	}
+	if err := evaluate(`(()=>{const r=document.activeElement.getBoundingClientRect();return{top:r.top,bottom:r.bottom,innerHeight,scrollY,text:document.activeElement.textContent}})()`, &focusPosition); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("cover save focus position: %+v", focusPosition)
+	assert(`(()=>{const r=document.activeElement.getBoundingClientRect();return r.top>=6&&r.bottom<=innerHeight-6})()`)
+	assert(`document.activeElement.getBoundingClientRect().width<document.querySelector('#application-action').getBoundingClientRect().width`)
+	assert(`!document.querySelector('#letter-editor').open`)
+	var savedScope string
+	if err := evaluate(`document.querySelector('.transfer-letter-scope')?.textContent`, &savedScope); err != nil || savedScope != edited {
+		t.Fatalf("saved transfer scope = %q, want exact edited text %q (evaluation error: %v)", savedScope, edited, err)
+	}
+	savedDraft, err := a.coverLetterByID(1, 1)
+	if err != nil || savedDraft.Body != edited {
+		t.Fatalf("persisted cover letter = %q, want exact edited text %q (load error: %v)", savedDraft.Body, edited, err)
+	}
+	if got := f.calls + f.contacts + f.resumes + f.answers; got != 0 {
+		t.Fatalf("saving a local letter triggered %d employer browser actions", got)
+	}
+	t.Log("visible Cover letter activity → exact edit/save → Prepare navigation, closed editor, persisted transfer scope; zero employer actions")
 
 	dir := os.Getenv("YOURMOVE_SCOPE_STATES")
 	if dir == "" {
@@ -193,6 +251,10 @@ func TestControlledScopeFirstWorkbench(t *testing.T) {
 	capture("first-fill")
 	// Keyboard reopening preserves the selected saved draft; a second edit/save
 	// still returns to the same canonical context.
+	run(`document.querySelector('.workspace-tab[data-tab-target="cover-letter"]').click()`)
+	wait(`!document.querySelector('#cover-letter').hidden && document.querySelector('#letter-body').getClientRects().length>0`)
+	run(`if(document.querySelector('#letter-editor').open)document.querySelector('#letter-editor > summary').click()`)
+	assert(`!document.querySelector('#letter-editor').open`)
 	run(`document.querySelector('#letter-editor > summary').focus()`)
 	for _, typ := range []string{"keyDown", "keyUp"} {
 		if err := chrome.FixtureCall(ctx, page, "Input.dispatchKeyEvent", map[string]any{"type": typ, "key": " ", "code": "Space", "windowsVirtualKeyCode": 32}, nil); err != nil {
@@ -204,8 +266,14 @@ func TestControlledScopeFirstWorkbench(t *testing.T) {
 	if err := chrome.FixtureCall(ctx, page, "Input.insertText", map[string]any{"text": edited + " Saved again."}, nil); err != nil {
 		t.Fatal(err)
 	}
-	run(`document.querySelector('[data-ai-draft] button[type=submit]').click()`)
+	run(`document.querySelector('[data-ai-draft] button[type=submit]').focus()`)
+	press(" ", "Space", 32)
 	wait(`document.readyState==='complete' && !document.querySelector('#letter-editor').open && document.querySelector('.transfer-letter-scope').textContent.endsWith('Saved again.')`)
+	assert(`document.activeElement===document.querySelector('.local-save-confirmation [data-focus-after-save][tabindex="-1"]')&&document.activeElement.matches(':focus-visible')`)
+	assert(`document.activeElement.getBoundingClientRect().width<document.querySelector('#application-action').getBoundingClientRect().width`)
+	assertFocusOutlineContrast(t, evaluate, "light")
+	assertFocusOutlineContrast(t, evaluate, "dark")
+	run(`document.documentElement.dataset.theme='light'`)
 	assert(`!document.querySelector('.resume-change').open`)
 	run(`document.querySelector('.resume-change > summary').focus()`)
 	for _, typ := range []string{"keyDown", "keyUp"} {

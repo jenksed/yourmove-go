@@ -28,6 +28,7 @@ func TestControlledNarrativeAnswerWorkbench(t *testing.T) {
 		t.Skip("opt-in isolated Chromium narrative drafting qualification")
 	}
 	a, v, evidenceID := narrativeFixture(t)
+	const expectedAdoptedAnswer = "I reviewed EXPLAIN plans and recommended an index. The eventual outcome was unknown."
 	requireQualificationStorage(t, a)
 	evidenceRoot, err := os.MkdirTemp("/private/tmp", "yourmove-checkpoint2-ai-")
 	if err != nil {
@@ -201,7 +202,11 @@ func TestControlledNarrativeAnswerWorkbench(t *testing.T) {
 		}
 	}
 	wait(`document.readyState==='complete'&&!!document.querySelector('[data-question-workbench]')`)
-	run(`document.querySelector('[data-tab-target=prepare]').click()`)
+	// Enter through the visible Prepare link. The Answers workbench exists in
+	// the DOM while its activity is hidden, so querying its editor directly
+	// would not exercise a user-visible keyboard interaction.
+	run(`document.querySelector('[data-prepare-question-entry]').click()`)
+	wait(`document.querySelector('#answers').getClientRects().length>0`)
 	var activationTimes []time.Duration
 	activateSelected := func() {
 		started := time.Now()
@@ -391,8 +396,10 @@ func TestControlledNarrativeAnswerWorkbench(t *testing.T) {
 	assert(`ed.value==='My dirty answer'`)
 	run(`window.confirm=()=>true;find('adopt').focus()`)
 	press(" ", "Space", 32)
-	wait(`ed.value.includes('EXPLAIN')`)
+	wait(`ed.value===` + fmt.Sprintf("%q", expectedAdoptedAnswer))
+	assert(`ed.value===` + fmt.Sprintf("%q", expectedAdoptedAnswer))
 	assert(`ed.closest('form').dataset.dirty==='true'&&ed.closest('form').querySelector('[name=revision]').value==='0'`)
+	assert(`!ed.closest('form').querySelector('.question-save-status').textContent.includes('Answer saved locally')`)
 	// Slow generation leaves typing intact, including double clicks.
 	mode.Store(3)
 	review()
@@ -475,10 +482,30 @@ func TestControlledNarrativeAnswerWorkbench(t *testing.T) {
 	}
 	run(`window.confirm=()=>true;find('adopt').click()`)
 	wait(`ed.value.includes('EXPLAIN')`)
-	run(`ed.value+=' I documented my recommendation.';ed.dispatchEvent(new Event('input',{bubbles:true}));ed.closest('form').querySelector('button[type=submit]').click()`)
+	run(`ed.value+=' I documented my recommendation.';ed.dispatchEvent(new Event('input',{bubbles:true}));ed.closest('form').querySelector('button[type=submit]').focus()`)
+	press(" ", "Space", 32)
 	page = server.URL + "/jobs/1?question=" + v.Get("question_key")
-	wait(`document.readyState==='complete'&&document.querySelector('.application-question-form [name=revision]').value==='1'`)
+	wait(`document.readyState==='complete'&&document.querySelector('.application-question-form [name=revision]').value==='1'&&document.activeElement===document.querySelector('.question-save-status [data-focus-after-save][tabindex="-1"]')`)
 	assert(`document.querySelector('#application-answers-workspace').open && !document.querySelector('#letter-editor').open && document.querySelector('#application-answers-workspace').innerText.includes('Current browser-observed questions')`)
+	assert(`(()=>{const target=document.querySelector('.question-save-status [data-focus-after-save][tabindex="-1"]');return document.activeElement===target&&target.closest('[data-question-panel]')===document.querySelector('[data-question-panel]:not([hidden])')})()`)
+	var focusPosition struct {
+		Top, Bottom, InnerHeight, ScrollY float64
+		Text                              string `json:"text"`
+	}
+	if err := eval(`(()=>{const r=document.activeElement.getBoundingClientRect();return{top:r.top,bottom:r.bottom,innerHeight,scrollY,text:document.activeElement.textContent}})()`, &focusPosition); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("answer save focus position: %+v", focusPosition)
+	assert(`(()=>{const target=document.activeElement,r=target.getBoundingClientRect();return target.textContent.includes('Answer saved locally')&&target.getClientRects().length>0&&r.top>=6&&r.bottom<=innerHeight-6})()`)
+	assert(`document.activeElement.getBoundingClientRect().width<document.querySelector('[data-question-panel]:not([hidden])').getBoundingClientRect().width`)
+	assertFocusOutlineContrast(t, eval, "light")
+	assertFocusOutlineContrast(t, eval, "dark")
+	run(`document.documentElement.dataset.theme='light'`)
+	for _, theme := range []string{"light", "dark"} {
+		captureViewport("saved-answer-focus-390-"+theme, 390, 844, ".application-questions", theme)
+		assert(`document.documentElement.scrollWidth<=innerWidth`)
+	}
+	run(`document.documentElement.dataset.theme='light'`)
 	run(`document.querySelector('.application-question-form').scrollIntoView({block:'center'})`)
 	capture("saved-answer-confirmation-1280-light", 1280, ".application-question-form", "light")
 	capture("saved-answer-confirmation-1280-dark", 1280, ".application-question-form", "dark")
@@ -494,8 +521,9 @@ func TestControlledNarrativeAnswerWorkbench(t *testing.T) {
 		t.Fatal(err)
 	}
 	var saved string
-	if err := a.db.QueryRow(`SELECT answer FROM application_answers WHERE job_id=1`).Scan(&saved); err != nil || !strings.Contains(saved, "documented") {
-		t.Fatal(saved, err)
+	expectedSavedAnswer := expectedAdoptedAnswer + " I documented my recommendation."
+	if err := a.db.QueryRow(`SELECT answer FROM application_answers WHERE job_id=1`).Scan(&saved); err != nil || saved != expectedSavedAnswer {
+		t.Fatalf("saved answer = %q, want exact adopted text plus the user's edit %q (query error: %v)", saved, expectedSavedAnswer, err)
 	}
 	// Expired recovered previews stay copyable; server refuses adoption.
 	activateSelected()
@@ -557,4 +585,32 @@ func maxDuration(values []time.Duration) time.Duration {
 		}
 	}
 	return max
+}
+
+func assertFocusOutlineContrast(t *testing.T, evaluate func(string, any) error, theme string) {
+	t.Helper()
+	if err := evaluate(`document.documentElement.dataset.theme=`+fmt.Sprintf("%q", theme), nil); err != nil {
+		t.Fatal(err)
+	}
+	var result struct {
+		Visible    bool    `json:"visible"`
+		Outline    string  `json:"outline"`
+		Background float64 `json:"background"`
+		Surface    float64 `json:"surface"`
+	}
+	const script = `(()=>{
+ const rgb=value=>{const hex=value.trim().match(/^#([0-9a-f]{6})$/i);if(hex)return[0,2,4].map(i=>parseInt(hex[1].slice(i,i+2),16));return value.match(/[\d.]+/g)?.slice(0,3).map(Number)||[]};
+ const channel=value=>{value/=255;return value<=.04045?value/12.92:((value+.055)/1.055)**2.4};
+		const luminance=value=>{const c=rgb(value);return c.length===3 ? .2126*channel(c[0])+.7152*channel(c[1])+.0722*channel(c[2]) : NaN};
+ const ratio=(a,b)=>{const values=[luminance(a),luminance(b)].sort((x,y)=>y-x);return(values[0]+.05)/(values[1]+.05)};
+ const target=document.activeElement,style=getComputedStyle(target),root=getComputedStyle(document.documentElement),outline=style.outlineColor;
+ return{visible:target.matches(':focus-visible')&&style.outlineStyle!=='none'&&parseFloat(style.outlineWidth)>=2,outline,background:ratio(outline,root.getPropertyValue('--color-bg')),surface:ratio(outline,root.getPropertyValue('--color-surface'))};
+})()`
+	if err := evaluate(script, &result); err != nil {
+		t.Fatal(err)
+	}
+	if !result.Visible || result.Background < 3 || result.Surface < 3 {
+		t.Fatalf("%s focus outline is not visibly contrasted: %+v", theme, result)
+	}
+	t.Logf("%s focus outline %s; contrast background %.2f:1, surface %.2f:1", theme, result.Outline, result.Background, result.Surface)
 }

@@ -9,14 +9,19 @@ import (
 // These read-only presentation models do not change the job lifecycle.
 // In particular, Applied is counted only when a submission exists.
 type opportunityPage struct {
-	Jobs          []Job
-	Total         int
-	Remaining     int
-	Applied       int
-	RecordedToday int
-	Next          *NextAction
-	Matches       map[int64]MatchRecommendation
-	Desktop       bool
+	Jobs           []Job
+	Total          int
+	Remaining      int
+	Applied        int
+	RecordedToday  int
+	Next           *NextAction
+	Matches        map[int64]MatchRecommendation
+	Desktop        bool
+	NewJobURL      string
+	NewJobTitle    string
+	JobURLError    string
+	JobTitleError  string
+	CreateFormOpen bool
 }
 
 func summarizeJobs(jobs []Job) opportunityPage {
