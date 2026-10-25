@@ -62,6 +62,10 @@ See [Run YourMove locally](docs/TRY_IT.md) for per-platform setup, isolated data
 
 Do not post resumes, application answers, credentials, cookies, or unredacted employer forms in public issues.
 
+## Support independent development
+
+YourMove is independently developed and open source. If the project is useful to you or you want to support the work, you can [contribute through Ko-fi](https://ko-fi.com/yourmove). Contributions are optional and do not affect access to the software or influence its development decisions.
+
 ## License
 
 Copyright (C) 2026 Joshua Jenks. YourMove's original source code is licensed under the [GNU General Public License version 3 only](LICENSE) (`GPL-3.0-only`). Redistribution of covered modified versions must comply with that license. Third-party dependencies and assets retain their applicable licenses.
