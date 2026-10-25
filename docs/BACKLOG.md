@@ -240,12 +240,22 @@
 
 ## Product experience finalization — October 25, 2026
 
-**Status: implementation and controlled-browser qualification complete; integrated native acceptance OPEN / UX HOLD.** This supersedes the unverified status of the four Luna corrections only within the executed browser/handler scope. No commit, PR, merge, tag or distribution was created. Existing branch work and AGENTS.md were preserved in a verified 608-file snapshot.
+**Status at the original review cutoff:** implementation and controlled-browser qualification were complete; integrated native acceptance remained OPEN / UX HOLD. This superseded the unverified status of the four Luna corrections only within the executed browser/handler scope. At that cutoff no commit, PR, merge, tag or distribution had been created. Existing branch work and AGENTS.md were preserved in a verified 608-file snapshot.
 
 - Shared Quiet Ink palette: neutral light/graphite dark, semantic action/selection/success/error/dirty/focus roles; system typography retained. Real two-direction concepts, all 19 principal production surfaces at three browser sizes/both themes, source-pinned before/after report.
 - UX01/02/04/06 revalidated and refined; UX03/05/07/08/09/10/11 implemented bounded composition/feedback improvements; UX12 canonical numeric return-to-job through Profile/Documents; UX13 bounded two-job reuse demonstrated without new matching or silent selection.
 - Confirmed first-manual-letter unsaved-departure gap fixed in the existing editor guard. Stay, Escape, initial Enter, explicit Leave and same-node activity switching qualified. Approved profile revision preservation and input/consent recovery qualified.
 - Final checks PASS: `go test -count=1 ./...`, desktop-tagged equivalent, both `go vet` commands, `node --check static/ui.js`, `git diff --check`; 13 selected integrated Chromium suites PASS (72.675s). Full exact commands and logs live in the finalization package.
-- Remaining gates: actual native Wails Profile correction/import/export/cancel/focus/keyboard/browser return/restart; native wait responsiveness and candidate-specific download/install/CI. Diagnostic startup is not native interaction acceptance. Long-running generation probe was inconclusive; no background-response claim is made. Broader two-employer native journeys and VoiceOver remain unverified.
+- Remaining gates: actual native Wails Profile correction/import/export/cancel/focus/keyboard/browser return/restart; native wait responsiveness; candidate-specific download/install acceptance. Diagnostic startup is not native interaction acceptance. Long-running generation probe was inconclusive; no background-response claim is made. Broader two-employer native journeys and VoiceOver remain unverified.
 
 Evidence: the local finalization review archive contains `EXECUTIVE_REVIEW.md`, `UX_FINDINGS_FINAL.md`, `USER_JOURNEY_ACCEPTANCE.md`, `NATIVE_ACCEPTANCE.md`, and `TEST_RESULTS.md`; generated logs, screenshots, and binaries are excluded from this source PR. Source identity and a task-only diff separate this work from the inherited dirty branch. Deferred automation, arbitrary unsupported-form questions, new matching and direct unknown-page capture remain deferred.
+
+## P0 source consolidation update — October 25, 2026
+
+**Status: reviewed source committed and pushed; draft PR #9 is open; PR merge and release remain unauthorized.**
+
+- Implementation commit: `1681681` (`feat: finalize controlled application workflows`). The branch includes an ordinary merge of the two newer `main` commits (`42822b7`, `dab717f`) in merge commit `c19b00c`; no history was rewritten or force-pushed.
+- Draft PR: https://github.com/jenksed/yourmove-go/pull/9, targeting `main`. The exact 141-path staged source manifest, checkpoint hashes, inclusions, exclusions, and pre-commit checks are in `STAGING_MAP.md`. The prior `AGENTS.md` modification remains outside the PR.
+- Initial integrated-head CI run [#50](https://github.com/jenksed/yourmove-go/actions/runs/40233520669) passed on `c19b00c`: full Go tests/build, desktop-tagged tests, macOS application bundle build, and bundle verification. The backlog evidence commit requires a fresh CI run on the final PR head before candidate preparation.
+- Native Wails acceptance remains **NOT VERIFIED**. No real employer submission was performed. No pre-incident database baseline exists; database immutability is not claimed.
+- Release recommendation remains **HOLD** until the exact frozen candidate passes native acceptance and release gates.
