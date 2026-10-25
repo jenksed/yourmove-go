@@ -65,18 +65,13 @@ echo "Signature verification: PASS (ad-hoc development identity)."
 # siblings of the bundle. This is not Developer ID/notarization qualification.
 if [[ "${1:-}" == --launch ]]; then
   echo "Launching verified Wails executable at $(date -u +%FT%TZ)"
-  YOURMOVE_DATA_DIR="$workspace" "$executable" > "$evidence/launch.log" 2>&1 &
-  native_pid=$!
-  echo "$native_pid" > "$evidence/pid"
-  sleep 3
-  if ! kill -0 "$native_pid" 2>/dev/null; then
-    echo "Launch: BLOCKED; native process exited before interaction."
-    cat "$evidence/launch.log"
-    exit 1
-  fi
-  echo "Launch: process alive (PID $native_pid); native interaction NOT YET VERIFIED."
-  echo "Interact with this bundle only; record UI evidence separately."
-  wait "$native_pid"
+  # Use the same fail-closed identity checks as frozen-candidate acceptance.
+  python3 -c 'import pathlib,secrets,sys; p=pathlib.Path(sys.argv[1]); p.write_text(secrets.token_hex(16)+"\n"); p.chmod(0o600)' "$workspace/.yourmove-synthetic-marker"
+  swiftc -module-cache-path "$output_root/swift-cache" "$source_root/scripts/native-window-owner.swift" -o "$output_root/window-owner"
+  python3 "$source_root/scripts/native-candidate.py" launch --executable "$executable" --sha256 "$(shasum -a 256 "$executable" | cut -d ' ' -f1)" --workspace "$workspace" --evidence "$output_root/launch-evidence" --helper "$output_root/window-owner"
+  echo "Process/window identity verified; native interaction NOT YET VERIFIED."
+  echo "Before and after every transition run native-candidate.py verify, then check the matching AX window title."
+
 else
   echo "Launch: NOT ATTEMPTED; native interaction NOT VERIFIED."
 fi

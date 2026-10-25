@@ -7,14 +7,16 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 )
 
 // ApplicationStorage keeps both desktop and browser mode on the same database.
 // The legacy working-directory database is left untouched after a consistent copy.
 func ApplicationStorage() (dbPath, resumeDir string, err error) {
-	root := os.Getenv("YOURMOVE_DATA_DIR")
-	if root == "" {
+	root, explicit := os.LookupEnv("YOURMOVE_DATA_DIR")
+	if explicit && root == "" {
+		return "", "", fmt.Errorf("YOURMOVE_DATA_DIR is set but empty")
+	}
+	if !explicit {
 		if runtime.GOOS == "darwin" {
 			home, e := os.UserHomeDir()
 			if e != nil {
@@ -35,6 +37,24 @@ func ApplicationStorage() (dbPath, resumeDir string, err error) {
 	if err = os.MkdirAll(root, 0700); err != nil {
 		return "", "", fmt.Errorf("create app directory: %w", err)
 	}
+	root, err = filepath.EvalSymlinks(root)
+	if err != nil {
+		return "", "", fmt.Errorf("resolve app directory: %w", err)
+	}
+	if root == string(filepath.Separator) {
+		return "", "", fmt.Errorf("app directory cannot be the filesystem root")
+	}
+	// A root alias is canonicalized once. Workspace members must not redirect
+	// SQLite or document operations outside that selected directory.
+	for _, name := range []string{"jobs.db", "resumes"} {
+		info, e := os.Lstat(filepath.Join(root, name))
+		if e != nil && !errors.Is(e, os.ErrNotExist) {
+			return "", "", e
+		}
+		if e == nil && (info.Mode()&os.ModeSymlink != 0 || (name == "jobs.db" && !info.Mode().IsRegular()) || (name == "resumes" && !info.IsDir())) {
+			return "", "", fmt.Errorf("workspace %s must be a direct %s", name, map[string]string{"jobs.db": "regular file", "resumes": "directory"}[name])
+		}
+	}
 	if err = os.Chmod(root, 0700); err != nil {
 		return "", "", err
 	}
@@ -46,11 +66,16 @@ func ApplicationStorage() (dbPath, resumeDir string, err error) {
 		return "", "", err
 	}
 	dbPath = filepath.Join(root, "jobs.db")
+	// An explicit workspace is authoritative, including an empty synthetic one.
+	// Only normal application mode may discover a working-directory legacy DB.
+	if explicit {
+		return dbPath, resumeDir, nil
+	}
 	legacy, err := filepath.Abs("jobs.db")
 	if err != nil {
 		return "", "", err
 	}
-	if !strings.EqualFold(legacy, dbPath) {
+	if legacy != dbPath {
 		if err := migrateLegacyJobs(dbPath, legacy); err != nil {
 			return "", "", err
 		}

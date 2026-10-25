@@ -184,7 +184,27 @@ func (p *FixturePage) Close() error {
 	return ws.Close(websocket.StatusNormalClosure, "")
 }
 
+// Fixture navigation and backend writes finish independently. Wait only for
+// exact read-only target discovery; never replay the requested CDP operation.
 func (s *Session) fixtureConnection(ctx context.Context, page string) (*websocket.Conn, error) {
+	bounded, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	for {
+		ws, err := s.fixtureConnectionOnce(bounded, page)
+		if err == nil || (!errors.Is(err, ErrNoMatchingTab) && !errors.Is(err, ErrNoPageTargets)) {
+			return ws, err
+		}
+		timer := time.NewTimer(25 * time.Millisecond)
+		select {
+		case <-bounded.Done():
+			timer.Stop()
+			return nil, fmt.Errorf("fixture navigation did not reach its exact target: %w", err)
+		case <-timer.C:
+		}
+	}
+}
+
+func (s *Session) fixtureConnectionOnce(ctx context.Context, page string) (*websocket.Conn, error) {
 	if !fixtureURL(page) {
 		return nil, errors.New("qualification target must be a loopback fixture")
 	}
@@ -205,7 +225,13 @@ func (s *Session) fixtureConnection(ctx context.Context, page string) (*websocke
 		return strings.Split(candidate, "#")[0] == strings.Split(page, "#")[0]
 	})
 	if err != nil {
-		return nil, err
+		var observed []string
+		for _, target := range targets {
+			if fixtureURL(target.URL) {
+				observed = append(observed, target.URL)
+			}
+		}
+		return nil, fmt.Errorf("%w: expected loopback fixture %q, observed %q", err, page, observed)
 	}
 	return dialCDP(ctx, t.WebSocketURL)
 }

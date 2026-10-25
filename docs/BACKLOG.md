@@ -259,3 +259,11 @@ Evidence: the local finalization review archive contains `EXECUTIVE_REVIEW.md`, 
 - Initial integrated-head CI run [#50](https://github.com/jenksed/yourmove-go/actions/runs/40233520669) passed on `c19b00c`: full Go tests/build, desktop-tagged tests, macOS application bundle build, and bundle verification. The backlog evidence commit requires a fresh CI run on the final PR head before candidate preparation.
 - Native Wails acceptance remains **NOT VERIFIED**. No real employer submission was performed. No pre-incident database baseline exists; database immutability is not claimed.
 - Release recommendation remains **HOLD** until the exact frozen candidate passes native acceptance and release gates.
+
+## Native workspace reliability recovery — October 25, 2026
+
+- **Scope:** PR #9 reliability repair on the a14e7fb baseline; release remains **HOLD** pending candidate-specific native results. Build 2 is superseded; build 3 retains version 0.1.0.
+- **Confirmed source defect:** explicit workspace overrides could import a working-directory legacy DB. Explicit overrides now disable discovery; normal migration remains covered. Canonical paths, empty/invalid configuration and redirected workspace members have regressions.
+- **Qualification guard:** opt-in process/workspace/run identity, executable hash, process lifetime, opened DB inode and native window ownership checks replace unverified display-name attachment in the native helper. Missing identity stops interaction. Go generation/navigation and Python stale-window regression tests added; the guard tests run in CI.
+- **Evidence/status:** [Source explanation and regression map](implementation/native-workspace-reliability.md); private durable package `.quality/native-recovery-20261025/` records exact source SHA, CI, artifacts and final native matrix. Historical window-switch cause remains unresolved; personal workspace contents were excluded and no historical immutability claim is made.
+- **Acceptance still required:** two controlled supported-provider native journeys, complete local completion/Next/restart path, native recovery/AI response behavior and downloaded-install approval against the new frozen candidate. Controlled Chromium results cannot replace those gates. No merge or distribution authorized.

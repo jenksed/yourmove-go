@@ -108,18 +108,18 @@ func TestAnswerLibrarySearchIndexMigrationPreservesCuratedSnapshot(t *testing.T)
 func TestApplicationStorageMigratesLegacyDatabase(t *testing.T) {
 	root := t.TempDir()
 	workingDir := filepath.Join(root, "working")
-	workspace := filepath.Join(root, "workspace")
+	workspace := normalWorkspace(t, root)
 	if err := os.Mkdir(workingDir, 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Mkdir(workspace, 0755); err != nil {
+	if err := os.MkdirAll(workspace, 0755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Chmod(workspace, 0755); err != nil {
 		t.Fatal(err)
 	}
 	t.Chdir(workingDir)
-	t.Setenv("YOURMOVE_DATA_DIR", workspace)
+	normalStorageEnvironment(t, root)
 
 	legacy := filepath.Join(workingDir, "jobs.db")
 	db, err := OpenDB(legacy)
@@ -137,6 +137,7 @@ func TestApplicationStorageMigratesLegacyDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	workspace, _ = filepath.EvalSymlinks(workspace)
 	if dbPath != filepath.Join(workspace, "jobs.db") || resumeDir != filepath.Join(workspace, "resumes") {
 		t.Fatalf("application paths = %q, %q", dbPath, resumeDir)
 	}
@@ -196,6 +197,7 @@ func TestApplicationStorageCreatesFreshWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	workspace, _ = filepath.EvalSymlinks(workspace)
 	if dbPath != filepath.Join(workspace, "jobs.db") || resumeDir != filepath.Join(workspace, "resumes") {
 		t.Fatalf("fresh application paths = %q, %q", dbPath, resumeDir)
 	}
@@ -232,13 +234,13 @@ func TestApplicationStorageRequiresAbsoluteOverride(t *testing.T) {
 func TestMigrationRefusesDocumentWorkspaceWithoutInstallingDatabase(t *testing.T) {
 	root := t.TempDir()
 	workingDir := filepath.Join(root, "working")
-	workspace := filepath.Join(root, "destination")
+	workspace := normalWorkspace(t, root)
 	legacyResumeDir := filepath.Join(workingDir, "resumes")
 	if err := os.MkdirAll(legacyResumeDir, 0700); err != nil {
 		t.Fatal(err)
 	}
 	t.Chdir(workingDir)
-	t.Setenv("YOURMOVE_DATA_DIR", workspace)
+	normalStorageEnvironment(t, root)
 
 	legacy := filepath.Join(workingDir, "jobs.db")
 	db, err := OpenDB(legacy)
