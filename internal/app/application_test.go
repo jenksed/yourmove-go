@@ -421,7 +421,7 @@ func TestApplicationHTTPBrowserAndDesktop(t *testing.T) {
 	req.Header.Set("Content-Type", form.FormDataContentType())
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/resumes" {
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/resumes?notice=imported" {
 		t.Fatalf("browser upload=%d %s", rec.Code, rec.Body.String())
 	}
 	if err := a.assignResume(1, 9999); !errors.Is(err, sql.ErrNoRows) {
@@ -472,7 +472,7 @@ func TestApplicationHTTPBrowserAndDesktop(t *testing.T) {
 		t.Fatalf("desktop selection=%d %s", rec.Code, rec.Body.String())
 	}
 	rec = postApp(native, "/resumes/import-native", url.Values{}, "wails://localhost", "1")
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `window.location.replace("/resumes")`) {
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `window.location.replace("/resumes?notice=imported")`) {
 		t.Fatalf("desktop native import: %d %s", rec.Code, rec.Body.String())
 	}
 	resumes, err := a.allResumes()

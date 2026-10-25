@@ -2,7 +2,7 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f7f7f4"><title>Career Evidence · YourMove</title><link rel="stylesheet" href="/static/styles.css"><script defer src="/static/ui.js"></script></head><body>
 {{template "shell-open" "career-evidence"}}
 <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/jobs">Opportunities</a><span aria-hidden="true">/</span><span>Career Evidence</span></nav>
-<div class="page-heading"><div><h1>Career Evidence</h1><p class="page-description">Records of experiences you actually had. Keep situations, actions, and outcomes separate from the writing you made for an employer.</p></div>{{if not .Current}}<form method="POST" action="/career-evidence"><button type="submit" class="button button-primary">Add experience</button></form>{{end}}</div>
+<div class="page-heading"><div><h1>Career Evidence</h1><p class="page-description">Your own situations, actions, and outcomes. Reviewed experiences can appear beside relevant application questions as references; you decide what to use.</p></div><div class="heading-actions"><a class="text-link" href="/answer-library">Answer Library →</a>{{if not .Current}}<form method="POST" action="/career-evidence"><button type="submit" class="button button-primary">Add experience</button></form>{{end}}</div></div>
 {{if .Notice}}<p class="local-save-confirmation" role="status">{{.Notice}}</p>{{end}}
 
 {{if .Current}}
@@ -49,7 +49,7 @@
   {{range .Entries}}
   <article class="career-evidence-row">
     <div><h3><a href="/career-evidence/{{.ID}}">{{if .Title}}{{.Title}}{{else}}Untitled draft{{end}}</a></h3><p>{{if eq .Status "reviewed"}}Reviewed by you{{else}}Draft{{end}}{{if .RoleContext}} · {{.RoleContext}}{{end}}{{if .EmployerContext}} · {{.EmployerContext}}{{end}}</p></div>
-    <p class="career-evidence-row-outcome">{{if eq .OutcomeState "recorded"}}{{.Outcome}}{{else if eq .OutcomeState "unknown"}}Outcome: Unknown{{else}}Outcome: Not recorded{{end}}</p>
+    <div class="career-evidence-row-outcome">{{if eq .OutcomeState "recorded"}}<details><summary>Actual outcome</summary><p>{{.Outcome}}</p></details>{{else if eq .OutcomeState "unknown"}}Outcome: Unknown{{else}}Outcome: Not recorded{{end}}</div>
   </article>
   {{end}}
 </section>

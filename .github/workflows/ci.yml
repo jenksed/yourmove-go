@@ -33,6 +33,11 @@ jobs:
         env:
           YOURMOVE_DATA_DIR: ${{ runner.temp }}/yourmove-go-ci-workspace
 
+      - name: Verify native candidate identity guard
+        run: python3 -m unittest discover -s scripts -p 'test_native_candidate.py'
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+
       - name: Build Go application
         run: go build ./...
 

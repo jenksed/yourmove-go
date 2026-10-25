@@ -47,11 +47,19 @@ func TestHostedPlatformForms(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 			defer cancel()
 			posting := fixture.URL + "/fixture/job"
-			s, err := LaunchFixture(ctx, posting)
+			savedPosting := "https://boards.greenhouse.io/acme/jobs/123"
+			if platform == "lever" {
+				savedPosting = "https://jobs.lever.co/acme/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+			}
+			s, err := LaunchFixtureForPosting(ctx, posting, savedPosting)
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer s.Close()
+			applicationPage := posting
+			if platform == "lever" {
+				applicationPage += "/apply"
+			}
 			var observed browser.Observation
 			for {
 				observed, err = s.Observe(ctx)
@@ -107,10 +115,45 @@ func TestHostedPlatformForms(t *testing.T) {
 					} `json:"value"`
 				} `json:"result"`
 			}
-			err = s.FixtureCall(ctx, posting+"/application", "Runtime.evaluate", map[string]any{"returnByValue": true, "expression": `({Name:document.querySelector('[name=name]')?.value||[document.querySelector('[name=first_name]')?.value||'',document.querySelector('[name=last_name]')?.value||''].join(' '),Email:document.querySelector('[name=email]').value,Phone:document.querySelector('[name=phone]').value,Manager:document.querySelector('[name=manager_email]').value,Sensitive:document.querySelector('[name=sponsorship]').value,Resume:document.querySelector('[name=resume]').files[0]?.name,Cover:document.querySelector('[name=cover_letter]').files[0]?.name,Submitted:window.submitted,LinkedinClicks:window.linkedinClicks,ResumeChanges:window.resumeChanges})`}, &state)
+			err = s.FixtureCall(ctx, applicationPage, "Runtime.evaluate", map[string]any{"returnByValue": true, "expression": `({Name:document.querySelector('[name=name]')?.value||[document.querySelector('[name=first_name]')?.value||'',document.querySelector('[name=last_name]')?.value||''].join(' '),Email:document.querySelector('[name=email]').value,Phone:document.querySelector('[name=phone]').value,Manager:document.querySelector('[name=manager_email]').value,Sensitive:document.querySelector('[name=sponsorship]').value,Resume:document.querySelector('[name=resume]').files[0]?.name,Cover:document.querySelector('[name=cover_letter]').files[0]?.name,Submitted:window.submitted,LinkedinClicks:window.linkedinClicks,ResumeChanges:window.resumeChanges})`}, &state)
 			got := state.Result.Value
 			if err != nil || got.Name != "Casey Fixture" || got.Email != "manual@example.test" || got.Phone != "202-555-0104" || got.Manager != "" || got.Sensitive != "" || got.Submitted != 0 || got.LinkedinClicks != 0 || got.ResumeChanges != 1 || got.Resume != filepath.Base(resume) || got.Cover != filepath.Base(letter) {
 				t.Fatalf("form state: %+v contacts=%+v %v", got, contacts, err)
+			}
+
+			foreignStep := applicationPage + "/unowned-step"
+			if browser.OwnsPostingURL(savedPosting, savedPosting+"/unowned-step") {
+				t.Fatal("fixture descendant must be outside the saved posting's ownership")
+			}
+			if err := s.FixtureCall(ctx, applicationPage, "Page.navigate", map[string]any{"url": foreignStep}, nil); err != nil {
+				t.Fatal(err)
+			}
+			deadline := time.Now().Add(5 * time.Second)
+			for {
+				var current struct {
+					Result struct {
+						Value string `json:"value"`
+					} `json:"result"`
+				}
+				err := s.FixtureCall(ctx, foreignStep, "Runtime.evaluate", map[string]any{"expression": "location.href", "returnByValue": true}, &current)
+				if err == nil && current.Result.Value == foreignStep {
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatalf("fixture did not reach unowned route %s: %v", foreignStep, err)
+				}
+				time.Sleep(25 * time.Millisecond)
+			}
+			if _, err := s.FillContacts(ctx, browser.ContactValues{FirstName: "Other", LastName: "Person", Email: "other@example.test", Phone: "202-555-0199"}); err == nil {
+				t.Fatal("contact transfer accepted an unowned descendant route")
+			}
+			var preserved struct {
+				Result struct {
+					Value string `json:"value"`
+				} `json:"result"`
+			}
+			if err := s.FixtureCall(ctx, foreignStep, "Runtime.evaluate", map[string]any{"expression": `document.querySelector('[name=email]').value`, "returnByValue": true}, &preserved); err != nil || preserved.Result.Value != "manual@example.test" {
+				t.Fatalf("unowned route changed the form: %+v %v", preserved, err)
 			}
 		})
 	}

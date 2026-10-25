@@ -199,8 +199,10 @@ func TestOpportunityDashboardEmptyAndCompleted(t *testing.T) {
 		return rec.Body.String()
 	}
 	empty := get()
-	if strings.Contains(empty, `class="queue-progress-bar"`) || !strings.Contains(empty, "Start with a job you want.") {
-		t.Fatal("empty dashboard shows invalid progress")
+	if strings.Contains(empty, `class="queue-progress-bar"`) || strings.Contains(empty, "data-job-filters") ||
+		strings.Count(empty, `action="/jobs"`) != 1 || !strings.Contains(empty, `class="panel create-panel first-job-form"`) ||
+		!strings.Contains(empty, `>Save job</button>`) {
+		t.Fatal("empty workspace must lead with one open save form and no empty progress or filters")
 	}
 	if err := a.saveJob(Job{URL: "https://example.test/complete"}); err != nil {
 		t.Fatal(err)

@@ -44,9 +44,20 @@ func (s *Session) FillAnswer(ctx context.Context, answer browser.AnswerValue) (b
 	if err != nil {
 		return out, err
 	}
-	args, _ := json.Marshal([]any{saved.Scheme + "://" + saved.Host, strings.TrimRight(saved.Path, "/"), answer})
-	const operation = `(async function(origin,base,approved){
- const owns=()=>location.origin===origin&&(location.pathname===base||location.pathname.startsWith(base+'/'));
+	origin, base, platform := saved.Scheme+"://"+saved.Host, strings.TrimRight(saved.Path, "/"), browser.PostingPlatform(s.postingURL)
+	if s.fixtureContactOrigin != "" {
+		origin, base, platform = s.fixtureContactOrigin, s.fixtureContactBase, s.fixtureContactPlatform
+	}
+	args, _ := json.Marshal([]any{origin, base, platform, answer})
+	const operation = `(async function(origin,base,platform,approved){
+ const owns=()=>{
+   const path=location.pathname.replace(/\/$/,'');
+   if(location.origin!==origin)return false;
+   if(path===base)return true;
+   if(platform==='ashby')return path.startsWith(base+'/');
+   if(platform==='lever')return path===base+'/apply';
+   return false;
+ };
  const locationLabel=approved.field.label.toLowerCase().replace(/\s*\*$/, '').replace(/\s+\((?:optional|required)\)$/, '').trim();
  const locationField=['location','current location','your location'].includes(locationLabel)&&!!document.querySelector('.ashby-application-form-container');
  const normalized=s=>s.toLowerCase().replace(/united states( of america)?/g,'usa').replace(/[^a-z0-9]/g,'');
@@ -92,15 +103,18 @@ func (s *Session) FillAnswer(ctx context.Context, answer browser.AnswerValue) (b
  if(hits.some(e=>document.activeElement===e))return result('manual','Active user entry preserved.');
  if(e.type==='checkbox'){
  if(!['true','false'].includes(value)||e.checked)return result('manual','Existing checkbox choice preserved.');
+ if(!owns()||!e.isConnected)return result('manual','Application changed before entry. Review it in Chromium.');
  e.click();
  }else if(e.type==='radio'){
  if(hits.some(e=>e.checked))return result('manual','Existing radio choice preserved.');
  const choices=hits.filter(e=>label(e)===value);if(choices.length!==1)return result('manual','No unique native option.');
+ if(!owns()||!choices[0].isConnected)return result('manual','Application changed before entry. Review it in Chromium.');
  choices[0].click();
  }else if(e.tagName==='SELECT'){
  if(e.multiple||e.value!=='')return result('manual','Existing selection preserved.');
  const choices=[...e.options].filter(o=>o.text===value&&!o.disabled&&!o.parentElement?.disabled);
  if(choices.length!==1)return result('manual','No unique enabled native option.');
+ if(!owns()||!e.isConnected)return result('manual','Application changed before entry. Review it in Chromium.');
  Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(e,choices[0].value);
  e.dispatchEvent(new Event('input',{bubbles:true}));if(e.isConnected&&owns())e.dispatchEvent(new Event('change',{bubbles:true}));
  }else{
@@ -110,6 +124,7 @@ func (s *Session) FillAnswer(ctx context.Context, answer browser.AnswerValue) (b
  const proto=e.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;
  e.focus();
  if(locationField){const focused=resolve();if(!focused||focused.length!==1||focused[0]!==e||document.activeElement!==e)return result('manual','The location control changed before entry. Review it in Chromium.');}
+ if(!owns()||!e.isConnected)return result('manual','Application changed before entry. Review it in Chromium.');
  Object.getOwnPropertyDescriptor(proto,'value').set.call(e,value);
  e.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:null}));if(e.isConnected&&owns())e.dispatchEvent(new Event('change',{bubbles:true}));
  if(locationField){

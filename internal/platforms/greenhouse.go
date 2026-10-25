@@ -3,11 +3,14 @@ package platforms
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	stdhtml "html"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // Greenhouse redirects removed postings to the employer's board with error=true.
@@ -43,8 +46,10 @@ func parseGreenhouseURL(rawURL string) (board, jobID string, err error) {
 }
 
 type greenhouseJob struct {
-	Title   string `json:"title"`
-	Content string `json:"content"`
+	ID       json.RawMessage `json:"id"`
+	Title    string          `json:"title"`
+	Content  json.RawMessage `json:"content"`
+	Location json.RawMessage `json:"location"`
 }
 
 func fetchGreenhouse(ctx context.Context, client *http.Client, board, jobID string) (Metadata, error) {
@@ -54,6 +59,10 @@ func fetchGreenhouse(ctx context.Context, client *http.Client, board, jobID stri
 	if err != nil {
 		return Metadata{}, err
 	}
+	return extractGreenhouseMetadata(data, board, jobID)
+}
+
+func extractGreenhouseMetadata(data []byte, board, requestedID string) (Metadata, error) {
 	var posting greenhouseJob
 	if err := json.Unmarshal(data, &posting); err != nil {
 		return Metadata{}, fmt.Errorf("decode Greenhouse posting: %w", err)
@@ -61,9 +70,106 @@ func fetchGreenhouse(ctx context.Context, client *http.Client, board, jobID stri
 	if strings.TrimSpace(posting.Title) == "" {
 		return Metadata{}, fmt.Errorf("Greenhouse posting has no title")
 	}
-	return completeMetadata(Metadata{
+	responseID, err := greenhouseResponseID(posting.ID)
+	if err != nil {
+		return Metadata{}, err
+	}
+	if responseID != requestedID {
+		return Metadata{}, fmt.Errorf("Greenhouse posting identity mismatch: got %q, want %q", responseID, requestedID)
+	}
+
+	content := greenhouseOptionalString(posting.Content)
+	location := greenhouseLocationName(posting.Location)
+	metadata := completeMetadata(Metadata{
 		Title:       strings.TrimSpace(posting.Title),
 		Company:     boardNameSuggestion(board),
-		Description: descriptionText(posting.Content),
-	}), nil
+		Description: descriptionText(content),
+	})
+
+	if strings.TrimSpace(content) == "" && location == "" {
+		metadata.Source = UnavailablePostingSource(PostingSourceAbsent)
+		return metadata, nil
+	}
+
+	candidate := greenhouseSourceCandidate(content, location, board, requestedID)
+	source, err := SealPostingSource(candidate, metadata.Description)
+	if err != nil {
+		reason := PostingSourceInvalid
+		if errors.Is(err, ErrPostingSourceTooLarge) {
+			reason = PostingSourceTooLarge
+		}
+		metadata.Source = UnavailablePostingSource(reason)
+		return metadata, nil
+	}
+	metadata.Source = AvailablePostingSource(source)
+	return metadata, nil
+}
+
+func greenhouseResponseID(raw json.RawMessage) (string, error) {
+	if len(raw) == 0 {
+		return "", fmt.Errorf("Greenhouse posting has no ID")
+	}
+	var id uint64
+	if err := json.Unmarshal(raw, &id); err != nil || id == 0 {
+		return "", fmt.Errorf("Greenhouse posting has invalid ID")
+	}
+	return strconv.FormatUint(id, 10), nil
+}
+
+func greenhouseOptionalString(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return ""
+	}
+	return value
+}
+
+func greenhouseLocationName(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var location struct {
+		Name json.RawMessage `json:"name"`
+	}
+	if err := json.Unmarshal(raw, &location); err != nil {
+		return ""
+	}
+	return greenhouseDirectFact(greenhouseOptionalString(location.Name))
+}
+
+func greenhouseDirectFact(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" || !utf8.ValidString(value) || strings.IndexByte(value, 0) >= 0 || len(value) > 512 {
+		return ""
+	}
+	return value
+}
+
+func greenhouseSourceCandidate(content, location, board, jobID string) PostingSource {
+	return PostingSource{
+		Version: PostingSourceFormatVersion,
+		Identity: PostingIdentity{
+			Provider:  "greenhouse",
+			Board:     board,
+			PostingID: jobID,
+		},
+		DescriptionHTML: greenhouseDecodedHTML(content),
+		Location:        location,
+	}
+}
+
+func greenhouseDecodedHTML(content string) string {
+	// The Job Board API example includes entity-encoded markup; match the
+	// existing canonical extractor's two-pass decoding for rich source too.
+	for i := 0; i < 2; i++ {
+		decoded := stdhtml.UnescapeString(content)
+		if decoded == content {
+			break
+		}
+		content = decoded
+	}
+	return content
 }

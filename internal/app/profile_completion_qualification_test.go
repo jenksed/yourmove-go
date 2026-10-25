@@ -139,6 +139,7 @@ func TestControlledProfileCompletion(t *testing.T) {
 	page = app.URL + "/candidate"
 	wait(page, `!!document.querySelector('#pronouns')`)
 	run(page, `(()=>{for(const [id,value] of Object.entries({first_name:'Casey',last_name:'Fixture',email:'casey@example.test',linkedin:'https://www.linkedin.com/in/synthetic-fixture',pronouns:'He/him'}))document.getElementById(id).value=value;document.querySelector('[name=approve]').checked=true;document.querySelector('form[action="/candidate"] button').click()})()`)
+	page = app.URL + "/candidate?notice=saved"
 	wait(page, `document.body.textContent.includes('Approved by you · Revision 1')&&document.querySelector('#pronouns').value==='He/him'`)
 	capture("approved-profile", ".field:has(#pronouns)")
 	run(page, `location.reload()`)
@@ -159,14 +160,17 @@ func TestControlledProfileCompletion(t *testing.T) {
 	base := fixture.URL + "/fixture/job"
 	// LaunchFixture owns a private, loopback-only Chromium process; use that existing
 	// test seam for employer interaction, never a live employer or the user's profile.
-	employerChrome, err := chromium.LaunchFixture(ctx, base)
+	second, err := a.jobByID(2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	employerChrome, err := chromium.LaunchFixtureForPosting(ctx, base, second.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer employerChrome.Close()
 	employer := base + "/application"
 	// Observe through the production browser adapter and store its exact current definition.
-	second, _ := a.jobByID(2)
 	fs := &contactFixtureSession{Session: employerChrome, fixture: base, saved: second.URL}
 	a.browsers.pollEvery = 80 * time.Millisecond
 	a.browsers.factory = func(context.Context, string) (readOnlySession, error) { return fs, nil }

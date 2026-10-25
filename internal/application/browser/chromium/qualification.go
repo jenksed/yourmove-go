@@ -30,8 +30,15 @@ func fixtureURL(raw string) bool {
 }
 
 func LaunchFixture(ctx context.Context, posting string) (*Session, error) {
+	return launchFixturePage(ctx, posting, posting+"/application")
+}
+
+func launchFixturePage(ctx context.Context, posting, page string) (*Session, error) {
 	if !fixtureURL(posting) {
 		return nil, errors.New("qualification accepts loopback fixtures only")
+	}
+	if !fixtureURL(page) || (page != posting && !strings.HasPrefix(page, posting+"/")) {
+		return nil, errors.New("qualification page must stay under its loopback fixture")
 	}
 	exe, err := executable()
 	if err != nil {
@@ -41,7 +48,7 @@ func LaunchFixture(ctx context.Context, posting string) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	args := append(launchArguments(dir, posting+"/application"), "--headless=new", "--disable-gpu", "--disable-background-networking")
+	args := append(launchArguments(dir, page), "--headless=new", "--disable-gpu", "--disable-background-networking")
 	if os.Geteuid() == 0 {
 		args = append(args, "--no-sandbox")
 	}
@@ -68,6 +75,34 @@ func LaunchFixture(ctx context.Context, posting string) (*Session, error) {
 		case <-time.After(50 * time.Millisecond):
 		}
 	}
+}
+
+// LaunchFixtureForPosting models a loopback form as a same-origin route below
+// a synthetic supported posting. It changes only the browser-side route-policy
+// inputs used by the qualification fixture; production launch has no override.
+func LaunchFixtureForPosting(ctx context.Context, fixturePosting, savedPosting string) (*Session, error) {
+	platform := browser.PostingPlatform(savedPosting)
+	if platform == "" || !browser.OwnsPostingURL(savedPosting, savedPosting) {
+		return nil, errors.New("qualification requires an exact supported posting identity")
+	}
+	fixture, err := url.Parse(fixturePosting)
+	if err != nil || !fixtureURL(fixturePosting) || fixture.Path == "" {
+		return nil, errors.New("qualification accepts loopback fixtures only")
+	}
+	page := fixturePosting
+	if platform == "ashby" {
+		page += "/application"
+	} else if platform == "lever" {
+		page += "/apply"
+	}
+	session, err := launchFixturePage(ctx, fixturePosting, page)
+	if err != nil {
+		return nil, err
+	}
+	session.fixtureContactOrigin = fixture.Scheme + "://" + fixture.Host
+	session.fixtureContactBase = strings.TrimSuffix(fixture.Path, "/")
+	session.fixtureContactPlatform = platform
+	return session, nil
 }
 
 // PreviewFixture exercises the production read-only DOM projection against a
@@ -149,7 +184,27 @@ func (p *FixturePage) Close() error {
 	return ws.Close(websocket.StatusNormalClosure, "")
 }
 
+// Fixture navigation and backend writes finish independently. Wait only for
+// exact read-only target discovery; never replay the requested CDP operation.
 func (s *Session) fixtureConnection(ctx context.Context, page string) (*websocket.Conn, error) {
+	bounded, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	for {
+		ws, err := s.fixtureConnectionOnce(bounded, page)
+		if err == nil || (!errors.Is(err, ErrNoMatchingTab) && !errors.Is(err, ErrNoPageTargets)) {
+			return ws, err
+		}
+		timer := time.NewTimer(25 * time.Millisecond)
+		select {
+		case <-bounded.Done():
+			timer.Stop()
+			return nil, fmt.Errorf("fixture navigation did not reach its exact target: %w", err)
+		case <-timer.C:
+		}
+	}
+}
+
+func (s *Session) fixtureConnectionOnce(ctx context.Context, page string) (*websocket.Conn, error) {
 	if !fixtureURL(page) {
 		return nil, errors.New("qualification target must be a loopback fixture")
 	}
@@ -170,7 +225,13 @@ func (s *Session) fixtureConnection(ctx context.Context, page string) (*websocke
 		return strings.Split(candidate, "#")[0] == strings.Split(page, "#")[0]
 	})
 	if err != nil {
-		return nil, err
+		var observed []string
+		for _, target := range targets {
+			if fixtureURL(target.URL) {
+				observed = append(observed, target.URL)
+			}
+		}
+		return nil, fmt.Errorf("%w: expected loopback fixture %q, observed %q", err, page, observed)
 	}
 	return dialCDP(ctx, t.WebSocketURL)
 }

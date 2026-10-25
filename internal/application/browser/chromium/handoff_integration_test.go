@@ -114,7 +114,10 @@ func TestControlledApplicationHandoff(t *testing.T) {
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("launch controlled Chromium: %v", err)
 	}
-	s := &Session{cmd: cmd, dir: dir, postingURL: posting, fixtureOwner: owns}
+	s := &Session{
+		cmd: cmd, dir: dir, postingURL: posting, fixtureOwner: owns,
+		fixtureContactOrigin: srv.URL, fixtureContactBase: base, fixtureContactPlatform: "ashby",
+	}
 	defer s.Close()
 	deadline := time.Now().Add(12 * time.Second)
 	for time.Now().Before(deadline) {
@@ -172,7 +175,7 @@ func TestControlledApplicationHandoff(t *testing.T) {
 			selected = result
 			break
 		}
-		if errors.Is(e, ErrNoResumeInput) || strings.Contains(e.Error(), "resume input disappeared") {
+		if errors.Is(e, ErrNoResumeInput) || errors.Is(e, ErrNoMatchingTab) || errors.Is(e, ErrNoPageTargets) || strings.Contains(e.Error(), "resume input disappeared") {
 			time.Sleep(160 * time.Millisecond)
 			continue
 		}

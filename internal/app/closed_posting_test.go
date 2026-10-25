@@ -34,7 +34,7 @@ func TestClosedPostingIntakeAndRefresh(t *testing.T) {
 	if err != nil || job.Stage != StageClosed || job.SourceStatus != "closed" || job.Title != "Saved title" || job.Description != "Saved description" || job.SourceCheckedAt == "" {
 		t.Fatalf("closed refresh: %+v %v", job, err)
 	}
-	if err := a.applyPostingRefresh(2, platforms.Metadata{}, "retrieved", "ok", "later"); err != nil {
+	if err := a.applyPostingRefresh(2, platforms.Metadata{}, "retrieved", "ok", "2026-10-24T14:02:00Z"); err != nil {
 		t.Fatal(err)
 	}
 	job, err = a.jobByID(2)

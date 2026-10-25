@@ -81,7 +81,8 @@ func TestJSONLDSalaryIsOptionalAndPreservesUnits(t *testing.T) {
 }
 
 func TestProviderDescriptionFallbackAndStructuredPrecedence(t *testing.T) {
-	got, err := extractAshbyMetadata([]byte(`{"jobs":[{"id":"fixture","title":"Support Engineer","descriptionPlain":"Salary: $90k–$120k per year"}]}`), "fixture")
+	const id = "11111111-1111-4111-8111-111111111111"
+	got, err := extractAshbyMetadata([]byte(`{"jobs":[{"id":"`+id+`","jobUrl":"https://jobs.ashbyhq.com/fixture/`+id+`","title":"Support Engineer","descriptionPlain":"Salary: $90k–$120k per year"}]}`), "fixture", id)
 	if err != nil || got.SalaryText != "Salary: $90k–$120k per year" || got.SalaryOrigin != "description" {
 		t.Fatalf("Ashby fallback: %+v %v", got, err)
 	}
