@@ -262,7 +262,7 @@ Evidence: the local finalization review archive contains `EXECUTIVE_REVIEW.md`, 
 
 ## Native workspace reliability recovery — October 25, 2026
 
-- **Scope:** PR #9 reliability repair on the a14e7fb baseline; release remains **HOLD** pending candidate-specific native results. Build 2 is superseded; build 3 retains version 0.1.0.
+- **Scope:** PR #9 reliability repair on the a14e7fb baseline; release remains **HOLD** pending candidate-specific native results. Builds 2 and 3 are superseded; build 4 retains version 0.1.0.
 - **Confirmed source defect:** explicit workspace overrides could import a working-directory legacy DB. Explicit overrides now disable discovery; normal migration remains covered. Canonical paths, empty/invalid configuration and redirected workspace members have regressions.
 - **Qualification guard:** opt-in process/workspace/run identity, executable hash, process lifetime, opened DB inode and native window ownership checks replace unverified display-name attachment in the native helper. Missing identity stops interaction. Go generation/navigation and Python stale-window regression tests added; the guard tests run in CI.
 - **Evidence/status:** [Source explanation and regression map](implementation/native-workspace-reliability.md); private durable package `.quality/native-recovery-20261025/` records exact source SHA, CI, artifacts and final native matrix. Historical window-switch cause remains unresolved; personal workspace contents were excluded and no historical immutability claim is made.

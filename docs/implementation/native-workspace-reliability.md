@@ -1,7 +1,7 @@
 # Native workspace reliability recovery — 2026-10-25
 
-Release status: HOLD pending frozen-candidate native acceptance. Build 2 is
-superseded by source changes; the next candidate is 0.1.0 (3).
+Release status: HOLD pending frozen-candidate native acceptance. Builds 2 and 3 are
+superseded by source changes; the next candidate is 0.1.0 (4).
 
 ## Established defect and limits
 
@@ -62,9 +62,11 @@ then verifies its document association after reopen.
 ## Controlled-browser harness correction
 
 Two repeatable qualification failures checked a target before navigation had
-finished. The contact journey had already observed backend state while its UI
-still held the previous question query; the step-two attachment fixture briefly
-had no matching target during the page transition. Qualification-only connection
+finished. The contact journey incorrectly assumed a redirect even when observation
+updated the UI in place and preserved its question query. It now acquires the
+verified tab after observation, accepting only the two exact expected fixture
+URLs before issuing the next navigation once. The step-two attachment fixture
+briefly had no matching target during the page transition. Qualification-only connection
 discovery now waits up to three seconds for the exact loopback URL. It never
 replays a CDP operation. The attachment test's bounded wait also tolerates the
 preflight no-target state; production attachment/ownership behavior is unchanged.
