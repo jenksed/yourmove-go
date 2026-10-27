@@ -40,7 +40,7 @@ func TestWatcherRequiresConsecutiveMatchingObservations(t *testing.T) {
 			return session, nil
 		},
 	}
-	if err := host.start(context.Background(), 8, testAshbyPosting); err != nil {
+	if err := host.start(context.Background(), 8, testAshbyPosting, ""); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(host.closeAll)

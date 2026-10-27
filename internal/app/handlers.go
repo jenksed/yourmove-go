@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jenksed/yourmove-go/internal/application/browser/playwright"
 	coverprovider "github.com/jenksed/yourmove-go/internal/coverletter/provider"
 	"github.com/jenksed/yourmove-go/internal/platforms"
 )
@@ -259,6 +260,7 @@ func (a *App) jobDetail(w http.ResponseWriter, r *http.Request) {
 		ProviderReady:        providerReady,
 		Match:                match,
 		HasFamilies:          showMatch,
+		Engines:              playwright.AvailableEngines(),
 	}
 	workspace.SubmissionNotice, workspace.SubmissionUncertain = submissionRecoveryNotice(r.URL.Query().Get("submission"))
 	workspace.TransferNotice = r.URL.Query().Get("transfer_notice")

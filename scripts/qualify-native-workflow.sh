@@ -45,6 +45,15 @@ PLIST
 # Mach-O vnode (and reusing its cached signature). Go's build cache is allowed;
 # no prior bundle or executable output is copied into this bundle.
 go build -tags desktop -o "$executable" .
+# Stage the self-contained Playwright runtime when its vendor inputs exist,
+# so the qualification bundle can launch managed Firefox/WebKit/Chromium
+# through the bridge with no developer toolchain on PATH.
+vendor="${YOURMOVE_PLAYWRIGHT_VENDOR:-$HOME/Projects/yourmove-builds/vendor/playwright}"
+if [[ -x "$vendor/nodejs/bin/node" ]]; then
+  bash "$source_root/release/macos/stage-playwright.sh" "$bundle" "$vendor"
+else
+  echo "Playwright vendor Node is absent ($vendor); bundle runs with the Chromium CDP default only."
+fi
 YOURMOVE_NATIVE_FIXTURE_DIR="$workspace" go test -count=1 -tags qualification ./internal/app -run '^TestPrepareNativeWorkflowFixture$' -v
 
 # This development bundle has exactly one executable, no frameworks/helpers.

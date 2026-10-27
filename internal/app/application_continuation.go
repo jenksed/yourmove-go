@@ -136,6 +136,7 @@ func summarizeAnswerOutcomes(outcomes []browser.AnswerOutcome) string {
 // summarizePreparation is read-only. Only command handlers confer authority.
 func summarizePreparation(w jobWorkspace) HandoffPresentation {
 	s := w.BrowserState
+	engine := engineDisplay(s.Engine)
 	out := summarizeHandoff(s)
 	out.AnswerSummary = summarizeAnswerOutcomes(s.AnswerOutcomes)
 	if w.Stage == StageClosed || w.Stage == StageApplied || w.SubmissionCount > 0 {
@@ -149,7 +150,7 @@ func summarizePreparation(w jobWorkspace) HandoffPresentation {
 	}
 	if w.OtherBrowser != nil {
 		out.Title = "Another application browser is open"
-		out.Detail = "Return to that application to preserve its browser work. If it is complete, record completion and use Next job; otherwise close its Chromium window deliberately before opening another job."
+		out.Detail = "Return to that application to preserve its browser work. If it is complete, record completion and use Next job; otherwise close its " + engine + " window deliberately before opening another job."
 		out.Recovery = false
 		return out
 	}
@@ -193,17 +194,17 @@ func summarizePreparation(w jobWorkspace) HandoffPresentation {
 		switch {
 		case s.LetterStatus == "attention" || s.LetterStatus == "review":
 			out.Title = "Cover letter needs inspection"
-			out.Detail = "Review the letter result and existing employer attachment in Chromium. An uncertain upload will not be retried."
+			out.Detail = "Review the letter result and existing employer attachment in " + engine + ". An uncertain upload will not be retried."
 		case s.AnswerStatus == "complete":
 			out.Title = "Answer transfer processing finished"
 			if out.AnswerSummary != "" {
-				out.Detail = out.AnswerSummary + ". Review the listed fields in Chromium, complete any manual or uncertain fields, and submit personally."
+				out.Detail = out.AnswerSummary + ". Review the listed fields in " + engine + ", complete any manual or uncertain fields, and submit personally."
 			} else {
-				out.Detail = "Review the answer results in Chromium, complete any manual fields, and submit personally."
+				out.Detail = "Review the answer results in " + engine + ", complete any manual fields, and submit personally."
 			}
 		case s.LetterStatus == "complete":
 			out.Title = "Cover letter transfer finished"
-			out.Detail = "Inspect the employer attachment or text in Chromium, then submit personally. YourMove cannot confirm employer acceptance."
+			out.Detail = "Inspect the employer attachment or text in " + engine + ", then submit personally. YourMove cannot confirm employer acceptance."
 		}
 	}
 	if out.Action == "" && (s.LetterStatus == "checking" || s.LetterStatus == "waiting" || s.AnswerStatus == "waiting" || s.AnswerStatus == "checking") {
