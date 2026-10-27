@@ -96,7 +96,7 @@ func TestObserverNoticesClosedTabAndStopsPolling(t *testing.T) {
 	var h sessionHost
 	h.pollEvery = 10 * time.Millisecond
 	h.factory = func(context.Context, string) (readOnlySession, error) { return f, nil }
-	if err := h.start(context.Background(), 7, testAshbyPosting); err != nil {
+	if err := h.start(context.Background(), 7, testAshbyPosting, ""); err != nil {
 		t.Fatal(err)
 	}
 	h.watch(7, testAshbyPosting, func(browser.Observation) (int64, error) { t.Fatal("should not save"); return 0, nil })
@@ -115,7 +115,7 @@ func TestForeignLoginTabDoesNotDestroyManagedBrowser(t *testing.T) {
 	f := &lostTabBrowser{err: chromium.ErrNoMatchingTab}
 	h := sessionHost{pollEvery: 10 * time.Millisecond}
 	h.factory = func(context.Context, string) (readOnlySession, error) { return f, nil }
-	if err := h.start(context.Background(), 7, testAshbyPosting); err != nil {
+	if err := h.start(context.Background(), 7, testAshbyPosting, ""); err != nil {
 		t.Fatal(err)
 	}
 	h.watch(7, testAshbyPosting, func(browser.Observation) (int64, error) { return 0, errors.New("unexpected save") })
@@ -148,7 +148,7 @@ func TestLostTabDiscardsStagedResumeAndDoesNotAttemptUpload(t *testing.T) {
 	browserInstance := &lostHandoffBrowser{lostTabBrowser: lostTabBrowser{err: chromium.ErrNoPageTargets}}
 	h := sessionHost{pollEvery: 10 * time.Millisecond}
 	h.factory = func(context.Context, string) (readOnlySession, error) { return browserInstance, nil }
-	if err := h.start(context.Background(), 7, testAshbyPosting); err != nil {
+	if err := h.start(context.Background(), 7, testAshbyPosting, ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.armResume(7, dir, path, "Resume.pdf", nil); err != nil {

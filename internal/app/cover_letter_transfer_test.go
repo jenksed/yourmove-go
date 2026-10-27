@@ -116,7 +116,7 @@ func TestCoverLetterTransferPinsRevisionAndContinuesSession(t *testing.T) {
 			a.browsers.factory = func(context.Context, string) (readOnlySession, error) { return f, nil }
 			// Slow watcher lets this test drive deterministic dispatch and stale checks.
 			a.browsers.pollEvery = time.Hour
-			if err := a.browsers.start(context.Background(), 1, testAshbyPosting); err != nil {
+			if err := a.browsers.start(context.Background(), 1, testAshbyPosting, ""); err != nil {
 				t.Fatal(err)
 			}
 			a.browsers.cancels = map[int64]context.CancelFunc{1: func() {}}
@@ -188,7 +188,7 @@ func TestPendingCoverLetterChangeRevokesTransfer(t *testing.T) {
 			d, _ := a.latestCoverLetter(1)
 			f := &fakeLetterBrowser{fakeBrowser: &fakeBrowser{url: testAshbyPosting + "/application"}}
 			a.browsers.factory = func(context.Context, string) (readOnlySession, error) { return f, nil }
-			if err := a.browsers.start(context.Background(), 1, testAshbyPosting); err != nil {
+			if err := a.browsers.start(context.Background(), 1, testAshbyPosting, ""); err != nil {
 				t.Fatal(err)
 			}
 			defer a.browsers.closeAll()
@@ -221,7 +221,7 @@ func TestCoverLetterDestinationCanChangeOnlyBeforeSelection(t *testing.T) {
 	h.factory = func(context.Context, string) (readOnlySession, error) {
 		return &fakeBrowser{url: testAshbyPosting}, nil
 	}
-	if err := h.start(context.Background(), 1, testAshbyPosting); err != nil {
+	if err := h.start(context.Background(), 1, testAshbyPosting, ""); err != nil {
 		t.Fatal(err)
 	}
 	defer h.closeAll()

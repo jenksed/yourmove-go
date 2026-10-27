@@ -75,7 +75,7 @@ func TestEarlySavedAnswersStayExcludedUntilReconciledAndAuthorized(t *testing.T)
 	}
 	fake := &fakeAnswerBrowser{fakeBrowser: &fakeBrowser{url: job.URL}}
 	a.browsers.factory = func(context.Context, string) (readOnlySession, error) { return fake, nil }
-	if err = a.browsers.start(context.Background(), 1, job.URL); err != nil {
+	if err = a.browsers.start(context.Background(), 1, job.URL, ""); err != nil {
 		t.Fatal(err)
 	}
 	defer a.browsers.closeAll()

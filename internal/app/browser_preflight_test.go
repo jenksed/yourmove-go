@@ -33,7 +33,7 @@ func (b *preflightFakeBrowser) AttachResume(context.Context, string) (chromium.A
 func TestResumePreflightRetriesOnlyBeforeFileSelection(t *testing.T) {
 	fake := &preflightFakeBrowser{failPreflight: true}
 	h := sessionHost{factory: func(context.Context, string) (readOnlySession, error) { return fake, nil }}
-	if err := h.start(context.Background(), 12, testAshbyPosting); err != nil {
+	if err := h.start(context.Background(), 12, testAshbyPosting, ""); err != nil {
 		t.Fatal(err)
 	}
 	defer h.closeAll()
@@ -70,7 +70,7 @@ func TestResumePreflightRetriesOnlyBeforeFileSelection(t *testing.T) {
 func TestAmbiguousAttachmentOutcomeNeverRetransmits(t *testing.T) {
 	fake := &preflightFakeBrowser{failAfterWrite: true}
 	h := sessionHost{factory: func(context.Context, string) (readOnlySession, error) { return fake, nil }}
-	if err := h.start(context.Background(), 14, testAshbyPosting); err != nil {
+	if err := h.start(context.Background(), 14, testAshbyPosting, ""); err != nil {
 		t.Fatal(err)
 	}
 	defer h.closeAll()
