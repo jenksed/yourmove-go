@@ -58,6 +58,12 @@ for d in "${need_dirs[@]}"; do
 done
 chmod -R a+rX "$resources/ms-playwright"
 
+# Drop macOS AppleDouble sidecars (._*) carried in from the browser cache:
+# ditto --sequesterRsrc folds them into zip metadata on archive and does not
+# restore them as files on extract, which breaks the code seal ("a sealed
+# resource is missing or invalid"). They carry no executable content.
+find "$resources/playwright-bridge" "$resources/nodejs" "$resources/ms-playwright" -name '._*' -delete
+
 core_version="$(python3 -c 'import json;print(json.load(open("'"$core_pkg"'"))["version"])')"
 node_version="$("$resources/nodejs/bin/node" --version)"
 {
