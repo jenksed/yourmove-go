@@ -1,0 +1,152 @@
+/* YM-004A Application Workspace compositions.
+   Quiet Ink tokens and shell controls live in shared/quiet-ink.css;
+   opportunity list primitives are reused from the Opportunities slice. */
+
+.workspace-page .breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-muted);
+  font-size: 12px;
+  margin-bottom: 14px;
+}
+
+.workspace-page .breadcrumbs a {
+  color: var(--color-muted);
+}
+
+.workspace-next {
+  border-inline-start: 3px solid var(--color-primary);
+}
+
+.workspace-next h2 {
+  margin: 6px 0 8px;
+}
+
+.workspace-facts {
+  display: grid;
+  gap: 12px;
+  padding: 0 24px 8px;
+}
+
+.workspace-facts > div {
+  display: grid;
+  gap: 4px;
+}
+
+.workspace-facts dt {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.075em;
+  color: var(--color-muted);
+  font-weight: 760;
+}
+
+.workspace-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.workspace-url {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+.workspace-source-actions {
+  display: grid;
+  gap: 10px;
+  padding: 12px 24px 0;
+  max-width: 560px;
+}
+
+.workspace-description {
+  padding: 16px 24px 24px;
+  max-width: 90ch;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.workspace-suggestion {
+  margin: 0 24px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface-muted);
+  padding: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.workspace-suggestion h3 {
+  margin: 6px 0;
+}
+
+.workspace-suggestion-note {
+  padding: 0 24px;
+}
+
+.workspace-options {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0 24px 8px;
+  display: grid;
+  gap: 10px;
+}
+
+.transfer-ready {
+  color: var(--color-success);
+}
+
+.transfer-blocked {
+  color: var(--color-attention);
+}
+
+.transfer-note {
+  color: var(--color-muted);
+}
+
+.readiness-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  padding: 0 24px 12px;
+}
+
+.readiness-grid > div {
+  display: grid;
+  gap: 4px;
+}
+
+.readiness-grid dt {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.075em;
+  color: var(--color-muted);
+  font-weight: 760;
+}
+
+.readiness-grid dd {
+  margin: 0;
+}
+
+.workspace-legacy-links {
+  list-style: none;
+  margin: 0;
+  padding: 0 24px 24px;
+  display: grid;
+  gap: 10px;
+}
+
+@media (max-width: 760px) {
+  .workspace-suggestion {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .readiness-grid {
+    grid-template-columns: 1fr;
+  }
+}
