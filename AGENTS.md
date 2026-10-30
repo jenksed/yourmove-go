@@ -1,57 +1,63 @@
+# YourMove Go — contributor instructions
+
+## Product and scope
+
+YourMove is a local-first job application workbench. The user selects and approves material, reviews employer-side effects, submits applications personally, and records completion explicitly. Preserve the existing working applicant journey before improving its implementation.
+
+Work only on the owner's currently authorized task. Confirm the branch/HEAD, relevant worktree changes, intended user result, and scope before editing. `main` is the starting baseline, not permission to commit directly to it, merge, publish, or operate on someone else's worktree. Do not modify unowned/untracked files or stop another process without confirming ownership.
+
+Do the smallest useful end-to-end change. An implementation that improves only directory symmetry, scaffolding, test infrastructure, or architecture without enabling the assigned user outcome needs a specific current blocker to justify it. Report adjacent cleanup separately.
+
+## Runtime and migration direction
+
+**Keep Wails 3. No Tauri or Rust migration.** This repository currently runs one Go application in two hosts:
+
+- `desktop.go`: macOS Wails window, native dialogs and embedded Go HTTP handler.
+- `main.go`: local browser-hosted HTTP mode.
+- `internal/app/`: HTTP routes, workflows, applicant-facing application behavior.
+- `internal/storage/`: SQLite schema, paths, and durable workspace handling.
+- `internal/platforms/` and `internal/application/`: public posting data, application requirements, browser control and Chromium/CDP integration.
+- `templates/` and `static/`: existing Go-rendered UI and progressive enhancement.
+
+The authorized frontend direction is **React + TypeScript + Vite within the existing Wails app**, migrated screen by screen. `frontend/` is a *proposed* new source tree, not an already-established package. Prefer organizing migrated code under `frontend/src/features/<workflow>/` with only genuinely reused code under `shared/`.
+
+Preserve existing Go behavior and SQLite records. Go remains authoritative for validation, saved state, document identities, AI/provider policy, consent, browser effects, and completion recording. React owns display, user interaction and disposable unsaved state. Do not implement a parallel business-rule engine or durable store in TypeScript.
+
+For the first migration slice, trace the present Go HTTP route/handler and select the smallest working React-to-Go seam. Existing protected HTTP endpoints may be reused when suitable; new narrow JSON handlers or Wails bindings must be justified by the actual UI need. Do not assume a generated-binding stack exists. If introducing bindings, define Go contracts first and use the pinned Wails version's supported generation mechanism. Preserve local request protections, Wails navigation and file-dialog behavior, and browser-mode compatibility for unaffected screens. Do not establish a second unprotected local API.
+
+## Unchanged authority and data boundaries
+
+- Only explicitly approved candidate information may leave the app. AI is optional, accurately disclosed, consent-aware, and never silently switches providers.
+- Employer-browser actions require specific applicant authorization. No automatic employer submission, login, CAPTCHA, privacy/consent decisions, or replay of uncertain external effects.
+- `POST /jobs/{id}/submit` records the applicant's explicit declaration of manual submission locally; it does not submit to an employer.
+- Keep job IDs, résumé/file bytes and associations, saved answers, letters, source identity, and recorded application history intact. Never silently overwrite or misassociate candidate data.
+- Qualification uses isolated synthetic data/workspaces selected by `YOURMOVE_DATA_DIR`. Never point tests, fixtures, or repair commands at a real applicant workspace. Respect the single application writer and its SQLite state. An employer-browser session does not survive app restart.
+
+## Finding the real implementation
+
+Start with `README.md`, `docs/CODEBASE_GUIDE.md`, and `docs/TRY_IT.md` as needed; the current source and tests resolve discrepancies in documentation. For UI changes, consult `docs/design/DESIGN_SYSTEM.md` and `docs/design/RULES.md`, especially the current decision, object-first composition, and truthful states. For backlog selection, read `docs/BACKLOG.md`, then verify dated claims against current code/PRs. Release work additionally consults `docs/RELEASE_POLICY.md` and `docs/RELEASE_CHECKLIST.md`.
+
 <!-- graft:start -->
-## Graft — repo context graph
+### Graft (optional code navigation)
 
-This repo is indexed in `graft/`: small linked markdown nodes that explain each
-system and carry exact file:line spans, kept in sync with the code through git.
-
-For ANY task here — understanding how something works, finding where code lives,
-or scoping a change — get context from the graph before grepping or opening
-source files. Re-ask freely (it's cheap) and reuse literal identifiers you
-already have (symbol, error string, file name) as the query. New to this repo?
-Run `graft map` first — a token-budgeted orientation (dir clusters, hubs,
-hotspots), no LLM, no key.
-
-- Run `graft ask "<your question>" --source` → ranked nodes with the relevant
-  code spans inlined (each hit's ≤8-line crux by default; `--full` for whole
-  definitions when the crux isn't enough). Match the tool to the task shape:
-  for understanding or editing, the top node IS the answer — cite its
-  `covers:` file:line spans and edit straight from `--source`. For
-  exhaustive tasks ("every occurrence / every caller of this pattern"), ranked
-  results are top-N, not complete — run `graft grep "<literal>"` instead
-  (exhaustive over indexed files, grouped by enclosing symbol), falling back
-  to raw `grep -rn` only for unindexed files.
-- `graft skeleton <file>` → every definition's signature + span, ~10× cheaper
-  than reading the file; use it to skim an API surface.
-- `graft callers <symbol>` gives precomputed, exact edges — who calls this.
-  Add `--direction out` for what it calls, or `--depth N` to walk
-  transitively for the full blast radius. For structural questions, skip
-  ranking and use this directly.
-- Or browse: `graft/INDEX.md` lists every node; follow the links.
-- Monorepos and folders of multiple repos rank fairly across sub-projects —
-  hits carry `[scope/]` labels naming which one they're from. Narrow with
-  `graft ask "<task>" --in <scope>/` once you know where you're working.
-
-If a returned span is truncated ("+N more lines"), open the file at that exact
-range before finalizing. Only open source files when a node genuinely lacks a
-needed detail, and then at the exact file:line the node points to — never
-re-read whole files.
-
-After big code changes, refresh the graph with `graft build` (deterministic,
-no API key, $0).
+If Graft is available and its index is current, use it to orient within unfamiliar code or trace callers. `graft map`, `graft ask "<question>" --source`, `graft skeleton <file>`, `graft callers <symbol>`, and `graft grep "<literal>"` can narrow inspection. A graph result is navigation evidence, not proof of runtime behavior; check the relevant source and tests. Use ordinary search/source inspection when simpler, when Graft is unavailable, or when the graph is stale. Do not treat Graft as a gate or build a new index for an isolated change. Refresh after substantial structural changes if needed; do not commit generated `graft/` artifacts.
 <!-- graft:end -->
 
-## Application UI design decisions
+## Load project skills when applicable
 
-Before changing a user-facing template or its styles, read `docs/design/DESIGN_SYSTEM.md` and `docs/design/RULES.md`. Start with R1 (the current decision) and R6 (existing artifacts before their generators); apply R7–R10 where control parity, prose width, duplicated copy, or overcrowded object lists are relevant. Prefer scoped composition changes over a new component library. Preserve the existing Go POST handlers, Wails redirect behavior, consent boundaries, and explicit submission confirmation.
+Project skills live in `.agents/skills/`; they supplement this file and do not authorize work or supersede the code. Read only the ones relevant to the task, and have delegated agents load them directly:
 
-## Backlog intake and prioritization
+- `feature-slice` — an applicant-visible workflow spanning UI/Go/storage or other layers.
+- `frontend-migration` — replacing an existing Go-rendered screen or `static/` behavior with React/TypeScript under Wails; **required for the planned Opportunities slice**.
+- `native-qualification` — claims about the actual Wails UI, native host, or saved behavior after quit/relaunch.
+- `durable-state-integrity` — changes to persisted records, document files, schema, saved associations or recovery.
+- `browser-workflow-testing` — Chromium/CDP, employer sessions, forms, controlled transfer testing or related effect boundaries.
+- `employer-continuation` — changing applicant-authorized employer transfer/filling, not ordinary public job retrieval.
 
-The maintained engineering backlog is [`docs/BACKLOG.md`](docs/BACKLOG.md). It records unfinished Phase 2 items, PR closeout, refactoring, beta-release gates and deliberately deferred native automation work. **Read it before selecting work whenever the user asks for backlog items, priorities, next tasks, cleanup/refactors or release readiness.** Also read `docs/RELEASE_POLICY.md` / `docs/RELEASE_CHECKLIST.md` for release choices, and the linked acceptance evidence for any proposed gate.
+Do not load every skill for every task. Pure layout work does not need a database recovery procedure; an Opportunities read/write slice ordinarily needs `frontend-migration`, `feature-slice`, `native-qualification`, and `durable-state-integrity` only where its write path changes.
 
-1. Verify the current branch, PR/CI and relevant implementation first: backlog priorities and snapshot SHAs can become stale. Respect unrelated worktree modifications.
-2. Establish the user's **current objective** (PR closeout, refactoring, beta qualification or later research). Filter by stage, dependencies and actionable status; recommend the top **2–3** with user impact, evidence and acceptance conditions. P0 safety/data integrity defects outrank all work. Do not blindly sort by P1 or expand a focused request into an unrelated release effort.
-3. Distinguish demonstrated failures, code-review hypotheses and **NOT VERIFIED** host testing. Do not present a blocked automation harness as a YourMove product defect or convert Chromium/Go tests into native Wails acceptance. Unverified core workflow remains a beta release gate, even if separately accepted for source merge.
-4. Work on one bounded, owner-authorized item at a time, in a suitable branch. Preserve existing Go handlers/SQLite, consent and explicit manual employer submission boundaries. Do not autonomously merge, release, delete user data or submit employer applications.
-5. After completing an item, update `docs/BACKLOG.md` with its status, commit/PR and tests/evidence; keep deferred work discoverable. Use a separate PR for unrelated refinements rather than growing a closeout diff.
+## Verification and handoff
 
-If the user asks to **refactor**, favor the maintainability items after Phase 2 is merged and avoid creating a new framework or browser stack. If the user asks for a **beta release**, evaluate the actual frozen artifact against `docs/RELEASE_POLICY.md` regardless of a green CI or source-merge decision.
+Exercise the real path early. Use focused existing tests first; `go test ./...` and, on supported macOS, `go test -tags desktop ./...` are baseline commands. For native workflow qualification, inspect `scripts/qualify-native-workflow.sh` and its documented limits before running it. A browser preview, Go test, Chromium fixture or successfully built bundle does **not** establish native Wails acceptance. For restart claims, fully quit and reopen the *same executable* against the *same synthetic workspace* without reseeding it. Do not treat signing a development bundle as approval to distribute.
+
+Report the observable outcome, modified paths, source revision, tests actually run/results, native or browser observations, and anything **NOT VERIFIED**. Distinguish **implemented**, **verified**, and **owner-accepted**. Do not push, merge, release, access real applicant data, or start the next task without explicit owner authorization.
