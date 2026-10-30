@@ -63,15 +63,6 @@ func loadURLIndex(q jobURLQuerier) (map[string]int64, error) {
 	return index, rows.Err()
 }
 
-func (a *App) hasJobURL(rawURL string) (bool, error) {
-	index, err := loadURLIndex(a.db)
-	if err != nil {
-		return false, err
-	}
-	_, exists := index[rawURL]
-	return exists, nil
-}
-
 // storeJobIfNew serializes writes from both intake paths. A transaction keeps
 // duplicate detection and the insert together without mutating old records.
 func (a *App) storeJobIfNew(job Job) (id int64, added bool, err error) {

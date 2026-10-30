@@ -71,40 +71,16 @@ func (a *App) jobForm(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Invalid job form", http.StatusBadRequest)
 			return
 		}
-		jobURL, host, err := normalizePostingURL(r.PostForm.Get("job_url"))
-		jobTitle := strings.TrimSpace(r.PostForm.Get("job_title"))
-		if err != nil || len(jobTitle) > 200 {
-			http.Error(w, "Invalid job URL or title", http.StatusBadRequest)
-			return
-		}
-		// Duplicates must not cause a new employer fetch or overwrite manual work.
-		if exists, err := a.hasJobURL(jobURL); err != nil {
-			log.Printf("check existing job: %v", err)
-			http.Error(w, "Unable to check saved jobs", 500)
-			return
-		} else if exists {
-			http.Redirect(w, r, "/jobs", http.StatusSeeOther)
-			return
-		}
-		metadata, status, note := fetchPostingDetails(r.Context(), jobURL)
-		manualTitle := jobTitle != ""
-		if jobTitle == "" {
-			jobTitle = metadata.Title
-		}
-		salaryOrigin := metadata.SalaryOrigin
-		if metadata.SalaryText != "" && salaryOrigin == "" {
-			salaryOrigin = "employer"
-		}
-		job := Job{
-			URL: jobURL, Host: host, Title: jobTitle, Company: metadata.Company,
-			Description: metadata.Description, SalaryText: metadata.SalaryText,
-			SalaryOrigin: salaryOrigin, TitleManual: manualTitle,
-			SourceStatus: status, SourceNote: note,
-			SourceCheckedAt: time.Now().UTC().Format(time.RFC3339),
-		}
-		if _, _, err := a.storeJobIfNew(job); err != nil {
-			log.Printf("save job: %v", err)
-			http.Error(w, "Unable to save job", http.StatusInternalServerError)
+		if _, _, err := a.savePostingURL(r.Context(), r.PostForm.Get("job_url"), r.PostForm.Get("job_title")); err != nil {
+			status, message := http.StatusInternalServerError, "Unable to save job"
+			switch {
+			case errors.Is(err, errPostingInput):
+				status, message = http.StatusBadRequest, "Invalid job URL or title"
+			case errors.Is(err, errPostingLookup):
+				message = "Unable to check saved jobs"
+			}
+			log.Printf("single posting intake: %v", err)
+			http.Error(w, message, status)
 			return
 		}
 		http.Redirect(w, r, "/jobs", http.StatusSeeOther)

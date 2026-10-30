@@ -114,46 +114,22 @@ func (a *App) opportunitiesAPI(w http.ResponseWriter, r *http.Request) {
 		if !decodeOpportunityJSON(w, r, 8<<10, &payload) {
 			return
 		}
-		jobURL, host, err := normalizePostingURL(payload.URL)
-		title := strings.TrimSpace(payload.Title)
-		if err != nil || len(title) > 200 {
-			writeOpportunityError(w, http.StatusBadRequest, "Invalid job URL or title")
-			return
-		}
-		if exists, err := a.hasJobURL(jobURL); err != nil {
-			log.Printf("check existing job api: %v", err)
-			writeOpportunityError(w, http.StatusInternalServerError, "Unable to check saved jobs")
-			return
-		} else if exists {
-			index, err := loadURLIndex(a.db)
-			if err != nil {
-				writeOpportunityError(w, http.StatusInternalServerError, "Unable to check saved jobs")
-				return
-			}
-			w.Header().Set("Content-Type", "application/json; charset=utf-8")
-			_ = json.NewEncoder(w).Encode(map[string]any{"id": index[jobURL], "added": false, "duplicate": true})
-			return
-		}
-		metadata, status, note := fetchPostingDetails(r.Context(), jobURL)
-		manualTitle := title != ""
-		if title == "" {
-			title = metadata.Title
-		}
-		salaryOrigin := metadata.SalaryOrigin
-		if metadata.SalaryText != "" && salaryOrigin == "" {
-			salaryOrigin = "employer"
-		}
-		job := Job{
-			URL: jobURL, Host: host, Title: title, Company: metadata.Company,
-			Description: metadata.Description, SalaryText: metadata.SalaryText,
-			SalaryOrigin: salaryOrigin, TitleManual: manualTitle,
-			SourceStatus: status, SourceNote: note,
-			SourceCheckedAt: time.Now().UTC().Format(time.RFC3339),
-		}
-		id, _, err := a.storeJobIfNew(job)
+		id, duplicate, err := a.savePostingURL(r.Context(), payload.URL, payload.Title)
 		if err != nil {
-			log.Printf("save job api: %v", err)
-			writeOpportunityError(w, http.StatusInternalServerError, "Unable to save job")
+			status, message := http.StatusInternalServerError, "Unable to save job"
+			switch {
+			case errors.Is(err, errPostingInput):
+				status, message = http.StatusBadRequest, "Invalid job URL or title"
+			case errors.Is(err, errPostingLookup):
+				message = "Unable to check saved jobs"
+			}
+			log.Printf("single posting intake api: %v", err)
+			writeOpportunityError(w, status, message)
+			return
+		}
+		if duplicate {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": id, "added": false, "duplicate": true})
 			return
 		}
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
