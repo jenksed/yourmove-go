@@ -70,9 +70,10 @@ func careerDiscoveryPathID(r *http.Request) (string, bool) {
 	return id, true
 }
 
-// serveCareerDiscovery prefers the React bundle when embedded. Unlike the
-// migrated library routes there is no Go-rendered equivalent, so a missing
-// bundle is an honest 404 rather than a silent fallback.
+// serveCareerDiscovery prefers the React bundle when embedded for /career
+// and /career/studio. Unlike the migrated library routes there is no
+// Go-rendered equivalent, so a missing bundle is an honest 404 rather than
+// a silent fallback.
 func (a *App) serveCareerDiscovery(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet && len(a.resources.frontendIndex) > 0 {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")

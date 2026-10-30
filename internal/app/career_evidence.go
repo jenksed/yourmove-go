@@ -251,6 +251,47 @@ func (a *App) updateCareerEvidence(id, expectedRevision int64, content careerEvi
 	return tx.Commit()
 }
 
+// reopenCareerEvidence returns a reviewed record to draft through the same
+// single writer and revision gate as save and review. The revision bump
+// keeps saved role analyses and syntheses that cited the reviewed revision
+// visibly stale instead of silently still current.
+func (a *App) reopenCareerEvidence(id, expectedRevision int64) error {
+	if id < 1 || expectedRevision < 1 {
+		return ErrCareerEvidenceInvalid
+	}
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	current, err := careerEvidenceByID(tx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return sql.ErrNoRows
+	}
+	if err != nil {
+		return err
+	}
+	if current.Revision != expectedRevision {
+		return ErrCareerEvidenceStale
+	}
+	if current.Status != "reviewed" {
+		return ErrCareerEvidenceInvalid
+	}
+	result, err := tx.Exec(`UPDATE career_evidence SET status='draft',revision=revision+1,updated_at=? WHERE id=? AND revision=?`,
+		time.Now().UTC().Format(time.RFC3339Nano), id, expectedRevision)
+	if err != nil {
+		return err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count != 1 {
+		return ErrCareerEvidenceStale
+	}
+	return tx.Commit()
+}
+
 func (a *App) deleteCareerEvidence(id, expectedRevision int64) error {
 	if id < 1 || expectedRevision < 1 {
 		return ErrCareerEvidenceInvalid

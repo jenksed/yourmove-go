@@ -361,6 +361,38 @@ func initJobsSchema(db *sql.DB) error {
 		 updated_at TEXT NOT NULL,
 		 expires_at TEXT NOT NULL DEFAULT '')`,
 		`CREATE INDEX IF NOT EXISTS career_discovery_sessions_updated ON career_discovery_sessions(updated_at DESC,id DESC)`,
+		// YM-003B Career Studio persisted selections: one saved role analysis
+		// per opportunity-derived role key, one singleton synthesis snapshot,
+		// and applicant challenges keyed to the synthesis they judged. Derived
+		// views are never persisted; staleness is recomputed from current
+		// evidence revisions and job rows on every read.
+		`CREATE TABLE IF NOT EXISTS career_role_analyses (
+		 role_key TEXT PRIMARY KEY,
+		 job_id INTEGER NOT NULL DEFAULT 0,
+		 role_hash TEXT NOT NULL DEFAULT '',
+		 evidence_hash TEXT NOT NULL DEFAULT '',
+		 analysis TEXT NOT NULL DEFAULT '',
+		 notice TEXT NOT NULL DEFAULT '',
+		 provider TEXT NOT NULL DEFAULT '',
+		 model TEXT NOT NULL DEFAULT '',
+		 created_at TEXT NOT NULL DEFAULT '',
+		 updated_at TEXT NOT NULL DEFAULT '')`,
+		`CREATE TABLE IF NOT EXISTS career_connection_synthesis (
+		 id INTEGER PRIMARY KEY CHECK(id=1),
+		 evidence_hash TEXT NOT NULL DEFAULT '',
+		 synthesis TEXT NOT NULL DEFAULT '',
+		 notice TEXT NOT NULL DEFAULT '',
+		 provider TEXT NOT NULL DEFAULT '',
+		 model TEXT NOT NULL DEFAULT '',
+		 created_at TEXT NOT NULL DEFAULT '',
+		 updated_at TEXT NOT NULL DEFAULT '')`,
+		`CREATE TABLE IF NOT EXISTS career_connection_challenges (
+		 synthesis_hash TEXT NOT NULL,
+		 connection_id TEXT NOT NULL,
+		 state TEXT NOT NULL DEFAULT '',
+		 note TEXT NOT NULL DEFAULT '',
+		 updated_at TEXT NOT NULL DEFAULT '',
+		 PRIMARY KEY(synthesis_hash, connection_id))`,
 		`CREATE TABLE IF NOT EXISTS application_steps (
 		 inspection_id INTEGER NOT NULL REFERENCES application_inspections(id), ordinal INTEGER NOT NULL,
 		 step_key TEXT NOT NULL, label TEXT NOT NULL, state TEXT NOT NULL, action TEXT NOT NULL,

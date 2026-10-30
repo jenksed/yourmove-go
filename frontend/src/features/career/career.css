@@ -73,3 +73,39 @@
   .career-start-grid { grid-template-columns: 1fr; }
   .career-session-list li { flex-wrap: wrap; }
 }
+
+/* YM-003B Career Studio compositions. */
+
+.studio-library-bar { display: flex; gap: 16px; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; margin-bottom: 8px; }
+.studio-library-bar .form-actions { margin: 0; }
+.studio-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.studio-mini-heading { font-size: 14px; margin: 0 0 8px; }
+.studio-source-heading { font-size: 13px; margin: 12px 0 4px; }
+
+.studio-stale {
+  padding: 10px 12px;
+  border-inline-start: 3px solid var(--color-attention);
+  border-radius: 0 6px 6px 0;
+  background: var(--color-attention-soft);
+  color: var(--color-text);
+}
+
+.studio-cards { display: grid; gap: 12px; margin-top: 10px; }
+.studio-card { padding: 14px; border: 1px solid var(--color-border); border-radius: 7px; }
+.studio-card h4 { margin: 0 0 6px; font-size: 14px; }
+.studio-card h5 { margin: 12px 0 4px; font-size: 12px; color: var(--color-muted); }
+.studio-card p { margin: 4px 0; font-size: 13px; line-height: 1.55; }
+.studio-card ul { margin: 4px 0; padding-left: 20px; font-size: 13px; display: grid; gap: 4px; }
+.studio-card .form-actions { margin-top: 12px; }
+
+.studio-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  vertical-align: 1px;
+}
+.studio-badge-hit { background: var(--color-success-soft); border-color: var(--color-success); color: var(--color-success); }
+.studio-badge-stale { background: var(--color-attention-soft); border-color: var(--color-attention); color: var(--color-attention); }

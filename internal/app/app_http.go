@@ -16,6 +16,8 @@ type App struct {
 	applicationAnswerGenerate func(context.Context, string, string) (string, error)
 	careerDiscovery           careerDiscoveryGuard
 	careerDiscoveryGenerate   func(context.Context, string, string) (string, error) // test override; production uses the configured provider
+	careerStudio              careerDiscoveryGuard
+	careerStudioGenerate      func(context.Context, string, string) (string, error) // test override; production uses the configured provider
 	resources                 *appResources
 	intakeMu                  sync.Mutex
 	enrichmentMu              sync.Mutex
@@ -113,6 +115,7 @@ func newMux(app *App) http.Handler {
 	mux.HandleFunc("POST /api/resumes/{id}/delete", app.resumeDeleteAPI)
 	mux.HandleFunc("GET /resumes", app.serveResumes)
 	mux.HandleFunc("GET /career", app.serveCareerDiscovery)
+	mux.HandleFunc("GET /career/studio", app.serveCareerDiscovery)
 	mux.HandleFunc("GET /api/career/discovery/providers", app.careerDiscoveryProvidersAPI)
 	mux.HandleFunc("GET /api/career/discovery/sessions", app.careerDiscoveryListAPI)
 	mux.HandleFunc("POST /api/career/discovery/sessions", app.careerDiscoveryCreateAPI)
@@ -121,6 +124,19 @@ func newMux(app *App) http.Handler {
 	mux.HandleFunc("POST /api/career/discovery/sessions/{id}/select", app.careerDiscoverySelectAPI)
 	mux.HandleFunc("POST /api/career/discovery/sessions/{id}/answer", app.careerDiscoveryAnswerAPI)
 	mux.HandleFunc("POST /api/career/discovery/sessions/{id}/promote", app.careerDiscoveryPromoteAPI)
+	mux.HandleFunc("GET /api/career/evidence", app.careerEvidenceListAPI)
+	mux.HandleFunc("POST /api/career/evidence", app.careerEvidenceCreateAPI)
+	mux.HandleFunc("GET /api/career/evidence/{id}", app.careerEvidenceGetAPI)
+	mux.HandleFunc("POST /api/career/evidence/{id}/save", app.careerEvidenceSaveHandlerAPI)
+	mux.HandleFunc("POST /api/career/evidence/{id}/review", app.careerEvidenceReviewAPI)
+	mux.HandleFunc("POST /api/career/evidence/{id}/reopen", app.careerEvidenceReopenAPI)
+	mux.HandleFunc("POST /api/career/evidence/{id}/delete", app.careerEvidenceDeleteAPI)
+	mux.HandleFunc("GET /api/career/roles", app.careerRolesAPI)
+	mux.HandleFunc("GET /api/career/roles/{key}", app.careerRoleSnapshotAPI)
+	mux.HandleFunc("POST /api/career/roles/{key}/authorize", app.careerRoleAuthorizeAPI)
+	mux.HandleFunc("GET /api/career/synthesis", app.careerSynthesisAPI)
+	mux.HandleFunc("POST /api/career/synthesis/authorize", app.careerSynthesisAuthorizeAPI)
+	mux.HandleFunc("POST /api/career/synthesis/challenges/{id}", app.careerChallengeAPI)
 	mux.HandleFunc("GET /applications", app.applicationsPage)
 	mux.HandleFunc("POST /resumes/import", app.uploadResume)
 	mux.HandleFunc("POST /resumes/import-native", app.nativeResumeImport)
