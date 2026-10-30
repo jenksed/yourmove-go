@@ -140,6 +140,153 @@
   gap: 10px;
 }
 
+/* YM-004B application writing compositions. */
+
+.writing-notice {
+  margin: 0 24px 12px;
+  padding: 10px 14px;
+  border-inline-start: 3px solid var(--color-attention);
+  background: var(--color-surface-muted);
+  border-radius: 0 8px 8px 0;
+  font-size: 13px;
+}
+
+.writing-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
+  gap: 16px;
+  padding: 0 24px 8px;
+}
+
+.writing-question-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.writing-question {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  text-align: start;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  cursor: pointer;
+}
+
+.writing-question small {
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.writing-question.is-selected {
+  border-color: var(--color-primary);
+  background: var(--color-surface-muted);
+}
+
+.writing-editor {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  padding: 16px;
+}
+
+.writing-editor h3 {
+  margin: 0;
+}
+
+.writing-assist {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 12px;
+}
+
+.writing-assist h4 {
+  margin: 4px 0 0;
+}
+
+.writing-assist h5 {
+  margin: 8px 0 4px;
+  font-size: 13px;
+}
+
+.writing-suggestions {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.writing-suggestions li {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface-muted);
+  padding: 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.writing-suggestions p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.writing-sources {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.writing-ticket {
+  display: grid;
+  gap: 10px;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.writing-answer-preview {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface-muted);
+  padding: 12px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.writing-previous {
+  padding: 0 24px 20px;
+  display: grid;
+  gap: 8px;
+}
+
+.writing-previous h3 {
+  margin: 8px 0 0;
+  font-size: 14px;
+}
+
+@media (max-width: 860px) {
+  .writing-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 760px) {
   .workspace-suggestion {
     flex-direction: column;

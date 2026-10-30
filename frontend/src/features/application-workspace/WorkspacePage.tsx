@@ -11,6 +11,8 @@ import {
   workspaceIdFromPath,
   type WorkspaceSnapshot,
 } from "./api";
+import { CoverLetterSection } from "./CoverLetterSection";
+import { WritingSection } from "./WritingSection";
 
 function suggestionText(status: string): string {
   switch (status) {
@@ -219,6 +221,13 @@ export function WorkspacePage(): React.JSX.Element {
                 <circle cx="19" cy="7" r="1" />
               </svg>
               Career Evidence
+            </a>
+            <a className="nav-item" href="/career">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 2v20M2 12h20" />
+                <circle cx="12" cy="12" r="9" />
+              </svg>
+              Career Discovery
             </a>
           </div>
         </nav>
@@ -615,26 +624,38 @@ export function WorkspacePage(): React.JSX.Element {
                 </p>
               </section>
 
+              {snapshot.job.id > 0 && (
+                <>
+                  <WritingSection jobId={snapshot.job.id} destination={snapshot.job.url} legacyHref={snapshot.legacyHref} />
+                  <CoverLetterSection
+                    jobId={snapshot.job.id}
+                    selectedResumeId={snapshot.selectedResumeId}
+                    resumeOptions={snapshot.resumeOptions.map((option) => ({
+                      id: option.id,
+                      name: option.name,
+                      kind: option.kind,
+                      version: option.version,
+                      archived: option.archived,
+                    }))}
+                  />
+                </>
+              )}
+
               <section className="panel" aria-labelledby="workspace-continue-title">
                 <div className="section-heading">
                   <div>
                     <p className="eyebrow">CONTINUE IN THE LEGACY WORKSPACE</p>
-                    <h2 id="workspace-continue-title">Answer writing, employer steps, and history</h2>
+                    <h2 id="workspace-continue-title">Employer steps and history</h2>
                     <p className="section-subtitle">
-                      Writing interaction, browser orchestration, and submission recording stay legacy-owned
-                      in this slice. These links return you to a functioning interface.
+                      Answers and cover letters now live above. Browser orchestration, employer transfer, and
+                      submission recording stay legacy-owned in this slice; these links return you to a functioning
+                      interface.
                     </p>
                   </div>
                 </div>
                 <ul className="workspace-legacy-links">
                   <li>
                     <a href={`${snapshot.legacyHref}#prepare`}>Legacy Prepare and transfer review →</a>
-                  </li>
-                  <li>
-                    <a href={`${snapshot.legacyHref}#answers`}>Answer writing workspace →</a>
-                  </li>
-                  <li>
-                    <a href={`${snapshot.legacyHref}#cover-letter`}>Cover-letter preparation →</a>
                   </li>
                   <li>
                     <a href={`/jobs/${snapshot.job.id}/inspection`}>Employer browser details and troubleshooting →</a>

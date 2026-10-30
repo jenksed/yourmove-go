@@ -291,6 +291,13 @@ export function OpportunitiesPage(): React.JSX.Element {
               </svg>
               Career Evidence
             </a>
+            <a className="nav-item" href="/career">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 2v20M2 12h20" />
+                <circle cx="12" cy="12" r="9" />
+              </svg>
+              Career Discovery
+            </a>
           </div>
           <div className="nav-group">
             <p className="nav-caption">Preferences and tools</p>
