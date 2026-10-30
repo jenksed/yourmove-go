@@ -233,6 +233,15 @@ func initJobsSchema(db *sql.DB) error {
 			return fmt.Errorf("migrate cover letter provider schema: %w", err)
 		}
 	}
+	var hasEvidenceRefs bool
+	if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM pragma_table_info('cover_letters') WHERE name='evidence_refs')`).Scan(&hasEvidenceRefs); err != nil {
+		return fmt.Errorf("inspect cover letter evidence schema: %w", err)
+	}
+	if !hasEvidenceRefs {
+		if _, err := db.Exec(`ALTER TABLE cover_letters ADD COLUMN evidence_refs TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("migrate cover letter evidence schema: %w", err)
+		}
+	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS cover_letters_by_job ON cover_letters(job_id,id DESC)`); err != nil {
 		return fmt.Errorf("index cover letters: %w", err)
 	}
@@ -393,6 +402,13 @@ func initJobsSchema(db *sql.DB) error {
 		 note TEXT NOT NULL DEFAULT '',
 		 updated_at TEXT NOT NULL DEFAULT '',
 		 PRIMARY KEY(synthesis_hash, connection_id))`,
+		// AI-answer provenance pins the validated evidence basis behind one
+		// generated answer for staleness flags only. It never rewrites a
+		// saved answer; missing rows mean provenance was not recorded.
+		`CREATE TABLE IF NOT EXISTS ai_answer_provenance (
+		 job_id INTEGER NOT NULL, destination TEXT NOT NULL DEFAULT '', question_key TEXT NOT NULL DEFAULT '',
+		 evidence_id INTEGER NOT NULL, evidence_rev INTEGER NOT NULL DEFAULT 0, evidence_created TEXT NOT NULL DEFAULT '',
+		 answer_hash TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS application_steps (
 		 inspection_id INTEGER NOT NULL REFERENCES application_inspections(id), ordinal INTEGER NOT NULL,
 		 step_key TEXT NOT NULL, label TEXT NOT NULL, state TEXT NOT NULL, action TEXT NOT NULL,

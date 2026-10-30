@@ -137,6 +137,7 @@ func newMux(app *App) http.Handler {
 	mux.HandleFunc("GET /api/career/synthesis", app.careerSynthesisAPI)
 	mux.HandleFunc("POST /api/career/synthesis/authorize", app.careerSynthesisAuthorizeAPI)
 	mux.HandleFunc("POST /api/career/synthesis/challenges/{id}", app.careerChallengeAPI)
+	mux.HandleFunc("GET /api/career/activation", app.careerActivationAPI)
 	mux.HandleFunc("GET /applications", app.applicationsPage)
 	mux.HandleFunc("POST /resumes/import", app.uploadResume)
 	mux.HandleFunc("POST /resumes/import-native", app.nativeResumeImport)

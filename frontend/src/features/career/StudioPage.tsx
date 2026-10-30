@@ -8,6 +8,7 @@ import {
   challengeStudioConnection,
   createStudioEvidence,
   deleteStudioEvidence,
+  fetchCareerActivation,
   fetchStudioEvidence,
   fetchStudioEvidenceRecord,
   fetchStudioRoles,
@@ -16,6 +17,7 @@ import {
   reopenStudioEvidence,
   reviewStudioEvidence,
   saveStudioEvidence,
+  type StudioActivationRecord,
   type StudioEvidenceContent,
   type StudioEvidenceRecord,
   type StudioRolesResponse,
@@ -67,6 +69,7 @@ export function StudioPage(): React.JSX.Element {
 
   const [synthesis, setSynthesis] = useState<StudioSynthesisResponse | null>(null);
   const [challengeDrafts, setChallengeDrafts] = useState<Record<string, { state: string; note: string }>>({});
+  const [activation, setActivation] = useState<StudioActivationRecord[]>([]);
 
   const [providers, setProviders] = useState<CareerProvider[]>([]);
   const [providerId, setProviderId] = useState<string>("");
@@ -83,14 +86,16 @@ export function StudioPage(): React.JSX.Element {
   const [busy, setBusy] = useState<boolean>(false);
 
   const refreshAll = useCallback(async () => {
-    const [loadedEvidence, loadedRoles, loadedSynthesis] = await Promise.all([
+    const [loadedEvidence, loadedRoles, loadedSynthesis, loadedActivation] = await Promise.all([
       fetchStudioEvidence(),
       fetchStudioRoles(),
       fetchStudioSynthesis(),
+      fetchCareerActivation(),
     ]);
     setEvidence(loadedEvidence);
     setRolesData(loadedRoles);
     setSynthesis(loadedSynthesis);
+    setActivation(loadedActivation);
   }, []);
 
   const openRecord = useCallback(async (id: number) => {
@@ -713,6 +718,75 @@ export function StudioPage(): React.JSX.Element {
                       )}
                     </details>
                   )}
+
+                  {(() => {
+                    const use = activation.find((entry) => entry.id === record.id);
+                    if (!use) return null;
+                    const staleAnswers = use.answers.filter((item) => item.state === "needs-review");
+                    const staleLetters = use.letters.filter((item) => item.stale);
+                    return (
+                      <details className="career-block" open={staleAnswers.length > 0 || staleLetters.length > 0}>
+                        <summary>
+                          Application use
+                          {staleAnswers.length + staleLetters.length > 0
+                            ? ` · review ${staleAnswers.length + staleLetters.length} stale`
+                            : use.answers.length + use.letters.length > 0
+                              ? ` · ${use.answers.length + use.letters.length} citing`
+                              : " · unused"}
+                        </summary>
+                        {use.interview ? (
+                          <p className="section-subtitle">
+                            Recorded interview:{" "}
+                            <a href={`/career?session=${use.interview.session_id}`}>
+                              {use.interview.responses} recorded response(s)
+                            </a>
+                            . Answer traces quote these responses verbatim.
+                          </p>
+                        ) : (
+                          <p className="section-subtitle">
+                            No recorded interview is linked. This record can draft ordinary answers but cannot
+                            advertise an interview evidence trace.
+                          </p>
+                        )}
+                        {use.answers.length === 0 && use.letters.length === 0 ? (
+                          <p className="section-subtitle">No saved answers or letter drafts cite this record yet.</p>
+                        ) : (
+                          <ul className="career-session-list">
+                            {use.answers.map((item) => (
+                              <li key={`answer-${item.job_id}-${item.question_key}`}>
+                                <div>
+                                  <strong>
+                                    <a href={`/jobs/${item.job_id}#prepare`}>
+                                      {item.job_title === "" ? `Application #${item.job_id}` : item.job_title}
+                                    </a>
+                                  </strong>
+                                  <span className="career-session-meta">
+                                    Saved answer · {item.label === "" ? "early draft" : item.label} · {item.state}
+                                  </span>
+                                  <span className="career-session-meta">{item.detail}</span>
+                                </div>
+                              </li>
+                            ))}
+                            {use.letters.map((item) => (
+                              <li key={`letter-${item.job_id}-${item.draft_id}`}>
+                                <div>
+                                  <strong>
+                                    <a href={`/jobs/${item.job_id}?draft=${item.draft_id}#letter-editor`}>
+                                      {item.job_title === "" ? `Application #${item.job_id}` : item.job_title}
+                                    </a>
+                                  </strong>
+                                  <span className="career-session-meta">
+                                    Letter draft {item.draft_id} · pinned revision {item.pinned_revision} ·{" "}
+                                    {item.stale ? "supporting evidence changed; text unchanged" : "supporting evidence unchanged"}
+                                  </span>
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </details>
+                    );
+                  })()}
 
                   <div className="career-block">
                     <div className="career-checks">

@@ -176,6 +176,43 @@ export interface StudioSynthesisResponse {
   saved: StudioSavedSynthesis | null;
 }
 
+export interface StudioActivationInterview {
+  session_id: string;
+  responses: number;
+}
+
+export interface StudioActivationAnswer {
+  job_id: number;
+  job_title: string;
+  question_key: string;
+  label: string;
+  state: string;
+  detail: string;
+}
+
+export interface StudioActivationLetter {
+  job_id: number;
+  job_title: string;
+  draft_id: number;
+  stale: boolean;
+  pinned_revision: number;
+}
+
+export interface StudioActivationRecord {
+  id: number;
+  revision: number;
+  title: string;
+  status: StudioEvidenceStatus;
+  updated_at: string;
+  interview: StudioActivationInterview | null;
+  answers: StudioActivationAnswer[];
+  letters: StudioActivationLetter[];
+}
+
+export interface StudioActivationResponse {
+  evidence: StudioActivationRecord[];
+}
+
 async function readJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const status = response.status;
@@ -329,4 +366,10 @@ export async function challengeStudioConnection(
     body: JSON.stringify({ state, note }),
   });
   return readJson<StudioSynthesisResponse>(response);
+}
+
+export async function fetchCareerActivation(): Promise<StudioActivationRecord[]> {
+  const response = await fetch("/api/career/activation", { headers: { Accept: "application/json" } });
+  const data = await readJson<StudioActivationResponse>(response);
+  return data.evidence;
 }
