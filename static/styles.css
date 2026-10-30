@@ -1,50 +1,122 @@
-/* YourMove Workbench — shared responsive presentation for HTTP and Wails.
-   Design language draws on the existing YourMove Stack 01 TypeScript brand. */
+/* YourMove — Quiet Ink. Semantic color roles shared by HTTP and Wails.
+   Action, local persistence and confirmed transfer outcomes remain distinct. */
 :root {
-  --color-bg: #f7f8f5;
+  --color-bg: #f5f4f1;
   --color-surface: #ffffff;
-  --color-surface-muted: #eef1ec;
-  --color-text: #202b27;
-  --color-muted: #59675f;
-  --color-border: #e2e6e1;
-  --color-border-strong: #89998d;
-  --color-primary: #245f4c;
-  --color-primary-hover: #194b3b;
-  --color-primary-soft: #e5eee7;
-  --color-attention: #825719;
-  --color-attention-soft: #fcf4e7;
-  --color-info: #31577b;
-  --color-info-soft: #edf3f9;
-  --color-danger: #a33f37;
-  --color-danger-soft: #fdf0ee;
-  --shadow-panel: 0 1px 3px rgb(30 43 36 / 3%);
-  --radius: 12px;
+  --color-surface-muted: #eeeff1;
+  --color-surface-elevated: #ffffff;
+  --color-hover: #e9ebef;
+  --color-selected: #e9eef8;
+  --color-navigation: #f5f4f1;
+  --color-navigation-selected: #e7e9ed;
+  --color-text: #242933;
+  --color-muted: #606773;
+  --color-metadata: #606773;
+  --color-border: #d9dde3;
+  --color-border-strong: #8792a0;
+  --color-primary: #3459a5;
+  --color-primary-hover: #284984;
+  --color-primary-soft: #e9eef8;
+  --color-action: #3459a5;
+  --color-action-hover: #284984;
+  --color-on-action: #ffffff;
+  --color-success: #2c694d;
+  --color-success-soft: #eaf2ed;
+  --color-attention: #815719;
+  --color-attention-soft: #fcf3e4;
+  --color-info: #365b86;
+  --color-info-soft: #eaf0f8;
+  --color-danger: #a13736;
+  --color-danger-soft: #fbeeed;
+  --color-destructive: #a13736;
+  --color-destructive-hover: #852c2c;
+  --color-focus: #3459a5;
+  --color-dirty: #815719;
+  --color-unknown: #606773;
+  --color-disabled: #606773;
+  --shadow-panel: none;
+  --radius: 9px;
   --content-width: 1190px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
   color-scheme: light;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
 }
 :root[data-theme="dark"] {
-  --color-bg: #171d1b;
-  --color-surface: #202824;
-  --color-surface-muted: #29322d;
-  --color-text: #edf2eb;
-  --color-muted: #afbbb1;
-  --color-border: #33413a;
-  --color-border-strong: #7b8f80;
-  --color-primary: #acd6b6;
-  --color-primary-hover: #c8e6d3;
-  --color-primary-soft: #2e4436;
-  --color-attention: #e5c58e;
-  --color-attention-soft: #3d3126;
-  --color-info: #b2cfed;
-  --color-info-soft: #24364a;
-  --color-danger: #efaba4;
-  --color-danger-soft: #482d29;
-  --shadow-panel: none;
+  --color-bg: #191c22;
+  --color-surface: #22262e;
+  --color-surface-muted: #2c313b;
+  --color-surface-elevated: #292e38;
+  --color-hover: #343b47;
+  --color-selected: #2b3a58;
+  --color-navigation: #1d2027;
+  --color-navigation-selected: #303743;
+  --color-text: #edf0f5;
+  --color-muted: #b0b8c5;
+  --color-metadata: #b0b8c5;
+  --color-border: #3b4350;
+  --color-border-strong: #7a869a;
+  --color-primary: #aac5ff;
+  --color-primary-hover: #cedeff;
+  --color-primary-soft: #2b3a58;
+  --color-action: #aac5ff;
+  --color-action-hover: #cedeff;
+  --color-on-action: #18243c;
+  --color-success: #a3d7b9;
+  --color-success-soft: #273d33;
+  --color-attention: #e8c48b;
+  --color-attention-soft: #403426;
+  --color-info: #b0cff2;
+  --color-info-soft: #293a50;
+  --color-danger: #ffb7b0;
+  --color-danger-soft: #482e32;
+  --color-destructive: #ffb7b0;
+  --color-destructive-hover: #ffd3ce;
+  --color-focus: #aac5ff;
+  --color-dirty: #e8c48b;
+  --color-unknown: #b0b8c5;
+  --color-disabled: #b0b8c5;
   color-scheme: dark;
 }
 @media(prefers-color-scheme:dark){:root:not([data-theme]) {
-  --color-bg:#171d1b;--color-surface:#202824;--color-surface-muted:#29322d;--color-text:#edf2eb;--color-muted:#afbbb1;--color-border:#33413a;--color-border-strong:#7b8f80;--color-primary:#acd6b6;--color-primary-hover:#c8e6d3;--color-primary-soft:#2e4436;--color-attention:#e5c58e;--color-attention-soft:#3d3126;--color-info:#b2cfed;--color-info-soft:#24364a;--color-danger:#efaba4;--color-danger-soft:#482d29;--shadow-panel:none;color-scheme:dark;
+  --color-bg: #191c22;
+  --color-surface: #22262e;
+  --color-surface-muted: #2c313b;
+  --color-surface-elevated: #292e38;
+  --color-hover: #343b47;
+  --color-selected: #2b3a58;
+  --color-navigation: #1d2027;
+  --color-navigation-selected: #303743;
+  --color-text: #edf0f5;
+  --color-muted: #b0b8c5;
+  --color-metadata: #b0b8c5;
+  --color-border: #3b4350;
+  --color-border-strong: #7a869a;
+  --color-primary: #aac5ff;
+  --color-primary-hover: #cedeff;
+  --color-primary-soft: #2b3a58;
+  --color-action: #aac5ff;
+  --color-action-hover: #cedeff;
+  --color-on-action: #18243c;
+  --color-success: #a3d7b9;
+  --color-success-soft: #273d33;
+  --color-attention: #e8c48b;
+  --color-attention-soft: #403426;
+  --color-info: #b0cff2;
+  --color-info-soft: #293a50;
+  --color-danger: #ffb7b0;
+  --color-danger-soft: #482e32;
+  --color-destructive: #ffb7b0;
+  --color-destructive-hover: #ffd3ce;
+  --color-focus: #aac5ff;
+  --color-dirty: #e8c48b;
+  --color-unknown: #b0b8c5;
+  --color-disabled: #b0b8c5;
+  color-scheme: dark;
 }}
 *,*::before,*::after{box-sizing:border-box}
 html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
@@ -53,7 +125,7 @@ button,input,select,textarea{font:inherit}
 button,summary,select{cursor:pointer}
 a{color:var(--color-primary)}
 a:hover{text-decoration-color:currentColor}
-:focus-visible{outline:3px solid #739fda;outline-offset:3px}
+:focus-visible{outline:3px solid var(--color-focus);outline-offset:3px}
 [hidden]{display:none!important}
 h1,h2,h3,p{margin-top:0}
 h1{font-size:clamp(28px,3.1vw,39px);line-height:1.14;letter-spacing:-.035em;font-weight:710;margin-bottom:13px}
@@ -91,7 +163,7 @@ small,.small-muted{font-size:12px;line-height:1.55;color:var(--color-muted)}
 .page-heading{display:flex;align-items:end;justify-content:space-between;gap:20px;margin-bottom:28px}
 .page-heading .page-description{font-size:14px;max-width:610px;margin:0}.heading-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:flex-end}
 .button{border-radius:7px;display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:41px;padding:10px 16px;font-weight:670;text-decoration:none;border:1px solid transparent;white-space:nowrap;transition:background .15s ease,border-color .15s ease}
-.button-primary{background:#265e4b;color:#fff}.button-primary:hover{background:#1a493a;color:#fff}
+.button-primary{background:var(--color-action);color:var(--color-on-action)}.button-primary:hover{background:var(--color-action-hover);color:var(--color-on-action)}
 .button-secondary{background:var(--color-surface);border-color:var(--color-border-strong);color:var(--color-text)}.button-secondary:hover{background:var(--color-surface-muted);text-decoration:none}
 .button-full{width:100%}.button[disabled]{opacity:.6;cursor:wait}
 .text-link{font-weight:680;text-decoration:none;color:var(--color-primary)}.text-link:hover{text-decoration:underline}
@@ -174,7 +246,7 @@ small,.small-muted{font-size:12px;line-height:1.55;color:var(--color-muted)}
 .bulk-remove summary,.danger-zone summary{cursor:pointer;font-weight:700;color:var(--color-muted)}
 .bulk-remove-body,.danger-zone-body{display:grid;gap:15px;padding-top:16px;max-width:560px}
 .bulk-remove-body .field,.danger-zone-body .field{max-width:365px}.bulk-remove-body .confirmation-note,.danger-zone-body .confirmation-note{margin:0}
-.button-danger{background:#8f3036;color:#fff;border-color:#8f3036}.button-danger:hover{background:#75282d;border-color:#75282d;color:#fff}
+.button-danger{background:var(--color-destructive);color:var(--color-surface);border-color:var(--color-destructive)}.button-danger:hover{background:var(--color-destructive-hover);border-color:var(--color-destructive-hover);color:var(--color-surface)}
 .danger-zone{margin-top:14px}.danger-zone form{display:grid;gap:14px}.danger-zone-body{padding:18px}
 @media(max-width:760px){.metadata-controls{padding:18px 16px;align-items:stretch}.metadata-controls form{width:100%}.metadata-controls .button{width:100%}.metadata-item{padding:13px 16px}.bulk-remove{padding:18px 16px}.job-select{align-self:flex-start}}
 
@@ -238,8 +310,8 @@ small,.small-muted{font-size:12px;line-height:1.55;color:var(--color-muted)}
 .g55-handoff-form .button{justify-self:start}
 .g55-resume-status{margin:12px 0;padding:14px 16px;border:1px solid var(--color-border);border-radius:12px}
 .g55-resume-status p{margin:6px 0 0}
-.g55-resume-status[data-resume-state="selected"]{border-left:3px solid #628c80}
-.g55-resume-status[data-resume-state="attention"]{border-left:3px solid #bd9056}
+.g55-resume-status[data-resume-state="selected"]{border-left:3px solid var(--color-border-strong)}
+.g55-resume-status[data-resume-state="attention"]{border-left:3px solid var(--color-attention)}
 
 
 /* UI consistency audit: document lifecycle, career evidence and small viewports.
@@ -1065,9 +1137,6 @@ a.progress-metric:hover span {text-decoration:underline;color:var(--color-primar
 #application-action { scroll-margin-top: 16px; }
 
 /* Direction A: readable, grouped workbench navigation and compact working queue. */
-:root {--color-focus:#2468ae;--radius:8px}
-:root[data-theme="dark"] {--color-focus:#91bcf0}
-@media(prefers-color-scheme:dark){:root:not([data-theme]){--color-focus:#91bcf0}}
 :focus-visible {outline:3px solid var(--color-focus);outline-offset:3px}
 .app-shell {grid-template-columns:184px minmax(0,1fr)}
 .sidebar {padding:20px 10px 16px}
