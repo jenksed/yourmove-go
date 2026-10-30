@@ -28,7 +28,7 @@ func main() {
 
 	a, err := app.New(app.Config{
 		DB: db, ResumeDir: resumeDir, TemplateFiles: templateFiles,
-		StaticFiles: staticFiles, CoverLetterInstructions: coverLetterInstructions, ApplicationAnswerInstructions: applicationAnswerInstructions,
+		StaticFiles: staticFiles, FrontendDist: frontendDist, CoverLetterInstructions: coverLetterInstructions, ApplicationAnswerInstructions: applicationAnswerInstructions,
 		PickResume: func() (string, error) {
 			return application.Get().Dialog.OpenFile().SetTitle("Select a resume (PDF or DOCX)").AddFilter("Resumes", "*.pdf;*.docx").PromptForSingleSelection()
 		}, ChooseExportPath: func(name string) (string, error) {

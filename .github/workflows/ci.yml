@@ -28,6 +28,23 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: frontend/.nvmrc
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - name: Build Opportunities frontend
+        run: |
+          cd frontend
+          pnpm install --frozen-lockfile
+          pnpm run build
+          pnpm list react react-dom
+
       - name: Run Go tests
         run: go test -count=1 ./...
         env:
@@ -50,6 +67,23 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: frontend/.nvmrc
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - name: Build Opportunities frontend
+        run: |
+          cd frontend
+          pnpm install --frozen-lockfile
+          pnpm run build
+          pnpm list react react-dom
 
       - name: Run desktop tests
         run: go test -count=1 -tags desktop ./...

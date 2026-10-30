@@ -104,18 +104,18 @@ func (a *App) storeJobIfNew(job Job) (id int64, added bool, err error) {
 }
 
 type BatchItem struct {
-	Line   int
-	URL    string
-	Status string // added, duplicate, invalid
-	Detail string
-	JobID  int64
+	Line   int    `json:"line"`
+	URL    string `json:"url"`
+	Status string `json:"status"` // added, duplicate, invalid
+	Detail string `json:"detail"`
+	JobID  int64  `json:"jobId"`
 }
 
 type BatchResult struct {
-	Items      []BatchItem
-	Added      int
-	Duplicates int
-	Invalid    int
+	Items      []BatchItem `json:"items"`
+	Added      int         `json:"added"`
+	Duplicates int         `json:"duplicates"`
+	Invalid    int         `json:"invalid"`
 }
 
 // importJobBatch persists all valid new URLs in a single transaction. Invalid

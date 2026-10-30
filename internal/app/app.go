@@ -16,6 +16,7 @@ type Config struct {
 	ResumeDir                     string
 	TemplateFiles                 fs.FS
 	StaticFiles                   fs.FS
+	FrontendDist                  fs.FS // optional Vite build; nil falls back to Go-rendered /jobs
 	CoverLetterInstructions       string
 	ApplicationAnswerInstructions string
 	PickResume                    func() (string, error)
@@ -25,6 +26,8 @@ type Config struct {
 
 type appResources struct {
 	staticFiles                   fs.FS
+	frontendDist                  fs.FS
+	frontendIndex                 []byte
 	coverLetterInstructions       string
 	applicationAnswerInstructions string
 	jobsTemplate                  *template.Template
@@ -51,8 +54,9 @@ func New(config Config) (*App, error) {
 		return nil, fmt.Errorf("application requires a database, templates, static assets, and independent cover-letter and application-answer instructions")
 	}
 	resources := &appResources{
-		staticFiles: config.StaticFiles, coverLetterInstructions: config.CoverLetterInstructions, applicationAnswerInstructions: config.ApplicationAnswerInstructions,
+		staticFiles: config.StaticFiles, frontendDist: config.FrontendDist, coverLetterInstructions: config.CoverLetterInstructions, applicationAnswerInstructions: config.ApplicationAnswerInstructions,
 	}
+	resources.frontendIndex = loadFrontendIndex(config.FrontendDist)
 	for _, page := range []struct {
 		path   string
 		target **template.Template
