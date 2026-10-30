@@ -12,6 +12,8 @@ import {
   type WorkspaceSnapshot,
 } from "./api";
 import { CoverLetterSection } from "./CoverLetterSection";
+import { ContinuationSection } from "./ContinuationSection";
+import { SubmissionSection } from "./SubmissionSection";
 import { WritingSection } from "./WritingSection";
 
 function suggestionText(status: string): string {
@@ -638,18 +640,18 @@ export function WorkspacePage(): React.JSX.Element {
                       archived: option.archived,
                     }))}
                   />
+                  <ContinuationSection jobId={snapshot.job.id} />
+                  <SubmissionSection jobId={snapshot.job.id} />
                 </>
               )}
 
               <section className="panel" aria-labelledby="workspace-continue-title">
                 <div className="section-heading">
                   <div>
-                    <p className="eyebrow">CONTINUE IN THE LEGACY WORKSPACE</p>
-                    <h2 id="workspace-continue-title">Employer steps and history</h2>
+                    <p className="eyebrow">LEGACY WORKSPACE</p>
+                    <h2 id="workspace-continue-title">Troubleshooting and legacy views</h2>
                     <p className="section-subtitle">
-                      Answers and cover letters now live above. Browser orchestration, employer transfer, and
-                      submission recording stay legacy-owned in this slice; these links return you to a functioning
-                      interface.
+                      The full workflow above is React-owned. These links remain for deep troubleshooting.
                     </p>
                   </div>
                 </div>
@@ -659,11 +661,6 @@ export function WorkspacePage(): React.JSX.Element {
                   </li>
                   <li>
                     <a href={`/jobs/${snapshot.job.id}/inspection`}>Employer browser details and troubleshooting →</a>
-                  </li>
-                  <li>
-                    <a href={`${snapshot.legacyHref}#history`}>
-                      Submission history ({snapshot.submissions.count}) →
-                    </a>
                   </li>
                 </ul>
               </section>

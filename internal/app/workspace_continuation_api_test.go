@@ -1,0 +1,400 @@
+package app
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/jenksed/yourmove-go/internal/application/browser"
+	"github.com/jenksed/yourmove-go/internal/application/schema"
+)
+
+func continuationScope(t *testing.T, a *App, jobID int64) map[string]any {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	newMux(a).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "http://localhost/api/jobs/1/continuation", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("continuation status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	return payload
+}
+
+func seedContinuationJob(t *testing.T, a *App) {
+	t.Helper()
+	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com", Title: "Role"}); err != nil {
+		t.Fatal(err)
+	}
+	fields := []schema.Field{
+		{ID: "browser:why", Label: "Why this team?", Kind: "textarea"},
+		{ID: "browser:site", Label: "Website", Kind: "text"},
+	}
+	if _, err := a.saveInspection(1, schema.Result{Platform: "ashby", Source: "browser", Completeness: "rendered_partial", ApplicationURL: testAshbyPosting + "/application", Fields: fields}); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range fields {
+		if _, err := a.db.Exec(`INSERT INTO application_answers(job_id,destination,provider,question_key,label,answer,revision) VALUES(1,?,?,?,?,'Approved for `+f.ID+`',1)`, testAshbyPosting, "ashby", questionKey(testAshbyPosting, "ashby", f), f.Label); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestContinuationScopeIsTokenFreeAndComplete(t *testing.T) {
+	a, _ := testWorkspace(t)
+	seedContinuationJob(t, a)
+	resume, err := a.importResume("role.pdf", strings.NewReader("%PDF-1.4\nbytes"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.assignResume(1, resume.ID); err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeAnswerBrowser{fakeBrowser: &fakeBrowser{url: testAshbyPosting + "/application"}}
+	a.browsers.factory = func(context.Context, string) (readOnlySession, error) { return f, nil }
+	if err := a.browsers.start(context.Background(), 1, testAshbyPosting); err != nil {
+		t.Fatal(err)
+	}
+	defer a.browsers.closeAll()
+	if got := reviewCount(t, a); got != 0 {
+		t.Fatalf("precondition: submission_reviews=%d", got)
+	}
+	payload := continuationScope(t, a, 1)
+	prep := payload["preparation"].(map[string]any)
+	if prep["includeAnswers"] != true {
+		t.Fatalf("answers not offered: %v", prep)
+	}
+	pending := payload["pendingAnswers"].([]any)
+	if len(pending) != 2 {
+		t.Fatalf("pending answers: %v", pending)
+	}
+	if _, ok := payload["browser"]; !ok {
+		t.Fatal("browser state missing")
+	}
+	lowered := ""
+	if raw, merr := json.Marshal(payload); merr == nil {
+		lowered = strings.ToLower(string(raw))
+	}
+	for _, leaked := range []string{"submission_token", "stored_name", "sha256\", \"valid", ".pdf\n"} {
+		if strings.Contains(lowered, leaked) {
+			t.Fatalf("continuation leaks %q", leaked)
+		}
+	}
+	if got := reviewCount(t, a); got != 0 {
+		t.Fatalf("continuation reads created %d submission reviews", got)
+	}
+}
+
+func TestContinueRequiresSelectionAndDestination(t *testing.T) {
+	a, _ := testWorkspace(t)
+	seedContinuationJob(t, a)
+	post := func(body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "http://localhost/api/jobs/1/continue", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		newMux(a).ServeHTTP(rec, req)
+		return rec
+	}
+	if rec := post(`{"destination":"` + testAshbyPosting + `"}`); rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("empty scope accepted: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := post(`{"destination":"https://example.com/other","include_answers":true,"review_hash":"x"}`); rec.Code != http.StatusConflict {
+		t.Fatalf("wrong destination accepted: %d %s", rec.Code, rec.Body.String())
+	}
+	// No browser session: arming must fail without transferring anything.
+	if rec := post(`{"destination":"` + testAshbyPosting + `","include_answers":true,"review_hash":"bogus"}`); rec.Code != http.StatusOK {
+		t.Fatalf("continue status=%d %s", rec.Code, rec.Body.String())
+	} else {
+		var result struct {
+			Items []continueItemResult `json:"items"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil || len(result.Items) != 1 || result.Items[0].OK {
+			t.Fatalf("unreviewed answers armed: %s", rec.Body.String())
+		}
+	}
+}
+
+func TestContinueAnswersTransferWithFakeBrowser(t *testing.T) {
+	a, _ := testWorkspace(t)
+	seedContinuationJob(t, a)
+	f := &fakeAnswerBrowser{fakeBrowser: &fakeBrowser{url: testAshbyPosting + "/application"}}
+	a.browsers.factory = func(context.Context, string) (readOnlySession, error) { return f, nil }
+	if err := a.browsers.start(context.Background(), 1, testAshbyPosting); err != nil {
+		t.Fatal(err)
+	}
+	defer a.browsers.closeAll()
+	a.browsers.cancels = map[int64]context.CancelFunc{1: func() {}}
+	job, _ := a.jobByID(1)
+	profile, _ := a.candidateProfile()
+	prep, err := a.prepareQuestions(job, profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := `{"destination":"` + testAshbyPosting + `","include_answers":true,"review_hash":"` + prep.ReviewHash() + `"}`
+	req := httptest.NewRequest(http.MethodPost, "http://localhost/api/jobs/1/continue", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	newMux(a).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("continue status=%d %s", rec.Code, rec.Body.String())
+	}
+	var result struct {
+		Items []continueItemResult `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil || len(result.Items) != 1 || !result.Items[0].OK {
+		t.Fatalf("answers not armed: %s", rec.Body.String())
+	}
+	a.browsers.tryAnswers(context.Background(), 1)
+	state := a.browsers.state(1)
+	if state.AnswerStatus != "complete" || len(state.AnswerOutcomes) != 2 {
+		t.Fatalf("lost outcomes: %+v", state)
+	}
+	if len(f.transferred) != 2 {
+		t.Fatalf("transferred=%d", len(f.transferred))
+	}
+	// Transfer does not mark the job Applied.
+	if stored, _ := a.jobByID(1); stored.Stage == StageApplied || stored.SubmissionCount > 0 {
+		t.Fatalf("transfer recorded a submission: %+v", stored)
+	}
+}
+
+func TestSubmissionReviewSubmitAndHistory(t *testing.T) {
+	a, _ := testWorkspace(t)
+	seedContinuationJob(t, a)
+	resume, err := a.importResume("role.pdf", strings.NewReader("%PDF-1.4\nbytes"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.assignResume(1, resume.ID); err != nil {
+		t.Fatal(err)
+	}
+	mint := func() (int, map[string]any) {
+		rec := httptest.NewRecorder()
+		newMux(a).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "http://localhost/api/jobs/1/submission-review", nil))
+		var payload map[string]any
+		_ = json.Unmarshal(rec.Body.Bytes(), &payload)
+		return rec.Code, payload
+	}
+	code, payload := mint()
+	if code != http.StatusOK || payload["token"] == "" {
+		t.Fatalf("mint: %d %v", code, payload)
+	}
+	token := payload["token"].(string)
+	submit := func(token, note string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "http://localhost/api/jobs/1/submit", strings.NewReader(`{"confirm":"yes","notes":`+jsonString(note)+`,"submission_token":"`+token+`"}`))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		newMux(a).ServeHTTP(rec, req)
+		return rec
+	}
+	// A malformed token takes the legacy uncertain-recording path, not a record.
+	if rec := submit("bogus", "x"); rec.Code != http.StatusInternalServerError {
+		t.Fatalf("bad token: %d %s", rec.Code, rec.Body.String())
+	}
+	note := "Applied personally, confirmation SYN-1"
+	if rec := submit(token, note); rec.Code != http.StatusOK {
+		t.Fatalf("submit: %d %s", rec.Code, rec.Body.String())
+	}
+	// Replaying the exact submission is idempotent, not a second record.
+	if rec := submit(token, note); rec.Code != http.StatusOK {
+		t.Fatalf("replay: %d %s", rec.Code, rec.Body.String())
+	}
+	var count int
+	if err := a.db.QueryRow(`SELECT COUNT(*) FROM submissions WHERE job_id=1`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("submissions=%d err=%v", count, err)
+	}
+	job, _ := a.jobByID(1)
+	if job.Stage != StageApplied || job.SubmissionCount != 1 {
+		t.Fatalf("not applied: %+v", job)
+	}
+	rec := httptest.NewRecorder()
+	newMux(a).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "http://localhost/api/jobs/1/submissions", nil))
+	var history struct {
+		Count       int `json:"count"`
+		Submissions []struct {
+			ResumeName string `json:"resumeName"`
+			Notes      string `json:"notes"`
+		} `json:"submissions"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &history); err != nil || history.Count != 1 || history.Submissions[0].Notes != note || history.Submissions[0].ResumeName != "role.pdf" {
+		t.Fatalf("history: %s", rec.Body.String())
+	}
+	// Changing the selection stales a minted review.
+	if _, err := a.importResume("other.pdf", strings.NewReader("%PDF-1.4\nother")); err != nil {
+		t.Fatal(err)
+	}
+	code, payload = mint()
+	if code != http.StatusOK {
+		t.Fatalf("second mint: %d", code)
+	}
+	other, _ := a.resumeByID(2)
+	if err := a.assignResume(1, other.ID); err != nil {
+		t.Fatal(err)
+	}
+	if rec := submit(payload["token"].(string), "after change"); rec.Code != http.StatusConflict {
+		t.Fatalf("stale review accepted: %d %s", rec.Code, rec.Body.String())
+	}
+	if err := a.db.QueryRow(`SELECT COUNT(*) FROM submissions WHERE job_id=1`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("stale submit wrote: %d", count)
+	}
+	// The stale submit consumed its review; ordinary reads still mint nothing.
+	continuationScope(t, a, 1)
+	if got := reviewCount(t, a); got != 0 {
+		t.Fatalf("unexpected reviews=%d", got)
+	}
+}
+
+func TestContinuationNextRequiresApplied(t *testing.T) {
+	a, _ := testWorkspace(t)
+	seedContinuationJob(t, a)
+	next := func() *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		newMux(a).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "http://localhost/api/jobs/1/next", nil))
+		return rec
+	}
+	if rec := next(); rec.Code != http.StatusConflict {
+		t.Fatalf("next before applied: %d %s", rec.Code, rec.Body.String())
+	}
+	token := reviewedSubmissionToken(t, a, 1)
+	if err := a.recordSubmission(1, "done", token); err != nil {
+		t.Fatal(err)
+	}
+	if rec := next(); rec.Code != http.StatusOK {
+		t.Fatalf("next: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestContinueAuthorizesEachMaterialIndependently(t *testing.T) {
+	a, _ := testWorkspace(t)
+	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com", Title: "Role", Description: "Resolve production incidents"}); err != nil {
+		t.Fatal(err)
+	}
+	master, err := a.importResume("master.docx", strings.NewReader(string(sampleDOCXForPreview(t, "Production incident experience"))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	role, err := a.importResume("role.docx", strings.NewReader(string(sampleDOCXForPreview(t, "Technical support experience"))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.setMasterResume(master.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.assignResume(1, role.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.saveCandidateProfile(CandidateProfile{FirstName: "Casey", LastName: "Fixture", Email: "casey@example.test", Approved: true}); err != nil {
+		t.Fatal(err)
+	}
+	field := schema.Field{ID: "browser:why", Label: "Why this team?", Kind: "textarea"}
+	if _, err := a.saveInspection(1, schema.Result{Platform: "ashby", Source: "browser", ApplicationURL: testAshbyPosting + "/application", Fields: []schema.Field{field}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Exec(`INSERT INTO application_answers(job_id,destination,provider,question_key,label,answer,revision) VALUES(1,?,?,?,?,'Because the on-call work matters',1)`, testAshbyPosting, "ashby", questionKey(testAshbyPosting, "ashby", field), field.Label); err != nil {
+		t.Fatal(err)
+	}
+	a.coverLetterGenerate = func(context.Context, string) (string, error) {
+		return "Dear Hiring Manager,\n\nI resolve production incidents with care and clear customer communication.\n\nSincerely,\nCasey Fixture", nil
+	}
+	f := &continuationBrowser{fakeLetterBrowser: &fakeLetterBrowser{fakeBrowser: &fakeBrowser{url: testAshbyPosting + "/application"}}}
+	a.browsers.factory = func(context.Context, string) (readOnlySession, error) { return f, nil }
+	if err := a.browsers.start(context.Background(), 1, testAshbyPosting); err != nil {
+		t.Fatal(err)
+	}
+	defer a.browsers.closeAll()
+	a.browsers.cancels = map[int64]context.CancelFunc{1: func() {}}
+	job, _ := a.jobByID(1)
+	profile, _ := a.candidateProfile()
+	prep, err := a.prepareQuestions(job, profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	savedRole, _ := a.resumeByID(role.ID)
+	draft, err := func() (CoverLetter, error) {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "http://localhost/api/jobs/1/letters", strings.NewReader(`{"provider":"ollama","model":"","letter_resume_id":0,"career_evidence":[],"confirm_local":"yes"}`))
+		req.Header.Set("Content-Type", "application/json")
+		newMux(a).ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("letter generate: %d %s", rec.Code, rec.Body.String())
+		}
+		return a.latestCoverLetter(1)
+	}()
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := `{"destination":"` + testAshbyPosting + `","include_resume":true,"resume_id":"` + itoa(savedRole.ID) + `","resume_hash":"` + savedRole.SHA256 + `","transfer_contacts":true,"profile_revision":"` + itoa(profile.Revision) + `","include_letter":true,"draft_id":"` + itoa(draft.ID) + `","body_hash":"` + draft.ContentHash() + `","mode":"file","include_answers":true,"review_hash":"` + prep.ReviewHash() + `"}`
+	req := httptest.NewRequest(http.MethodPost, "http://localhost/api/jobs/1/continue", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	newMux(a).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("continue status=%d %s", rec.Code, rec.Body.String())
+	}
+	var result struct {
+		Items []continueItemResult `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil || len(result.Items) != 3 {
+		t.Fatalf("items: %s %v", rec.Body.String(), err)
+	}
+	for _, item := range result.Items {
+		if !item.OK {
+			t.Fatalf("item %s not armed: %+v", item.Item, item)
+		}
+	}
+	// Authorizing transfer never records a submission.
+	if stored, _ := a.jobByID(1); stored.Stage == StageApplied || stored.SubmissionCount > 0 {
+		t.Fatalf("authorization recorded a submission: %+v", stored)
+	}
+}
+
+func TestContinuationBrowserActions(t *testing.T) {
+	a, _ := testWorkspace(t)
+	seedContinuationJob(t, a)
+	f := &fakeBrowser{url: testAshbyPosting + "/application"}
+	a.browsers.factory = func(context.Context, string) (readOnlySession, error) { return f, nil }
+	defer a.browsers.closeAll()
+	call := func(action string) map[string]any {
+		req := httptest.NewRequest(http.MethodPost, "http://localhost/api/jobs/1/browser", strings.NewReader(`{"action":"`+action+`"}`))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		newMux(a).ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: %d %s", action, rec.Code, rec.Body.String())
+		}
+		var out map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	if out := call("start"); out["ok"] != true {
+		t.Fatalf("start: %v", out)
+	}
+	if out := call("observe"); out["ok"] != true {
+		t.Fatalf("observe: %v", out)
+	}
+	scope := continuationScope(t, a, 1)
+	if scope["questionsAvailable"] != true {
+		t.Fatalf("observed questions not current: %v", scope["questionsAvailable"])
+	}
+	if out := call("stop"); out["ok"] != true {
+		t.Fatalf("stop: %v", out)
+	}
+	if a.browsers.has(1) {
+		t.Fatal("session alive after stop")
+	}
+	req := httptest.NewRequest(http.MethodPost, "http://localhost/api/jobs/1/browser", strings.NewReader(`{"action":"bogus"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	newMux(a).ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("bogus action: %d", rec.Code)
+	}
+	_ = browser.AnswerOutcome{}
+}

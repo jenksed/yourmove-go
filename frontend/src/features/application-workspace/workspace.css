@@ -281,6 +281,136 @@
   font-size: 14px;
 }
 
+/* YM-004C employer continuation compositions. */
+
+.continuation-scope {
+  display: grid;
+  gap: 12px;
+  padding: 0 24px 8px;
+}
+
+.continuation-scope h3 {
+  margin: 8px 0 0;
+  font-size: 14px;
+}
+
+.continuation-item {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  padding: 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.pending-answer-scope {
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.pending-answer-scope > div {
+  display: grid;
+  gap: 2px;
+}
+
+.pending-answer-scope dt {
+  font-weight: 650;
+}
+
+.pending-answer-scope dd {
+  margin: 0;
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+}
+
+.continuation-outcomes {
+  margin: 12px 24px 20px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  padding: 16px;
+  display: grid;
+  gap: 10px;
+}
+
+.continuation-outcomes h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.transfer-contact-outcomes {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.transfer-contact-outcomes li {
+  display: grid;
+  gap: 2px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 8px;
+}
+
+.submission-success {
+  margin: 0 24px 12px;
+  padding: 10px 14px;
+  border-inline-start: 3px solid var(--color-success);
+  background: var(--color-surface-muted);
+  border-radius: 0 8px 8px 0;
+}
+
+.submission-disclosure {
+  margin: 0 24px 20px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+
+.submission-disclosure-body {
+  padding: 16px;
+  display: grid;
+  gap: 10px;
+}
+
+.confirmation-note {
+  font-size: 13px;
+  color: var(--color-muted);
+}
+
+.timeline {
+  list-style: none;
+  margin: 0 24px 12px;
+  padding: 0 0 0 20px;
+  display: grid;
+  gap: 14px;
+  border-left: 2px solid var(--color-border);
+}
+
+.timeline-content {
+  display: grid;
+  gap: 4px;
+}
+
+.timeline-content time {
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+.timeline-note {
+  font-size: 13px;
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+}
+
+.summary-count {
+  font-size: 12px;
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
 @media (max-width: 860px) {
   .writing-layout {
     grid-template-columns: 1fr;
