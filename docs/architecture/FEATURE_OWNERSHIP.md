@@ -70,7 +70,7 @@ Do not assume these behaviors can each acquire an independent writer simply beca
 
 ## Repeatable migration pattern
 
-For every authorized screen migration (including the planned combined **YM-REACT-002 + YM-GO-002 Résumés** work):
+For every authorized screen migration (including the completed combined **YM-REACT-002 + YM-GO-002 Résumés** milestone):
 
 1. **Name the applicant outcome** and trace its current UI → handler → Go decision → storage/external effect. Identify one material failure/recovery path.
 2. **Choose the narrow React seam** using existing protected HTTP where appropriate; introduce only needed Go-owned JSON contracts or supported Wails bindings. Keep unaffected Go-rendered routes available.
@@ -92,6 +92,10 @@ As reported for **YM-REACT-001** and **YM-GO-001** on `feat/wails-react-opportun
 - The existence of `internal/features/opportunities/` is **not** required and has not been established by this decision.
 
 This section is a **handoff snapshot**, not proof of local HEAD, a completed commit, or permission to continue YM-GO-001. Inspect source, diffs and tests to establish current state; update this example only when a material architectural decision changes.
+
+### YM-002 completion record
+
+YM-REACT-002 and YM-GO-002 were owner-accepted and integrated on `feat/wails-react-opportunities`. Accepted source and fast-forward integration commit: `ab2a7553ed4a2fed8245030f9da5cee4f0bfe560`. The React Résumés library supports document import and management, and shares Go-owned operations with legacy consumers; the native Wails workflow and persisted document/job association were qualified across restart. The isolated qualification workspace began without preexisting résumé records, and disallowed selection was covered by Go tests rather than a direct native UI attempt.
 
 ## Review questions when a boundary changes
 
