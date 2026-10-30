@@ -339,6 +339,28 @@ func initJobsSchema(db *sql.DB) error {
 		`CREATE UNIQUE INDEX IF NOT EXISTS career_evidence_library_source_once
 		 ON career_evidence(source_library_entry_id,source_library_created_at) WHERE source_library_entry_id>0`,
 		`CREATE INDEX IF NOT EXISTS career_evidence_updated ON career_evidence(updated_at DESC,id DESC)`,
+		// Career discovery interview sessions are quarantined working state:
+		// an opaque id, a loose resume reference plus excerpt hash, serialized
+		// engine state, and a nullable link to a promoted draft. There are
+		// deliberately no foreign keys in either direction; promotion writes
+		// through the existing career_evidence owner only.
+		`CREATE TABLE IF NOT EXISTS career_discovery_sessions (
+		 id TEXT PRIMARY KEY,
+		 resume_id INTEGER NOT NULL DEFAULT 0,
+		 resume_sha256 TEXT NOT NULL DEFAULT '',
+		 resume_excerpt_hash TEXT NOT NULL DEFAULT '',
+		 state_json TEXT NOT NULL DEFAULT '',
+		 status TEXT NOT NULL DEFAULT 'leads' CHECK(status IN ('leads','interview','promoted')),
+		 provider TEXT NOT NULL DEFAULT '',
+		 model TEXT NOT NULL DEFAULT '',
+		 failure_code TEXT NOT NULL DEFAULT '',
+		 failure_detail TEXT NOT NULL DEFAULT '',
+		 promoted_evidence_id INTEGER NULL,
+		 revision INTEGER NOT NULL DEFAULT 1,
+		 created_at TEXT NOT NULL,
+		 updated_at TEXT NOT NULL,
+		 expires_at TEXT NOT NULL DEFAULT '')`,
+		`CREATE INDEX IF NOT EXISTS career_discovery_sessions_updated ON career_discovery_sessions(updated_at DESC,id DESC)`,
 		`CREATE TABLE IF NOT EXISTS application_steps (
 		 inspection_id INTEGER NOT NULL REFERENCES application_inspections(id), ordinal INTEGER NOT NULL,
 		 step_key TEXT NOT NULL, label TEXT NOT NULL, state TEXT NOT NULL, action TEXT NOT NULL,

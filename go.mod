@@ -4,6 +4,7 @@ go 1.27.2
 
 require (
 	github.com/coder/websocket v1.8.14
+	github.com/jenksed/yourmove-career-discovery v0.0.0-20261027151338-47aa7d49b55e
 	github.com/ledongthuc/pdf v0.0.0-20260907135840-6c8c28e0e8a0
 	github.com/wailsapp/wails/v3 v3.0.0-beta.32
 	golang.org/x/net v0.61.0
