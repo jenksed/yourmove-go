@@ -1,0 +1,31 @@
+/* Quiet Ink resume compositions for the React slice.
+   Shell, tokens, and universal controls live in shared/quiet-ink.css;
+   opportunity-specific layouts live in features/opportunities/opportunities.css. */
+
+.library-import-heading { margin-bottom: 14px; }
+.library-import-heading h2 { margin: 0 0 4px; }
+.library-notice { margin-bottom: 16px; }
+
+.resume-list { display: grid; gap: 0; }
+.resume-row { display: flex; gap: 16px; align-items: flex-start; padding: 21px 24px; border-bottom: 1px solid var(--color-border); }
+.resume-row:last-child { border-bottom: 0; }
+.resume-file-icon { display: grid; place-items: center; width: 44px; height: 52px; flex: 0 0 44px; border: 1px solid var(--color-border); border-radius: 7px; background: var(--color-surface-muted); color: var(--color-muted); font-size: 11px; font-weight: 750; }
+.resume-info { min-width: 0; flex: 1; }
+.resume-info h3 { margin: 0 0 5px; font-size: 15px; overflow-wrap: anywhere; }
+.resume-info p { margin: 2px 0; color: var(--color-muted); font-size: 12px; }
+.document-family { color: var(--color-text); }
+.document-unassigned { color: var(--color-muted); }
+.document-manage { flex-basis: 100%; margin-top: 4px; }
+.document-manage > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: var(--color-primary); }
+.document-manage > summary::-webkit-details-marker { display: none; }
+.document-manage-body { display: grid; gap: 14px; padding-top: 14px; max-width: 640px; }
+.document-routing-form { display: grid; gap: 12px; }
+.resume-row > .button { flex-shrink: 0; }
+
+.resume-options { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 8px; }
+.resume-option-head { font-weight: 750; font-size: 13px; }
+
+@media (max-width: 480px) {
+  .resume-row { flex-wrap: wrap; }
+  .document-manage { flex-basis: 100%; }
+}

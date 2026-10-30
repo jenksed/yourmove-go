@@ -179,23 +179,16 @@ type resumeLibrary struct {
 }
 
 func (a *App) resumeLibrary(w http.ResponseWriter, r *http.Request) {
-	resumes, err := a.allResumes()
+	// loadResumeLibrary is shared with GET /api/resumes so the legacy page
+	// and the React slice render the same ordering and family mapping.
+	rows, families, err := a.loadResumeLibrary()
 	if err != nil {
 		http.Error(w, "Unable to load resumes", 500)
 		return
 	}
-	families, err := a.allFamilies()
-	if err != nil {
-		http.Error(w, "Unable to load role families", 500)
-		return
-	}
-	names := make(map[int64]string, len(families))
-	for _, f := range families {
-		names[f.ID] = f.Name
-	}
-	rows := make([]documentRow, 0, len(resumes))
-	for _, r := range resumes {
-		rows = append(rows, documentRow{Resume: r, FamilyName: names[r.RoleFamilyID]})
+	resumes := make([]Resume, 0, len(rows))
+	for _, row := range rows {
+		resumes = append(resumes, row.Resume)
 	}
 	notice := map[string]string{
 		"in-use":    "This resume is referenced by a job, submission, or saved cover letter. Archive it to remove it from active choices without losing application evidence.",

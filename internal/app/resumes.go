@@ -1,7 +1,6 @@
 package app
 
 import (
-	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -43,62 +42,12 @@ func (r Resume) DisplaySize() string {
 }
 
 func (a *App) importResume(name string, body io.Reader) (Resume, error) {
-	if a.resumeDir == "" {
-		return Resume{}, errors.New("resume storage is not configured")
-	}
-	name = documents.SanitizeFilename(name)
-	if name == "" {
-		return Resume{}, fmt.Errorf("invalid filename")
-	}
 	data, err := io.ReadAll(io.LimitReader(body, documents.MaxResumeSize+1))
 	if err != nil {
 		return Resume{}, fmt.Errorf("read resume: %w", err)
 	}
-	kind, err := documents.ValidateResume(name, data)
-	if err != nil {
-		return Resume{}, err
-	}
-	sum := sha256.Sum256(data)
-	hash := hex.EncodeToString(sum[:])
-	if r, err := a.resumeByHash(hash); err == nil {
-		return a.verifiedImportedResume(r)
-	} else if !errors.Is(err, sql.ErrNoRows) {
-		return Resume{}, err
-	}
-	idBytes := make([]byte, 16)
-	if _, err = rand.Read(idBytes); err != nil {
-		return Resume{}, err
-	}
-	storedName := hex.EncodeToString(idBytes) + kind
-	path := filepath.Join(a.resumeDir, storedName)
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return Resume{}, err
-	}
-	_, writeErr := f.Write(data)
-	if writeErr == nil {
-		writeErr = f.Sync()
-	}
-	closeErr := f.Close()
-	if writeErr != nil || closeErr != nil {
-		os.Remove(path)
-		return Resume{}, fmt.Errorf("write resume: %v %v", writeErr, closeErr)
-	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	result, err := a.db.Exec(`INSERT INTO resumes (name,stored_name,sha256,size,kind,imported_at) VALUES (?,?,?,?,?,?)`, name, storedName, hash, len(data), kind, now)
-	if err != nil {
-		os.Remove(path)
-		if r, e := a.resumeByHash(hash); e == nil {
-			return a.verifiedImportedResume(r)
-		}
-		return Resume{}, fmt.Errorf("save resume record: %w", err)
-	}
-	rowID, err := result.LastInsertId()
-	if err != nil {
-		os.Remove(path)
-		return Resume{}, err
-	}
-	return Resume{ID: rowID, Name: name, StoredName: storedName, SHA256: hash, Size: int64(len(data)), Kind: kind, ImportedAt: now}, nil
+	resume, _, err := a.importResumeData(name, data)
+	return resume, err
 }
 
 // A matching registry entry alone does not establish that the document exists.
@@ -382,25 +331,13 @@ func (a *App) reviseResume(previousID int64, filename string, body io.Reader) (R
 
 	// Prepare private bytes first, but do not expose a database resume row
 	// until the version/archival transition can be committed atomically.
-	idBytes := make([]byte, 16)
-	if _, err := rand.Read(idBytes); err != nil {
-		return Resume{}, err
-	}
-	storedName := hex.EncodeToString(idBytes) + kind
-	path := filepath.Join(a.resumeDir, storedName)
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	// storeResumeFile is shared with import so private-file handling cannot
+	// drift between the two writers.
+	storedName, err := storeResumeFile(a.resumeDir, kind, data)
 	if err != nil {
-		return Resume{}, err
+		return Resume{}, fmt.Errorf("write revised resume: %w", err)
 	}
-	_, writeErr := file.Write(data)
-	if writeErr == nil {
-		writeErr = file.Sync()
-	}
-	closeErr := file.Close()
-	if writeErr != nil || closeErr != nil {
-		_ = os.Remove(path)
-		return Resume{}, fmt.Errorf("write revised resume: %v %v", writeErr, closeErr)
-	}
+	path := filepath.Join(a.resumeDir, storedName)
 	committed := false
 	defer func() {
 		if !committed {
