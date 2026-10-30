@@ -298,7 +298,7 @@ func (a *App) careerSynthesisAuthorizeAPI(w http.ResponseWriter, r *http.Request
 	defer a.careerStudio.finish("synthesis")
 	generate := a.careerStudioGenerate
 	if generate == nil {
-		generate = runner.GenerateNarrative
+		generate = runner.GenerateDiscovery
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
 	defer cancel()

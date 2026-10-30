@@ -563,7 +563,7 @@ func (a *App) careerRoleAuthorizeAPI(w http.ResponseWriter, r *http.Request) {
 	defer a.careerStudio.finish("role:" + key)
 	generate := a.careerStudioGenerate
 	if generate == nil {
-		generate = runner.GenerateNarrative
+		generate = runner.GenerateDiscovery
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
 	defer cancel()
