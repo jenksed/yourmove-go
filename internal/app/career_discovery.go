@@ -698,6 +698,10 @@ func (a *App) careerDiscoveryAnswerAPI(w http.ResponseWriter, r *http.Request) {
 		careerDiscoveryError(w, http.StatusConflict, "changed", "The interview changed. Reload before answering.")
 		return
 	}
+	if len(session.State.Responses) >= discovery.MaxResponses && session.State.Proposal == nil {
+		careerDiscoveryError(w, http.StatusUnprocessableEntity, "complete_no_proposal", "The interview reached its response limit without a proposal. Start a new interview.")
+		return
+	}
 	next, err := discovery.RecordAnswer(session.State, payload.Answer)
 	if err != nil {
 		careerDiscoveryError(w, http.StatusUnprocessableEntity, "invalid_answer", "Answer the pending question with non-empty text within 2000 bytes")

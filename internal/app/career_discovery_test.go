@@ -383,6 +383,66 @@ func TestCareerDiscoverySelectAndAnswer(t *testing.T) {
 	}
 }
 
+func TestCareerDiscoveryAnswerResponseLimitWithoutProposal(t *testing.T) {
+	a, _ := testWorkspace(t)
+	a.careerDiscoveryGenerate = careerStubScript(t, []string{careerLeadsStub, careerQuestionStub})
+	view := careerCreateExcerpt(t, a, "Sam was an on-call engineer who triaged incidents and mentored juniors.")
+	view = careerDecode(t, careerAuthorize(t, a, view))
+	id := view["id"].(string)
+	view = careerDecode(t, careerRequest(t, a, http.MethodPost, "/api/career/discovery/sessions/"+id+"/select",
+		map[string]any{"lead_id": "lead-1", "revision": view["revision"].(float64)}))
+	view = careerDecode(t, careerAuthorize(t, a, view))
+
+	// Keep invalid input coverage below the response cap; these remain the
+	// ordinary engine validation failures, not the terminal response-limit case.
+	for _, answer := range []string{"", strings.Repeat("x", 2001)} {
+		rec := careerRequest(t, a, http.MethodPost, "/api/career/discovery/sessions/"+id+"/answer",
+			map[string]any{"answer": answer, "revision": view["revision"].(float64)})
+		if rec.Code != http.StatusUnprocessableEntity || careerDecode(t, rec)["code"] != "invalid_answer" {
+			t.Fatalf("invalid answer status %d: %s", rec.Code, rec.Body.String())
+		}
+	}
+
+	session, _, err := a.careerDiscoveryLoad(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := session.State
+	for i := 0; i < discovery.MaxResponses; i++ {
+		state, err = discovery.RecordAnswer(state, "Synthetic response from stubbed interview turn.")
+		if err != nil {
+			t.Fatalf("record stub response %d: %v", i+1, err)
+		}
+		if i+1 < discovery.MaxResponses {
+			state.Question = "What happened next in that incident?"
+		}
+	}
+	// Preserve the pending question shape produced by a model that keeps asking
+	// after the sixth recorded answer, the state that stranded the original UI.
+	state.Question = "Did anyone confirm the outcome?"
+	session.State = state
+	if err := a.careerDiscoveryStore(session, session.Revision); err != nil {
+		t.Fatal(err)
+	}
+	session, _, err = a.careerDiscoveryLoad(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := len(session.State.Responses)
+	rec := careerRequest(t, a, http.MethodPost, "/api/career/discovery/sessions/"+id+"/answer",
+		map[string]any{"answer": "A seventh answer should not be saved.", "revision": session.Revision})
+	if rec.Code != http.StatusUnprocessableEntity || careerDecode(t, rec)["code"] != "complete_no_proposal" {
+		t.Fatalf("capped answer status %d: %s", rec.Code, rec.Body.String())
+	}
+	loaded, _, err := a.careerDiscoveryLoad(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded.State.Responses) != before {
+		t.Fatalf("response count changed after capped answer: got %d, want %d", len(loaded.State.Responses), before)
+	}
+}
+
 func TestCareerDiscoveryInterviewTurnProposalAndPromote(t *testing.T) {
 	a, _ := testWorkspace(t)
 	a.careerDiscoveryGenerate = careerStubScript(t, []string{careerLeadsStub, careerQuestionStub, careerProposalStub})
@@ -961,5 +1021,3 @@ func TestCareerDiscoveryUnknownSession(t *testing.T) {
 		t.Fatalf("absent id status %d: %s", rec.Code, rec.Body.String())
 	}
 }
-
-

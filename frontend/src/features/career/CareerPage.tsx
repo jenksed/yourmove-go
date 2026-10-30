@@ -125,6 +125,15 @@ export function CareerPage(): React.JSX.Element {
         if (done) setNotice(done);
         await reloadList();
       } catch (error) {
+        if (error instanceof CareerApiError && error.code === "complete_no_proposal" && activeId !== "") {
+          try {
+            await openSession(activeId);
+            setNotice(`Interview ${activeId} reached its response limit without a proposal. Start a new interview to continue.`);
+            return;
+          } catch {
+            // Fall through to the original error if the session cannot be reloaded.
+          }
+        }
         if (error instanceof CareerApiError && error.code === "changed" && activeId !== "") {
           try {
             await openSession(activeId);
@@ -248,6 +257,7 @@ export function CareerPage(): React.JSX.Element {
 
   const activeProvider = providers.find((provider) => provider.id === providerId);
   const selectableResumes = resumeChoices.filter((resume) => !resume.archived);
+  const isCompleteNoProposal = session !== null && session.responses.length >= 6 && session.proposal === null;
 
   return (
     <div className="app-shell">
@@ -403,6 +413,11 @@ export function CareerPage(): React.JSX.Element {
                       again — no silent retry happened.
                     </p>
                   )}
+                  {isCompleteNoProposal && (
+                    <p className="career-notice" role="status">
+                      Interview {session.id} reached its response limit without a proposal. Start a new interview to continue.
+                    </p>
+                  )}
                   {session.status === "promoted" && session.promoted_evidence_id !== null && (
                     <p className="career-promoted" role="status">
                       Draft saved as{" "}
@@ -461,7 +476,7 @@ export function CareerPage(): React.JSX.Element {
                     </div>
                   )}
 
-                  {session.next.kind !== "none" && (
+                  {session.next.kind !== "none" && !isCompleteNoProposal && (
                     <div className="career-block">
                       <h3>
                         {session.next.kind === "leads" ? "Authorize lead finding" : "Authorize the next question"}
@@ -542,7 +557,7 @@ export function CareerPage(): React.JSX.Element {
                     </div>
                   )}
 
-                  {session.question !== "" && session.status !== "promoted" && (
+                  {session.question !== "" && session.status !== "promoted" && !isCompleteNoProposal && (
                     <div className="career-block">
                       <h3>Pending question</h3>
                       <p className="career-question">{session.question}</p>
