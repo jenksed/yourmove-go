@@ -9,8 +9,10 @@ import (
 	"testing"
 )
 
-// Structured answer traces and evidence-backed letters use larger compatible
-// output budgets; only the trace path requests a JSON object contract.
+// Structured answer traces, evidence-backed letters, and Career Discovery use
+// larger compatible output budgets; trace and discovery request a JSON object
+// contract while letters do not. Discovery uses the largest budget because
+// proposal-bearing turns exhaust smaller caps live.
 func TestStructuredCompatibleRequestProfiles(t *testing.T) {
 	for _, tc := range []struct {
 		name            string
@@ -22,6 +24,9 @@ func TestStructuredCompatibleRequestProfiles(t *testing.T) {
 		{"trace", func(r Runner) (string, error) {
 			return r.GenerateNarrativeJSON(context.Background(), "trusted career experience", testInstructions)
 		}, 2048, "low", true},
+		{"discovery", func(r Runner) (string, error) {
+			return r.GenerateDiscovery(context.Background(), "trusted career experience", testInstructions)
+		}, 3072, "low", true},
 		{"letter", func(r Runner) (string, error) {
 			return r.GenerateLetter(context.Background(), "trusted career experience", testInstructions)
 		}, 2048, "low", false},

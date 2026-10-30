@@ -499,7 +499,7 @@ func (a *App) careerDiscoveryAuthorizeAPI(w http.ResponseWriter, r *http.Request
 	defer a.careerDiscovery.finish(id)
 	generate := a.careerDiscoveryGenerate
 	if generate == nil {
-		generate = runner.GenerateNarrative
+		generate = runner.GenerateDiscovery
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
 	defer cancel()
