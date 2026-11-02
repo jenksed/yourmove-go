@@ -1,4 +1,4 @@
-//go:build desktop && darwin
+//go:build desktop && darwin && !qualification
 
 package main
 
