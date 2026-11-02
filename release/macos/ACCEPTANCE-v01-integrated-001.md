@@ -83,3 +83,17 @@ signature re-verification). Frontend `tsc --noEmit && vite build` clean
 No source changes were required: no incompatibilities between the React
 bundle, Job Intelligence providers, managed Chromium path, and macOS
 packaging were found, and no release-blocking defect was observed.
+
+## Hotfix (post-candidate): Documents row layout
+
+Owner-reported broken Documents screen: long underscore filenames rendered
+one character per line. Cause: `.resume-row` was a non-wrapping flex row
+while `details.document-manage` carried `flex-basis: 100%`, crushing
+`.resume-info` to ~zero width so `overflow-wrap: anywhere` broke every
+character. Fix (commit below): `flex-wrap: wrap` on `.resume-row`, so the
+manage disclosure takes its own full-width row. Reproduced before and
+verified after in an isolated render with the production class set
+(horizontal name, right-aligned Download, full-width Manage row).
+Frontend `tsc + vite build` clean (CSS `index-Dn7B4p-b.css`). CSS-only;
+no Go behavior changed. The candidate above must be rebuilt via
+`release/macos/prepare.sh` before owner walkthrough.

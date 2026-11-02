@@ -7,7 +7,7 @@
 .library-notice { margin-bottom: 16px; }
 
 .resume-list { display: grid; gap: 0; }
-.resume-row { display: flex; gap: 16px; align-items: flex-start; padding: 21px 24px; border-bottom: 1px solid var(--color-border); }
+.resume-row { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; padding: 21px 24px; border-bottom: 1px solid var(--color-border); }
 .resume-row:last-child { border-bottom: 0; }
 .resume-file-icon { display: grid; place-items: center; width: 44px; height: 52px; flex: 0 0 44px; border: 1px solid var(--color-border); border-radius: 7px; background: var(--color-surface-muted); color: var(--color-muted); font-size: 11px; font-weight: 750; }
 .resume-info { min-width: 0; flex: 1; }
