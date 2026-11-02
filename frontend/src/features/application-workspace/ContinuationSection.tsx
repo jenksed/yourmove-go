@@ -225,7 +225,7 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
         <div>
           <dt>Browser session</dt>
           <dd>
-            {browser.active ? `Open in this session${browser.phase !== "" ? ` · ${browser.phase}` : ""}` : browser.phase === "interrupted" ? `Interrupted · ${browser.message}` : "Not open"}
+            {browser.active ? `Open · ${browser.engine || "Chromium"}${browser.phase !== "" ? ` · ${browser.phase}` : ""}` : browser.phase === "interrupted" ? `Interrupted · ${browser.message}` : "Not open"}
           </dd>
         </div>
       </dl>

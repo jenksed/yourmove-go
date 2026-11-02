@@ -21,6 +21,8 @@ type readOnlySession interface {
 	Close() error
 }
 
+type browserEngineSession interface{ Engine() string }
+
 type resumeAttachmentSession interface {
 	AttachResume(context.Context, string) (chromium.AttachmentResult, error)
 }
@@ -48,6 +50,7 @@ type browserRunState struct {
 	AnswerStatus     string                   `json:"answer_status"`
 	AnswerOutcomes   []browser.AnswerOutcome  `json:"answer_outcomes,omitempty"`
 	Destination      string                   `json:"-"`
+	Engine           string                   `json:"engine"`
 	LetterStatus     string                   `json:"letter_status"`
 	LetterMessage    string                   `json:"letter_message"`
 	Contacts         *browser.ContactValues   `json:"-"`
@@ -182,7 +185,11 @@ func (h *sessionHost) start(ctx context.Context, jobID int64, jobURL string) err
 		if h.states == nil {
 			h.states = map[int64]browserRunState{}
 		}
-		h.states[jobID] = browserRunState{Destination: jobURL, Active: true, Phase: "watching", Message: "the employer browser is opening the application's URL directly. Waiting for the resume field; continue manually if the employer requires another step."}
+		engine := "chromium"
+		if named, ok := session.(browserEngineSession); ok {
+			engine = named.Engine()
+		}
+		h.states[jobID] = browserRunState{Destination: jobURL, Engine: engine, Active: true, Phase: "watching", Message: "The " + engine + " employer browser is opening the application's URL directly. Waiting for the resume field; continue manually if the employer requires another step."}
 	}
 	h.mu.Unlock()
 	return err

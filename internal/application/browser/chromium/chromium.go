@@ -386,3 +386,6 @@ func (s *Session) lockContext(ctx context.Context) error {
 	}
 	return nil
 }
+
+// Engine reports the managed browser type for session status.
+func (s *Session) Engine() string { return "chromium" }

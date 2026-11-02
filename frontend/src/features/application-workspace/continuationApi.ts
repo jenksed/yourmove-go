@@ -32,6 +32,7 @@ export interface BrowserOutcome {
 
 export interface ContinuationBrowser {
   active: boolean;
+  engine: string;
   phase: string;
   message: string;
   latest_id: number;
