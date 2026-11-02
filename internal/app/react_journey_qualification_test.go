@@ -16,12 +16,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/jenksed/yourmove-go/internal/application/browser"
 	"github.com/jenksed/yourmove-go/internal/application/browser/chromium"
 	"github.com/jenksed/yourmove-go/internal/application/browser/playwright"
+	"github.com/jenksed/yourmove-go/internal/application/schema"
 )
 
 // This uses the production Vite build and Go handlers, with only the employer
@@ -42,6 +44,12 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	if err := a.saveJob(Job{URL: "https://jobs.ashbyhq.com/fixture/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Host: "jobs.ashbyhq.com", Title: "Next synthetic opportunity"}); err != nil {
 		t.Fatal(err)
 	}
+	if err := a.saveCandidateProfile(CandidateProfile{FirstName: "Casey", LastName: "Fixture", Email: "casey@example.test", LinkedIn: "https://example.test/casey", Approved: false}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.saveInspection(1, schema.Result{Platform: "ashby", Source: "browser", Completeness: "rendered_partial", ApplicationURL: testAshbyPosting + "/application", Fields: []schema.Field{{ID: "browser:linkedin", Label: "LinkedIn", Kind: "text"}}}); err != nil {
+		t.Fatal(err)
+	}
 	resumeBytes := mustQualificationPDF(t)
 	if _, err := a.importResume("journey-resume.pdf", bytes.NewReader(resumeBytes)); err != nil {
 		t.Fatal(err)
@@ -50,34 +58,35 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 		fmt.Fprint(w, `<!doctype html><form class="ashby-application-form">
 <section data-field-entry-id="resume"><div class="ashby-application-form-question-title">Resume</div><input type="file" name="resume" accept=".pdf"></section>
 <section data-field-entry-id="cover"><div class="ashby-application-form-question-title">Cover Letter</div><input type="file" name="cover" accept=".pdf"></section>
-<label>Why this team?<textarea name="motivation"></textarea></label><label>Tell us more<textarea name="other"></textarea></label><label>Manual field<input name="manual" value="Already entered"></label><button type="submit">Submit</button></form>
-<script>window.resumeChanges=0;window.coverChanges=0;window.submits=0;document.querySelector('[name=resume]').onchange=()=>resumeChanges++;document.querySelector('[name=cover]').onchange=()=>coverChanges++;document.querySelector('form').onsubmit=e=>{e.preventDefault();submits++}</script>`)
+<label>Why this team?<textarea name="motivation"></textarea></label><label>Tell us more<textarea name="other"></textarea></label><label>LinkedIn<input name="linkedin"></label><label>Manual field<input name="manual" value="Already entered"></label><label>Phone<input type="tel" name="phone" value="Manual phone"></label><button type="submit">Submit</button></form>
+<script>window.resumeChanges=0;window.coverChanges=0;window.submits=0;window.contactChanges={first_name:0,last_name:0,email:0};document.querySelector('form').addEventListener('input',e=>{if(e.target.name in contactChanges)contactChanges[e.target.name]++});document.querySelector('[name=resume]').onchange=()=>{resumeChanges++;document.querySelector('form').insertAdjacentHTML('beforeend','<label>First name<input name="first_name"></label>');setTimeout(()=>{document.querySelector('form').insertAdjacentHTML('beforeend','<label>Last name<input name="last_name"></label><label>Email<input type="email" name="email"></label>')},1200)};document.querySelector('[name=cover]').onchange=()=>coverChanges++;const existing=new DataTransfer();existing.items.add(new File(['existing employer file'],'existing.pdf',{type:'application/pdf'}));document.querySelector('[name=cover]').files=existing.files;document.querySelector('[name=cover]').dispatchEvent(new Event('change',{bubbles:true}));document.querySelector('form').onsubmit=e=>{e.preventDefault();submits++}</script>`)
 	}))
 	defer fixture.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	base := fixture.URL + "/fixture/job"
-	var fs readOnlySession
 	var err error
 	var employer *chromium.Session
 	var firefox *playwright.Session
-	if os.Getenv("YOURMOVE_QUAL_ENGINE") == "firefox" {
-		firefox, err = playwright.LaunchFixture(ctx, playwright.EngineFirefox, base)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer firefox.Close()
-		fs = &reactFirefoxFixture{Session: firefox, fixture: base, saved: testAshbyPosting}
-	} else {
-		employer, err = chromium.LaunchFixture(ctx, base)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer employer.Close()
-		fs = &contactFixtureSession{Session: employer, fixture: base, saved: testAshbyPosting}
-	}
+	var launches atomic.Int32
 	a.browsers.pollEvery = 100 * time.Millisecond
-	a.browsers.factory = func(context.Context, string) (readOnlySession, error) { return fs, nil }
+	a.browsers.factory = func(c context.Context, _ string) (readOnlySession, error) {
+		launches.Add(1)
+		if os.Getenv("YOURMOVE_QUAL_ENGINE") == "firefox" {
+			var launchErr error
+			firefox, launchErr = playwright.LaunchFixture(c, playwright.EngineFirefox, base)
+			if launchErr != nil {
+				return nil, launchErr
+			}
+			return &reactFirefoxFixture{Session: firefox, fixture: base, saved: testAshbyPosting}, nil
+		}
+		var launchErr error
+		employer, launchErr = chromium.LaunchFixture(c, base)
+		if launchErr != nil {
+			return nil, launchErr
+		}
+		return &contactFixtureSession{Session: employer, fixture: base, saved: testAshbyPosting}, nil
+	}
 	defer a.browsers.closeAll()
 	router := http.NewServeMux()
 	router.HandleFunc("GET /application", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/jobs/1", http.StatusSeeOther) })
@@ -157,16 +166,19 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 
 	click("Apply")
 	wait(`document.body.innerText.includes('journey-resume.pdf')&&document.body.innerText.includes('Cover letter:')`)
-	// Starting opens the managed session without transferring anything.
-	run(`Array.from(document.querySelectorAll('#employer button')).find(x=>x.classList.contains('button-primary')).click()`)
-	wait(`document.body.innerText.includes('Recheck form')`)
-	// A user-supplied file in the controlled form must not be replaced.
-	if err := employerEval(`(()=>{const e=document.querySelector('[name=cover]');const d=new DataTransfer();d.items.add(new File(['existing employer file'],'existing.pdf',{type:'application/pdf'}));e.files=d.files;e.dispatchEvent(new Event('change',{bubbles:true}))})()`, nil); err != nil {
-		t.Fatal(err)
+	if launches.Load() != 0 {
+		t.Fatal("employer browser launched before applicant action")
 	}
-
-	wait(`Array.from(document.querySelectorAll('.continuation-item label')).filter(x=>x.textContent.includes('Résumé:') || x.textContent.includes('Cover letter:')).every(x=>x.querySelector('input').checked)`)
-	run(`Array.from(document.querySelectorAll('#employer button')).filter(x=>x.classList.contains('button-primary')).at(-1).click()`)
+	wait(`Array.from(document.querySelectorAll('.continuation-item label')).find(x=>x.textContent.includes('Cover letter:'))?.querySelector('input')?.checked`)
+	wait(`document.querySelector('.pending-answer-scope')?.innerText.includes('https://example.test/casey')`)
+	click("Prepare & Fill Application")
+	wait(`document.body.innerText.includes('Recheck form')`)
+	if launches.Load() != 1 {
+		t.Fatalf("one fill click launched %d browsers", launches.Load())
+	}
+	if profile, err := a.candidateProfile(); err != nil || profile.Approved {
+		t.Fatalf("fill changed separate profile approval: %+v %v", profile, err)
+	}
 	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
 		s := a.browsers.state(1)
@@ -175,6 +187,33 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
+	var contactValues []string
+	for time.Now().Before(deadline) {
+		if err := employerEval(`[document.querySelector('[name=first_name]')?.value||'',document.querySelector('[name=last_name]')?.value||'',document.querySelector('[name=email]')?.value||'',document.querySelector('[name=phone]')?.value||'']`, &contactValues); err == nil && fmt.Sprint(contactValues) == "[Casey Fixture casey@example.test Manual phone]" {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if fmt.Sprint(contactValues) != "[Casey Fixture casey@example.test Manual phone]" {
+		t.Fatalf("delayed contacts: %v; state: %+v", contactValues, a.browsers.state(1))
+	}
+	t.Logf("one-click delayed contact values: %v; missing profile phone preserved manually", contactValues)
+	var linkedIn string
+	for time.Now().Before(deadline) {
+		if err := employerEval(`document.querySelector('[name=linkedin]').value`, &linkedIn); err == nil && linkedIn == "https://example.test/casey" {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if linkedIn != "https://example.test/casey" {
+		t.Fatalf("profile LinkedIn not filled: %q; state=%+v", linkedIn, a.browsers.state(1))
+	}
+
+	var contactChanges map[string]int
+	if err := employerEval(`contactChanges`, &contactChanges); err != nil || contactChanges["first_name"] != 1 || contactChanges["last_name"] != 1 || contactChanges["email"] != 1 {
+		t.Fatalf("contact writes repeated: %v %v", contactChanges, err)
+	}
+
 	var existing string
 	if err := employerEval(`document.querySelector('[name=cover]').files[0]?.name`, &existing); err != nil || existing != "existing.pdf" {
 		t.Fatalf("existing attachment changed: %q %v", existing, err)
@@ -242,11 +281,15 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	wait(`Array.from(document.querySelectorAll('.continuation-item label')).find(x=>x.textContent.includes('saved answer'))?.querySelector('input')?.checked`)
 	run(`Array.from(document.querySelectorAll('#employer button')).filter(x=>x.classList.contains('button-primary')).at(-1).click()`)
 	deadline = time.Now().Add(15 * time.Second)
-	for time.Now().Before(deadline) && a.browsers.state(1).AnswerStatus != "complete" {
+	var employerValues []string
+	for time.Now().Before(deadline) {
+		err = employerEval(`[document.querySelector('[name=motivation]').value,document.querySelector('[name=other]').value,document.querySelector('[name=manual]').value]`, &employerValues)
+		if err == nil && fmt.Sprint(employerValues) == fmt.Sprint([]string{answer, "", "Already entered"}) && a.browsers.state(1).AnswerStatus == "complete" {
+			break
+		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	var employerValues []string
-	if err := employerEval(`[document.querySelector('[name=motivation]').value,document.querySelector('[name=other]').value,document.querySelector('[name=manual]').value]`, &employerValues); err != nil || fmt.Sprint(employerValues) != fmt.Sprint([]string{answer, "", "Already entered"}) {
+	if err != nil || fmt.Sprint(employerValues) != fmt.Sprint([]string{answer, "", "Already entered"}) {
 		t.Fatalf("answers: %q %v", employerValues, err)
 	}
 	if a.browsers.state(1).AnswerStatus != "complete" {
@@ -267,7 +310,7 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	wait(`document.querySelector('#submission')?.innerText.includes('Next synthetic opportunity')`)
 	run(`window.confirm=()=>false`)
 	click("Next opportunity → Next synthetic opportunity")
-	wait(`document.querySelector('#submission')?.innerText.includes('Next synthetic opportunity')`)
+	wait(`Array.from(document.querySelectorAll('#submission button')).some(x=>x.textContent.includes('Next opportunity') && !x.disabled)`)
 	if !a.browsers.state(1).Active {
 		t.Fatal("cancelling navigation closed the browser")
 	}

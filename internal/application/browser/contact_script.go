@@ -39,10 +39,11 @@ const ContactResolver = `(function(origin, base) {
  return {
    plan() {
      if (!owns()) throw Error('application changed');
-     return {ready:forms().length > 0,keys:hits('name').length ? ['name','email','phone'] : ['first_name','last_name','email','phone']};
+     const keys=hits('name').length ? ['name','email','phone'] : ['first_name','last_name','email','phone'];
+     return {ready:forms().length > 0 && keys.some(key=>hits(key).length > 0),keys};
    },
    apply(key, value) {
-     if (!value) return {status:'skipped',detail:'No approved value. Complete this field if required.'};
+     if (!value) return {status:'skipped',detail:'No saved value. Complete this field if required.'};
      const found = resolve(key); if (!found.el) return found;
      const el = found.el;
      if (el.value === value) return {status:'correct',detail:'Already matches the approved value.'};

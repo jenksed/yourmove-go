@@ -58,6 +58,10 @@ func (a *App) transferApplicationAnswers(w http.ResponseWriter, r *http.Request)
 
 // answerTransferCommand validates the exact submitted material before arming its existing operation.
 func (a *App) answerTransferCommand(r *http.Request, id int64) (int, string) {
+	return a.answerTransferForAction(r, id, false)
+}
+
+func (a *App) answerTransferForAction(r *http.Request, id int64, profileAuthorized bool) (int, string) {
 	job, err := a.jobByID(id)
 	if err != nil {
 		return http.StatusNotFound, "Opportunity or material unavailable"
@@ -68,6 +72,13 @@ func (a *App) answerTransferCommand(r *http.Request, id int64) (int, string) {
 	profile, err := a.candidateProfile()
 	if err != nil {
 		return 500, "Unable to read candidate information"
+	}
+	profileRevision := profile.Revision
+	if profileAuthorized {
+		if r.PostForm.Get("profile_revision") != fmt.Sprint(profile.Revision) {
+			return http.StatusConflict, "Candidate Profile changed. Review it before filling."
+		}
+		profile.Approved = true
 	}
 	prepared, err := a.prepareQuestions(job, profile)
 	if err != nil {
@@ -87,6 +98,12 @@ func (a *App) answerTransferCommand(r *http.Request, id int64) (int, string) {
 		p, e := a.candidateProfile()
 		if e != nil {
 			return false
+		}
+		if profileAuthorized {
+			if p.Revision != profileRevision {
+				return false
+			}
+			p.Approved = true
 		}
 		current, e := a.prepareQuestions(latest, p)
 		if e != nil {

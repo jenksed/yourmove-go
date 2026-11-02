@@ -132,6 +132,9 @@ func (s *Session) FillContacts(ctx context.Context, approved browser.ContactValu
 		return result, nil
 	}
 	for i, key := range plan.Keys {
+		if approved.Attempted[key] || (key == "name" && (approved.Attempted["first_name"] || approved.Attempted["last_name"])) || ((key == "first_name" || key == "last_name") && approved.Attempted["name"]) {
+			continue
+		}
 		outcome := browser.ContactOutcome{Key: key}
 		err := call("apply", key, approved.Value(key), &outcome)
 		if err == nil && outcome.Status == "pending" {

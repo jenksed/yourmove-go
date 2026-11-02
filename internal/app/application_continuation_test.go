@@ -235,7 +235,8 @@ func TestPreparationActionStates(t *testing.T) {
 		{"late letter", browserRunState{Active: true, ResumeStatus: "selected"}, true, "Continue application"},
 		{"running", browserRunState{Active: true, ResumeStatus: "selected", LetterStatus: "checking"}, true, ""},
 		{"uncertain", browserRunState{Active: true, ResumeStatus: "selected", LetterStatus: "attention"}, true, ""},
-		{"lost", browserRunState{Phase: "interrupted"}, true, ""},
+		{"launch failed without transfer", browserRunState{Phase: "interrupted"}, true, ""},
+		{"interrupted after uncertain transfer", browserRunState{Phase: "interrupted", ResumeStatus: "attention"}, true, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			w := jobWorkspace{Handoff: HandoffEligibility{Allowed: true}, BrowserState: tc.state}
@@ -278,5 +279,15 @@ func TestUnsupportedPreparationOffersExternalApplication(t *testing.T) {
 		if desktop && !strings.Contains(body, `action="/jobs/1/open"`) {
 			t.Fatal("desktop application action must use the existing native opener")
 		}
+	}
+}
+
+func TestPendingAnswersDoesNotReplayChangedObservation(t *testing.T) {
+	attempted := preparedQuestion{Key: "old", Field: schema.Field{ID: "browser:linkedin", Label: "LinkedIn", Kind: "text"}, Value: "https://example.test/profile"}
+	changed := attempted
+	changed.Key = "new"
+	changed.Field.Required = true
+	if got := pendingAnswers([]preparedQuestion{changed}, []preparedQuestion{attempted}, false); len(got) != 0 {
+		t.Fatalf("attempted answer became eligible again after metadata changed: %+v", got)
 	}
 }

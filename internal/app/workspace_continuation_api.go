@@ -43,11 +43,13 @@ type continuationAnswerJSON struct {
 }
 
 type continuationProfileJSON struct {
-	Approved bool   `json:"approved"`
-	Revision int64  `json:"revision"`
-	FullName string `json:"fullName"`
-	Email    string `json:"email"`
-	Phone    string `json:"phone"`
+	Approved  bool   `json:"approved"`
+	Revision  int64  `json:"revision"`
+	FullName  string `json:"fullName"`
+	FirstName string `json:"firstName"`
+	LastName  string `json:"lastName"`
+	Email     string `json:"email"`
+	Phone     string `json:"phone"`
 }
 
 type continuationLetterJSON struct {
@@ -117,7 +119,11 @@ func (a *App) buildContinuation(jobID int64) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	live, err := a.prepareQuestions(job, profile)
+	// The explicit Fill action authorizes the displayed profile snapshot, without
+	// changing its separate approval state for other workflows.
+	profileForFill := profile
+	profileForFill.Approved = true
+	live, err := a.prepareQuestions(job, profileForFill)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +138,12 @@ func (a *App) buildContinuation(jobID int64) (map[string]any, error) {
 	state := a.browsers.state(jobID)
 	prepWorkspace := jobWorkspace{
 		Job: job, BrowserState: state, Handoff: handoff,
-		Questions: live, EarlyQuestions: early, Letter: letter, Profile: profile,
+		Questions: live, EarlyQuestions: early, Letter: letter, Profile: profileForFill,
+	}
+	// A failed launch with no transfer can be retried by the React fill action.
+	// Retain interrupted status for display; never re-arm an attempted upload.
+	if !state.Active && state.Phase == "interrupted" && state.ResumeStatus == "" {
+		prepWorkspace.BrowserState.Phase = ""
 	}
 	preparation := summarizePreparation(prepWorkspace)
 	snapshot := chooseApplicationQuestionSnapshot(job, state, live, early)
@@ -200,7 +211,7 @@ func (a *App) buildContinuation(jobID int64) (map[string]any, error) {
 		"resume":       resumeJSON,
 		"profile": continuationProfileJSON{
 			Approved: profile.Approved, Revision: profile.Revision,
-			FullName: fullName, Email: profile.Email, Phone: profile.Phone,
+			FullName: fullName, FirstName: profile.FirstName, LastName: profile.LastName, Email: profile.Email, Phone: profile.Phone,
 		},
 		"letter":                 letterJSON,
 		"pendingAnswers":         pending,
@@ -433,7 +444,25 @@ func (a *App) continuationContinueAPI(w http.ResponseWriter, r *http.Request) {
 		writeResumeError(w, http.StatusConflict, "The employer destination changed. Review Prepare again.")
 		return
 	}
-	if !input.IncludeResume && !input.IncludeLetter && !input.IncludeAnswers {
+	// React's Fill action carries the displayed profile revision and résumé
+	// identity even for subsequent material. Revalidate both before any effect.
+	if input.ProfileRevision != "" {
+		profile, profileErr := a.candidateProfile()
+		if profileErr != nil || input.ProfileRevision != strconv.FormatInt(profile.Revision, 10) {
+			writeResumeError(w, http.StatusConflict, "Candidate Profile changed. Review it before filling.")
+			return
+		}
+		resume, resumeErr := a.resumeByID(job.SelectedResumeID)
+		if resumeErr != nil || input.ResumeID != strconv.FormatInt(resume.ID, 10) || input.ResumeHash != resume.SHA256 || resume.ArchivedAt != "" {
+			writeResumeError(w, http.StatusConflict, "Select an available résumé before filling.")
+			return
+		}
+		if _, err := a.readResumeBytes(resume); err != nil {
+			writeResumeError(w, http.StatusConflict, "The selected résumé is missing or changed. Select it again before filling.")
+			return
+		}
+	}
+	if !input.IncludeResume && !input.IncludeLetter && !input.IncludeAnswers && !input.TransferContacts {
 		writeResumeError(w, http.StatusUnprocessableEntity, "No transfer material was selected. Review Prepare again.")
 		return
 	}
@@ -448,9 +477,28 @@ func (a *App) continuationContinueAPI(w http.ResponseWriter, r *http.Request) {
 		status, detail := fn(cmd, jobID)
 		results = append(results, continueItemResult{Item: item, OK: status == http.StatusSeeOther, Status: status, Detail: detail})
 	}
-	run("resume", input.IncludeResume, a.resumeHandoffCommand)
+	run("resume", input.IncludeResume, func(r *http.Request, id int64) (int, string) { return a.resumeHandoffForAction(r, id, true) })
+	if input.TransferContacts && !input.IncludeResume {
+		status, detail := http.StatusConflict, "The selected résumé or Candidate Profile changed. Review them before filling."
+		resume, resumeErr := a.resumeByID(job.SelectedResumeID)
+		profile, profileErr := a.candidateProfile()
+		if resumeErr == nil && profileErr == nil && input.ResumeID == strconv.FormatInt(resume.ID, 10) && input.ResumeHash == resume.SHA256 && input.ProfileRevision == strconv.FormatInt(profile.Revision, 10) {
+			if _, readErr := a.readResumeBytes(resume); readErr == nil {
+				contacts := &browser.ContactValues{Revision: profile.Revision, FirstName: profile.FirstName, LastName: profile.LastName, Email: profile.Email, Phone: profile.Phone}
+				current := func() bool { p, e := a.candidateProfile(); return e == nil && p.Revision == profile.Revision }
+				if armErr := a.browsers.armExistingContacts(jobID, job.URL, resume.ID, resume.SHA256, contacts, current); armErr == nil {
+					status, detail = http.StatusSeeOther, "Contact filling started"
+				} else {
+					detail = armErr.Error()
+				}
+			}
+		}
+		results = append(results, continueItemResult{Item: "contacts", OK: status == http.StatusSeeOther, Status: status, Detail: detail})
+	}
 	run("letter", input.IncludeLetter, a.coverLetterCommand)
-	run("answers", input.IncludeAnswers, a.answerTransferCommand)
+	run("answers", input.IncludeAnswers, func(r *http.Request, id int64) (int, string) {
+		return a.answerTransferForAction(r, id, input.ProfileRevision != "")
+	})
 	writeResumeJSON(w, http.StatusOK, map[string]any{
 		"items": results, "browser": a.browsers.state(jobID),
 	})

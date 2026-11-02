@@ -31,7 +31,15 @@ type contactFillSession interface {
 	FillContacts(context.Context, browser.ContactValues) (browser.ContactResult, error)
 }
 
+type resumeHandoffInfo struct {
+	resumeID       int64
+	resumeHash     string
+	contactCurrent func() bool
+}
+
 type resumeHandoff struct {
+	resumeID          int64
+	resumeHash        string
 	preflightFailures int
 	retryable         bool
 	dir               string
@@ -42,6 +50,7 @@ type resumeHandoff struct {
 	contacts          *browser.ContactValues
 	contactStatus     string
 	contactResult     browser.ContactResult
+	contactCurrent    func() bool
 }
 
 type browserRunState struct {
@@ -203,7 +212,7 @@ func (h *sessionHost) inspect(ctx context.Context, jobID int64) (browser.Observa
 	}
 	return s.Observe(ctx)
 }
-func (h *sessionHost) armResume(jobID int64, dir, path, name string, contacts *browser.ContactValues) error {
+func (h *sessionHost) armResume(jobID int64, dir, path, name string, contacts *browser.ContactValues, details ...resumeHandoffInfo) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.sessions[jobID] == nil {
@@ -219,11 +228,27 @@ func (h *sessionHost) armResume(jobID int64, dir, path, name string, contacts *b
 		return errors.New("resume preparation already authorized for this browser; close it to start a different document")
 	}
 	h.handoffs[jobID] = &resumeHandoff{dir: dir, path: path, name: name, status: "waiting", message: "Opening the application directly and looking for its resume field. The browser remains yours for any later pages."}
+	if len(details) > 0 {
+		h.handoffs[jobID].resumeID = details[0].resumeID
+		h.handoffs[jobID].resumeHash = details[0].resumeHash
+		h.handoffs[jobID].contactCurrent = details[0].contactCurrent
+	}
 	if contacts != nil {
 		snapshot := *contacts
 		h.handoffs[jobID].contacts = &snapshot
 		h.handoffs[jobID].contactStatus = "waiting"
 	}
+	return nil
+}
+
+func (h *sessionHost) armExistingContacts(jobID int64, destination string, resumeID int64, resumeHash string, contacts *browser.ContactValues, current func() bool) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	up := h.handoffs[jobID]
+	if h.sessions[jobID] == nil || h.states[jobID].Destination != destination || up == nil || (up.status != "selected" && up.status != "present") || up.resumeID != resumeID || up.resumeHash != resumeHash || up.contactStatus != "" {
+		return errors.New("Contact filling is unavailable or has already been attempted in this session")
+	}
+	up.contacts, up.contactStatus, up.contactCurrent = contacts, "waiting", current
 	return nil
 }
 
@@ -239,8 +264,24 @@ func (h *sessionHost) tryContacts(ctx context.Context, jobID int64) {
 	}
 	up.contactStatus = "checking"
 	approved := *up.contacts
+	current := up.contactCurrent
+	approved.Attempted = map[string]bool{}
+	for _, outcome := range up.contactResult.Fields {
+		if outcome.Status != "missing" {
+			approved.Attempted[outcome.Key] = true
+		}
+	}
 	h.mu.Unlock()
 	filler, ok := session.(contactFillSession)
+	if current != nil && !current() {
+		h.mu.Lock()
+		if h.handoffs[jobID] == up {
+			up.contactStatus = "attention"
+			up.contactResult.Fields = append(up.contactResult.Fields, browser.ContactOutcome{Key: "profile", Status: "manual", Detail: "Candidate Profile changed. Review it before filling."})
+		}
+		h.mu.Unlock()
+		return
+	}
 	var result browser.ContactResult
 	var err error
 	if ok {
@@ -253,14 +294,28 @@ func (h *sessionHost) tryContacts(ctx context.Context, jobID int64) {
 	if h.handoffs[jobID] != up {
 		return // A closed/replaced browser never inherits the old approval.
 	}
-	up.contactResult = result
+	if result.Ready {
+		previous := up.contactResult.Fields
+		up.contactResult = result
+		for _, outcome := range previous {
+			if outcome.Status != "missing" {
+				up.contactResult.Fields = append(up.contactResult.Fields, outcome)
+			}
+		}
+	}
+	waiting := !result.Ready
+	for _, outcome := range up.contactResult.Fields {
+		if outcome.Status == "missing" {
+			waiting = true
+		}
+	}
 	switch {
 	case err != nil:
 		up.contactStatus = "attention"
-	case !result.Ready:
-		up.contactStatus = "waiting" // Read-only wait; no contact mutation occurred.
+	case waiting:
+		up.contactStatus = "waiting"
 	default:
-		up.contactStatus = "complete" // Never replay a changed or cleared user value.
+		up.contactStatus = "complete"
 	}
 }
 func (h *sessionHost) tryResume(ctx context.Context, jobID int64) {
@@ -287,6 +342,10 @@ func (h *sessionHost) tryResume(ctx context.Context, jobID int64) {
 		h.resumeResult(jobID, up, "waiting", "No resume field is available on this step yet. Continue in the employer browser; YourMove will check subsequent pages.")
 		return
 	}
+	if errors.Is(err, chromium.ErrExistingDocument) {
+		h.resumeResult(jobID, up, "present", "An attachment is already present and was left unchanged. Check it in the employer form.")
+		return
+	}
 	if err != nil {
 		var preflight *chromium.PreflightError
 		if errors.As(err, &preflight) {
@@ -297,11 +356,11 @@ func (h *sessionHost) tryResume(ctx context.Context, jobID int64) {
 		return
 	}
 	if result.Selected {
-		msg := result.Detail
 		if !result.Verified {
-			msg = "File selection was attempted but the browser could not verify it. Review the attachment manually."
+			h.resumeResult(jobID, up, "attention", "Uncertain: file selection was attempted but could not be verified. Review the attachment; it will not be retried automatically.")
+			return
 		}
-		h.resumeResult(jobID, up, "selected", msg)
+		h.resumeResult(jobID, up, "selected", result.Detail)
 		return
 	}
 	h.resumeResult(jobID, up, "attention", "Resume selection could not be confirmed; attach manually")

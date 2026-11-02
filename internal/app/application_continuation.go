@@ -83,7 +83,7 @@ func pendingAnswers(ready, attempted []preparedQuestion, contactsHandled bool) [
 		}
 		seen := false
 		for _, old := range attempted {
-			if old.Key == q.Key && old.Value == q.Value {
+			if (old.Key == q.Key || (old.Field.ID != "" && old.Field.ID == q.Field.ID)) && old.Value == q.Value {
 				seen = true
 				break
 			}

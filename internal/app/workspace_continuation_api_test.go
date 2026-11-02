@@ -3,8 +3,10 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -414,4 +416,92 @@ func TestContinuationBrowserActions(t *testing.T) {
 		t.Fatalf("bogus action: %d", rec.Code)
 	}
 	_ = browser.AnswerOutcome{}
+}
+
+func TestContinuationReportsResumeLaunchFailure(t *testing.T) {
+	a, _ := testWorkspace(t)
+	seedContinuationJob(t, a)
+	resume, err := a.importResume("resume.pdf", strings.NewReader("%PDF-1.4\nsynthetic"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.assignResume(1, resume.ID); err != nil {
+		t.Fatal(err)
+	}
+	launches := 0
+	a.browsers.factory = func(context.Context, string) (readOnlySession, error) {
+		launches++
+		return nil, errors.New("synthetic launch failure")
+	}
+	payload, err := json.Marshal(continueInput{Destination: testAshbyPosting, IncludeResume: true, ResumeID: strconv.FormatInt(resume.ID, 10), ResumeHash: resume.SHA256, TransferContacts: true, ProfileRevision: "0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "http://localhost/api/jobs/1/continue", strings.NewReader(string(payload)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	newMux(a).ServeHTTP(rec, req)
+	var out struct {
+		Items []continueItemResult `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || len(out.Items) != 1 || out.Items[0].OK || !strings.Contains(out.Items[0].Detail, "synthetic launch failure") {
+		t.Fatalf("launch failure hidden: %d %s %v", rec.Code, rec.Body.String(), err)
+	}
+	if err := a.saveCandidateProfile(CandidateProfile{FirstName: "Casey", LastName: "Fixture", Email: "casey@example.test"}); err != nil {
+		t.Fatal(err)
+	}
+	req = httptest.NewRequest(http.MethodPost, "http://localhost/api/jobs/1/continue", strings.NewReader(string(payload)))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	newMux(a).ServeHTTP(rec, req)
+	if rec.Code != http.StatusConflict || launches != 1 {
+		t.Fatalf("stale profile allowed a new launch: %d launches=%d", rec.Code, launches)
+	}
+}
+
+func TestContinuationContactsAfterResumeSelection(t *testing.T) {
+	a, _ := testWorkspace(t)
+	seedContinuationJob(t, a)
+	resume, err := a.importResume("resume.pdf", strings.NewReader("%PDF-1.4\nsynthetic"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.assignResume(1, resume.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.saveCandidateProfile(CandidateProfile{FirstName: "Casey", LastName: "Fixture", Email: "casey@example.test"}); err != nil {
+		t.Fatal(err)
+	}
+	profile, err := a.candidateProfile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake := &contactFakeBrowser{}
+	a.browsers.factory = func(context.Context, string) (readOnlySession, error) { return fake, nil }
+	if err := a.browsers.start(context.Background(), 1, testAshbyPosting); err != nil {
+		t.Fatal(err)
+	}
+	defer a.browsers.closeAll()
+	if err := a.browsers.armResume(1, t.TempDir(), "/tmp/fixture.pdf", "fixture.pdf", nil, resumeHandoffInfo{resumeID: resume.ID, resumeHash: resume.SHA256}); err != nil {
+		t.Fatal(err)
+	}
+	a.browsers.tryResume(context.Background(), 1)
+	payload, err := json.Marshal(continueInput{Destination: testAshbyPosting, ResumeID: strconv.FormatInt(resume.ID, 10), ResumeHash: resume.SHA256, TransferContacts: true, ProfileRevision: strconv.FormatInt(profile.Revision, 10)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "http://localhost/api/jobs/1/continue", strings.NewReader(string(payload)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	newMux(a).ServeHTTP(rec, req)
+	var out struct {
+		Items []continueItemResult `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || len(out.Items) != 1 || !out.Items[0].OK {
+		t.Fatalf("contact-only action failed: %s %v", rec.Body.String(), err)
+	}
+	a.browsers.tryContacts(context.Background(), 1)
+	if fake.calls != 1 || fake.contactCalls != 1 || fake.approved.Email != profile.Email {
+		t.Fatalf("unexpected replay or contact values: uploads=%d contacts=%d", fake.calls, fake.contactCalls)
+	}
 }

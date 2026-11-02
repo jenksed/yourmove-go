@@ -62,6 +62,8 @@ export interface ContinuationProfile {
   approved: boolean;
   revision: number;
   fullName: string;
+  firstName: string;
+  lastName: string;
   email: string;
   phone: string;
 }
