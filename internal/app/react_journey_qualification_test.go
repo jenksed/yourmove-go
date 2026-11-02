@@ -19,7 +19,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jenksed/yourmove-go/internal/application/browser"
 	"github.com/jenksed/yourmove-go/internal/application/browser/chromium"
+	"github.com/jenksed/yourmove-go/internal/application/browser/playwright"
 )
 
 // This uses the production Vite build and Go handlers, with only the employer
@@ -52,12 +54,25 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	base := fixture.URL + "/fixture/job"
-	employer, err := chromium.LaunchFixture(ctx, base)
-	if err != nil {
-		t.Fatal(err)
+	var fs readOnlySession
+	var err error
+	var employer *chromium.Session
+	var firefox *playwright.Session
+	if os.Getenv("YOURMOVE_QUAL_ENGINE") == "firefox" {
+		firefox, err = playwright.LaunchFixture(ctx, playwright.EngineFirefox, base)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer firefox.Close()
+		fs = &reactFirefoxFixture{Session: firefox, fixture: base, saved: testAshbyPosting}
+	} else {
+		employer, err = chromium.LaunchFixture(ctx, base)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer employer.Close()
+		fs = &contactFixtureSession{Session: employer, fixture: base, saved: testAshbyPosting}
 	}
-	defer employer.Close()
-	fs := &contactFixtureSession{Session: employer, fixture: base, saved: testAshbyPosting}
 	a.browsers.pollEvery = 100 * time.Millisecond
 	a.browsers.factory = func(context.Context, string) (readOnlySession, error) { return fs, nil }
 	defer a.browsers.closeAll()
@@ -89,6 +104,12 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 			return json.Unmarshal(reply.Result.Value, out)
 		}
 		return nil
+	}
+	employerEval := func(expression string, out any) error {
+		if firefox != nil {
+			return firefox.FixtureEvaluate(ctx, expression, out)
+		}
+		return eval(employer, base+"/application", expression, out)
 	}
 	run := func(expression string) {
 		t.Helper()
@@ -137,7 +158,7 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	run(`Array.from(document.querySelectorAll('#employer button')).find(x=>x.classList.contains('button-primary')).click()`)
 	wait(`document.body.innerText.includes('Recheck form')`)
 	// A user-supplied file in the controlled form must not be replaced.
-	if err := eval(employer, base+"/application", `(()=>{const e=document.querySelector('[name=cover]');const d=new DataTransfer();d.items.add(new File(['existing employer file'],'existing.pdf',{type:'application/pdf'}));e.files=d.files;e.dispatchEvent(new Event('change',{bubbles:true}))})()`, nil); err != nil {
+	if err := employerEval(`(()=>{const e=document.querySelector('[name=cover]');const d=new DataTransfer();d.items.add(new File(['existing employer file'],'existing.pdf',{type:'application/pdf'}));e.files=d.files;e.dispatchEvent(new Event('change',{bubbles:true}))})()`, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -152,13 +173,13 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	var existing string
-	if err := eval(employer, base+"/application", `document.querySelector('[name=cover]').files[0]?.name`, &existing); err != nil || existing != "existing.pdf" {
+	if err := employerEval(`document.querySelector('[name=cover]').files[0]?.name`, &existing); err != nil || existing != "existing.pdf" {
 		t.Fatalf("existing attachment changed: %q %v", existing, err)
 	}
 	wait(`document.querySelector('.continuation-outcomes')?.innerText.includes('Cover letter')`)
 	// The applicant explicitly clears the existing file in the employer form,
 	// then authorizes the selected saved letter again.
-	if err := eval(employer, base+"/application", `(()=>{const e=document.querySelector('[name=cover]');e.value='';e.dispatchEvent(new Event('change',{bubbles:true}))})()`, nil); err != nil {
+	if err := employerEval(`(()=>{const e=document.querySelector('[name=cover]');e.value='';e.dispatchEvent(new Event('change',{bubbles:true}))})()`, nil); err != nil {
 		t.Fatal(err)
 	}
 	wait(`Array.from(document.querySelectorAll('.continuation-item label')).find(x=>x.textContent.includes('Cover letter:'))?.querySelector('input')?.disabled===false`)
@@ -182,7 +203,7 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 		Submits       int    `json:"submits"`
 		Manual        string `json:"manual"`
 	}
-	err = eval(employer, base+"/application", `(async()=>({letterHash:Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",await document.querySelector("[name=cover]").files[0].arrayBuffer()))).map(x=>x.toString(16).padStart(2,"0")).join(""),resumeHash:Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",await document.querySelector("[name=resume]").files[0].arrayBuffer()))).map(x=>x.toString(16).padStart(2,"0")).join(""),resumeName:document.querySelector('[name=resume]').files[0]?.name||'',resumeSize:document.querySelector('[name=resume]').files[0]?.size||0,letterSize:document.querySelector('[name=cover]').files[0]?.size||0,resumeChanges,coverChanges,submits,manual:document.querySelector('[name=manual]').value}))()`, &observed)
+	err = employerEval(`(async()=>({letterHash:Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",await document.querySelector("[name=cover]").files[0].arrayBuffer()))).map(x=>x.toString(16).padStart(2,"0")).join(""),resumeHash:Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",await document.querySelector("[name=resume]").files[0].arrayBuffer()))).map(x=>x.toString(16).padStart(2,"0")).join(""),resumeName:document.querySelector('[name=resume]').files[0]?.name||'',resumeSize:document.querySelector('[name=resume]').files[0]?.size||0,letterSize:document.querySelector('[name=cover]').files[0]?.size||0,resumeChanges,coverChanges,submits,manual:document.querySelector('[name=manual]').value}))()`, &observed)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +224,7 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	click("Recheck form")
 	time.Sleep(500 * time.Millisecond)
 	var counts []int
-	if err := eval(employer, base+"/application", `[resumeChanges,coverChanges,submits]`, &counts); err != nil || fmt.Sprint(counts) != "[1 3 0]" {
+	if err := employerEval(`[resumeChanges,coverChanges,submits]`, &counts); err != nil || fmt.Sprint(counts) != "[1 3 0]" {
 		t.Fatalf("recheck changed employer form: %v %v", counts, err)
 	}
 	click("Questions")
@@ -222,14 +243,14 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	var employerValues []string
-	if err := eval(employer, base+"/application", `[document.querySelector('[name=motivation]').value,document.querySelector('[name=other]').value,document.querySelector('[name=manual]').value]`, &employerValues); err != nil || fmt.Sprint(employerValues) != fmt.Sprint([]string{answer, "", "Already entered"}) {
+	if err := employerEval(`[document.querySelector('[name=motivation]').value,document.querySelector('[name=other]').value,document.querySelector('[name=manual]').value]`, &employerValues); err != nil || fmt.Sprint(employerValues) != fmt.Sprint([]string{answer, "", "Already entered"}) {
 		t.Fatalf("answers: %q %v", employerValues, err)
 	}
 	if a.browsers.state(1).AnswerStatus != "complete" {
 		t.Fatalf("answer status: %+v", a.browsers.state(1))
 	}
 	t.Log("Observed question appeared without manual refresh; one saved answer transferred, another remained blank and the manual field was preserved.")
-	if err := eval(employer, base+"/application", `[resumeChanges,coverChanges,submits]`, &counts); err != nil || fmt.Sprint(counts) != "[1 3 0]" {
+	if err := employerEval(`[resumeChanges,coverChanges,submits]`, &counts); err != nil || fmt.Sprint(counts) != "[1 3 0]" {
 		t.Fatalf("unexpected final employer effects: %v %v", counts, err)
 	}
 	if state.ResumeStatus != "selected" || state.LetterStatus != "complete" || observed.ResumeSize != len(resumeBytes) || observed.LetterSize == 0 || observed.ResumeChanges != 1 || observed.CoverChanges != 3 || observed.Submits != 0 || observed.Manual != "Already entered" {
@@ -327,4 +348,17 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	click("Record completed application")
 	wait(`document.body.innerText.includes('Submission recorded locally.')`)
 	t.Log("Same executable restarted in the same isolated workspace; selected resume, manual letter and captured question remained in React, disconnected session disclosed; explicit local completion recorded.")
+}
+
+type reactFirefoxFixture struct {
+	*playwright.Session
+	fixture, saved string
+}
+
+func (s *reactFirefoxFixture) Observe(ctx context.Context) (browser.Observation, error) {
+	o, err := s.Session.Observe(ctx)
+	if err == nil {
+		o.URL = strings.Replace(o.URL, s.fixture, s.saved, 1)
+	}
+	return o, err
 }

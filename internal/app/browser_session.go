@@ -11,6 +11,7 @@ import (
 
 	browser "github.com/jenksed/yourmove-go/internal/application/browser"
 	"github.com/jenksed/yourmove-go/internal/application/browser/chromium"
+	"github.com/jenksed/yourmove-go/internal/application/browser/playwright"
 )
 
 // Read-only inspection does not confer transfer authority. The handoff alone
@@ -105,13 +106,13 @@ func (h *sessionHost) state(jobID int64) browserRunState {
 		state.ContactOutcomes = up.contactResult.Fields
 		switch up.contactStatus {
 		case "waiting":
-			state.ContactSummary = "Waiting for supported contact controls. Continue in Chromium if this step needs your input."
+			state.ContactSummary = "Waiting for supported contact controls. Continue in the employer browser if this step needs your input."
 		case "checking":
 			state.ContactSummary = "Filling the contact information you approved…"
 		case "complete":
 			state.ContactSummary = up.contactResult.Summary()
 		case "attention":
-			state.ContactSummary = "Contact transfer could not be fully verified. Review the remaining fields in Chromium; nothing will be replayed."
+			state.ContactSummary = "Contact transfer could not be fully verified. Review the remaining fields in the employer browser; nothing will be replayed."
 		}
 	}
 	if h.starting && !state.Active {
@@ -159,7 +160,16 @@ func (h *sessionHost) start(ctx context.Context, jobID int64, jobURL string) err
 	factory := h.factory
 	h.mu.Unlock()
 	if factory == nil {
-		factory = func(c context.Context, u string) (readOnlySession, error) { return chromium.Launch(c, u) }
+		factory = func(c context.Context, u string) (readOnlySession, error) {
+			switch os.Getenv("YOURMOVE_APPLICATION_BROWSER") {
+			case "", "chromium":
+				return chromium.Launch(c, u)
+			case "firefox":
+				return playwright.Launch(c, playwright.EngineFirefox, u)
+			default:
+				return nil, errors.New("unsupported application browser; choose chromium or firefox")
+			}
+		}
 	}
 	session, err := factory(ctx, jobURL)
 	h.mu.Lock()
@@ -172,7 +182,7 @@ func (h *sessionHost) start(ctx context.Context, jobID int64, jobURL string) err
 		if h.states == nil {
 			h.states = map[int64]browserRunState{}
 		}
-		h.states[jobID] = browserRunState{Destination: jobURL, Active: true, Phase: "watching", Message: "Chromium is opening the application's URL directly. Waiting for the resume field; continue manually if the employer requires another step."}
+		h.states[jobID] = browserRunState{Destination: jobURL, Active: true, Phase: "watching", Message: "the employer browser is opening the application's URL directly. Waiting for the resume field; continue manually if the employer requires another step."}
 	}
 	h.mu.Unlock()
 	return err
@@ -276,7 +286,7 @@ func (h *sessionHost) tryResume(ctx context.Context, jobID int64) {
 			h.resumePreflightFailure(jobID, up)
 			return
 		}
-		h.resumeResult(jobID, up, "attention", "Unable to confirm whether the employer received the resume. Inspect the attachment in Chromium; do not resend automatically. ("+err.Error()+")")
+		h.resumeResult(jobID, up, "attention", "Unable to confirm whether the employer received the resume. Inspect the attachment in the employer browser; do not resend automatically. ("+err.Error()+")")
 		return
 	}
 	if result.Selected {
@@ -365,7 +375,7 @@ func (h *sessionHost) reportLaunchFailure(jobID int64, err error) {
 	if h.states == nil {
 		h.states = make(map[int64]browserRunState)
 	}
-	h.states[jobID] = browserRunState{Phase: "interrupted", Message: "Could not reopen the employer browser: " + err.Error() + ". Check Chromium and try Reopen application."}
+	h.states[jobID] = browserRunState{Phase: "interrupted", Message: "Could not reopen the employer browser: " + err.Error() + ". Check the employer browser and try Reopen application."}
 }
 
 func (h *sessionHost) has(jobID int64) bool { return h.state(jobID).Active }
@@ -411,7 +421,7 @@ func (h *sessionHost) watch(jobID int64, jobURL string, save func(browser.Observ
 				return
 			}
 			if err != nil {
-				if errors.Is(err, chromium.ErrNoPageTargets) {
+				if errors.Is(err, browser.ErrNoPageTargets) {
 					missingPages++
 					if missingPages >= 2 {
 						h.interrupt(jobID, "The application tab was closed. Reopen the application to continue. Any unsaved employer form values and attachment state may have been lost; no file will be uploaded automatically.")
@@ -420,16 +430,16 @@ func (h *sessionHost) watch(jobID int64, jobURL string, save func(browser.Observ
 				} else {
 					missingPages = 0
 				}
-				if errors.Is(err, chromium.ErrBrowserUnavailable) {
+				if errors.Is(err, browser.ErrBrowserUnavailable) {
 					unavailable++
 					if unavailable >= 2 {
-						h.interrupt(jobID, "Chromium was closed or disconnected. Reopen the application to continue. Unsaved employer changes may have been lost; YourMove will not replay the resume upload.")
+						h.interrupt(jobID, "the employer browser was closed or disconnected. Reopen the application to continue. Unsaved employer changes may have been lost; YourMove will not replay the resume upload.")
 						return
 					}
 				} else {
 					unavailable = 0
 				}
-				if errors.Is(err, chromium.ErrNoMatchingTab) {
+				if errors.Is(err, browser.ErrNoMatchingTab) {
 					h.setState(jobID, "attention", "This browser is on another page (possibly sign-in). Return to this employer application, or use Reopen application to start over. No document was resent.", 0, false)
 				} else {
 					h.setState(jobID, "attention", "This page cannot be inspected right now. Return to the employer application, or use Reopen application to restart from its posting.", 0, false)
@@ -446,7 +456,7 @@ func (h *sessionHost) watch(jobID int64, jobURL string, save func(browser.Observ
 					pending = ""
 					pendingCount = 0
 				} else if len(observation.Controls) == 0 && observation.Forms == 0 && len(observation.Actions) == 0 && len(observation.Frames) == 0 {
-					h.setState(jobID, "watching", "Waiting for the application form to finish loading. If this job requires another step, continue in Chromium.", 0, false)
+					h.setState(jobID, "watching", "Waiting for the application form to finish loading. If this job requires another step, continue in the employer browser.", 0, false)
 					pending = ""
 					pendingCount = 0
 				} else {

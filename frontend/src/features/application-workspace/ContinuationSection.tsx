@@ -20,7 +20,7 @@ function outcomeText(status: string): string {
     case "correct":
       return "Already present; left unchanged";
     case "uncertain":
-      return "Uncertain; inspect this field in Chromium before continuing";
+      return "Uncertain; inspect this field in the employer browser before continuing";
     case "complete":
       return "Complete";
     case "waiting":
@@ -30,7 +30,7 @@ function outcomeText(status: string): string {
     case "attention":
       return "Requires manual work";
     case "review":
-      return "Review in Chromium";
+      return "Review in the employer browser";
     case "selected":
       return "Selected in browser";
     default:
@@ -233,7 +233,7 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
       {snapshot.otherBrowser && (
         <p className="writing-notice" role="note">
           Another application browser is open for {snapshot.otherBrowser.title}. Return to that application to
-          preserve its browser work, or close its Chromium window before opening this job.
+          preserve its browser work, or close its employer browser window before opening this job.
         </p>
       )}
       {snapshot.savedBrowser && !browser.active && (
@@ -412,7 +412,7 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
 
       {activeTransfer && (
         <div className="continuation-outcomes" aria-label="Transfer outcomes">
-          <h3>{browser.active ? "Observed in Chromium" : "Last observed browser results"}</h3>
+          <h3>{browser.active ? "Observed in the employer browser" : "Last observed browser results"}</h3>
           {browser.resume_status !== "" && (
             <p>
               <strong>Résumé · {outcomeText(browser.resume_status)}</strong>

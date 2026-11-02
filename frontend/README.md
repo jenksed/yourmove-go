@@ -24,3 +24,11 @@ Verify installed React versions match:
 ```sh
 pnpm list react react-dom
 ```
+
+For development qualification of the Firefox employer browser, install the pinned
+bridge dependencies with `sh scripts/setup-playwright-bridge.sh` from the
+repository root and install the matching Playwright Firefox runtime separately.
+Start YourMove with `YOURMOVE_APPLICATION_BROWSER=firefox`; unset it (or use
+`chromium`) for the existing Chromium driver. This temporary process setting
+applies to new sessions and is not a persistent in-app preference. No runtime is
+downloaded when YourMove starts.
