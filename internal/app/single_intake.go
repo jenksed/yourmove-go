@@ -46,6 +46,11 @@ func (a *App) savePostingURL(ctx context.Context, rawURL, rawTitle string) (id i
 		SourceStatus: status, SourceNote: note,
 		SourceCheckedAt: time.Now().UTC().Format(time.RFC3339),
 	}
-	id, _, err = a.storeJobIfNew(job)
+	if status != "retrieved" {
+		id, _, err = a.storeJobIfNew(job)
+		return id, false, err
+	}
+	checkedAt := time.Now().UTC().Format(time.RFC3339Nano)
+	id, _, err = a.storeJobIfNewWithPostingSource(job, metadata.Source, checkedAt, metadata.Description != "", metadata.SalaryText != "")
 	return id, false, err
 }
