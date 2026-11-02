@@ -65,6 +65,11 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	base := fixture.URL + "/fixture/job"
+	var previews atomic.Int32
+	a.previewApplication = func(c context.Context, raw string) (schema.Result, error) {
+		previews.Add(1)
+		return chromium.PreviewFixture(c, raw, base)
+	}
 	var err error
 	var employer *chromium.Session
 	var firefox *playwright.Session
@@ -148,6 +153,7 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 		run(fmt.Sprintf(`Array.from(document.querySelectorAll('button')).find(x=>x.textContent.trim()===%q && x.offsetParent!==null).click()`, label))
 	}
 	wait(`document.body.innerText.includes('Synthetic React journey')`)
+	discoveryStarted := time.Now()
 	click("Documents")
 	wait(`!!document.querySelector('input[name=workspace-resume]:not(:checked)')`)
 	run(`Array.from(document.querySelectorAll('input[name=workspace-resume]')).find(x=>!x.checked).click()`)
@@ -163,6 +169,16 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	wait(`document.querySelector('#letter-draft')?.options.length===3`)
 	run(`(()=>{const e=document.querySelector('#letter-draft');e.value='1';e.dispatchEvent(new Event('change',{bubbles:true}))})()`)
 	wait(`document.querySelector('#letter-body')?.value.includes('synthetic support role')`)
+	click("Questions")
+	wait(`Array.from(document.querySelectorAll('.writing-question')).some(x=>x.textContent.includes('Why this team?'))`)
+	t.Logf("Early Ashby question appeared without an applicant browser after %s", time.Since(discoveryStarted).Round(time.Millisecond))
+	if launches.Load() != 0 || previews.Load() != 1 {
+		t.Fatalf("unexpected browser launches: managed=%d preview=%d", launches.Load(), previews.Load())
+	}
+	run(`Array.from(document.querySelectorAll('.writing-question')).find(x=>x.textContent.includes('Why this team?')).click()`)
+	run(`(()=>{const e=document.querySelector('#writing-answer');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,'Prepared before opening');e.dispatchEvent(new Event('input',{bubbles:true}))})()`)
+	click("Save answer locally")
+	wait(`document.body.innerText.includes('Saved locally. It has not been filled')`)
 
 	click("Apply")
 	wait(`document.body.innerText.includes('journey-resume.pdf')&&document.body.innerText.includes('Cover letter:')`)
@@ -193,6 +209,27 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	wait(`Array.from(document.querySelectorAll('#employer button')).some(x=>x.textContent.trim()==='Return to Application' && !x.disabled) && !document.querySelector('#employer .job-form-error')`)
 	click("Questions")
 	wait(`Array.from(document.querySelectorAll('.writing-question')).some(x=>x.textContent.includes('Why this team?'))`)
+	jobForMatch, _ := a.jobByID(1)
+	var matched bool
+	for deadline := time.Now().Add(8 * time.Second); time.Now().Before(deadline); {
+		prepared, prepErr := a.prepareEarlyQuestions(jobForMatch, nil)
+		if prepErr != nil {
+			t.Fatal(prepErr)
+		}
+		for _, q := range prepared.Questions {
+			if q.Field.Label == "Why this team?" && q.Value == "Prepared before opening" && q.Reconciliation.CanAccept {
+				matched = true
+			}
+		}
+		if matched {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !matched {
+		t.Fatal("early answer was not preserved and matched to the live control")
+	}
+	t.Log("Early answer remained saved and matched the live control without transferring it")
 	run(`Array.from(document.querySelectorAll('.writing-question')).find(x=>x.textContent.includes('Why this team?')).click()`)
 	run(`(()=>{const e=document.querySelector('#writing-answer');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,'Unsaved synthetic draft');e.dispatchEvent(new Event('input',{bubbles:true}))})()`)
 	wait(`document.querySelector('#writing-answer')?.value==='Unsaved synthetic draft'`)

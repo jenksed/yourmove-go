@@ -223,6 +223,12 @@ export async function fetchQuestions(jobId: number): Promise<QuestionsSnapshot> 
   return (await response.json()) as QuestionsSnapshot;
 }
 
+export async function discoverQuestions(jobId: number): Promise<string> {
+  const response = await fetch(`/api/jobs/${jobId}/questions/discover`, { method: "POST", headers: { Accept: "application/json" } });
+  if (!response.ok) throw new Error(await readError(response));
+  return ((await response.json()) as { status: string }).status;
+}
+
 export interface SaveAnswerInput {
   question_key: string;
   revision: number;

@@ -16,6 +16,7 @@ import { CoverLetterSection } from "./CoverLetterSection";
 import { ContinuationSection } from "./ContinuationSection";
 import { SubmissionSection } from "./SubmissionSection";
 import { WritingSection } from "./WritingSection";
+import { discoverQuestions } from "./writingApi";
 
 function suggestionText(status: string): string {
   switch (status) {
@@ -58,7 +59,16 @@ export function WorkspacePage(): React.JSX.Element {
   const [refreshError, setRefreshError] = useState<string>("");
   const initialHashHandled = useRef(false);
   const [materialRevision, setMaterialRevision] = useState<number>(0);
+  const [discoveryStatus, setDiscoveryStatus] = useState<string>("");
+  const discoveryStarted = useRef(false);
   const materialSaved = useCallback(() => setMaterialRevision((value) => value + 1), []);
+
+  useEffect(() => {
+    if (jobId === null || !snapshot || discoveryStarted.current || (activity !== "documents" && activity !== "questions")) return;
+    discoveryStarted.current = true;
+    setDiscoveryStatus("checking");
+    void discoverQuestions(jobId).then(setDiscoveryStatus).catch(() => setDiscoveryStatus("failed"));
+  }, [activity, jobId, snapshot]);
 
   const detailsDirty = snapshot !== null && (
     title !== snapshot.job.title || company !== snapshot.job.company ||
@@ -546,7 +556,7 @@ export function WorkspacePage(): React.JSX.Element {
 
               <div hidden={activity !== "questions"}>
                 <p>Open the employer application from Apply to discover its questions. Answer any you choose; the rest can be completed on the employer site.</p>
-                {snapshot.job.id > 0 && <WritingSection jobId={snapshot.job.id} destination={snapshot.job.url} onMaterialSaved={materialSaved} readOnly={applied} active={activity === "questions"} />}
+                {snapshot.job.id > 0 && <WritingSection jobId={snapshot.job.id} destination={snapshot.job.url} onMaterialSaved={materialSaved} readOnly={applied} active={activity === "questions"} discoveryStatus={discoveryStatus} />}
                 <button className="button button-primary workspace-next-button" type="button" onClick={() => setActivity("apply")}>Continue to application</button>
               </div>
 

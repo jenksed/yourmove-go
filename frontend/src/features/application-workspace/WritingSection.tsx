@@ -76,12 +76,14 @@ export function WritingSection({
   onMaterialSaved,
   readOnly,
   active,
+  discoveryStatus,
 }: {
   jobId: number;
   destination: string;
   onMaterialSaved: () => void;
   readOnly: boolean;
   active: boolean;
+  discoveryStatus: string;
 }): React.JSX.Element {
   const [snapshot, setSnapshot] = useState<QuestionsSnapshot | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -163,7 +165,7 @@ export function WritingSection({
     window.addEventListener("focus", refreshObserved);
     const timer = window.setInterval(() => void refreshObserved(), snapshot?.browserActive ? 1000 : 4000);
     return () => { cancelled = true; window.removeEventListener("focus", refreshObserved); window.clearInterval(timer); };
-  }, [active, jobId, snapshot?.browserActive]);
+  }, [active, jobId, snapshot?.browserActive, discoveryStatus]);
 
   const allQuestions = useMemo(() => {
     if (!snapshot) return [];
@@ -373,7 +375,7 @@ export function WritingSection({
             {snapshot.available
               ? snapshot.activeContext === "live"
                 ? `${snapshot.source}. Your text saves locally in YourMove; nothing is filled on the employer site from here.`
-                : `${snapshot.source}. These definitions are published by the employer but not yet verified on the live form; save locally and reconcile later.` + " Nothing is filled on the employer site from here."
+                : `${snapshot.source}. These questions have not yet been verified on your live form. Your answers stay in YourMove and need to be matched before filling.`
               : allQuestions.length > 0
                 ? "These questions came from a previous inspection. Review the current employer form before transferring any answers."
                 : "Questions have not been discovered for this posting yet. Saved writing below is preserved."}
@@ -387,6 +389,10 @@ export function WritingSection({
       </div>
 
       {dirty && <p className="small-muted">Save your answer before refreshing the question list.</p>}
+
+      {discoveryStatus === "checking" && <p role="status">Checking for application questions…</p>}
+      {discoveryStatus === "unsupported" && <p className="writing-notice">This employer does not offer an early question preview. You can continue to Apply; additional questions may appear on the employer form.</p>}
+      {discoveryStatus === "failed" && <p className="writing-notice">We could not check questions right now. Your saved work is safe, and you can continue to Apply.</p>}
 
       {snapshot.partial && (
         <p className="writing-notice" role="note">
@@ -409,7 +415,7 @@ export function WritingSection({
         <div className="empty-state">
           <h3>No questions discovered yet</h3>
           <p>
-            Open the application from Apply. Questions appear here as YourMove discovers them.
+            {discoveryStatus === "checking" ? "Checking this posting for questions." : "No early questions are available. You can continue to Apply and answer questions on the employer form."}
           </p>
         </div>
       )}
