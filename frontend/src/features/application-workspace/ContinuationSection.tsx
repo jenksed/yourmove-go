@@ -38,7 +38,7 @@ function outcomeText(status: string): string {
   }
 }
 
-export function ContinuationSection({ jobId }: { jobId: number }): React.JSX.Element {
+export function ContinuationSection({ jobId, materialRevision }: { jobId: number; materialRevision: number }): React.JSX.Element {
   const [snapshot, setSnapshot] = useState<ContinuationSnapshot | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string>("");
@@ -51,22 +51,31 @@ export function ContinuationSection({ jobId }: { jobId: number }): React.JSX.Ele
   const [actionError, setActionError] = useState<string>("");
   const [actionNotice, setActionNotice] = useState<string>("");
   const pollRef = useRef<number | null>(null);
+  const requestRef = useRef<number>(0);
 
   const reload = useCallback(async () => {
+    const request = ++requestRef.current;
     try {
       const next = await fetchContinuation(jobId);
+      if (request !== requestRef.current) return;
       setSnapshot(next);
       setLoadError("");
     } catch (error) {
+      if (request !== requestRef.current) return;
       setLoadError(error instanceof Error ? error.message : "Unable to load employer continuation");
     } finally {
-      setLoading(false);
+      if (request === requestRef.current) setLoading(false);
     }
   }, [jobId]);
 
   useEffect(() => {
+    setWantResume(false);
+    setWantLetter(false);
+    setWantAnswers(false);
+    setSnapshot(null);
+    setLoading(true);
     void reload();
-  }, [reload]);
+  }, [reload, materialRevision]);
 
   const needsPoll = snapshot !== null && (
     snapshot.browser.active ||

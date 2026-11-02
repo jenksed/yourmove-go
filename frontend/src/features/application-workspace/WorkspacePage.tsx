@@ -55,6 +55,8 @@ export function WorkspacePage(): React.JSX.Element {
   const [resumeNotice, setResumeNotice] = useState<string>("");
   const [refreshBusy, setRefreshBusy] = useState<boolean>(false);
   const [refreshError, setRefreshError] = useState<string>("");
+  const [materialRevision, setMaterialRevision] = useState<number>(0);
+  const materialSaved = useCallback(() => setMaterialRevision((value) => value + 1), []);
 
   const detailsDirty = snapshot !== null && (
     title !== snapshot.job.title || company !== snapshot.job.company ||
@@ -139,6 +141,7 @@ export function WorkspacePage(): React.JSX.Element {
       try {
         await assignWorkspaceResume(jobId, resumeId);
         await reload();
+        materialSaved();
         setResumeNotice(
           resumeId === 0 ? "Selection cleared." : "Selection saved for this opportunity.",
         );
@@ -152,7 +155,7 @@ export function WorkspacePage(): React.JSX.Element {
         setResumeBusy(false);
       }
     },
-    [jobId, reload, detailsDirty],
+    [jobId, reload, detailsDirty, materialSaved],
   );
 
   const handleRefresh = useCallback(async () => {
@@ -174,6 +177,15 @@ export function WorkspacePage(): React.JSX.Element {
   }, [jobId, reload, detailsDirty]);
 
   const applied = snapshot !== null && (snapshot.job.submissionCount > 0 || snapshot.job.stage === "applied");
+  const completionRecorded = useCallback(() => {
+    if (jobId !== null) {
+      void fetchWorkspace(jobId).then((next) => {
+        setSnapshot(next);
+        setStage(next.job.stage);
+      }).catch(() => setDetailsError("Completion was recorded, but the opportunity summary could not be refreshed. Reopen the workspace to see its current state."));
+    }
+    materialSaved();
+  }, [jobId, materialSaved]);
 
   return (
     <div className="app-shell">
@@ -232,8 +244,8 @@ export function WorkspacePage(): React.JSX.Element {
 
               <section className="panel workspace-next" aria-labelledby="next-action-title">
                 <p className="eyebrow">NEXT USEFUL ACTION</p>
-                <h2 id="next-action-title">{snapshot.preparation.title}</h2>
-                <p>{snapshot.preparation.detail}</p>
+                <h2 id="next-action-title">{applied ? "Application recorded" : snapshot.preparation.title}</h2>
+                <p>{applied ? "Review your submission history below." : snapshot.preparation.detail}</p>
               </section>
 
               <section className="panel" aria-labelledby="opportunity-title">
@@ -581,10 +593,12 @@ export function WorkspacePage(): React.JSX.Element {
 
               {snapshot.job.id > 0 && (
                 <>
-                  <WritingSection jobId={snapshot.job.id} destination={snapshot.job.url} legacyHref={snapshot.legacyHref} />
+                  <WritingSection jobId={snapshot.job.id} destination={snapshot.job.url} legacyHref={snapshot.legacyHref} onMaterialSaved={materialSaved} readOnly={applied} />
                   <CoverLetterSection
                     jobId={snapshot.job.id}
                     selectedResumeId={snapshot.selectedResumeId}
+                    onMaterialSaved={materialSaved}
+                    readOnly={applied}
                     resumeOptions={snapshot.resumeOptions.map((option) => ({
                       id: option.id,
                       name: option.name,
@@ -593,8 +607,8 @@ export function WorkspacePage(): React.JSX.Element {
                       archived: option.archived,
                     }))}
                   />
-                  <ContinuationSection jobId={snapshot.job.id} />
-                  <SubmissionSection jobId={snapshot.job.id} />
+                  <ContinuationSection jobId={snapshot.job.id} materialRevision={materialRevision} />
+                  <SubmissionSection jobId={snapshot.job.id} onRecorded={completionRecorded} />
                 </>
               )}
 

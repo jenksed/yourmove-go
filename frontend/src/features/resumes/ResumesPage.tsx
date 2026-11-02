@@ -54,6 +54,8 @@ export function ResumesPage(): React.JSX.Element {
   const [jobTitle, setJobTitle] = useState<string>("");
   const [jobSelected, setJobSelected] = useState<number>(0);
   const [jobError, setJobError] = useState<string>("");
+  const [loadedJobId, setLoadedJobId] = useState<number | null>(null);
+  const [jobLoading, setJobLoading] = useState<boolean>(false);
 
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
   const [deletePhrase, setDeletePhrase] = useState<string>("");
@@ -135,25 +137,32 @@ export function ResumesPage(): React.JSX.Element {
 
   const handleLoadJob = useCallback(async () => {
     setJobError("");
+    setLoadedJobId(null);
+    setJobOptions([]);
+    setJobTitle("");
     const jobId = Number.parseInt(jobIdText, 10);
-    if (!Number.isInteger(jobId) || jobId <= 0) {
+    if (!/^\d+$/.test(jobIdText.trim()) || !Number.isSafeInteger(jobId) || jobId <= 0) {
       setJobError("Enter a numeric job ID from your opportunities list.");
       return;
     }
+    setJobLoading(true);
     try {
       const result = await fetchResumeOptions(jobId);
       setJobOptions(result.options);
       setJobTitle(result.job.title !== "" ? result.job.title : `Job ${result.job.id}`);
       setJobSelected(result.selectedResumeId);
+      setLoadedJobId(jobId);
     } catch (error) {
       setJobError(error instanceof Error ? error.message : "Unable to load job options");
+    } finally {
+      setJobLoading(false);
     }
   }, [jobIdText]);
 
   const handleAssign = useCallback(
     (resumeId: number) => {
-      const jobId = Number.parseInt(jobIdText, 10);
-      if (!Number.isInteger(jobId) || jobId <= 0) return;
+      const jobId = loadedJobId;
+      if (jobId === null) return;
       void runMutation("Assignment", async () => {
         await assignJobResume(jobId, resumeId);
         const result = await fetchResumeOptions(jobId);
@@ -161,7 +170,7 @@ export function ResumesPage(): React.JSX.Element {
         setJobSelected(result.selectedResumeId);
       }, "Selection saved for that job.");
     },
-    [jobIdText, runMutation],
+    [loadedJobId, runMutation],
   );
 
   const handleDelete = useCallback(
@@ -267,12 +276,13 @@ export function ResumesPage(): React.JSX.Element {
                 <div className="section-heading">
                   <div>
                     <h2 id="assign-title">Assign to a job</h2>
-                    <p className="section-subtitle">
-                      Loads the same selectable documents as the Prepare activity. Masters are never offered; archived
-                      versions appear only when already selected.
-                    </p>
+                    <p className="section-subtitle">Open an opportunity to choose its résumé in context.</p>
+                    <a href="/jobs">Go to opportunities →</a>
                   </div>
                 </div>
+                <details className="document-manage job-assignment">
+                  <summary>Assign using a job ID</summary>
+                  <p className="section-subtitle">Master résumés cannot be assigned. An archived version is shown only if already selected.</p>
                 <form
                   className="job-form"
                   onSubmit={(event) => {
@@ -288,12 +298,18 @@ export function ResumesPage(): React.JSX.Element {
                       autoComplete="off"
                       placeholder="e.g. 12"
                       value={jobIdText}
-                      onChange={(event) => setJobIdText(event.target.value)}
+                      disabled={jobLoading || busy}
+                      onChange={(event) => {
+                        setJobIdText(event.target.value);
+                        setLoadedJobId(null);
+                        setJobOptions([]);
+                        setJobError("");
+                      }}
                     />
                   </div>
                   <div className="form-actions">
-                    <button className="button button-secondary" type="submit">
-                      Load selectable documents
+                    <button className="button button-secondary" type="submit" disabled={jobLoading || busy}>
+                      {jobLoading ? "Loading…" : "Load selectable documents"}
                     </button>
                   </div>
                 </form>
@@ -302,9 +318,10 @@ export function ResumesPage(): React.JSX.Element {
                     {jobError}
                   </p>
                 )}
-                {jobOptions.length > 0 && (
+                {loadedJobId !== null && (
                   <ul className="resume-options">
                     <li className="resume-option-head">{jobTitle}</li>
+                    {jobOptions.length === 0 && <li>No selectable résumés for this opportunity.</li>}
                     <li>
                       <label className="confirm-row">
                         <input
@@ -336,6 +353,7 @@ export function ResumesPage(): React.JSX.Element {
                     ))}
                   </ul>
                 )}
+                </details>
               </section>
 
               <section className="panel list-panel" aria-labelledby="resumes-list-title">

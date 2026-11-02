@@ -13,7 +13,7 @@ import {
   type SubmissionsSnapshot,
 } from "./continuationApi";
 
-export function SubmissionSection({ jobId }: { jobId: number }): React.JSX.Element {
+export function SubmissionSection({ jobId, onRecorded }: { jobId: number; onRecorded: () => void }): React.JSX.Element {
   const [history, setHistory] = useState<SubmissionsSnapshot | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string>("");
@@ -64,6 +64,7 @@ export function SubmissionSection({ jobId }: { jobId: number }): React.JSX.Eleme
     setSubmitError("");
     try {
       await recordSubmission(jobId, notes, review.token);
+      onRecorded();
       setSubmitNotice("Recorded. Employer receipt is not independently verified.");
       setReview(null);
       setNotes("");
@@ -78,7 +79,7 @@ export function SubmissionSection({ jobId }: { jobId: number }): React.JSX.Eleme
     } finally {
       setSubmitBusy(false);
     }
-  }, [review, jobId, notes, reload]);
+  }, [review, jobId, notes, reload, onRecorded]);
 
   const next = useCallback(async () => {
     setNextBusy(true);

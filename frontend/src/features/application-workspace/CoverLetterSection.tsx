@@ -24,10 +24,14 @@ export function CoverLetterSection({
   jobId,
   resumeOptions,
   selectedResumeId,
+  onMaterialSaved,
+  readOnly,
 }: {
   jobId: number;
   resumeOptions: LetterResumeOption[];
   selectedResumeId: number;
+  onMaterialSaved: () => void;
+  readOnly: boolean;
 }): React.JSX.Element {
   const [snapshot, setSnapshot] = useState<LettersSnapshot | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -98,7 +102,10 @@ export function CoverLetterSection({
   const openDraft = useCallback(
     async (id: number) => {
       if (id === selectedId) return;
-      if (dirty && !window.confirm("You have unsaved letter edits. Discard them and open another draft?")) return;
+      if (dirty) {
+        setSaveError("Save or discard your edits before opening another draft.");
+        return;
+      }
       setSaveError("");
       setSaveNotice("");
       try {
@@ -126,13 +133,14 @@ export function CoverLetterSection({
       await saveLetterDraft(jobId, selectedId, draft);
       setDirty(false);
       setSaveNotice("Draft saved exactly as edited.");
+      onMaterialSaved();
       await reload(selectedId);
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : "Unable to save the draft");
     } finally {
       setSaving(false);
     }
-  }, [selectedId, jobId, draft, reload]);
+  }, [selectedId, jobId, draft, reload, onMaterialSaved]);
 
   const handleGenerate = useCallback(async () => {
     setGenError("");
@@ -148,6 +156,7 @@ export function CoverLetterSection({
         confirm_local: confirmLocal ? "yes" : "",
       });
       setGenNotice("New draft generated. Your other drafts are unchanged.");
+      onMaterialSaved();
       setConfirmExternal(false);
       setConfirmLocal(false);
       await reload(result.draftId);
@@ -160,7 +169,7 @@ export function CoverLetterSection({
     } finally {
       setGenBusy(false);
     }
-  }, [jobId, genProvider, genModel, genResumeId, genEvidence, confirmExternal, confirmLocal, reload]);
+  }, [jobId, genProvider, genModel, genResumeId, genEvidence, confirmExternal, confirmLocal, reload, onMaterialSaved]);
 
   if (loading) return <p role="status">Loading cover letters…</p>;
   if (loadError !== "") {
@@ -252,19 +261,20 @@ export function CoverLetterSection({
             </p>
           )}
           <div className="form-actions">
+            {dirty && <button className="button button-secondary" type="button" onClick={() => { setDraft(snapshot.current?.body ?? ""); setDirty(false); setSaveError(""); }}>Discard edits</button>}
             <button
               className="button button-primary"
               type="button"
-              disabled={saving || !dirty || !snapshot.editingAllowed}
+              disabled={saving || !dirty || (!snapshot.editingAllowed || readOnly)}
               onClick={() => void handleSave()}
             >
               {saving ? "Saving…" : "Save draft edits"}
             </button>
           </div>
-          {!snapshot.editingAllowed && (
+          {(!snapshot.editingAllowed || readOnly) && (
             <p className="small-muted">This application is no longer active. Drafts are read-only.</p>
           )}
-          {dirty && <p className="small-muted">Unsaved edits — reopening a draft will ask before discarding them.</p>}
+          {dirty && <p className="small-muted">Save or discard your edits before opening another draft.</p>}
         </div>
       )}
 
@@ -275,7 +285,7 @@ export function CoverLetterSection({
         </div>
       )}
 
-      {snapshot.editingAllowed && (
+      {snapshot.editingAllowed && !readOnly && (
         <details className="panel detail-editor" open={snapshot.drafts.length === 0}>
           <summary>
             <span>

@@ -52,6 +52,7 @@ export function OpportunitiesPage(): React.JSX.Element {
   const [query, setQuery] = useState<string>("");
   const [stage, setStage] = useState<StageFilter>("active");
   const [sort, setSort] = useState<SortKey>("priority");
+  const [createOpen, setCreateOpen] = useState<boolean | null>(null);
 
   const [singleUrl, setSingleUrl] = useState<string>("");
   const [singleTitle, setSingleTitle] = useState<string>("");
@@ -78,6 +79,7 @@ export function OpportunitiesPage(): React.JSX.Element {
     try {
       const next = await fetchOpportunities();
       setData(next);
+      setCreateOpen((previous) => previous ?? (next.total === 0 || window.location.hash === "#add-opportunity"));
       setSelected((previous) => {
         const valid = new Set<number>();
         for (const job of next.jobs) {
@@ -237,7 +239,7 @@ export function OpportunitiesPage(): React.JSX.Element {
               <a className="button button-secondary" href="/resumes">
                 Document library
               </a>
-              <a className="button button-primary" href="#add-opportunity">
+              <a className="button button-primary" href="#add-opportunity" onClick={() => setCreateOpen(true)}>
                 + Add opportunity
               </a>
             </div>
@@ -332,7 +334,7 @@ export function OpportunitiesPage(): React.JSX.Element {
                     <>
                       <p className="eyebrow">YOUR NEXT STEP</p>
                       <h2>Start with a job you want.</h2>
-                      <a className="button button-primary" href="#add-opportunity">
+                      <a className="button button-primary" href="#add-opportunity" onClick={() => setCreateOpen(true)}>
                         Save an opportunity →
                       </a>
                     </>
@@ -340,7 +342,12 @@ export function OpportunitiesPage(): React.JSX.Element {
                 </div>
               </section>
 
-              <details className="panel create-panel" id="add-opportunity" open>
+              <details
+                className="panel create-panel"
+                id="add-opportunity"
+                open={createOpen ?? false}
+                onToggle={(event) => setCreateOpen(event.currentTarget.open)}
+              >
                 <summary>
                   <span className="summary-icon">+</span>
                   <span>
@@ -588,7 +595,7 @@ export function OpportunitiesPage(): React.JSX.Element {
                           type="button"
                           onClick={() => {
                             setQuery("");
-                            setStage("active");
+                            setStage("all");
                             setSort("priority");
                           }}
                         >

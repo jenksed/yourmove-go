@@ -178,6 +178,14 @@ export function StudioPage(): React.JSX.Element {
   const activeRole = rolesData?.roles.find((role) => role.key === roleKey) ?? null;
   const activeProvider = providers.find((provider) => provider.id === providerId);
   const maxEvidence = rolesData?.max_evidences ?? 4;
+  const recordDirty = record !== null && JSON.stringify(fields) !== JSON.stringify(contentFromRecord(record));
+
+  useEffect(() => {
+    if (!recordDirty) return;
+    const guard = (event: BeforeUnloadEvent) => { event.preventDefault(); };
+    window.addEventListener("beforeunload", guard);
+    return () => window.removeEventListener("beforeunload", guard);
+  }, [recordDirty]);
 
   const setField = useCallback((key: keyof StudioEvidenceContent, value: string) => {
     setFields((current) => ({ ...current, [key]: value }));
@@ -245,14 +253,8 @@ export function StudioPage(): React.JSX.Element {
           );
         } catch (error) {
           if (error instanceof CareerApiError && error.code === "changed") {
-            try {
-              await openRecord(id);
-              await refreshAll();
-              setNotice("This record changed elsewhere. Reloaded the current revision; review it before saving.");
-              return;
-            } catch {
-              // Fall through to the original error.
-            }
+            setActionError("This record changed elsewhere. Your edits are still here; copy them before reopening the latest revision.");
+            return;
           }
           fail(kind === "review" ? "Review" : "Save", error);
         } finally {
@@ -260,7 +262,7 @@ export function StudioPage(): React.JSX.Element {
         }
       })();
     },
-    [confirmReview, fail, fields, openRecord, record, refreshAll],
+    [confirmReview, fail, fields, record, refreshAll],
   );
 
   const handleReopen = useCallback(() => {
@@ -538,11 +540,12 @@ export function StudioPage(): React.JSX.Element {
                     </select>
                   </div>
                   <div className="form-actions">
-                    <button className="button button-primary" type="button" onClick={handleCreate} disabled={busy}>
+                    <button className="button button-primary" type="button" onClick={handleCreate} disabled={busy || recordDirty}>
                       New draft
                     </button>
                   </div>
                 </div>
+                {recordDirty && <p className="section-subtitle">Save or discard your current edits before opening another record or creating a draft.</p>}
                 {visibleEvidence.length === 0 ? (
                   <p className="section-subtitle">No records here yet.</p>
                 ) : (
@@ -560,7 +563,7 @@ export function StudioPage(): React.JSX.Element {
                           className="button button-secondary"
                           type="button"
                           onClick={() => void openRecord(entry.id).catch((error: unknown) => fail("Open", error))}
-                          disabled={busy || record?.id === entry.id}
+                          disabled={busy || recordDirty || record?.id === entry.id}
                         >
                           {record?.id === entry.id ? "Current" : "Open"}
                         </button>
@@ -578,7 +581,7 @@ export function StudioPage(): React.JSX.Element {
                       revision {record.revision}
                     </h2>
                     <p className="section-subtitle">
-                      Saved locally on every action. Saving changes to a reviewed record returns it to draft.
+                      Save your edits locally. Saving changes to a reviewed record returns it to draft.
                     </p>
                   </div>
                   <div className="career-start-grid">
@@ -821,6 +824,11 @@ export function StudioPage(): React.JSX.Element {
                       </label>
                     </div>
                     <div className="form-actions studio-actions">
+                      {recordDirty && (
+                        <button className="button button-secondary" type="button" disabled={busy} onClick={() => setFields(contentFromRecord(record))}>
+                          Discard unsaved edits
+                        </button>
+                      )}
                       <button
                         className="button button-primary"
                         type="button"
@@ -842,7 +850,7 @@ export function StudioPage(): React.JSX.Element {
                           className="button button-secondary"
                           type="button"
                           onClick={handleReopen}
-                          disabled={busy || !confirmReopen}
+                          disabled={busy || recordDirty || !confirmReopen}
                         >
                           Reopen as draft
                         </button>
@@ -851,7 +859,7 @@ export function StudioPage(): React.JSX.Element {
                         className="button button-secondary"
                         type="button"
                         onClick={handleDelete}
-                        disabled={busy || !confirmDelete}
+                        disabled={busy || recordDirty || !confirmDelete}
                       >
                         Delete
                       </button>

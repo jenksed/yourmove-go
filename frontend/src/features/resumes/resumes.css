@@ -24,6 +24,12 @@
 
 .resume-options { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 8px; }
 .resume-option-head { font-weight: 750; font-size: 13px; }
+.job-assignment { margin: 0 24px 24px; max-width: 640px; }
+.job-assignment > summary { padding: 8px 0; }
+.job-assignment > summary::before { content: "+"; font-size: 16px; }
+.job-assignment[open] > summary::before { content: "−"; }
+.job-assignment > .section-subtitle { margin: 4px 0 12px; }
+.job-assignment .job-form { padding: 0; }
 
 @media (max-width: 480px) {
   .resume-row { flex-wrap: wrap; }

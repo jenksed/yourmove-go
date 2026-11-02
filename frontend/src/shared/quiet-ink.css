@@ -216,6 +216,15 @@ h1,.job-hero h1 {font-size:28px;line-height:1.2;margin-bottom:8px}
 .topbar {flex-basis:48px}
 @media(min-width:820px){.sidebar{overflow-y:auto}.sidebar-bottom{flex-shrink:0}}
 
+/* Keep the work visible in a narrow desktop window. */
+@media(max-width:819px){
+ .sidebar{padding:8px 12px}
+ .sidebar .brand,.sidebar .nav-caption{display:none}
+ .primary-nav{display:flex;flex-direction:row;gap:4px;overflow-x:auto;align-items:center}
+ .nav-group{display:contents}
+ .nav-item{flex:0 0 auto;white-space:nowrap;min-height:42px}
+}
+
 /* Universal control states. */
 button,input,select,textarea {accent-color:var(--color-action)}
 .button:disabled {cursor:not-allowed}

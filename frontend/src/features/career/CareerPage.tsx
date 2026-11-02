@@ -55,6 +55,8 @@ export function CareerPage(): React.JSX.Element {
     setActiveId(id);
     setLeadChoice("");
     setAnswer("");
+    setAckGeneration(false);
+    setAckExternal(false);
     setPromotePath("");
     try {
       const view = await fetchCareerSession(id);
@@ -111,7 +113,7 @@ export function CareerPage(): React.JSX.Element {
   );
 
   const runMutation = useCallback(
-    async (label: string, work: () => Promise<CareerSession | null>, done?: string): Promise<void> => {
+    async (label: string, work: () => Promise<CareerSession | null>, done?: string): Promise<boolean> => {
       setActionError("");
       setNotice("");
       setBusy(true);
@@ -123,27 +125,28 @@ export function CareerPage(): React.JSX.Element {
           if (result.selected_lead_id !== "") setLeadChoice(result.selected_lead_id);
         }
         if (done) setNotice(done);
-        await reloadList();
+        try {
+          await reloadList();
+        } catch {
+          setNotice(`${done ?? "Action completed."} The interview list could not be refreshed; reopen this page to update it.`);
+        }
+        return true;
       } catch (error) {
         if (error instanceof CareerApiError && error.code === "complete_no_proposal" && activeId !== "") {
           try {
             await openSession(activeId);
             setNotice(`Interview ${activeId} reached its response limit without a proposal. Start a new interview to continue.`);
-            return;
+            return false;
           } catch {
             // Fall through to the original error if the session cannot be reloaded.
           }
         }
         if (error instanceof CareerApiError && error.code === "changed" && activeId !== "") {
-          try {
-            await openSession(activeId);
-            setNotice("The interview changed elsewhere. Reloaded the current state; review it before continuing.");
-            return;
-          } catch {
-            // Fall through to the original error.
-          }
+          setActionError("The interview changed elsewhere. Your answer is still here; copy it before discarding and reopening the latest interview.");
+          return false;
         }
         setActionError(error instanceof Error ? `${label}: ${error.message}` : `${label} failed`);
+        return false;
       } finally {
         setBusy(false);
       }
@@ -179,6 +182,8 @@ export function CareerPage(): React.JSX.Element {
           setSession(created);
           setActiveId(created.id);
           setAnswer("");
+          setAckGeneration(false);
+          setAckExternal(false);
           setLeadChoice("");
           setPromotePath("");
           setNotice("Interview started. No external request has been made yet.");
@@ -213,7 +218,12 @@ export function CareerPage(): React.JSX.Element {
       session.next.kind === "leads"
         ? "Leads found. Choose one investigation to continue."
         : "Response received. Review the question or proposal.",
-    );
+    ).then((saved) => {
+      if (saved) {
+        setAckGeneration(false);
+        setAckExternal(false);
+      }
+    });
   }, [ackExternal, ackGeneration, model, providerId, runMutation, session]);
 
   const handleSelect = useCallback(() => {
@@ -230,9 +240,9 @@ export function CareerPage(): React.JSX.Element {
     const id = session.id;
     const revision = session.revision;
     const text = answer;
-    void runMutation("Answer", () => answerCareerQuestion(id, text, revision), "Answer saved.").then(() =>
-      setAnswer(""),
-    );
+    void runMutation("Answer", () => answerCareerQuestion(id, text, revision), "Answer saved.").then((saved) => {
+      if (saved) setAnswer("");
+    });
   }, [answer, runMutation, session]);
 
   const handlePromote = useCallback(() => {
@@ -375,7 +385,7 @@ export function CareerPage(): React.JSX.Element {
                     className="button button-primary"
                     type="button"
                     onClick={() => handleStart()}
-                    disabled={busy}
+                    disabled={busy || answer.trim() !== ""}
                   >
                     Start interview
                   </button>
@@ -384,12 +394,13 @@ export function CareerPage(): React.JSX.Element {
                       className="button button-secondary"
                       type="button"
                       onClick={() => handleStart(8000)}
-                      disabled={busy}
+                      disabled={busy || answer.trim() !== ""}
                     >
                       Use first 8000 bytes instead
                     </button>
                   )}
                 </div>
+                {answer.trim() !== "" && <p className="section-subtitle">Save or discard your current answer before starting another interview.</p>}
               </section>
 
               {session && (
@@ -573,6 +584,11 @@ export function CareerPage(): React.JSX.Element {
                         />
                       </div>
                       <div className="form-actions">
+                        {answer.trim() !== "" && (
+                          <button className="button button-secondary" type="button" disabled={busy} onClick={() => setAnswer("")}>
+                            Discard unsaved answer
+                          </button>
+                        )}
                         <button
                           className="button button-primary"
                           type="button"
@@ -689,7 +705,7 @@ export function CareerPage(): React.JSX.Element {
                           className="button button-secondary"
                           type="button"
                           onClick={() => void openSession(summary.id)}
-                          disabled={busy || summary.id === activeId}
+                          disabled={busy || summary.id === activeId || answer.trim() !== ""}
                         >
                           {summary.id === activeId ? "Current" : "Resume"}
                         </button>

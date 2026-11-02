@@ -72,10 +72,14 @@ export function WritingSection({
   jobId,
   destination,
   legacyHref,
+  onMaterialSaved,
+  readOnly,
 }: {
   jobId: number;
   destination: string;
   legacyHref: string;
+  onMaterialSaved: () => void;
+  readOnly: boolean;
 }): React.JSX.Element {
   const [snapshot, setSnapshot] = useState<QuestionsSnapshot | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -164,14 +168,17 @@ export function WritingSection({
     (next: WritingQuestion) => {
       const id = questionId(next);
       if (id === selectedId) return;
-      if (dirty && !window.confirm("You have unsaved edits. Discard them and open another question?")) return;
+      if (dirty) {
+        setSaveError("Save or discard your answer before opening another question.");
+        return;
+      }
       setSelectedId(id);
     },
     [dirty, selectedId],
   );
 
   const handleSave = useCallback(async () => {
-    if (!selected || !snapshot?.editingAllowed) return;
+    if (!selected || !snapshot?.editingAllowed || readOnly) return;
     setSaveError("");
     setSaveNotice("");
     setSaving(true);
@@ -190,6 +197,7 @@ export function WritingSection({
       });
       setDirty(false);
       setSaveNotice("Saved locally. It has not been filled on the employer website.");
+      onMaterialSaved();
       await reload();
       void result;
     } catch (error) {
@@ -197,7 +205,7 @@ export function WritingSection({
     } finally {
       setSaving(false);
     }
-  }, [selected, snapshot, jobId, destination, draft, reusable, reload]);
+  }, [selected, snapshot, jobId, destination, draft, reusable, reload, onMaterialSaved, readOnly]);
 
   const openAssistance = useCallback(async () => {
     if (!selected) return;
@@ -326,10 +334,17 @@ export function WritingSection({
                 : "Questions have not been discovered for this posting yet. Saved writing below is preserved."}
           </p>
         </div>
-        <a className="button button-secondary" href={`${legacyHref}#prepare`}>
-          Employer transfer review
-        </a>
+        <div className="heading-actions">
+          <button className="button button-secondary" type="button" disabled={dirty} onClick={() => void reload()}>
+            Refresh questions
+          </button>
+          <a className="button button-secondary" href={`${legacyHref}#prepare`}>
+            Employer transfer review
+          </a>
+        </div>
       </div>
+
+      {dirty && <p className="small-muted">Save your answer before refreshing the question list.</p>}
 
       {snapshot.partial && (
         <p className="writing-notice" role="note">
@@ -342,7 +357,7 @@ export function WritingSection({
         </p>
       )}
 
-      {!snapshot.editingAllowed && (
+      {(!snapshot.editingAllowed || readOnly) && (
         <p className="writing-notice" role="note">
           This application is no longer active. Answers are read-only; history below is preserved.
         </p>
@@ -438,7 +453,7 @@ export function WritingSection({
                     setDirty(next !== selected.value);
                   }}
                 />
-                {selected.libraryEligible && snapshot.editingAllowed && (
+                {selected.libraryEligible && snapshot.editingAllowed && !readOnly && (
                   <label className="confirm-row">
                     <input type="checkbox" checked={reusable} onChange={(event) => setReusable(event.target.checked)} />
                     <span>Offer as reusable phrasing for this employer when saved</span>
@@ -455,15 +470,16 @@ export function WritingSection({
                   </p>
                 )}
                 <div className="form-actions">
+                  {dirty && <button className="button button-secondary" type="button" onClick={() => { setDraft(selected.value); setDirty(false); setSaveError(""); }}>Discard edits</button>}
                   <button
                     className="button button-primary"
                     type="button"
-                    disabled={saving || !dirty || !selected.editable || !snapshot.editingAllowed}
+                    disabled={saving || !dirty || !selected.editable || (!snapshot.editingAllowed || readOnly)}
                     onClick={() => void handleSave()}
                   >
                     {saving ? "Saving…" : "Save answer locally"}
                   </button>
-                  {selected.helpEligible && snapshot.editingAllowed && (
+                  {selected.helpEligible && snapshot.editingAllowed && !readOnly && (
                     <button
                       className="button button-secondary"
                       type="button"
