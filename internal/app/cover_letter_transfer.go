@@ -56,6 +56,13 @@ func (a *App) coverLetterCommand(r *http.Request, id int64) (int, string) {
 	if err != nil {
 		return http.StatusNotFound, "Opportunity or material unavailable"
 	}
+	requireSelection := r.PostForm.Get("require_selected_letter") == "yes"
+	if requireSelection {
+		selected, e := a.selectedCoverLetter(id)
+		if e != nil || selected.ID != draft.ID {
+			return 409, "The selected letter changed. Review it again before transfer."
+		}
+	}
 	if len(draft.Body) < 30 || len(draft.Body) > maxLetterBytes || !utf8.ValidString(draft.Body) || strings.ContainsRune(draft.Body, 0) {
 		return 409, "The saved letter is invalid. Review and save its text before transfer."
 	}
@@ -70,7 +77,14 @@ func (a *App) coverLetterCommand(r *http.Request, id int64) (int, string) {
 	up.current = func() bool {
 		latest, e := a.coverLetterByID(id, draftID)
 		target, je := a.jobByID(id)
-		return e == nil && je == nil && latest.ContentHash() == draft.ContentHash() && target.URL == job.URL && target.Stage != StageApplied && target.Stage != StageClosed && target.SubmissionCount == 0
+		if e != nil || je != nil || latest.ContentHash() != draft.ContentHash() || target.URL != job.URL || target.Stage == StageApplied || target.Stage == StageClosed || target.SubmissionCount != 0 {
+			return false
+		}
+		if requireSelection {
+			selected, se := a.selectedCoverLetter(id)
+			return se == nil && selected.ID == draft.ID
+		}
+		return true
 	}
 	if mode == "file" {
 		profile, err := a.candidateProfile()

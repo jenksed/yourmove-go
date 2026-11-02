@@ -699,7 +699,7 @@ func (a *App) buildWritingLetters(jobID int64, draftID int64) (map[string]any, e
 	if draftID > 0 {
 		current, err = a.coverLetterByID(jobID, draftID)
 	} else {
-		current, err = a.latestCoverLetter(jobID)
+		current, err = a.selectedCoverLetter(jobID)
 	}
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
@@ -842,6 +842,60 @@ func (a *App) writingLetterSaveAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeResumeJSON(w, http.StatusOK, map[string]any{"saved": true, "draftId": draftID})
+}
+
+// Select only an existing draft belonging to this editable application.
+func (a *App) writingLetterSelectAPI(w http.ResponseWriter, r *http.Request) {
+	jobID, err := parseJobID(r)
+	if err != nil { writeResumeError(w, http.StatusNotFound, "Unknown job"); return }
+	var input struct { DraftID int64 `json:"draftId"` }
+	if !decodeResumeJSON(w, r, 4096, &input) { return }
+	result, err := a.db.Exec(`UPDATE jobs SET selected_cover_letter_id=? WHERE id=? AND stage NOT IN ('applied','closed') AND NOT EXISTS(SELECT 1 FROM submissions WHERE job_id=jobs.id) AND EXISTS(SELECT 1 FROM cover_letters WHERE id=? AND job_id=jobs.id)`, input.DraftID, jobID, input.DraftID)
+	if err != nil { writeResumeError(w, http.StatusInternalServerError, "Unable to select the letter."); return }
+	n, err := result.RowsAffected()
+	if err != nil || n != 1 { writeResumeError(w, http.StatusConflict, "This letter cannot be selected for this application."); return }
+	writeResumeJSON(w, http.StatusOK, map[string]bool{"saved":true})
+}
+
+// A manual draft has no AI or résumé source. It shares the existing letter
+// writer, validation, export, and transfer identity with generated drafts.
+func (a *App) writingLetterManualAPI(w http.ResponseWriter, r *http.Request) {
+	jobID, err := parseJobID(r)
+	if err != nil {
+		writeResumeError(w, http.StatusNotFound, "Unknown job")
+		return
+	}
+	job, err := a.jobByID(jobID)
+	if err != nil {
+		writeResumeError(w, http.StatusNotFound, "Unknown job")
+		return
+	}
+	if job.Stage == StageApplied || job.Stage == StageClosed || job.SubmissionCount > 0 {
+		writeResumeError(w, http.StatusConflict, "This application is not editable.")
+		return
+	}
+	var input writingLetterSaveInput
+	if !decodeResumeJSON(w, r, 3*maxLetterBytes+4096, &input) {
+		return
+	}
+	if !validLetterBody(input.Body) {
+		writeResumeError(w, http.StatusUnprocessableEntity, "Use 30–12000 bytes of valid text and try again.")
+		return
+	}
+	tx, err := a.db.Begin()
+	if err != nil { writeResumeError(w, http.StatusInternalServerError, "Unable to save the letter."); return }
+	defer tx.Rollback()
+	result, err := tx.Exec(`INSERT INTO cover_letters(job_id,body,provider,model,master_resume_id,master_sha256,role_resume_id,role_sha256,job_description_sha256,created_at) VALUES(?,?,'manual','',NULL,'',NULL,'','',?)`, jobID, input.Body, time.Now().UTC().Format(time.RFC3339))
+	if err != nil { log.Printf("save manual letter: %v", err); writeResumeError(w, http.StatusInternalServerError, "Unable to save the letter."); return }
+	id, err := result.LastInsertId()
+	if err == nil {
+		var selection sql.Result
+		selection, err = tx.Exec(`UPDATE jobs SET selected_cover_letter_id=? WHERE id=? AND stage NOT IN ('applied','closed') AND NOT EXISTS(SELECT 1 FROM submissions WHERE job_id=jobs.id)`, id, jobID)
+		if err == nil { var n int64; n, err = selection.RowsAffected(); if err == nil && n != 1 { err = errors.New("application no longer editable") } }
+	}
+	if err == nil { err = tx.Commit() }
+	if err != nil { writeResumeError(w, http.StatusInternalServerError, "Unable to save the letter."); return }
+	writeResumeJSON(w, http.StatusOK, map[string]any{"saved": true, "draftId": id})
 }
 
 type writingLetterGenerateInput struct {

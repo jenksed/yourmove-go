@@ -3,7 +3,7 @@
 // and surfaces existing Career Evidence, saved writing, and grounded AI
 // generation as suggestions. Saved text is never presented as transferred.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   aiAdoptCheck,
   aiCancel,
@@ -76,12 +76,14 @@ export function WritingSection({
   legacyHref,
   onMaterialSaved,
   readOnly,
+  active,
 }: {
   jobId: number;
   destination: string;
   legacyHref: string;
   onMaterialSaved: () => void;
   readOnly: boolean;
+  active: boolean;
 }): React.JSX.Element {
   const [snapshot, setSnapshot] = useState<QuestionsSnapshot | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -89,6 +91,8 @@ export function WritingSection({
   const [selectedId, setSelectedId] = useState<string>("");
   const [draft, setDraft] = useState<string>("");
   const [dirty, setDirty] = useState<boolean>(false);
+  const dirtyRef = useRef(false);
+  dirtyRef.current = dirty;
   const [saveError, setSaveError] = useState<string>("");
   const [saveNotice, setSaveNotice] = useState<string>("");
   const [saving, setSaving] = useState<boolean>(false);
@@ -129,6 +133,25 @@ export function WritingSection({
     void reload();
   }, [reload]);
 
+  // Observation is read-only. Refresh on return to this activity or window,
+  // but never replace an editor that became dirty while the request was pending.
+  useEffect(() => {
+    if (!active) return;
+    let cancelled = false;
+    const refreshObserved = async () => {
+      if (dirtyRef.current) return;
+      try {
+        const next = await fetchQuestions(jobId);
+        if (!cancelled && !dirtyRef.current) setSnapshot(next);
+      } catch {
+        // Keep the last successful inventory; the explicit refresh shows errors.
+      }
+    };
+    void refreshObserved();
+    window.addEventListener("focus", refreshObserved);
+    return () => { cancelled = true; window.removeEventListener("focus", refreshObserved); };
+  }, [active, jobId]);
+
   const allQuestions = useMemo(() => {
     if (!snapshot) return [];
     return [...snapshot.live, ...snapshot.early];
@@ -156,6 +179,12 @@ export function WritingSection({
       setAiJobContext(false);
     }
   }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A fresh observation may reconcile the selected answer. Only replace the
+  // editor while it is clean; unsaved applicant text always wins.
+  useEffect(() => {
+    if (selected && !dirtyRef.current) setDraft(selected.value);
+  }, [selected?.value, selected?.revision]);
 
   useEffect(() => {
     if (!dirty) return;

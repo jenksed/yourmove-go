@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+ "path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/jenksed/yourmove-go/internal/application/schema"
+ "github.com/jenksed/yourmove-go/internal/storage"
 )
 
 func writingQuestions(t *testing.T, a *App, jobID int64) map[string]any {
@@ -409,4 +411,50 @@ func itoa(n int64) string {
 func jsonString(s string) string {
 	b, _ := json.Marshal(s)
 	return string(b)
+}
+
+func TestManualLetterCreationAndValidation(t *testing.T) {
+	a, _ := testWorkspace(t)
+	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com", Title: "Manual letter"}); err != nil {
+		t.Fatal(err)
+	}
+	bad := postWritingJSON(t, a, http.MethodPost, "/api/jobs/1/letters/manual", `{"body":"short"}`)
+	if bad.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("short letter: %d %s", bad.Code, bad.Body.String())
+	}
+	body := "Dear hiring team, this manually written letter belongs to this application."
+	good := postWritingJSON(t, a, http.MethodPost, "/api/jobs/1/letters/manual", `{"body":`+jsonString(body)+`}`)
+	if good.Code != http.StatusOK {
+		t.Fatalf("create: %d %s", good.Code, good.Body.String())
+	}
+	letter, err := a.latestCoverLetter(1)
+	if err != nil || letter.Body != body || letter.Provider != "manual" || letter.MasterResumeID != 0 || letter.RoleResumeID != 0 {
+		t.Fatalf("letter: %+v %v", letter, err)
+	}
+	var count int
+	if err := a.db.QueryRow(`SELECT COUNT(*) FROM cover_letters`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("draft count %d %v", count, err)
+	}
+}
+
+func TestLetterSelectionPersistsAndStaysWithinJob(t *testing.T) {
+ a, dir := testWorkspace(t)
+ if err := a.saveJob(Job{URL:testAshbyPosting, Host:"jobs.ashbyhq.com",Title:"Selection"}); err != nil { t.Fatal(err) }
+ body1 := "Dear hiring team, this first saved letter is the one I choose to use."
+ body2 := "Dear hiring team, this second saved letter is not the selected one."
+ for _, body := range []string{body1, body2} {
+  r := postWritingJSON(t,a,http.MethodPost,"/api/jobs/1/letters/manual",`{"body":`+jsonString(body)+`}`)
+  if r.Code!=http.StatusOK {t.Fatalf("create: %d %s",r.Code,r.Body.String())}
+ }
+ if r:=postWritingJSON(t,a,http.MethodPost,"/api/jobs/1/letters/select",`{"draftId":1}`);r.Code!=http.StatusOK {t.Fatalf("select: %d %s",r.Code,r.Body.String())}
+ if r:=postWritingJSON(t,a,http.MethodPost,"/api/jobs/1/letters/select",`{"draftId":999}`);r.Code!=http.StatusConflict {t.Fatalf("invalid: %d",r.Code)}
+ stale,err:=a.coverLetterByID(1,2);if err!=nil{t.Fatal(err)}
+ request := `{"destination":`+jsonString(testAshbyPosting)+`,"include_letter":true,"draft_id":"2","body_hash":`+jsonString(stale.ContentHash())+`,"mode":"file"}`
+ rejected:=postWritingJSON(t,a,http.MethodPost,"/api/jobs/1/continue",request)
+ if rejected.Code!=http.StatusOK || !strings.Contains(rejected.Body.String(),"selected letter changed") { t.Fatalf("stale selection accepted: %d %s",rejected.Code,rejected.Body.String()) }
+ if err:=a.db.Close();err!=nil {t.Fatal(err)}
+ db,err:=storage.OpenDB(filepath.Join(dir,"jobs.db"));if err!=nil{t.Fatal(err)};defer db.Close()
+ reopened:=newTestApp(t,db,filepath.Join(dir,"resumes"))
+ letter,err:=reopened.selectedCoverLetter(1);if err!=nil||letter.ID!=1||letter.Body!=body1{t.Fatalf("selection after reopen: %+v %v",letter,err)}
+ snapshot,err:=reopened.buildContinuation(1); if err!=nil { t.Fatal(err) }; payload,_:=json.Marshal(snapshot); if !strings.Contains(string(payload), `"id":1`) { t.Fatalf("continuation: %s",payload) }
 }

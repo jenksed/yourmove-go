@@ -371,6 +371,24 @@ export async function saveLetterDraft(jobId: number, draftId: number, body: stri
   if (!response.ok) throw new Error(await readError(response));
 }
 
+export async function selectLetterDraft(jobId: number, draftId: number): Promise<void> {
+  const response = await fetch(`/api/jobs/${jobId}/letters/select`, {
+    method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ draftId }),
+  });
+  if (!response.ok) throw new Error(await readError(response));
+}
+
+export async function createManualLetter(jobId: number, body: string): Promise<{ draftId: number }> {
+  const response = await fetch(`/api/jobs/${jobId}/letters/manual`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ body }),
+  });
+  if (!response.ok) throw new Error(await readError(response));
+  return (await response.json()) as { draftId: number };
+}
+
 export interface GenerateLetterInput {
   provider: string;
   model: string;

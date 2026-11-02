@@ -104,6 +104,7 @@ func initJobsSchema(db *sql.DB) error {
 		{"source_note", `ALTER TABLE jobs ADD COLUMN source_note TEXT NOT NULL DEFAULT ''`},
 		{"source_checked_at", `ALTER TABLE jobs ADD COLUMN source_checked_at TEXT NOT NULL DEFAULT ''`},
 		{"selected_resume_id", `ALTER TABLE jobs ADD COLUMN selected_resume_id INTEGER REFERENCES resumes(id)`},
+		{"selected_cover_letter_id", `ALTER TABLE jobs ADD COLUMN selected_cover_letter_id INTEGER`},
 	} {
 		if !columns[column.name] {
 			if _, err := db.Exec(column.ddl); err != nil {
@@ -240,6 +241,32 @@ func initJobsSchema(db *sql.DB) error {
 	if !hasEvidenceRefs {
 		if _, err := db.Exec(`ALTER TABLE cover_letters ADD COLUMN evidence_refs TEXT NOT NULL DEFAULT ''`); err != nil {
 			return fmt.Errorf("migrate cover letter evidence schema: %w", err)
+		}
+	}
+	// Older drafts require source resume IDs. A manually written letter has no
+	// generation sources, so retain old rows while allowing NULL source IDs.
+	var sourceRequired int
+	if err := db.QueryRow(`SELECT "notnull" FROM pragma_table_info('cover_letters') WHERE name='master_resume_id'`).Scan(&sourceRequired); err != nil {
+		return fmt.Errorf("inspect letter source constraints: %w", err)
+	}
+	if sourceRequired != 0 {
+		tx, err := db.Begin()
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		for _, statement := range []string{
+			`CREATE TABLE cover_letters_new (id INTEGER PRIMARY KEY, job_id INTEGER NOT NULL REFERENCES jobs(id), body TEXT NOT NULL, model TEXT NOT NULL, provider TEXT NOT NULL DEFAULT 'ollama', master_resume_id INTEGER REFERENCES resumes(id), master_sha256 TEXT NOT NULL, role_resume_id INTEGER REFERENCES resumes(id), role_sha256 TEXT NOT NULL, job_description_sha256 TEXT NOT NULL, created_at TEXT NOT NULL, edited_at TEXT NOT NULL DEFAULT '', evidence_refs TEXT NOT NULL DEFAULT '')`,
+			`INSERT INTO cover_letters_new SELECT id,job_id,body,model,provider,master_resume_id,master_sha256,role_resume_id,role_sha256,job_description_sha256,created_at,edited_at,evidence_refs FROM cover_letters`,
+			`DROP TABLE cover_letters`,
+			`ALTER TABLE cover_letters_new RENAME TO cover_letters`,
+		} {
+			if _, err := tx.Exec(statement); err != nil {
+				return fmt.Errorf("migrate letter sources: %w", err)
+			}
+		}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit letter source migration: %w", err)
 		}
 	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS cover_letters_by_job ON cover_letters(job_id,id DESC)`); err != nil {
