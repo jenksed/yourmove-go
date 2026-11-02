@@ -26,9 +26,9 @@ import (
 // downloads anything at runtime.
 func bridgeDriver() string {
 	if env := os.Getenv("YOURMOVE_BRIDGE_DIR"); env != "" {
-		if driver := driverIn(env); driver != "" {
-			return driver
-		}
+		// An explicit override is also used to verify missing-runtime behavior;
+		// never silently fall back to a developer checkout in this case.
+		return driverIn(env)
 	}
 	if exe, err := os.Executable(); err == nil {
 		dir := filepath.Dir(exe)
