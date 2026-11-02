@@ -16,9 +16,9 @@ import {
 function outcomeText(status: string): string {
   switch (status) {
     case "filled":
-      return "Filled and verified in Chromium";
+      return "Filled and verified in the browser";
     case "correct":
-      return "Already correct in Chromium; left unchanged";
+      return "Already present; left unchanged";
     case "uncertain":
       return "Uncertain; inspect this field in Chromium before continuing";
     case "complete":
@@ -28,7 +28,7 @@ function outcomeText(status: string): string {
     case "checking":
       return "Checking the current form";
     case "attention":
-      return "Needs attention in Chromium";
+      return "Requires manual work";
     case "review":
       return "Review in Chromium";
     case "selected":
@@ -50,6 +50,7 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
   const [busy, setBusy] = useState<boolean>(false);
   const [actionError, setActionError] = useState<string>("");
   const [actionNotice, setActionNotice] = useState<string>("");
+  const selectionInitialized = useRef({ resume: false, letter: false, answers: false });
   const pollRef = useRef<number | null>(null);
   const requestRef = useRef<number>(0);
 
@@ -69,6 +70,7 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
   }, [jobId]);
 
   useEffect(() => {
+    selectionInitialized.current = { resume: false, letter: false, answers: false };
     setWantResume(false);
     setWantLetter(false);
     setWantAnswers(false);
@@ -76,6 +78,23 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
     setLoading(true);
     void reload();
   }, [reload, materialRevision]);
+
+  useEffect(() => {
+    if (!snapshot) return;
+    const prep = snapshot.preparation;
+    if (prep.includeResume && !selectionInitialized.current.resume) {
+      selectionInitialized.current.resume = true;
+      setWantResume(true);
+    }
+    if (prep.includeLetter && !selectionInitialized.current.letter) {
+      selectionInitialized.current.letter = true;
+      setWantLetter(true);
+    }
+    if (prep.includeAnswers && !selectionInitialized.current.answers) {
+      selectionInitialized.current.answers = true;
+      setWantAnswers(true);
+    }
+  }, [snapshot]);
 
   const needsPoll = snapshot !== null && (
     snapshot.browser.active ||
@@ -136,16 +155,16 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
     try {
       const result = await authorizeContinue(jobId, {
         destination: snapshot.destination,
-        include_resume: wantResume,
+        include_resume: wantResume && snapshot.preparation.includeResume,
         resume_id: snapshot.resume ? String(snapshot.resume.id) : "",
         resume_hash: snapshot.resume ? snapshot.resume.sha256 : "",
-        transfer_contacts: wantResume && snapshot.profile.approved,
+        transfer_contacts: wantResume && snapshot.preparation.includeResume && snapshot.profile.approved,
         profile_revision: String(snapshot.profile.revision),
-        include_letter: wantLetter,
+        include_letter: wantLetter && snapshot.preparation.includeLetter,
         draft_id: snapshot.letter ? String(snapshot.letter.id) : "",
         body_hash: snapshot.letter ? snapshot.letter.contentHash : "",
         mode: letterMode,
-        include_answers: wantAnswers,
+        include_answers: wantAnswers && snapshot.preparation.includeAnswers,
         review_hash: snapshot.preparation.answerReviewHash,
       });
       const failed = result.items.filter((item) => !item.ok);
@@ -241,7 +260,7 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
           <small>This application is recorded as complete. Browser assistance is read-only history below.</small>
         ) : !browser.active ? (
           <button className="button button-primary" type="button" disabled={busy} onClick={() => void runBrowser("start")}>
-            {busy ? "Opening…" : prep.action !== "" ? prep.action : "Open employer browser"}
+            {busy ? "Opening…" : "Open application"}
           </button>
         ) : (
           <>
@@ -282,7 +301,7 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
         {snapshot.resume ? (
           <div className="continuation-item">
             <label className="confirm-row">
-              <input type="checkbox" checked={wantResume} disabled={!prep.includeResume} onChange={(event) => setWantResume(event.target.checked)} />
+              <input type="checkbox" checked={wantResume && prep.includeResume} disabled={!prep.includeResume} onChange={(event) => setWantResume(event.target.checked)} />
               <span>
                 <strong>Résumé:</strong> {snapshot.resume.name} · {snapshot.resume.kind} · Version {snapshot.resume.version}
                 {snapshot.resume.valid ? "" : " · unavailable"}
@@ -310,7 +329,7 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
         {snapshot.letter ? (
           <div className="continuation-item">
             <label className="confirm-row">
-              <input type="checkbox" checked={wantLetter} disabled={!prep.includeLetter} onChange={(event) => setWantLetter(event.target.checked)} />
+              <input type="checkbox" checked={wantLetter && prep.includeLetter} disabled={!prep.includeLetter} onChange={(event) => setWantLetter(event.target.checked)} />
               <span>
                 <strong>Cover letter:</strong> Draft {snapshot.letter.id} · {snapshot.letter.provider}
               </span>
@@ -335,7 +354,7 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
         {snapshot.pendingAnswers.length > 0 ? (
           <div className="continuation-item">
             <label className="confirm-row">
-              <input type="checkbox" checked={wantAnswers} disabled={!prep.includeAnswers} onChange={(event) => setWantAnswers(event.target.checked)} />
+              <input type="checkbox" checked={wantAnswers && prep.includeAnswers} disabled={!prep.includeAnswers} onChange={(event) => setWantAnswers(event.target.checked)} />
               <span>
                 <strong>
                   {snapshot.pendingAnswers.length} saved {snapshot.pendingAnswers.length === 1 ? "answer" : "answers"} ready for transfer
@@ -380,10 +399,10 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
         <button
           className="button button-primary"
           type="button"
-          disabled={busy || (!wantResume && !wantLetter && !wantAnswers)}
+          disabled={busy || !browser.active || (!(wantResume && prep.includeResume) && !(wantLetter && prep.includeLetter) && !(wantAnswers && prep.includeAnswers))}
           onClick={() => void runAuthorize()}
         >
-          {busy ? "Authorizing…" : prep.action !== "" ? prep.action : "Authorize selected transfer"}
+          {busy ? "Filling…" : "Fill selected information"}
         </button>
       </div>
       <p className="small-muted">

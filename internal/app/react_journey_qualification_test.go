@@ -141,7 +141,7 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	run(`(()=>{const labels=Array.from(document.querySelectorAll('.continuation-item label'));labels.find(x=>x.textContent.includes('Résumé:')).querySelector('input').click();labels.find(x=>x.textContent.includes('Cover letter:')).querySelector('input').click()})()`)
+	wait(`Array.from(document.querySelectorAll('.continuation-item label')).filter(x=>x.textContent.includes('Résumé:') || x.textContent.includes('Cover letter:')).every(x=>x.querySelector('input').checked)`)
 	run(`Array.from(document.querySelectorAll('#employer button')).filter(x=>x.classList.contains('button-primary')).at(-1).click()`)
 	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
@@ -215,7 +215,7 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	wait(`document.body.innerText.includes('Saved locally.')`)
 	click("Apply")
 	wait(`document.querySelector('.continuation-item')?.parentElement?.innerText.includes('saved answer')`)
-	run(`Array.from(document.querySelectorAll('.continuation-item label')).find(x=>x.textContent.includes('saved answer')).querySelector('input').click()`)
+	wait(`Array.from(document.querySelectorAll('.continuation-item label')).find(x=>x.textContent.includes('saved answer'))?.querySelector('input')?.checked`)
 	run(`Array.from(document.querySelectorAll('#employer button')).filter(x=>x.classList.contains('button-primary')).at(-1).click()`)
 	deadline = time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) && a.browsers.state(1).AnswerStatus != "complete" {
