@@ -119,9 +119,12 @@ document.querySelector('[name=resume]').addEventListener('change',async e=>{cons
 	}))
 	defer fixture.Close()
 	base := fixture.URL + "/fixture/job"
+	if !browser.OwnsPostingURL(testAshbyPosting, testAshbyPosting+"/application") {
+		t.Fatal("controlled journey fixture must model the same-origin Ashby application descendant")
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	chrome, err := chromium.LaunchFixture(ctx, base)
+	chrome, err := chromium.LaunchFixtureForPosting(ctx, base, testAshbyPosting)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -648,6 +651,9 @@ document.querySelector('[name=resume]').addEventListener('change',async e=>{cons
 	if err := evaluate(employer, `(()=>{const e=document.querySelector('[name="remote-tools"]');e.name='remote-tools-v2';return true})()`, nil); err != nil {
 		t.Fatal(err)
 	}
+	// Observation can update in place or finish a redirect. Keep both exact
+	// expected fixture URLs; never resolve an arbitrary tab by display name.
+	previousQuestionPage := ui
 	if err := evaluate(ui, `document.querySelector('form[action$="/browser/observe"] button').click();true`, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -674,7 +680,17 @@ document.querySelector('[name=resume]').addEventListener('change',async e=>{cons
 		return changed && previous
 	})
 	changedQuestionPage := questionPage("Which remote support tools have you used?")
-	if err := chrome.FixtureCall(ctx, ui, "Page.navigate", map[string]any{"url": changedQuestionPage}, nil); err != nil {
+	// Acquire the verified tab after observation settles, avoiding a connection
+	// invalidated by a renderer/navigation change during that operation.
+	observedUI, err := chrome.FixturePage(ctx, previousQuestionPage)
+	if err != nil {
+		observedUI, err = chrome.FixturePage(ctx, ui)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer observedUI.Close()
+	if err := observedUI.Call(ctx, "Page.navigate", map[string]any{"url": changedQuestionPage}, nil); err != nil {
 		t.Fatal(err)
 	}
 	ui = changedQuestionPage

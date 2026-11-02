@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	coverprovider "github.com/jenksed/yourmove-go/internal/coverletter/provider"
 	"github.com/jenksed/yourmove-go/internal/platforms"
@@ -19,50 +20,55 @@ func home(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/jobs", http.StatusSeeOther)
 }
 
+func (a *App) renderOpportunityPage(w http.ResponseWriter, formURL, formTitle, urlError, titleError string, status int) {
+	jobs, err := a.allJobs()
+	if err != nil {
+		log.Printf("load jobs: %v", err)
+		http.Error(w, "Unable to load jobs", http.StatusInternalServerError)
+		return
+	}
+	page := summarizeJobs(jobs)
+	page.NewJobURL = formURL
+	page.NewJobTitle = formTitle
+	page.JobURLError = urlError
+	page.JobTitleError = titleError
+	page.CreateFormOpen = urlError != "" || titleError != ""
+	page.RecordedToday, err = a.applicationsRecordedToday(time.Now())
+	if err != nil {
+		log.Printf("load today's application progress: %v", err)
+		http.Error(w, "Unable to load application progress", http.StatusInternalServerError)
+		return
+	}
+	page.Desktop = a.openPosting != nil
+	families, err := a.allFamilies()
+	if err != nil {
+		http.Error(w, "Unable to load role families", 500)
+		return
+	}
+	if len(families) > 0 {
+		resumes, err := a.allResumes()
+		if err != nil {
+			http.Error(w, "Unable to load resumes", 500)
+			return
+		}
+		page.Matches = make(map[int64]MatchRecommendation, len(jobs))
+		for _, job := range jobs {
+			if job.SelectedResumeID == 0 && job.SubmissionCount == 0 {
+				page.Matches[job.ID] = matchResume(job, families, resumes)
+			}
+		}
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	if err := a.resources.jobsTemplate.Execute(w, page); err != nil {
+		log.Printf("render jobs: %v", err)
+	}
+}
+
 func (a *App) jobForm(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
-		// Load jobs from SQLite before writing HTML.
-		jobs, err := a.allJobs()
-		if err != nil {
-			log.Printf("load jobs: %v", err)
-			http.Error(w, "Unable to load jobs", http.StatusInternalServerError)
-			return
-		}
-
-		page := summarizeJobs(jobs)
-		page.RecordedToday, err = a.applicationsRecordedToday(time.Now())
-		if err != nil {
-			log.Printf("load today's application progress: %v", err)
-			http.Error(w, "Unable to load application progress", http.StatusInternalServerError)
-			return
-		}
-		page.Desktop = a.openPosting != nil
-		families, err := a.allFamilies()
-		if err != nil {
-			http.Error(w, "Unable to load role families", 500)
-			return
-		}
-		if len(families) > 0 {
-			resumes, err := a.allResumes()
-			if err != nil {
-				http.Error(w, "Unable to load resumes", 500)
-				return
-			}
-			page.Matches = make(map[int64]MatchRecommendation, len(jobs))
-			for _, job := range jobs {
-				if job.SelectedResumeID == 0 && job.SubmissionCount == 0 {
-					page.Matches[job.ID] = matchResume(job, families, resumes)
-				}
-			}
-		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-
-		if err := a.resources.jobsTemplate.Execute(w, page); err != nil {
-			log.Printf("render jobs: %v", err)
-		}
-
+		a.renderOpportunityPage(w, "", "", "", "", http.StatusOK)
 		return
-
 	}
 
 	if r.Method == http.MethodPost {
@@ -71,10 +77,34 @@ func (a *App) jobForm(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Invalid job form", http.StatusBadRequest)
 			return
 		}
-		jobURL, host, err := normalizePostingURL(r.PostForm.Get("job_url"))
-		jobTitle := strings.TrimSpace(r.PostForm.Get("job_title"))
+		formURL := r.PostForm.Get("job_url")
+		formTitle := r.PostForm.Get("job_title")
+		jobURL, host, err := normalizePostingURL(formURL)
+		jobTitle := strings.TrimSpace(formTitle)
 		if err != nil || len(jobTitle) > 200 {
+			if r.PostForm.Get("save_first") == "1" {
+				urlError, titleError := "", ""
+				if err != nil {
+				urlError = "Enter a valid job posting URL."
+				}
+				if len(jobTitle) > 200 {
+				titleError = "Use a job title of 200 bytes or fewer."
+				}
+				a.renderOpportunityPage(w, formURL, formTitle, urlError, titleError, http.StatusBadRequest)
+				return
+			}
 			http.Error(w, "Invalid job URL or title", http.StatusBadRequest)
+			return
+		}
+		// The first-party intake saves locally before any optional source check.
+		// Saving a URL grants no network or employer-browser authority.
+		if r.PostForm.Get("save_first") == "1" {
+			id, _, err := a.storeJobIfNew(Job{URL: jobURL, Host: host, Title: jobTitle, TitleManual: jobTitle != "", SourceStatus: "not_checked"})
+			if err != nil {
+				http.Error(w, "Unable to save job", http.StatusInternalServerError)
+				return
+			}
+			http.Redirect(w, r, "/jobs/"+strconv.FormatInt(id, 10)+"#overview", http.StatusSeeOther)
 			return
 		}
 		// Duplicates must not cause a new employer fetch or overwrite manual work.
@@ -86,7 +116,11 @@ func (a *App) jobForm(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/jobs", http.StatusSeeOther)
 			return
 		}
-		metadata, status, note := fetchPostingDetails(r.Context(), jobURL)
+		fetch := a.enrichmentFetch
+		if fetch == nil {
+			fetch = fetchPostingDetails
+		}
+		metadata, status, note := fetch(r.Context(), jobURL)
 		manualTitle := jobTitle != ""
 		if jobTitle == "" {
 			jobTitle = metadata.Title
@@ -95,19 +129,33 @@ func (a *App) jobForm(w http.ResponseWriter, r *http.Request) {
 		if metadata.SalaryText != "" && salaryOrigin == "" {
 			salaryOrigin = "employer"
 		}
+		checkedAt := time.Now().UTC().Format(time.RFC3339Nano)
 		job := Job{
 			URL: jobURL, Host: host, Title: jobTitle, Company: metadata.Company,
 			Description: metadata.Description, SalaryText: metadata.SalaryText,
 			SalaryOrigin: salaryOrigin, TitleManual: manualTitle,
 			SourceStatus: status, SourceNote: note,
-			SourceCheckedAt: time.Now().UTC().Format(time.RFC3339),
+			SourceCheckedAt: checkedAt,
 		}
-		if _, _, err := a.storeJobIfNew(job); err != nil {
+		latestSuccessAt := ""
+		descriptionConfirmed := false
+		salaryConfirmed := false
+		if status == "retrieved" {
+			latestSuccessAt = checkedAt
+			descriptionConfirmed = metadata.Description != ""
+			salaryConfirmed = metadata.SalaryText != ""
+		}
+		id, _, err := a.storeJobIfNewWithPostingSource(job, metadata.Source, latestSuccessAt, descriptionConfirmed, salaryConfirmed)
+		if err != nil {
 			log.Printf("save job: %v", err)
 			http.Error(w, "Unable to save job", http.StatusInternalServerError)
 			return
 		}
-		http.Redirect(w, r, "/jobs", http.StatusSeeOther)
+		destination := "/jobs"
+		if strings.TrimSpace(job.Description) == "" {
+			destination = "/jobs/" + strconv.FormatInt(id, 10) + "#overview"
+		}
+		http.Redirect(w, r, destination, http.StatusSeeOther)
 		return
 	}
 	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -132,6 +180,13 @@ func (a *App) jobDetail(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unable to load job", http.StatusInternalServerError)
 		return
 	}
+	sourceState, sourceFound, err := loadJobPostingSource(a.db, job)
+	if err != nil {
+		log.Printf("load posting source for job %d: %v", id, err)
+		http.Error(w, "Unable to load saved posting source", http.StatusInternalServerError)
+		return
+	}
+	reading := buildJobReadingView(job, sourceState, sourceFound)
 
 	resumes, err := a.allResumes()
 	if err != nil {
@@ -238,6 +293,7 @@ func (a *App) jobDetail(w http.ResponseWriter, r *http.Request) {
 	workspace := jobWorkspace{
 		Questions:            questions,
 		EarlyQuestions:       earlyQuestions,
+		Reading:              reading,
 		Job:                  job,
 		Profile:              profile,
 		BrowserState:         a.browsers.state(id),
@@ -318,7 +374,7 @@ func (a *App) editJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// A bounded local form should not accept arbitrary multi-megabyte payloads.
-	r.Body = http.MaxBytesReader(w, r.Body, 128<<10)
+	r.Body = http.MaxBytesReader(w, r.Body, 3*(120<<10)+8192)
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Invalid job form", http.StatusBadRequest)
 		return
@@ -329,7 +385,7 @@ func (a *App) editJob(w http.ResponseWriter, r *http.Request) {
 	salary := strings.TrimSpace(r.PostForm.Get("salary_text"))
 	stage := r.PostForm.Get("stage")
 	priority := r.PostForm.Get("priority")
-	if len(title) > 200 || len(company) > 200 || len(description) > 120<<10 || len(salary) > 500 || !validStage(stage) || !validPriority(priority) {
+	if len(title) > 200 || len(company) > 200 || len(description) > 120<<10 || !utf8.ValidString(description) || strings.ContainsRune(description, 0) || len(salary) > 500 || !validStage(stage) || !validPriority(priority) {
 		http.Error(w, "Invalid job details, stage, or priority", http.StatusBadRequest)
 		return
 	}
@@ -383,10 +439,10 @@ func fetchPostingDetails(ctx context.Context, rawURL string) (platforms.Metadata
 	case errors.Is(err, platforms.ErrClosed):
 		return platforms.Metadata{}, "closed", "This job is closed; the employer is no longer hiring for this posting."
 	case errors.Is(err, platforms.ErrUnsupported):
-		return platforms.Metadata{}, "unsupported", "This platform has no metadata extractor yet."
+		return platforms.Metadata{}, "unsupported", "Your job is saved. Copy the description from the employer page and paste it into Edit details."
 	case err != nil:
 		log.Printf("extract job metadata: %v", err)
-		return platforms.Metadata{}, "failed", err.Error()
+		return platforms.Metadata{}, "failed", "Posting details could not be checked. Your saved content is retained; paste the description or try again later."
 	default:
 		return metadata, "retrieved", "Posting details returned by a supported source; application availability not verified."
 	}

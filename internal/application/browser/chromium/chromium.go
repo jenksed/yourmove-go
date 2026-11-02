@@ -37,6 +37,10 @@ type Session struct {
 	dir        string
 	port       int
 	postingURL string
+	// qualification-only owner override, initialized only by LaunchFixtureForPosting.
+	fixtureContactOrigin   string
+	fixtureContactBase     string
+	fixtureContactPlatform string
 	// Test-only ownership seam; production always uses exact supported posting identity.
 	fixtureOwner func(string) bool
 	closed       bool

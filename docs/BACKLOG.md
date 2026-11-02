@@ -46,12 +46,13 @@
 - **Boundary:** Avoid appending unrelated refactors/design work to the 123-file Phase 2 diff.
 
 ### YM-015 — Recoverable Candidate Profile validation in native Wails
-- **Priority:** P1 · **Stage:** PR closeout · **Status:** OPEN (user-observed, source-confirmed)
+- **Priority:** P1 · **Stage:** PR closeout · **Status:** IN PROGRESS (user-observed, source-confirmed; acceptance pending)
 - **Observation:** While editing Candidate Profile in the real Wails qualification app, saving with profile approval selected and missing first name, last name or email displayed plain text `Profile was not saved: first name, last name and email are required for profile approval` with no visible way to return to editing. The user could not recover the entered profile values from that response.
 - **Source:** `internal/app/inspection_handlers.go: updateCandidate` uses `http.Error(..., 400)` for any `saveCandidateProfile` validation failure; `internal/app/candidate_profile.go` performs approval-only mandatory-field validation; `templates/candidate.html` has no inline recovery presentation.
 - **Impact:** A normal incomplete-approval attempt drops the user into an unstyled error page and interrupts a primary local editing workflow. The rejected form is **not saved**; this is not evidence of database corruption or post-save persistence failure.
 - **Acceptance:** On invalid approval, render Candidate Profile with the **submitted values intact**, a visible accessible validation summary tied to the relevant field(s), and working navigation/actions; permit correction and retry. Without approval, allow incomplete profiles to be saved as drafts, preserving the existing separate approval boundary. Do not silently approve or transmit facts. Exercise invalid approval, valid approved save, invalid email, unapproved draft, keyboard/focus and no-JS behavior in controlled tests and a real Wails window. Ensure the Wails-compatible response path keeps the form usable after errors; do not return an unstyled plain-text body.
 - **Boundary:** Small focused validation/error-rendering fix; preserve server authority, approved profile revision semantics, no mandatory onboarding, and existing field mappings.
+- **Implementation so far (2026-10-25):** Invalid saves now re-render the submitted profile with field-specific errors and an accessible summary; the last confirmed approval/revision remains separate from the submitted form state. Changes are uncommitted. No regression tests, screenshots, or Wails acceptance were recorded for this implementation yet.
 
 ### YM-016 — Repeat native qualification against the **same** synthetic workspace
 - **Priority:** P1 for completing YM-003 · **Stage:** PR closeout · **Status:** OPEN (procedure/documentation gap; no product persistence failure proven)
@@ -61,6 +62,55 @@
 - **Safety:** Do not run two YourMove instances simultaneously against the same workspace, re-seed an existing DB, use real applicant data, or manually modify `jobs.db`. Do not add a generic production `--resume` or relaxed fixture safety check merely to simplify this test. A small script help/README note is sufficient if it prevents recurrence.
 - **Boundary:** A new synthetic workspace on every new harness execution is intentional. This is primarily a test-operator documentation and repeatability correction.
 - **Completion so far:** The owner smoke record now documents capturing and reusing the same bundle/workspace and launching the existing executable with the same data directory. Native execution and observed persistence evidence remain pending.
+
+## Job Intelligence — M1 Ashby capability
+
+### JI-025a — Close the Ashby Job Intelligence capability
+- **Priority:** P1 · **Stage:** M1 capability closeout · **Status:** DONE
+- **Source/evidence:** [Authoritative implementation plan](implementation/job-intelligence/IMPLEMENTATION_PLAN.md); [M1 closeout evidence](implementation/job-intelligence/evidence/m1-closeout.md); M0 evidence under `implementation/job-intelligence/evidence/m0-overview/`. Raster captures remain in the local review archive and are excluded from the source PR.
+- **Outcome:** Ashby intake now validates selected posting identity, preserves bounded HTML/plain source and direct role facts, stores latest successful source alongside canonical job data, renders a safe structured Overview, and keeps applicant edits authoritative. Canonical copy/generation and saved question identities remain compatible in focused regression coverage.
+- **Verification:** Full ordinary and `desktop`-tagged Go suites, `go vet`, JavaScript syntax and whitespace checks PASS. Focused M0/M1 and broader controlled Chromium checks PASS as recorded below. On 2026-10-24, the current-source `TestControlledNarrativeAnswerWorkbench` and `TestControlledScopeFirstWorkbench` both passed in Chrome Canary 158.0.8122.0, confirming answer/letter save-target focus and keyboard behavior. VoiceOver speech is not covered by these browser tests.
+- **Native evidence:** Maintainer-reported PASS for `/private/tmp/yourmove-m1-manual-build/YourMove.app` with isolated workspace `/private/tmp/yourmove-m1-manual`; executable SHA-256 `8dbac25b28f2db81f74d482ceb0c01a5f0a027668cb7e3c2835985c5eb84b5b2`, source-manifest SHA-256 `3209c103c82c1488cbae643671fcffdf51d839035302c4b2ce6ed6c1a0927549`, covering Job Intelligence interaction and persistence across restart. The maintainer separately reports PASS for the refined native saved-status focus behavior, without an executable identity. Individually unenumerated viewport/theme/clipboard/safe-link/accessibility/artifact-retention/browser-authority checks remain NOT VERIFIED. VoiceOver speech is not claimed.
+- **Remaining acceptance:** None for the accepted M1 capability. VoiceOver announcement and duplicate behavior remain NOT VERIFIED and are deferred to YM-017; they do not block M1. No employer form or transfer action was part of acceptance.
+- **Dependencies / boundaries:** No M2/M3/M4 work, provider portability, release declaration or browser-transfer acceptance is included. Existing unrelated worktree changes remain untouched; no commit, merge, push or release was made.
+- **Completion:** M1 PASS. JI-023a, JI-024a and JI-025a PASS for the accepted capability; full native detail and VoiceOver speech are not claimed. VoiceOver remains deferred under YM-017. No source merge or release is implied.
+
+## Job Intelligence — M2 focused reading
+
+- **Priority:** P1 · **Stage:** M2 implementation/acceptance · **Status:** PARTIAL
+- **Outcome:** Make responsibilities, qualifications, compensation and hiring instructions quick to reach while preserving every unknown and secondary section in source order and keeping canonical copy unchanged.
+- **Implemented:** Conservative exact-heading classifier and tests; native fragment navigation on the existing Overview; unknown content remains visible; no-JavaScript and keyboard paths work. No secondary sections are hidden and no deeper compensation facts were selected.
+- **Verification:** `go test -count=1 ./internal/jobdocument`; focused app render tests; pinned Chrome Canary 158.0.8122.0 connected Ashby demonstration with 700×550 navigation, no-JavaScript keyboard reachability, canonical copy, 1280/390 light/dark viewports, and no horizontal overflow. Raster captures remain in the local review archive and are excluded from the source PR. JI-023b PASS for controlled Chromium scope.
+- **Remaining acceptance:** Actual Wails interaction, keyboard/focus, accessible text, and same-workspace restart are NOT VERIFIED. JI-024b remains open; M2 is not PASS.
+- **Source/evidence:** [Implementation plan](implementation/job-intelligence/IMPLEMENTATION_PLAN.md#ji-004); [M1 evidence](implementation/job-intelligence/evidence/m1-closeout.md) is unchanged and does not substitute for M2 native acceptance.
+
+## Job Intelligence — M3 provider portability
+
+- **Priority:** P1 · **Stage:** M3 implementation/acceptance · **Status:** PARTIAL
+- **Outcome:** Keep Ashby, Greenhouse, and Lever reading consistent in Overview while retaining provider-specific source shapes and existing manual/canonical behavior.
+- **Implemented:** Greenhouse and Lever adapters use the existing fetch/intake/source/persistence/Overview path. Lever identity is bound to global/EU region; no provider abstraction or application authority was added. App lifecycle verifies source persistence, manual-edit precedence across a second provider refresh, updated source/freshness, and SQLite restart for both providers.
+- **Verification:** `go test -count=1 ./internal/platforms`; `TestJobIntelligenceM3ProvidersUseIntakeOverviewAndPersistAcrossRestart`; pinned Chrome Canary 158.0.8122.0 `TestJobIntelligenceM3ProviderOverviewDemo` passed each provider separately at 1280/390 in light/dark, with exact canonical copy, direct facts, Lever named-section navigation, and zero submissions. Raster captures remain in the local review archive and are excluded from the source PR. JI-023c PASS for controlled Chromium scope. Official provider docs and current public hosted pages were reviewed; raw live API JSON remains NOT VERIFIED.
+- **Remaining acceptance:** Native Wails portability and same-workspace restart remain NOT VERIFIED under JI-024c. JI-015b/JI-025b are PARTIAL until that candidate is accepted; M3 is not PASS. Posting support does not imply application-form discovery or transfer.
+- **Source/evidence:** [Implementation plan](implementation/job-intelligence/IMPLEMENTATION_PLAN.md#ji-020); [provider onboarding evidence](implementation/ats-platform-integration-notes.md#provider-specific-entry-status--m3-update-2026-10-24).
+
+## Job Intelligence — Competitive ATS coverage follow-on
+
+### YM-018 — Expand public Job Intelligence coverage across competitive ATS platforms
+- **Priority:** P1 · **Stage:** competitive provider implementation and acceptance · **Status:** IN PROGRESS
+- **Source/evidence:** [Competitive ATS coverage scorecard](implementation/job-intelligence/evidence/competitive-ats-coverage.md); source, identity, lifecycle, and controlled browser findings are recorded there. Raster captures remain local and are excluded from the source PR.
+- **Why / user impact:** More employer-posting URLs can reach the same source-aware Job Intelligence Overview with preserved descriptions and facts, refresh, manual precedence, persistence, and canonical copy.
+- **Current result:** Seven requested providers were investigated. Workday, SmartRecruiters, Workable, and Jobvite are source-qualified, adapter-qualified, and controlled-supported through production intake/source/Overview. The seven-provider Chromium portfolio now submits manual edits, refreshes changed public-source fixtures, checks canonical copy, and verifies all seven jobs after SQLite restart. iCIMS, Taleo, and Avature remain research-only because repeatable public applicant-facing detail content was not established. The wider 10-provider set has seven controlled-supported providers when Ashby, Greenhouse, and Lever are included. Native Wails qualification for the four new adapters remains NOT VERIFIED; Greenhouse/Lever M3 native acceptance remains pending under JI-024c.
+- **Acceptance:** Keep the supported variants and dispositions current in the scorecard; require public source/identity evidence, bounded adapter tests, exact canonical association, production lifecycle coverage, controlled Chromium portfolio evidence, and then native acceptance against the exact candidate before claiming Level 4. Preserve blocked providers as research without URL-only support claims. Run the documented ordinary, desktop, provider, storage/refresh, browser-authority, and source-hygiene checks for each integrated wave.
+- **Dependencies / boundaries:** Preserve the existing `Metadata`/`PostingSource` v1 contract and app/storage/document architecture; no autofill, employer submission, custom-domain scraper, authenticated API, anti-bot bypass, SaaS, browser extension, or native automation expansion. Keep M2/M3 native gates and YM-017 separate.
+- **Completion:** On 2026-10-24, four new adapters reached controlled qualification. The seven-provider synthetic Chromium portfolio passed intake, manual edit precedence, changed-source refresh, freshness, canonical copy, and SQLite restart checks, with desktop/narrow screenshots. Workable title/company storage caps and the qualification gap found by independent review were fixed. Three investigated variants remain blocked and native Wails evidence is outstanding. Final local candidate identity is recorded in the scorecard. No commit, merge, push, or release was made.
+
+### JI-019a — Correct false optionality labels
+
+- **Priority:** P1 · **Stage:** M4 label correction · **Status:** DONE
+- **Outcome:** Missing legacy required-state evidence now displays “Required state not verified”; a recorded true value remains “Required.”
+- **Verification:** Focused label/brief tests pass, including field JSON, schema fingerprint, question key, saved-answer, and transfer-approval invariance.
+- **Boundary:** This closes only JI-019a. No requirements evidence sidecar, schema-discovery change, or browser observation change was made.
+- **Source/evidence:** [Implementation plan](implementation/job-intelligence/IMPLEMENTATION_PLAN.md#ji-019a).
 
 ## Post-merge maintainability — preferred next development track
 
@@ -120,6 +170,12 @@
 - **Source:** [Direction A design](implementation/2026-10-22-product-experience/DESIGN_SPEC.md), `docs/design/DESIGN_SYSTEM.md`, `docs/design/RULES.md`.
 - **Acceptance:** Make the immediate writing/preparation decision clearer based on real usage evidence; preserve the existing five job activities, one authoritative editor, local save and explicit transfer review. Separate PR after Phase 2 closeout, not part of native infrastructure work.
 
+### YM-017 — Diagnose VoiceOver save announcements in native Wails
+- **Priority:** P2 · **Stage:** later · **Status:** DEFERRED
+- **Evidence:** During M1 closeout, the maintainer reported opening VoiceOver Utility but VoiceOver was not working with YourMove. No exact announcement, duplicate count, focused element, or reproduction steps were provided. The agent's automation process could not launch or query the VoiceOver runtime; this does not establish a YourMove defect.
+- **Acceptance:** In an interactive macOS session with VoiceOver running, reproduce cover-letter and selected-answer local saves on an isolated synthetic workspace and exact candidate. Record the spoken phrase/count, VoiceOver focus, keyboard continuation, and executable/source identity. Distinguish a VoiceOver/runtime/permission setup issue from a Wails/WebKit status announcement or focus issue; document findings and the smallest justified follow-up.
+- **Boundary:** Investigation only. No accessibility framework, success indicator, focus redesign, employer form, transfer, or submission. VoiceOver findings remain separate and do not reopen or block accepted M1.
+
 ## Backlog item template
 
 ```md
@@ -134,3 +190,80 @@
 ```
 
 **Rule:** An agent asked "what next?" should not blindly choose a P1 release-gate automation task when the current requested goal is *refactoring*. Choose the smallest valuable actionable item aligned to the stated milestone while preserving safety and release obligations.
+
+## Universal Job Recovery extension — authorized 2026-10-24
+
+### YM-018 — Save and recover jobs across unsupported platforms
+- **Priority:** P1 · **Stage:** recovery product acceptance · **Status:** IMPLEMENTED / NEEDS NATIVE VERIFICATION
+- **Outcome:** First-party intake saves immediately offline and opens the description editor; pasted headings/bullets support reading navigation; manual corrections and last-success sources survive refresh/restart. Prepare retains resume selection, profile/Answer Library copying, explicit employer opening, manual completion and Next. Manual cover letters use the existing draft lifecycle without AI or fabricated source evidence.
+- **Evidence/tests:** [Integrated report](implementation/job-intelligence/evidence/universal-recovery/README.md); dedicated production-handler/reopen/privacy/migration tests, controlled Chromium at 1280/700/390 light/dark with keyboard/no-JavaScript paths. No commit/PR; current branch has no PR according to live `gh pr view` lookup. No source merge/release claim.
+- **Remaining acceptance:** Actual frozen Wails interaction/export/default-browser return and same-directory restart; unknown-page capture remains unavailable. Arbitrary new per-job answer questions and rich clipboard emphasis/links remain outside implemented fallback; existing saved writing is manually reusable. YM-017 remains deferred.
+
+### YM-019 — Reviewed recovery diagnostics and evidence-to-adapter completion
+- **Priority:** P1 · **Stage:** bounded learning workflow · **Status:** PARTIAL
+- **Implemented:** Local metadata preview and explicitly confirmed download; hostname plus value-free URL shape, platform family, coarse retrieval outcome and recovery/origin flags. No raw errors, page samples, applicant content or automatic uploads. Dated classic iCIMS failure-to-public-variant/fixture/live-source investigation documented.
+- **Remaining:** Opt-in, inspected public source sample/exact public identity package and proof that applicant-approved evidence generates an engineering fixture. Metadata-only export is useful but does not close this gate. Distinguish unknown/transient/authentication causes only when observed; never infer them from a failed request alone.
+- **Evidence:** [Recovery report](implementation/job-intelligence/evidence/universal-recovery/README.md), [provider evidence](implementation/job-intelligence/evidence/universal-recovery-provider-expansion.md).
+
+### YM-020 — Six-platform expansion qualification
+- **Priority:** P2 · **Stage:** recovery-driven provider expansion · **Status:** FOUR CONTROLLED-SUPPORTED / TWO UNQUALIFIED
+- **Completed:** Personio published XML, Teamtailor vendor RSS, Recruitee exempt public XML, and classic iCIMS identity-bound public JSON-LD. Eight live postings across two employers each and eleven-provider integrated controlled Overview lifecycle. Eleven total implemented controlled-supported providers; zero newly native-accepted providers.
+- **Deferred/blocked:** Taleo CONDITIONAL research with one observed encoded career-section variant; Avature BLOCKED repeatable source qualification. Branded/custom domains, unavailable feeds and unqualified variants use recovery. Do not count fixture-only or research-only support.
+- **Evidence/variants:** [Six-platform report](implementation/job-intelligence/evidence/universal-recovery-provider-expansion.md). Native qualification and the primary recovery gate take precedence over increasing this count.
+
+### YM-021 — Align answer and cover-letter mutation with posting ownership
+- **Priority:** P1 · **Stage:** beta acceptance · **Status:** DONE (source fix; release candidate still unqualified)
+- **Outcome:** Answer and text-mode cover-letter writes recheck the existing provider-specific posting ownership policy at mutation time. Ashby descendants remain supported; Lever permits only `/apply`; Greenhouse requires the exact posting route.
+- **Evidence/tests:** `internal/application/browser/chromium/mutation_ownership_qualification_test.go` checks supported and rejected routes, preserves manual values, and observes zero submit events. Selected controlled release-gate tests passed with `-tags qualification`: `TestUniversalRecoveryBrowserJourney`, `TestControlledContactJourney`, `TestControlledCombinedContinuation`, `TestControlledApplicationHandoff`, `TestHostedPlatformForms`, `TestControlledScopeFirstWorkbench`, `TestControlledSubmissionRecordingWorkflow`, and `TestContactResolverOwnershipMatchesPostingPolicy`. Full report: `$PROJECTS/yourmove-review-artifacts/v0.1.0-preaudit/run-20261024-230550/BROWSER_AUTHORITY_AUDIT_ADDENDUM.md`.
+- **Boundary:** Production ownership policy was not widened; the handoff integration test now supplies its synthetic Ashby fixture identity explicitly. No commit/PR created; the change remains in the existing dirty worktree pending source review. This does not replace native Wails acceptance or qualify a frozen release artifact.
+
+## Sol 6.1 product-experience implementation follow-up — 2026-10-25
+
+**Baseline:** The implementation checkout matched the preserved source manifest `91bef4fba4a77b1003ca9f54327498de46cb6680617115b077ef07dae7b83519` before these edits (470 tracked and 138 untracked file hashes). Changes remain uncommitted on `feature/ashby-provider-finalization`; the source manifest must be regenerated before a reviewed checkpoint.
+
+### UX-02 — Lead Prepare with the selected material and next boundary
+- **Status:** IN PROGRESS · **Evidence:** `templates/job.html`, `static/styles.css`
+- **Implemented so far:** Selected resume filename, version, Change and Download now lead Prepare. The repeated readiness grid and local transfer-scope hop were removed; exact transfer scope and its consent remain. Partial inspection and employer-side work counts remain beside the answer entry.
+- **Acceptance pending:** Supported/manual/disconnected/applied/closed state captures; 700×550 and 1100×800 layout; dirty answer and letter preservation; no-JavaScript and native Wails redirect/focus checks.
+
+### UX-04 — Use one first-job entry point
+- **Status:** IN PROGRESS · **Evidence:** `templates/jobs.html`, `internal/app/handlers.go`, `internal/app/ui_pages.go`
+- **Implemented so far:** Empty workspaces show one open URL-saving form with navigation to Documents. Empty-only progress and list filters are hidden. Invalid URL/title submissions re-render the form values with field errors. Existing filtered-empty controls remain for non-empty workspaces.
+- **Acceptance pending:** Fresh workspace and filtered-empty captures, invalid input/correction path, batch import, and no-JavaScript/Wails behavior.
+
+### UX-06 — Make the safe dialog choice visually dominant
+- **Status:** IN PROGRESS · **Evidence:** `static/ui.js`
+- **Implemented so far:** “Stay and edit” now uses the primary treatment and “Leave without saving” remains secondary; DOM order and focus handling are unchanged.
+- **Acceptance pending:** Both themes, Stay, Escape, explicit Leave, Enter behavior, and native focus return.
+
+**Verification boundary:** No tests or after-change screenshots were produced in this implementation turn. Native Wails acceptance remains NOT VERIFIED; UX-01 remains the release blocker until its specified recovery path is accepted.
+
+## Product experience finalization — October 25, 2026
+
+**Status at the original review cutoff:** implementation and controlled-browser qualification were complete; integrated native acceptance remained OPEN / UX HOLD. This superseded the unverified status of the four Luna corrections only within the executed browser/handler scope. At that cutoff no commit, PR, merge, tag or distribution had been created. Existing branch work and AGENTS.md were preserved in a verified 608-file snapshot.
+
+- Shared Quiet Ink palette: neutral light/graphite dark, semantic action/selection/success/error/dirty/focus roles; system typography retained. Real two-direction concepts, all 19 principal production surfaces at three browser sizes/both themes, source-pinned before/after report.
+- UX01/02/04/06 revalidated and refined; UX03/05/07/08/09/10/11 implemented bounded composition/feedback improvements; UX12 canonical numeric return-to-job through Profile/Documents; UX13 bounded two-job reuse demonstrated without new matching or silent selection.
+- Confirmed first-manual-letter unsaved-departure gap fixed in the existing editor guard. Stay, Escape, initial Enter, explicit Leave and same-node activity switching qualified. Approved profile revision preservation and input/consent recovery qualified.
+- Final checks PASS: `go test -count=1 ./...`, desktop-tagged equivalent, both `go vet` commands, `node --check static/ui.js`, `git diff --check`; 13 selected integrated Chromium suites PASS (72.675s). Full exact commands and logs live in the finalization package.
+- Remaining gates: actual native Wails Profile correction/import/export/cancel/focus/keyboard/browser return/restart; native wait responsiveness; candidate-specific download/install acceptance. Diagnostic startup is not native interaction acceptance. Long-running generation probe was inconclusive; no background-response claim is made. Broader two-employer native journeys and VoiceOver remain unverified.
+
+Evidence: the local finalization review archive contains `EXECUTIVE_REVIEW.md`, `UX_FINDINGS_FINAL.md`, `USER_JOURNEY_ACCEPTANCE.md`, `NATIVE_ACCEPTANCE.md`, and `TEST_RESULTS.md`; generated logs, screenshots, and binaries are excluded from this source PR. Source identity and a task-only diff separate this work from the inherited dirty branch. Deferred automation, arbitrary unsupported-form questions, new matching and direct unknown-page capture remain deferred.
+
+## P0 source consolidation update — October 25, 2026
+
+**Status: reviewed source committed and pushed; draft PR #9 is open; PR merge and release remain unauthorized.**
+
+- Implementation commit: `1681681` (`feat: finalize controlled application workflows`). The branch includes an ordinary merge of the two newer `main` commits (`42822b7`, `dab717f`) in merge commit `c19b00c`; no history was rewritten or force-pushed.
+- Draft PR: https://github.com/jenksed/yourmove-go/pull/9, targeting `main`. The exact 141-path staged source manifest, checkpoint hashes, inclusions, exclusions, and pre-commit checks are in `STAGING_MAP.md`. The prior `AGENTS.md` modification remains outside the PR.
+- Initial integrated-head CI run [#50](https://github.com/jenksed/yourmove-go/actions/runs/40233520669) passed on `c19b00c`: full Go tests/build, desktop-tagged tests, macOS application bundle build, and bundle verification. The backlog evidence commit requires a fresh CI run on the final PR head before candidate preparation.
+- Native Wails acceptance remains **NOT VERIFIED**. No real employer submission was performed. No pre-incident database baseline exists; database immutability is not claimed.
+- Release recommendation remains **HOLD** until the exact frozen candidate passes native acceptance and release gates.
+
+## Native workspace reliability recovery — October 25, 2026
+
+- **Scope:** PR #9 reliability repair on the a14e7fb baseline; release remains **HOLD** pending candidate-specific native results. Builds 2 and 3 are superseded; build 4 retains version 0.1.0.
+- **Confirmed source defect:** explicit workspace overrides could import a working-directory legacy DB. Explicit overrides now disable discovery; normal migration remains covered. Canonical paths, empty/invalid configuration and redirected workspace members have regressions.
+- **Qualification guard:** opt-in process/workspace/run identity, executable hash, process lifetime, opened DB inode and native window ownership checks replace unverified display-name attachment in the native helper. Missing identity stops interaction. Go generation/navigation and Python stale-window regression tests added; the guard tests run in CI.
+- **Evidence/status:** [Source explanation and regression map](implementation/native-workspace-reliability.md); private durable package `.quality/native-recovery-20261025/` records exact source SHA, CI, artifacts and final native matrix. Historical window-switch cause remains unresolved; personal workspace contents were excluded and no historical immutability claim is made.
+- **Acceptance still required:** two controlled supported-provider native journeys, complete local completion/Next/restart path, native recovery/AI response behavior and downloaded-install approval against the new frozen candidate. Controlled Chromium results cannot replace those gates. No merge or distribution authorized.

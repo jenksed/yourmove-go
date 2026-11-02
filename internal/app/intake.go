@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/jenksed/yourmove-go/internal/platforms"
 	"net/url"
 	"strings"
 )
@@ -75,6 +76,18 @@ func (a *App) hasJobURL(rawURL string) (bool, error) {
 // storeJobIfNew serializes writes from both intake paths. A transaction keeps
 // duplicate detection and the insert together without mutating old records.
 func (a *App) storeJobIfNew(job Job) (id int64, added bool, err error) {
+	return a.storeJobIfNewWithPostingSource(job, platforms.PostingSourceResult{}, "", false, false)
+}
+
+// storeJobIfNewWithPostingSource commits the new canonical job and its latest
+// successful provider observation together. A duplicate never replaces either.
+func (a *App) storeJobIfNewWithPostingSource(
+	job Job,
+	source platforms.PostingSourceResult,
+	latestSuccessAt string,
+	descriptionConfirmed bool,
+	salaryConfirmed bool,
+) (id int64, added bool, err error) {
 	a.intakeMu.Lock()
 	defer a.intakeMu.Unlock()
 	tx, err := a.db.Begin()
@@ -96,6 +109,12 @@ func (a *App) storeJobIfNew(job Job) (id int64, added bool, err error) {
 	id, err = result.LastInsertId()
 	if err != nil {
 		return 0, false, err
+	}
+	if latestSuccessAt != "" {
+		source = usablePostingSource(source, job.URL, job.Description)
+		if err := saveJobPostingSource(tx, id, job.URL, job.Description, latestSuccessAt, source, descriptionConfirmed, salaryConfirmed); err != nil {
+			return 0, false, fmt.Errorf("save posting source during intake: %w", err)
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return 0, false, fmt.Errorf("commit job: %w", err)

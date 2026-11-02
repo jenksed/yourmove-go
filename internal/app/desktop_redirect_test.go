@@ -31,7 +31,7 @@ func TestDesktopPOSTRedirectsToGetNavigation(t *testing.T) {
 	}
 
 	w := post("/jobs", url.Values{"job_url": {"https://example.com/wails-test"}, "job_title": {"Test job"}})
-	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `window.location.replace("/jobs")`) || w.Header().Get("Location") != "" {
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `window.location.replace("/jobs/1#overview")`) || w.Header().Get("Location") != "" {
 		t.Fatalf("add-job navigation response: status=%d location=%q body=%s", w.Code, w.Header().Get("Location"), w.Body.String())
 	}
 	jobs, err := app.allJobs()

@@ -42,8 +42,8 @@ type CoverLetter struct {
 
 func (a *App) latestCoverLetter(jobID int64) (CoverLetter, error) {
 	var d CoverLetter
-	err := a.db.QueryRow(`SELECT id,job_id,body,provider,model,master_resume_id,master_sha256,
-        role_resume_id,role_sha256,job_description_sha256,created_at,edited_at
+	err := a.db.QueryRow(`SELECT id,job_id,body,provider,model,COALESCE(master_resume_id,0),master_sha256,
+        COALESCE(role_resume_id,0),role_sha256,job_description_sha256,created_at,edited_at
         FROM cover_letters WHERE job_id=? ORDER BY id DESC LIMIT 1`, jobID).
 		Scan(&d.ID, &d.JobID, &d.Body, &d.Provider, &d.Model, &d.MasterResumeID, &d.MasterSHA256,
 			&d.RoleResumeID, &d.RoleSHA256, &d.JobDescriptionSHA256, &d.CreatedAt, &d.EditedAt)
@@ -60,8 +60,8 @@ type CoverLetterSummary struct {
 
 func (a *App) coverLetterByID(jobID, draftID int64) (CoverLetter, error) {
 	var d CoverLetter
-	err := a.db.QueryRow(`SELECT id,job_id,body,provider,model,master_resume_id,master_sha256,
-        role_resume_id,role_sha256,job_description_sha256,created_at,edited_at
+	err := a.db.QueryRow(`SELECT id,job_id,body,provider,model,COALESCE(master_resume_id,0),master_sha256,
+        COALESCE(role_resume_id,0),role_sha256,job_description_sha256,created_at,edited_at
         FROM cover_letters WHERE job_id=? AND id=?`, jobID, draftID).
 		Scan(&d.ID, &d.JobID, &d.Body, &d.Provider, &d.Model, &d.MasterResumeID, &d.MasterSHA256,
 			&d.RoleResumeID, &d.RoleSHA256, &d.JobDescriptionSHA256, &d.CreatedAt, &d.EditedAt)

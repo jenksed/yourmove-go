@@ -96,7 +96,7 @@ func TestProfileSaveRouteAndCrossOriginGuard(t *testing.T) {
 		t.Fatal(result.Code)
 	}
 	good := postApp(newDesktopMux(a), "/candidate", f, "wails://localhost", "1")
-	if good.Code != http.StatusOK || !strings.Contains(good.Body.String(), `window.location.replace("/candidate")`) {
+	if good.Code != http.StatusOK || !strings.Contains(good.Body.String(), `window.location.replace("/candidate?notice=saved")`) {
 		t.Fatalf("response %d %s", good.Code, good.Body.String())
 	}
 }

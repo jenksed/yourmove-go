@@ -1,0 +1,36 @@
+{
+  "id": "11111111-2222-4333-8444-555555555555",
+  "text": "Senior Platform Engineer",
+  "description": "<h2>Opening</h2><p>Build reliable tools for teams that operate important services.</p><h2>Role overview</h2><p>Partner with product and operations to improve the service platform.</p>",
+  "descriptionPlain": "Opening\nBuild reliable tools for teams that operate important services.\n\nRole overview\nPartner with product and operations to improve the service platform.",
+  "opening": "<h2>Opening</h2><p>Build reliable tools for teams that operate important services.</p>",
+  "openingPlain": "Opening\nBuild reliable tools for teams that operate important services.",
+  "descriptionBody": "<h2>Role overview</h2><p>Partner with product and operations to improve the service platform.</p>",
+  "descriptionBodyPlain": "Role overview\nPartner with product and operations to improve the service platform.",
+  "lists": [
+    {
+      "text": "Responsibilities",
+      "content": "<li>Design dependable service boundaries.</li><li>Improve observability and incident recovery.</li>"
+    },
+    {
+      "text": "Qualifications",
+      "content": "<ul><li>Production Go experience.</li><li>Clear technical communication.</li></ul>"
+    }
+  ],
+  "additional": "<h2>Application instructions</h2><p>Interview steps will be explained before they begin.</p>",
+  "additionalPlain": "Application instructions\nInterview steps will be explained before they begin.",
+  "categories": {
+    "location": "Toronto, Ontario",
+    "commitment": "Full-time",
+    "team": "Engineering",
+    "department": "Platform",
+    "allLocations": ["Toronto, Ontario"]
+  },
+  "workplaceType": "hybrid",
+  "salaryRange": {
+    "currency": "CAD",
+    "interval": "year",
+    "min": 150000,
+    "max": 190000
+  }
+}

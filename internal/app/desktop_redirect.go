@@ -116,6 +116,35 @@ func (w *desktopRedirectWriter) Write(p []byte) (int, error) {
 }
 
 func safeDesktopRedirectTarget(target string) bool {
+	// Shared materials carry only an existing-job presentation identity. Keep
+	// the WebView redirect shim limited to canonical local paths and notices.
+	if parsed, err := url.Parse(target); err == nil && (parsed.Path == "/candidate" || parsed.Path == "/resumes") &&
+		parsed.Scheme == "" && parsed.Host == "" && parsed.User == nil && parsed.Fragment == "" && parsed.RawPath == "" {
+		query, err := url.ParseQuery(parsed.RawQuery)
+		valid := err == nil && len(query) > 0 && query.Encode() == parsed.RawQuery
+		for key, values := range query {
+			if len(values) != 1 {
+				valid = false
+				break
+			}
+			switch key {
+			case "return_job":
+				id, idErr := strconv.ParseInt(values[0], 10, 64)
+				valid = valid && idErr == nil && id > 0 && strconv.FormatInt(id, 10) == values[0]
+			case "notice":
+				if parsed.Path == "/candidate" {
+					valid = valid && values[0] == "saved"
+				} else {
+					valid = valid && (values[0] == "imported" || values[0] == "canceled" || values[0] == "in-use" || values[0] == "master" || values[0] == "archived" || values[0] == "restored" || values[0] == "revised" || values[0] == "duplicate" || values[0] == "failed")
+				}
+			default:
+				valid = false
+			}
+		}
+		if valid {
+			return true
+		}
+	}
 	for _, code := range []string{"stale", "failed"} {
 		suffix := "?submission=" + code + "#prepare"
 		if strings.HasPrefix(target, "/jobs/") && strings.HasSuffix(target, suffix) {
@@ -222,7 +251,7 @@ func safeDesktopRedirectTarget(target string) bool {
 		return false
 	}
 	rawID := strings.TrimPrefix(target, "/jobs/")
-	for _, fragment := range []string{"#prepare", "#history"} {
+	for _, fragment := range []string{"#prepare", "#history", "#overview"} {
 		if strings.HasSuffix(rawID, fragment) {
 			rawID = strings.TrimSuffix(rawID, fragment)
 			id, err := strconv.ParseInt(rawID, 10, 64)

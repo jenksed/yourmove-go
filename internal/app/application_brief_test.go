@@ -30,9 +30,39 @@ func TestFormatApplicationBriefExactOutputAndOptions(t *testing.T) {
 		"JOB DESCRIPTION\n\nOwn customer outcomes.\n\n" +
 		"QUESTIONS NEEDING MY INPUT\n\nSource: Current browser-observed form.\n\n" +
 		"1. Why are you interested in joining our team?\n   Required\n\n" +
-		"2. What is your preferred work mode?\n   Optional\n   Published options:\n   - Remote\n   - Hybrid\n\nEND OF BRIEF\n"
+		"2. What is your preferred work mode?\n   Required state not verified\n   Published options:\n   - Remote\n   - Hybrid\n\nEND OF BRIEF\n"
 	if got != want {
 		t.Fatalf("application brief mismatch\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	}
+}
+
+func TestRequiredLabelIsHonestAndDoesNotChangeQuestionIdentity(t *testing.T) {
+	if got := requiredLabel(true); got != "Required" {
+		t.Fatalf("true required state label = %q", got)
+	}
+	if got := requiredLabel(false); got != "Required state not verified" {
+		t.Fatalf("unverified required state label = %q", got)
+	}
+
+	jobURL := testAshbyPosting
+	field := schema.Field{ID: "browser:motivation", Label: "Why this team?", Kind: "textarea"}
+	result := schema.Result{
+		Platform: "ashby", Source: "browser", Completeness: "rendered_partial",
+		ApplicationURL: jobURL + "/application", Fields: []schema.Field{field},
+	}
+	fieldBefore := result.Fields[0]
+	fingerprintBefore := result.Fingerprint()
+	keyBefore := questionKey(jobURL, result.Platform, fieldBefore)
+	_ = requiredLabel(field.Required)
+
+	if result.Fingerprint() != fingerprintBefore {
+		t.Fatal("required-state presentation changed the schema fingerprint")
+	}
+	if got := questionKey(jobURL, result.Platform, result.Fields[0]); got != keyBefore {
+		t.Fatal("required-state presentation changed the question key")
+	}
+	if !reflect.DeepEqual(result.Fields[0], fieldBefore) || result.Fields[0].Required {
+		t.Fatal("required-state presentation changed the stored field evidence")
 	}
 }
 
@@ -192,7 +222,7 @@ func TestApplicationBriefExcludesProfileSensitiveAndSavedAnswerContent(t *testin
 		t.Fatalf("brief response: %d %q %s", w.Code, w.Header().Get("Content-Type"), w.Body.String())
 	}
 	text := w.Body.String()
-	for _, want := range []string{job.Company, job.Title, job.SalaryText, "Compensation source: Employer posting", job.URL, job.Description, "Read-only application preview", "Required", "Optional", "Published options:", "- Remote", "- Hybrid"} {
+	for _, want := range []string{job.Company, job.Title, job.SalaryText, "Compensation source: Employer posting", job.URL, job.Description, "Read-only application preview", "Required", "Required state not verified", "Published options:", "- Remote", "- Hybrid"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("brief missing %q", want)
 		}

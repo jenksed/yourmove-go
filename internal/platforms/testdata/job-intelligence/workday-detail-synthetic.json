@@ -1,0 +1,16 @@
+{
+  "hiringOrganization": {
+    "name": "Fixture Systems"
+  },
+  "jobPostingInfo": {
+    "title": "Platform Engineer",
+    "jobPostingId": "Platform-Engineer_R-12345",
+    "jobReqId": "R-12345",
+    "jobDescription": "<section><h2>Role overview</h2><p>Build safe systems.</p></section><section><h2>What you will do</h2><ul><li>Design APIs.</li><li>Review code.</li></ul></section><section><h2>Qualifications</h2><p>Experience shipping Go services.</p></section>",
+    "location": "Seattle, WA",
+    "additionalLocations": ["Portland, OR"],
+    "remoteType": "Hybrid",
+    "timeType": "Full time",
+    "externalUrl": "https://apply.example.invalid/not-fetched"
+  }
+}

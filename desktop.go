@@ -10,12 +10,17 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"github.com/jenksed/yourmove-go/internal/app"
+	"github.com/jenksed/yourmove-go/internal/nativeidentity"
 	"github.com/jenksed/yourmove-go/internal/storage"
 )
 
 // Wails is a host for the same Go App and HTTP routes as browser mode.
 // Templates and static assets are embedded; no repository working directory is needed.
 func main() {
+	runID, err := nativeidentity.Validate()
+	if err != nil {
+		log.Fatal(err)
+	}
 	dbPath, resumeDir, err := storage.ApplicationStorage()
 	if err != nil {
 		log.Fatal(err)
@@ -49,12 +54,16 @@ func main() {
 		start = "/__wails_probe"
 	}
 
+	windowTitle, err := nativeidentity.Write(runID, dbPath, resumeDir)
+	if err != nil {
+		log.Fatal(err)
+	}
 	desktop := application.New(application.Options{
 		Name:   "YourMove",
 		Assets: application.AssetOptions{Handler: handler},
 	})
 	desktop.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:     "YourMove",
+		Title:     windowTitle,
 		Width:     1100,
 		Height:    800,
 		MinWidth:  700,

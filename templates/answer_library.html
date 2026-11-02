@@ -2,7 +2,7 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f7f7f4"><title>Answer Library · YourMove</title><link rel="stylesheet" href="/static/styles.css"><script defer src="/static/ui.js"></script></head><body>
 {{template "shell-open" "answer-library"}}
 <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/jobs">Opportunities</a><span aria-hidden="true">/</span><span>Answer Library</span></nav>
-<div class="page-heading"><div><p class="eyebrow">PREVIOUS WRITING</p><h1>Answer Library</h1><p class="page-description">Examples you chose to keep. Each stays with the question and application it came from; review and adapt it before using it elsewhere.</p></div></div>
+<div class="page-heading"><div><h1>Answer Library</h1><p class="page-description">Examples you chose to keep. Each stays with the question and application it came from; review and adapt it before using it elsewhere.</p></div><a class="text-link" href="/career-evidence">Career Evidence →</a></div>
 {{if .Notice}}<p class="local-save-confirmation" role="status">{{.Notice}}</p>{{end}}
 <form method="POST" action="/answer-library/search" class="answer-library-search" role="search">
   <div class="field"><label for="answer-library-query">Search saved questions and writing</label><input id="answer-library-query" name="query" type="search" maxlength="1000" value="{{.SearchQuery}}" placeholder="Try Linux incident, customer escalation, or performance"></div>
@@ -29,10 +29,10 @@
   <article class="answer-library-entry" id="library-entry-{{.ID}}">
     <h2 class="answer-library-question">{{.OriginalQuestion}}</h2>
     <div class="answer-library-context"><strong>{{if .SourceJobTitle}}{{.SourceJobTitle}}{{else}}Untitled job{{end}}</strong><span>{{if .SourceEmployer}}{{.SourceEmployer}}{{else}}{{.SourceHost}}{{end}}</span></div>
-    <details class="answer-library-full-answer" open><summary>Read the complete saved answer</summary><pre class="evidence-text">{{.Answer}}</pre></details>
-    <p class="small-muted">Previous writing from {{if .SourceEmployer}}{{.SourceEmployer}}{{else}}{{.SourceHost}}{{end}} · saved {{.CreatedAt}}{{if ne .UpdatedAt .CreatedAt}} · library copy edited {{.UpdatedAt}}{{end}}</p>
+    <details class="answer-library-full-answer" {{if eq (len $.Entries) 1}}open{{end}}><summary>Read the complete saved answer</summary><pre class="evidence-text">{{.Answer}}</pre></details>
+    <p class="small-muted">Previous writing from {{if .SourceEmployer}}{{.SourceEmployer}}{{else}}{{.SourceHost}}{{end}} · saved <time datetime="{{.CreatedAt}}" title="{{.CreatedAt}}">{{humanDate .CreatedAt}}</time>{{if ne .UpdatedAt .CreatedAt}} · library copy edited <time datetime="{{.UpdatedAt}}" title="{{.UpdatedAt}}">{{humanDate .UpdatedAt}}</time>{{end}}</p>
     <form method="POST" action="/answer-library/{{.ID}}/career-evidence" class="answer-library-evidence-source">
-      <button type="submit" class="button button-secondary">Create career evidence from this writing</button>
+      <button type="submit" class="button button-secondary">Create an experience draft</button>
       <p class="small-muted">Opens an editable draft with the original question and writing saved as a source snapshot. No facts are extracted.</p>
     </form>
     <details class="answer-library-manage"><summary>Edit or delete this library copy</summary>

@@ -28,13 +28,13 @@ func TestPrepareWritingEntryPointsUseCurrentQuestionSourceAndExplainLetterSource
 	page := get()
 	for _, want := range []string{
 		`id="answers" data-workspace-panel="answers"`,
-		`id="application-answers-workspace" data-writing-activity data-writing-activity-key="answers" open`,
-		`id="letter-editor" data-writing-activity data-writing-activity-key="letter"`,
+		`id="application-answers-workspace" name="job-writing-activity" data-writing-activity data-writing-activity-key="answers" open`,
+		`id="letter-editor" name="job-writing-activity" data-writing-activity data-writing-activity-key="letter"`,
 		`<nav class="prepare-entry-actions" aria-label="Writing tasks">`,
 		`href="#early-application-questions" data-prepare-question-entry`,
 		`<strong>Prepare answers</strong>`,
 		`href="#letter-editor" data-open-details="letter-editor"><strong>Write cover letter</strong>`,
-		"To generate: add a job description",
+		"Optional · write or paste a letter, with AI assistance available separately",
 		"Designate an active master resume in the document library.",
 		"Choose an active role-specific resume for this job.",
 	} {
@@ -52,7 +52,7 @@ func TestPrepareWritingEntryPointsUseCurrentQuestionSourceAndExplainLetterSource
 	page = get()
 	for _, want := range []string{
 		`href="#early-application-questions" data-prepare-question-entry`,
-		`<strong>Answer questions</strong><small>1 need your input</small>`,
+		`<strong>Answer questions</strong><small>1 need your input`,
 		`id="early-application-questions" tabindex="-1"`,
 		`action="/jobs/1/answers/early-save"`,
 	} {

@@ -108,18 +108,18 @@ func TestAnswerLibrarySearchIndexMigrationPreservesCuratedSnapshot(t *testing.T)
 func TestApplicationStorageMigratesLegacyDatabase(t *testing.T) {
 	root := t.TempDir()
 	workingDir := filepath.Join(root, "working")
-	workspace := filepath.Join(root, "workspace")
+	workspace := normalWorkspace(t, root)
 	if err := os.Mkdir(workingDir, 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Mkdir(workspace, 0755); err != nil {
+	if err := os.MkdirAll(workspace, 0755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Chmod(workspace, 0755); err != nil {
 		t.Fatal(err)
 	}
 	t.Chdir(workingDir)
-	t.Setenv("YOURMOVE_DATA_DIR", workspace)
+	normalStorageEnvironment(t, root)
 
 	legacy := filepath.Join(workingDir, "jobs.db")
 	db, err := OpenDB(legacy)
@@ -137,6 +137,7 @@ func TestApplicationStorageMigratesLegacyDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	workspace, _ = filepath.EvalSymlinks(workspace)
 	if dbPath != filepath.Join(workspace, "jobs.db") || resumeDir != filepath.Join(workspace, "resumes") {
 		t.Fatalf("application paths = %q, %q", dbPath, resumeDir)
 	}
@@ -182,6 +183,47 @@ func TestApplicationStorageMigratesLegacyDatabase(t *testing.T) {
 	}
 }
 
+func TestApplicationStorageCreatesFreshWorkspace(t *testing.T) {
+	root := t.TempDir()
+	workingDir := filepath.Join(root, "working")
+	workspace := filepath.Join(root, "new-workspace")
+	if err := os.Mkdir(workingDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(workingDir)
+	t.Setenv("YOURMOVE_DATA_DIR", workspace)
+
+	dbPath, resumeDir, err := ApplicationStorage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace, _ = filepath.EvalSymlinks(workspace)
+	if dbPath != filepath.Join(workspace, "jobs.db") || resumeDir != filepath.Join(workspace, "resumes") {
+		t.Fatalf("fresh application paths = %q, %q", dbPath, resumeDir)
+	}
+	for _, path := range []string{workspace, resumeDir} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := info.Mode().Perm(); got != 0700 {
+			t.Fatalf("permissions for %s = %04o, want 0700", path, got)
+		}
+	}
+	db, err := OpenDB(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var jobsTable int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='jobs'`).Scan(&jobsTable); err != nil {
+		t.Fatal(err)
+	}
+	if jobsTable != 1 {
+		t.Fatalf("fresh workspace jobs table count = %d", jobsTable)
+	}
+}
+
 func TestApplicationStorageRequiresAbsoluteOverride(t *testing.T) {
 	t.Setenv("YOURMOVE_DATA_DIR", "relative-workspace")
 	if _, _, err := ApplicationStorage(); err == nil || err.Error() != "YOURMOVE_DATA_DIR must be absolute" {
@@ -192,13 +234,13 @@ func TestApplicationStorageRequiresAbsoluteOverride(t *testing.T) {
 func TestMigrationRefusesDocumentWorkspaceWithoutInstallingDatabase(t *testing.T) {
 	root := t.TempDir()
 	workingDir := filepath.Join(root, "working")
-	workspace := filepath.Join(root, "destination")
+	workspace := normalWorkspace(t, root)
 	legacyResumeDir := filepath.Join(workingDir, "resumes")
 	if err := os.MkdirAll(legacyResumeDir, 0700); err != nil {
 		t.Fatal(err)
 	}
 	t.Chdir(workingDir)
-	t.Setenv("YOURMOVE_DATA_DIR", workspace)
+	normalStorageEnvironment(t, root)
 
 	legacy := filepath.Join(workingDir, "jobs.db")
 	db, err := OpenDB(legacy)
@@ -269,5 +311,57 @@ func TestMigrationDoesNotInstallOverAnInterruptedStage(t *testing.T) {
 	got, err := os.ReadFile(stage)
 	if err != nil || !bytes.Equal(partial, got) {
 		t.Fatalf("partial stage changed: %v", err)
+	}
+}
+
+func TestJobPostingSourcesMigrationIsAdditiveAndRepeatable(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy-posting-source.db")
+	legacy, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		`CREATE TABLE jobs (id INTEGER PRIMARY KEY,url TEXT NOT NULL,host TEXT NOT NULL)`,
+		`CREATE TABLE application_answers (job_id INTEGER NOT NULL,destination TEXT NOT NULL,provider TEXT NOT NULL,question_key TEXT NOT NULL,label TEXT NOT NULL,answer TEXT NOT NULL,revision INTEGER NOT NULL,PRIMARY KEY(job_id,destination,provider,question_key))`,
+		`INSERT INTO jobs(id,url,host) VALUES(41,'https://jobs.example.test/legacy','jobs.example.test')`,
+		`INSERT INTO application_answers(job_id,destination,provider,question_key,label,answer,revision) VALUES(41,'https://jobs.example.test/legacy','fixture','legacy-key','Question','Synthetic legacy answer',3)`,
+	} {
+		if _, err := legacy.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := legacy.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	for attempt := 0; attempt < 2; attempt++ {
+		db, err := OpenDB(path)
+		if err != nil {
+			t.Fatalf("open legacy database (attempt %d): %v", attempt, err)
+		}
+		var tableCount int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='job_posting_sources'`).Scan(&tableCount); err != nil {
+			t.Fatal(err)
+		}
+		if tableCount != 1 {
+			t.Fatalf("latest-source table count = %d", tableCount)
+		}
+		var jobURL, answer string
+		var sourceCount int
+		if err := db.QueryRow(`SELECT url FROM jobs WHERE id=41`).Scan(&jobURL); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.QueryRow(`SELECT answer FROM application_answers WHERE job_id=41 AND question_key='legacy-key'`).Scan(&answer); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.QueryRow(`SELECT COUNT(*) FROM job_posting_sources`).Scan(&sourceCount); err != nil {
+			t.Fatal(err)
+		}
+		if jobURL != "https://jobs.example.test/legacy" || answer != "Synthetic legacy answer" || sourceCount != 0 {
+			t.Fatalf("legacy data changed or implicitly backfilled: url=%q answer=%q sources=%d", jobURL, answer, sourceCount)
+		}
+		if err := db.Close(); err != nil {
+			t.Fatal(err)
+		}
 	}
 }

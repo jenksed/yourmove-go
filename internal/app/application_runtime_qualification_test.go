@@ -181,7 +181,7 @@ func TestControlledRuntimeRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = eval(`location.reload();true`)
-	wait(`document.body.textContent.includes('The selected resume needs attention.')&&!document.querySelector('form[action$="/continue"]')`)
+	wait(`(()=>{const resume=document.querySelector('.prepare-resume-block');return resume?.textContent.includes('restart-resume.pdf')&&resume.textContent.includes('Needs attention')&&!resume.textContent.includes('Selected for this application')&&!!resume.querySelector('form[action="/jobs/1/resume"]')&&!document.querySelector('form[action$="/continue"]')})()`)
 	if err = os.WriteFile(path, original, 0600); err != nil {
 		t.Fatal(err)
 	}

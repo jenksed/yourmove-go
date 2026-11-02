@@ -30,6 +30,7 @@ type jobWorkspace struct {
 	SubmissionUncertain bool
 	Questions           questionPreparation
 	EarlyQuestions      earlyQuestionPreparation
+	Reading             jobReadingView
 	Job
 	Resumes              []Resume
 	ResumeOptions        []documentRow
@@ -171,11 +172,12 @@ type documentRow struct {
 }
 
 type resumeLibrary struct {
-	Resumes  []Resume
-	Rows     []documentRow
-	Families []RoleFamily
-	Desktop  bool
-	Notice   string
+	Resumes   []Resume
+	Rows      []documentRow
+	Families  []RoleFamily
+	Desktop   bool
+	Notice    string
+	ReturnJob *Job
 }
 
 func (a *App) resumeLibrary(w http.ResponseWriter, r *http.Request) {
@@ -198,6 +200,8 @@ func (a *App) resumeLibrary(w http.ResponseWriter, r *http.Request) {
 		rows = append(rows, documentRow{Resume: r, FamilyName: names[r.RoleFamilyID]})
 	}
 	notice := map[string]string{
+		"imported":  "Resume saved locally. Select it explicitly from the job’s Prepare activity when you are ready.",
+		"canceled":  "Import canceled. No document was added.",
 		"in-use":    "This resume is referenced by a job, submission, or saved cover letter. Archive it to remove it from active choices without losing application evidence.",
 		"master":    "Remove the master designation or upload a new master revision before deleting this document.",
 		"archived":  "Resume archived. Existing job assignments and submission history are unchanged.",
@@ -207,7 +211,7 @@ func (a *App) resumeLibrary(w http.ResponseWriter, r *http.Request) {
 		"failed":    "YourMove could not complete that document change. The current library remains available.",
 	}[r.URL.Query().Get("notice")]
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := a.resources.resumesTemplate.Execute(w, resumeLibrary{Resumes: resumes, Rows: rows, Families: families, Desktop: a.pickResume != nil, Notice: notice}); err != nil {
+	if err := a.resources.resumesTemplate.Execute(w, resumeLibrary{Resumes: resumes, Rows: rows, Families: families, Desktop: a.pickResume != nil, Notice: notice, ReturnJob: a.sharedMaterialReturnJob(r)}); err != nil {
 		log.Printf("render resume library: %v", err)
 	}
 }
@@ -235,7 +239,7 @@ func (a *App) uploadResume(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Cannot import resume: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	http.Redirect(w, r, "/resumes", http.StatusSeeOther)
+	http.Redirect(w, r, sharedMaterialLocation("/resumes", a.sharedMaterialReturnJob(r), "imported"), http.StatusSeeOther)
 }
 
 // nativeResumeImport is enabled only by the Wails entry point. It does not
@@ -249,6 +253,9 @@ func (a *App) nativeResumeImport(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Desktop window required", http.StatusForbidden)
 		return
 	}
+	if !parseLocalForm(w, r, 4<<10) {
+		return
+	}
 	path, err := a.pickResume()
 	if err != nil {
 		log.Printf("native resume picker: %v", err)
@@ -256,7 +263,7 @@ func (a *App) nativeResumeImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if path == "" {
-		http.Redirect(w, r, "/resumes", http.StatusSeeOther)
+		http.Redirect(w, r, sharedMaterialLocation("/resumes", a.sharedMaterialReturnJob(r), "canceled"), http.StatusSeeOther)
 		return
 	}
 	f, err := os.Open(path)
@@ -269,7 +276,7 @@ func (a *App) nativeResumeImport(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Cannot import resume: "+err.Error(), 400)
 		return
 	}
-	http.Redirect(w, r, "/resumes", http.StatusSeeOther)
+	http.Redirect(w, r, sharedMaterialLocation("/resumes", a.sharedMaterialReturnJob(r), "imported"), http.StatusSeeOther)
 }
 
 func (a *App) chooseMasterResume(w http.ResponseWriter, r *http.Request) {
@@ -283,7 +290,7 @@ func (a *App) chooseMasterResume(w http.ResponseWriter, r *http.Request) {
 	}
 	raw := r.PostForm.Get("master")
 	if raw != "yes" && raw != "no" {
-		http.Redirect(w, r, "/resumes?notice=failed", http.StatusSeeOther)
+		http.Redirect(w, r, sharedMaterialLocation("/resumes", a.sharedMaterialReturnJob(r), "failed"), http.StatusSeeOther)
 		return
 	}
 	err = a.setMasterResume(id, raw == "yes")
@@ -291,14 +298,14 @@ func (a *App) chooseMasterResume(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, sql.ErrNoRows):
 		http.NotFound(w, r)
 	case errors.Is(err, ErrResumeInUse):
-		http.Redirect(w, r, "/resumes?notice=in-use", http.StatusSeeOther)
+		http.Redirect(w, r, sharedMaterialLocation("/resumes", a.sharedMaterialReturnJob(r), "in-use"), http.StatusSeeOther)
 	case errors.Is(err, ErrResumeArchived):
-		http.Redirect(w, r, "/resumes?notice=archived", http.StatusSeeOther)
+		http.Redirect(w, r, sharedMaterialLocation("/resumes", a.sharedMaterialReturnJob(r), "archived"), http.StatusSeeOther)
 	case err != nil:
 		log.Printf("set master resume: %v", err)
 		http.Error(w, "Unable to update master resume", 500)
 	default:
-		http.Redirect(w, r, "/resumes", http.StatusSeeOther)
+		http.Redirect(w, r, sharedMaterialLocation("/resumes", a.sharedMaterialReturnJob(r), ""), http.StatusSeeOther)
 	}
 }
 
@@ -312,7 +319,7 @@ func (a *App) deleteResumeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.PostForm.Get("confirm") != "yes" || r.PostForm.Get("confirm_phrase") != "DELETE" {
-		http.Redirect(w, r, "/resumes?notice=failed", http.StatusSeeOther)
+		http.Redirect(w, r, sharedMaterialLocation("/resumes", a.sharedMaterialReturnJob(r), "failed"), http.StatusSeeOther)
 		return
 	}
 	err = a.deleteResume(id)
@@ -320,14 +327,14 @@ func (a *App) deleteResumeHandler(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, sql.ErrNoRows):
 		http.NotFound(w, r)
 	case errors.Is(err, ErrResumeInUse):
-		http.Redirect(w, r, "/resumes?notice=in-use", http.StatusSeeOther)
+		http.Redirect(w, r, sharedMaterialLocation("/resumes", a.sharedMaterialReturnJob(r), "in-use"), http.StatusSeeOther)
 	case errors.Is(err, ErrMasterResume):
-		http.Redirect(w, r, "/resumes?notice=master", http.StatusSeeOther)
+		http.Redirect(w, r, sharedMaterialLocation("/resumes", a.sharedMaterialReturnJob(r), "master"), http.StatusSeeOther)
 	case err != nil:
 		log.Printf("delete resume: %v", err)
 		http.Error(w, "Unable to delete resume", 500)
 	default:
-		http.Redirect(w, r, "/resumes", http.StatusSeeOther)
+		http.Redirect(w, r, sharedMaterialLocation("/resumes", a.sharedMaterialReturnJob(r), ""), http.StatusSeeOther)
 	}
 }
 
@@ -342,11 +349,11 @@ func (a *App) changeResumeArchive(w http.ResponseWriter, r *http.Request) {
 	}
 	action := r.PostForm.Get("action")
 	if action != "archive" && action != "restore" {
-		http.Redirect(w, r, "/resumes?notice=failed", http.StatusSeeOther)
+		http.Redirect(w, r, sharedMaterialLocation("/resumes", a.sharedMaterialReturnJob(r), "failed"), http.StatusSeeOther)
 		return
 	}
 	if action == "archive" && r.PostForm.Get("confirm") != "yes" {
-		http.Redirect(w, r, "/resumes?notice=failed", http.StatusSeeOther)
+		http.Redirect(w, r, sharedMaterialLocation("/resumes", a.sharedMaterialReturnJob(r), "failed"), http.StatusSeeOther)
 		return
 	}
 	err = a.setResumeArchived(id, action == "archive")
@@ -356,14 +363,14 @@ func (a *App) changeResumeArchive(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Printf("archive resume: %v", err)
-		http.Redirect(w, r, "/resumes?notice=failed", http.StatusSeeOther)
+		http.Redirect(w, r, sharedMaterialLocation("/resumes", a.sharedMaterialReturnJob(r), "failed"), http.StatusSeeOther)
 		return
 	}
 	notice := "archived"
 	if action == "restore" {
 		notice = "restored"
 	}
-	http.Redirect(w, r, "/resumes?notice="+notice, http.StatusSeeOther)
+	http.Redirect(w, r, sharedMaterialLocation("/resumes", a.sharedMaterialReturnJob(r), notice), http.StatusSeeOther)
 }
 
 func (a *App) reviseResumeBrowser(w http.ResponseWriter, r *http.Request) {
@@ -374,7 +381,7 @@ func (a *App) reviseResumeBrowser(w http.ResponseWriter, r *http.Request) {
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, documents.MaxResumeSize+(1<<20))
 	if err := r.ParseMultipartForm(64 << 10); err != nil {
-		http.Redirect(w, r, "/resumes?notice=failed", http.StatusSeeOther)
+		http.Redirect(w, r, sharedMaterialLocation("/resumes", a.sharedMaterialReturnJob(r), "failed"), http.StatusSeeOther)
 		return
 	}
 	if r.MultipartForm != nil {
@@ -382,7 +389,7 @@ func (a *App) reviseResumeBrowser(w http.ResponseWriter, r *http.Request) {
 	}
 	f, h, err := r.FormFile("resume")
 	if err != nil {
-		http.Redirect(w, r, "/resumes?notice=failed", http.StatusSeeOther)
+		http.Redirect(w, r, sharedMaterialLocation("/resumes", a.sharedMaterialReturnJob(r), "failed"), http.StatusSeeOther)
 		return
 	}
 	defer f.Close()
@@ -404,16 +411,16 @@ func (a *App) reviseResumeNative(w http.ResponseWriter, r *http.Request) {
 	}
 	path, err := a.pickResume()
 	if err != nil {
-		http.Redirect(w, r, "/resumes?notice=failed", http.StatusSeeOther)
+		http.Redirect(w, r, sharedMaterialLocation("/resumes", a.sharedMaterialReturnJob(r), "failed"), http.StatusSeeOther)
 		return
 	}
 	if path == "" {
-		http.Redirect(w, r, "/resumes", http.StatusSeeOther)
+		http.Redirect(w, r, sharedMaterialLocation("/resumes", a.sharedMaterialReturnJob(r), ""), http.StatusSeeOther)
 		return
 	}
 	f, err := os.Open(path)
 	if err != nil {
-		http.Redirect(w, r, "/resumes?notice=failed", http.StatusSeeOther)
+		http.Redirect(w, r, sharedMaterialLocation("/resumes", a.sharedMaterialReturnJob(r), "failed"), http.StatusSeeOther)
 		return
 	}
 	defer f.Close()
@@ -426,14 +433,14 @@ func (a *App) completeResumeRevision(w http.ResponseWriter, r *http.Request, id 
 	case errors.Is(err, sql.ErrNoRows):
 		http.NotFound(w, r)
 	case errors.Is(err, ErrDuplicateResumeRevision):
-		http.Redirect(w, r, "/resumes?notice=duplicate", http.StatusSeeOther)
+		http.Redirect(w, r, sharedMaterialLocation("/resumes", a.sharedMaterialReturnJob(r), "duplicate"), http.StatusSeeOther)
 	case errors.Is(err, ErrResumeArchived):
-		http.Redirect(w, r, "/resumes?notice=archived", http.StatusSeeOther)
+		http.Redirect(w, r, sharedMaterialLocation("/resumes", a.sharedMaterialReturnJob(r), "archived"), http.StatusSeeOther)
 	case err != nil:
 		log.Printf("revise resume: %v", err)
-		http.Redirect(w, r, "/resumes?notice=failed", http.StatusSeeOther)
+		http.Redirect(w, r, sharedMaterialLocation("/resumes", a.sharedMaterialReturnJob(r), "failed"), http.StatusSeeOther)
 	default:
-		http.Redirect(w, r, "/resumes?notice=revised", http.StatusSeeOther)
+		http.Redirect(w, r, sharedMaterialLocation("/resumes", a.sharedMaterialReturnJob(r), "revised"), http.StatusSeeOther)
 	}
 }
 

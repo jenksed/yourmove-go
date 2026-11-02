@@ -238,7 +238,12 @@ func (a *App) applyPostingRefresh(id int64, metadata platforms.Metadata, status,
 	if salaryOrigin == "" {
 		salaryOrigin = "employer"
 	}
-	result, err := a.db.Exec(`UPDATE jobs SET
+	tx, err := a.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin posting refresh for job %d: %w", id, err)
+	}
+	defer tx.Rollback()
+	result, err := tx.Exec(`UPDATE jobs SET
 			stage = CASE WHEN ? = 'closed' THEN 'closed' ELSE stage END,
             title = CASE WHEN ? = 'retrieved' AND title_manual = 0 AND ? <> '' THEN ? ELSE title END,
             company = CASE WHEN ? = 'retrieved' AND company_manual = 0 AND ? <> '' THEN ? ELSE company END,
@@ -263,6 +268,22 @@ func (a *App) applyPostingRefresh(id int64, metadata platforms.Metadata, status,
 	}
 	if n == 0 {
 		return sql.ErrNoRows
+	}
+	if status == "retrieved" {
+		var savedURL string
+		var descriptionManual, salaryManual bool
+		if err := tx.QueryRow(`SELECT url, description_manual, salary_manual FROM jobs WHERE id=?`, id).Scan(&savedURL, &descriptionManual, &salaryManual); err != nil {
+			return fmt.Errorf("load refreshed job ownership for %d: %w", id, err)
+		}
+		source := usablePostingSource(metadata.Source, savedURL, metadata.Description)
+		descriptionConfirmed := metadata.Description != "" && !descriptionManual
+		salaryConfirmed := metadata.SalaryText != "" && !salaryManual
+		if err := saveJobPostingSource(tx, id, savedURL, metadata.Description, checkedAt, source, descriptionConfirmed, salaryConfirmed); err != nil {
+			return fmt.Errorf("save posting source during refresh: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit posting refresh for job %d: %w", id, err)
 	}
 	return nil
 }

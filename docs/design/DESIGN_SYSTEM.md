@@ -11,7 +11,7 @@ Aesthetic direction: **editorial utility with precise operational feedback**. Pr
 ## Foundations already implemented
 
 - **Typography:** system sans-serif in `styles.css`; use size, weight, and alignment for hierarchy before introducing labels, pills, or decorative frames. One page heading; section headings identify tasks, not marketing promises.
-- **Color:** existing light/dark tokens (`--color-bg`, `--color-surface`, `--color-text`, `--color-muted`, `--color-border`, `--color-primary`, semantic attention/info/danger variants). Green is an action accent, not a background treatment for every section.
+- **Color:** existing light/dark tokens (`--color-bg`, `--color-surface`, `--color-text`, `--color-muted`, `--color-border`, `--color-primary`, semantic attention/info/danger variants). Cool ink-blue is the action accent. Neutral selection and ordinary saved-local feedback stay quiet; green is reserved for recorded positive states and limited brand expression.
 - **Spacing:** prefer a stable rhythm of 8 / 12 / 16 / 24 px. Dense form controls are fine; large vertical gaps must separate *decisions* rather than decorate individual inputs.
 - **Surfaces:** start with page background + separators. Add a panel only when it encloses a meaningful independent workspace or evidence group. No default panel-within-panel stacks.
 - **Status:** expose selected, missing, ready, active, interrupted, and recorded only when they change the user's action or interpretation. Do not use badge chips for ordinary metadata.
@@ -68,3 +68,15 @@ Ready, editable answers from the approved candidate profile appear in a compact 
 A prominent progress panel pairs current work with the suggested next opportunity. It shows opportunities left to work on, distinct jobs with applications recorded today (local calendar day), and overall jobs with recorded applications. Its progress bar measures recorded jobs against active plus applied opportunities; closed jobs are excluded. Recording an application increases the recorded counters and reduces remaining work on the next list load.
 
 The suggested job and its existing action sit alongside progress on desktop and below it on narrow windows. Clicking the remaining metric returns the list to active opportunities and clears search. The saved lifetime total stays secondary list context. “Marked ready” remains a manual planning label, not an automated readiness check. All saved rows remain available through All stages and without JavaScript.
+
+## October 25 finalization — Quiet Ink (implemented)
+
+The application uses a warm neutral light canvas and an independently composed graphite dark canvas. The existing wordmarks and offline system typography remain. Shared tokens in `static/styles.css` distinguish navigation selection, primary action/on-action text, neutral local feedback, success, caution, error, focus, dirty work and uncertain state. Both explicit dark and system-dark use the same values. Buttons use action/on-action tokens instead of hardcoded green; ordinary document icons and local submission feedback use neutral surfaces.
+
+Profile fields use semantic Contact / Location / Professional links groups with a separate approval boundary. Shared materials accept only canonical numeric `return_job` context, validated against existing jobs; no return URL is accepted and importing does not select a job resume. Dates are localized for display with the exact timestamp retained in `time` attributes.
+
+Question editing keeps one authoritative form per question. Single-question workbenches omit the selector/index/Previous/Next chrome; multiple-question navigation remains. First manual letters use the same unsaved-departure guard as saved letters and answers. Letter Save and export precede the writing area. Optional generation remains request-bound; native wait responsiveness is not qualified.
+
+Populated Opportunities uses the existing header Add action to reveal the form when JavaScript is active. The native disclosure remains visible without enhancement. The compact suggestion preserves two complete ordinary rows at the controlled 900×700 viewport. This does not require tiny type or hide long titles.
+
+Controlled-browser evidence, exact source manifests, findings and native limitations are in the persistent finalization run: `$PROJECTS/yourmove-review-artifacts/sol61-product-experience-finalization/run-20261025T130038Z`. UX disposition remains HOLD until native primary-path acceptance. No public distribution is authorized.

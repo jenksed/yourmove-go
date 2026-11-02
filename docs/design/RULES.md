@@ -78,3 +78,11 @@ Document lists lead with filename, state, and the common action. Less frequent r
 3. **Visible object/action first**; what is subordinate:
 4. **Text, control, and width consistency** at 1280 and 390px:
 5. **Preserved real-path behavior** and evidence actually observed:
+
+## October 25 finalization application
+
+R1/R6 remain active. Quiet Ink changes the shared palette and local composition, not applicant authority. Keep selected-local, saved-local, authorized, attempted, confirmed/uncertain fill, applicant submission and local completion as separate meanings. Do not color ordinary local persistence as a transfer success.
+
+A first manual letter is unsaved work and must use the same departure protection as a saved-letter edit. A shared-material return is a validated job identity, never an arbitrary URL. A false observed Required flag does not prove Optional: show “Requirement not confirmed” where the data cannot express that distinction.
+
+Browser evidence covers both appearances at 1100×800, 900×700 and700×550 viewports. These are not measured native outer-window/WebView dimensions. Native file dialogs, keyboard/VoiceOver and long-running generation still need direct candidate acceptance.

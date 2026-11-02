@@ -1,6 +1,14 @@
 /* Small progressive enhancements only; every mutating form remains server-owned. */
 (() => {
   'use strict';
+  const profileValidationSummary = document.querySelector('[data-profile-validation-summary]');
+  if (profileValidationSummary) {
+    requestAnimationFrame(() => {
+      profileValidationSummary.focus({preventScroll:true});
+      profileValidationSummary.scrollIntoView({block:'start'});
+    });
+  }
+
   const writeClipboardText = async (text) => {
     let clipboardError;
     if (navigator.clipboard?.writeText) {
@@ -28,7 +36,9 @@
     copyDescription.hidden = false;
     copyDescription.addEventListener('click', async () => {
       const status = document.querySelector('[data-copy-description-status]');
-      const text = document.getElementById('job-description').innerText.trim();
+      const canonical = document.getElementById('canonical-description-copy');
+      const description = document.getElementById('job-description');
+      const text = (canonical ? canonical.value : description?.innerText || '').trim();
       try {
         await writeClipboardText(text);
         status.textContent = 'Job description copied.';
@@ -92,7 +102,7 @@
     document.documentElement.dataset.theme = theme === 'system' ? '' : theme;
     if (theme === 'system') document.documentElement.removeAttribute('data-theme');
     const dark = theme === 'dark' || (theme === 'system' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#141a19' : '#f7f7f3');
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#191c22' : '#f5f4f1');
   };
   let theme = 'system';
   try { const previous = localStorage.getItem(key); if (previous === 'dark' || previous === 'light') theme = previous; } catch (_) {}
@@ -532,10 +542,12 @@
       scope.focus({preventScroll:true});
       scope.scrollIntoView({block:'start', behavior:'instant'});
     });
-    index.hidden = false;
-    chooser.closest('.question-chooser').hidden = false;
-    position.hidden = false;
-    workbench.querySelector('.question-navigation').hidden = false;
+    const multipleQuestions = panels.length > 1;
+    index.hidden = !multipleQuestions;
+    chooser.closest('.question-chooser').hidden = !multipleQuestions;
+    position.hidden = !multipleQuestions;
+    workbench.querySelector('.question-navigation').hidden = !multipleQuestions;
+    workbench.classList.toggle('single-question', !multipleQuestions);
     workbench.classList.add('questions-enabled');
     show(selected, false);
     // Save-return focus is explicit; opening Prepare normally doesn't steal focus.
@@ -543,8 +555,10 @@
       // The browser applies #prepare after deferred scripts. Restore the
       // question after that native fragment navigation has finished.
       const restore = () => {
-        panels[selected].focus({preventScroll:true});
-        workbench.scrollIntoView({block:'start', behavior:'instant'});
+        const saveStatus = panels[selected].querySelector('[data-focus-after-save][tabindex="-1"]');
+        const target = saveStatus || panels[selected];
+        target.focus({preventScroll:true});
+        (target.closest('.question-save-status') || target).scrollIntoView({block:'nearest', behavior:'instant'});
       };
       if (document.readyState === 'complete') restore();
       else window.addEventListener('load', () => requestAnimationFrame(restore), {once:true});
@@ -573,7 +587,7 @@
 
   // Explicit server saves remain authoritative. Independent material actions
   // carry unsaved edits across their same-job redirect in this tab only.
-  const editors = Array.from(document.querySelectorAll('form[action$="/answers/save"], form[action$="/answers/early-save"], form[action$="/cover-letter/save"]'));
+  const editors = Array.from(document.querySelectorAll('form[action$="/answers/save"], form[action$="/answers/early-save"], form[action$="/cover-letter/save"], form[action$="/cover-letter/manual"]'));
   const recovery = () => document.querySelector('[data-answer-recovery], [data-letter-recovery], [data-answer-ai-unprotected="true"]');
   const initial = new Map(editors.map(form => [form, new URLSearchParams(new FormData(form)).toString()]));
   const dirtyForms = () => editors.filter(form => form.dataset.dirty === 'true');
@@ -730,7 +744,7 @@
   dialog.className = 'leave-materials-dialog';
   dialog.setAttribute('aria-labelledby', 'leave-materials-title');
   dialog.setAttribute('aria-describedby', 'leave-materials-description');
-  dialog.innerHTML = '<h2 id="leave-materials-title">Leave application materials?</h2><p id="leave-materials-description">You have unsaved changes. Anything already saved locally will remain available, but unsaved changes will be lost if you leave.</p><div class="leave-materials-actions"><button type="button" class="button button-secondary" data-stay>Stay and edit</button><button type="button" class="button button-primary" data-leave>Leave without saving</button></div>';
+  dialog.innerHTML = '<h2 id="leave-materials-title">Leave application materials?</h2><p id="leave-materials-description">You have unsaved changes. Anything already saved locally will remain available, but unsaved changes will be lost if you leave.</p><div class="leave-materials-actions"><button type="button" class="button button-primary" data-stay>Stay and edit</button><button type="button" class="button button-secondary" data-leave>Leave without saving</button></div>';
   document.body.append(dialog);
   const stay = dialog.querySelector('[data-stay]');
   const leave = dialog.querySelector('[data-leave]');
@@ -881,9 +895,13 @@
   if (['saved','transferring'].includes(result)) {
     const scope = document.getElementById('application-action');
     if (!scope) return;
+    const target = result === 'saved'
+      ? document.querySelector('.local-save-confirmation [data-focus-after-save][tabindex="-1"]') || scope
+      : scope;
     const restoreScope = () => {
-      scope.focus({preventScroll:true});
-      scope.scrollIntoView({block:'start',behavior:'instant'});
+      target.focus({preventScroll:true});
+      const scrollTarget = result === 'saved' ? target.closest('.local-save-confirmation') || target : target;
+      scrollTarget.scrollIntoView({block:result === 'saved' ? 'nearest' : 'start',behavior:'instant'});
     };
     if (document.readyState === 'complete') restoreScope();
     else window.addEventListener('load', () => requestAnimationFrame(restoreScope), {once:true});

@@ -324,7 +324,7 @@ func requiredLabel(required bool) string {
 	if required {
 		return "Required"
 	}
-	return "Optional"
+	return "Required state not verified"
 }
 
 func (a *App) applicationBriefHandler(w http.ResponseWriter, r *http.Request) {

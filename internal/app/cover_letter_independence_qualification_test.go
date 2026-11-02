@@ -63,7 +63,10 @@ func TestControlledIndependentCoverLetter(t *testing.T) {
 	defer fixture.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 70*time.Second)
 	defer cancel()
-	employer, err := chromium.LaunchFixture(ctx, fixture.URL+"/fixture/job")
+	// The loopback form models this exact supported posting; production
+	// mutation ownership remains unchanged. Generic LaunchFixture has no
+	// provider route boundary and cannot authorize contact filling.
+	employer, err := chromium.LaunchFixtureForPosting(ctx, fixture.URL+"/fixture/job", testAshbyPosting)
 	if err != nil {
 		t.Fatal(err)
 	}

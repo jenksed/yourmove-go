@@ -8,15 +8,22 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jenksed/yourmove-go/internal/application/browser"
 	"github.com/coder/websocket"
+	"github.com/jenksed/yourmove-go/internal/application/browser"
 )
 
 // Contact resolution stays local to this operation. It uses exact machine
 // semantics plus compatible labels within an application form, never positions
 // or question wording alone. Every write resolves again in the current DOM.
-const contactResolver = `(function(origin, base) {
- const owns = () => location.origin === origin && (location.pathname === base || location.pathname.startsWith(base + '/'));
+const contactResolver = `(function(origin, base, platform) {
+ const owns = candidate => {
+   const path = (candidate || location.pathname).replace(/\/$/, '');
+   if (location.origin !== origin) return false;
+   if (path === base) return true;
+   if (platform === 'ashby') return path.startsWith(base + '/');
+   if (platform === 'lever') return path === base + '/apply';
+   return false;
+ };
  const visible = el => !el.closest('[inert],[aria-hidden="true"]') && getComputedStyle(el).visibility !== 'hidden' && el.getClientRects().length > 0;
  const norm = s => String(s || '').toLowerCase().replace(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}__(systemfield_[a-z_]+)$/, '$1').replace(/[\s_-]/g, '');
  const ids = {name:'name',fullname:'name',systemfieldname:'name',firstname:'first_name',givenname:'first_name',systemfieldfirstname:'first_name',lastname:'last_name',familyname:'last_name',surname:'last_name',systemfieldlastname:'last_name',email:'email',emailaddress:'email',systemfieldemail:'email',phone:'phone',phonenumber:'phone',mobilephone:'phone',systemfieldphone:'phone'};
@@ -52,6 +59,7 @@ const contactResolver = `(function(origin, base) {
    return {el};
  };
  return {
+   owns,
    plan() {
      if (!owns()) throw Error('application changed');
      return {ready:forms().length > 0,keys:hits('name').length ? ['name','email','phone'] : ['first_name','last_name','email','phone']};
@@ -105,7 +113,11 @@ func (s *Session) FillContacts(ctx context.Context, approved browser.ContactValu
 	if err != nil {
 		return browser.ContactResult{}, err
 	}
-	boundary, _ := json.Marshal([]string{saved.Scheme + "://" + saved.Host, strings.TrimRight(saved.Path, "/")})
+	origin, base, platform := saved.Scheme+"://"+saved.Host, strings.TrimRight(saved.Path, "/"), browser.PostingPlatform(s.postingURL)
+	if s.fixtureContactOrigin != "" {
+		origin, base, platform = s.fixtureContactOrigin, s.fixtureContactBase, s.fixtureContactPlatform
+	}
+	boundary, _ := json.Marshal([]string{origin, base, platform})
 	var remote struct {
 		Result struct {
 			ObjectID string `json:"objectId"`
