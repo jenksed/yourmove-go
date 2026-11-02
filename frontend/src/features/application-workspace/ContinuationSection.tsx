@@ -350,7 +350,7 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
                 <div key={answer.key}>
                   <dt>{answer.label}</dt>
                   <dd>
-                    {answer.value} — {answer.source === "Approved candidate information" ? "Candidate Profile" : answer.source} · Eligible for transfer
+                    {answer.value} — {answer.source === "Approved candidate information" ? "Candidate Profile" : answer.source}
                   </dd>
                 </div>
               ))}
@@ -364,7 +364,7 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
         {(snapshot.previousCount > 0 || snapshot.awaitingReconciliation > 0) && (
           <p className="small-muted">
             {snapshot.previousCount > 0 && `${snapshot.previousCount} earlier saved answers are excluded from transfer. `}
-            {snapshot.awaitingReconciliation > 0 && `${snapshot.awaitingReconciliation} early answers await reconciliation and are excluded.`}
+            {snapshot.awaitingReconciliation > 0 && "Saved early answers are filled only when the same question is found in this browser session."}
           </p>
         )}
       </div>

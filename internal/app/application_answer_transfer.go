@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -38,7 +39,105 @@ type applicationAnswerTransfer struct {
 	attempted    []preparedQuestion // Session-only snapshots prevent replay, including uncertain outcomes.
 	outcomes     []browser.AnswerOutcome
 	current      func(preparedQuestion) bool
+	resolve      map[string]func(context.Context, readOnlySession, preparedQuestion) (preparedQuestion, string)
 }
+
+func reactAnswerScopeHash(scope []preparedQuestion) string {
+	type answer struct {
+		Key, Value, Destination, Source, Fingerprint, QuestionID string
+		Revision, ID                                             int64
+		Field                                                    any
+		Early                                                    bool
+	}
+	items := make([]answer, 0, len(scope))
+	for _, q := range scope {
+		items = append(items, answer{q.Key, q.Value, q.Destination, q.DiscoverySource, q.DiscoveryFingerprint, q.SourceQuestionID, q.Revision, q.EarlyAnswerID, q.Field, q.IsEarly})
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].Key < items[j].Key })
+	data, _ := json.Marshal(items)
+	return fmt.Sprintf("%x", sha256.Sum256(data))
+}
+
+func (a *App) reactAnswerTransfer(job Job, scope []preparedQuestion, profileRevision string) *applicationAnswerTransfer {
+	up := &applicationAnswerTransfer{hash: reactAnswerScopeHash(scope), status: "waiting", approved: scope, resolve: map[string]func(context.Context, readOnlySession, preparedQuestion) (preparedQuestion, string){}}
+	for _, item := range scope {
+		q := item
+		up.resolve[q.Key] = func(ctx context.Context, session readOnlySession, q preparedQuestion) (preparedQuestion, string) {
+			latest, err := a.jobByID(job.ID)
+			if err != nil || latest.URL != job.URL || latest.Stage == StageApplied || latest.Stage == StageClosed || latest.SubmissionCount > 0 {
+				return q, "manual"
+			}
+			profile, err := a.candidateProfile()
+			if err != nil || (profileRevision != "" && fmt.Sprint(profile.Revision) != profileRevision) {
+				return q, "manual"
+			}
+			if !q.IsEarly {
+				if q.Revision > 0 {
+					saved, e := a.savedLiveAnswer(latest, q.Key)
+					if e != nil || saved.Revision != q.Revision || saved.Value != q.Value {
+						return q, "manual"
+					}
+				} else {
+					profile.Approved = true
+					prep, e := a.prepareQuestions(latest, profile)
+					valid := false
+					if e == nil {
+						for _, candidate := range prep.ReadyAnswers() {
+							if candidate.Key == q.Key && candidate.Value == q.Value {
+								valid = true
+								break
+							}
+						}
+					}
+					if !valid {
+						return q, "manual"
+					}
+				}
+				return q, "ready"
+			}
+			answer, err := earlyApplicationAnswerByID(a, job.ID, q.EarlyAnswerID)
+			if err != nil || answer.Revision != q.Revision || answer.Answer != q.Value || answer.Destination != q.Destination || answer.DiscoverySource != q.DiscoverySource || answer.DiscoveryFingerprint != q.DiscoveryFingerprint || answer.SourceQuestionID != q.SourceQuestionID || earlyFieldSnapshot(answer.Field) != earlyFieldSnapshot(q.Field) {
+				return q, "manual"
+			}
+			public, err := a.latestValidInspectionForPosting(job.ID, q.DiscoverySource, job.URL)
+			if err != nil || public.Fingerprint != q.DiscoveryFingerprint {
+				return q, "manual"
+			}
+			observation, err := session.Observe(ctx)
+			if err != nil {
+				return q, "waiting"
+			}
+			result, err := browser.AsResult(job.URL, observation)
+			if err != nil {
+				return q, "waiting"
+			}
+			live := Inspection{Platform: result.Platform, Source: result.Source, ApplicationURL: result.ApplicationURL, Completeness: "rendered_partial"}
+			for _, f := range result.Fields {
+				live.Fields = append(live.Fields, InspectedField{Field: f})
+			}
+			match := reconcileEarlyAnswer(latest, answer, &public, live, true)
+			if match.Status == "Not observed yet" || match.Status == "No longer available" {
+				return q, "waiting"
+			}
+			if !match.CanAccept {
+				return q, "manual"
+			}
+			_, err = a.savedLiveAnswer(latest, match.LiveQuestionKey)
+			if !errors.Is(err, sql.ErrNoRows) {
+				return q, "manual"
+			}
+			qualified := q
+			qualified.Field = match.LiveField
+			qualified.Key = match.LiveQuestionKey
+			if validateApplicationAnswerValue(qualified, q.Value) != "" {
+				return q, "manual"
+			}
+			return qualified, "ready"
+		}
+	}
+	return up
+}
+
 type answerFillSession interface {
 	FillAnswer(context.Context, browser.AnswerValue) (browser.AnswerOutcome, error)
 }
@@ -105,6 +204,10 @@ func (a *App) answerTransferForAction(r *http.Request, id int64, profileAuthoriz
 			}
 			p.Approved = true
 		}
+		if q.Revision > 0 {
+			saved, e := a.savedLiveAnswer(latest, q.Key)
+			return e == nil && saved.Revision == q.Revision && saved.Value == q.Value
+		}
 		current, e := a.prepareQuestions(latest, p)
 		if e != nil {
 			return false
@@ -127,16 +230,39 @@ func (h *sessionHost) armAnswers(id int64, destination string, up *applicationAn
 	if h.sessions[id] == nil || h.cancels[id] == nil || h.states[id].Destination != destination {
 		return errors.New("Open the correct managed application browser before transferring answers")
 	}
-	if old := h.answers[id]; old != nil && (old.status == "waiting" || old.status == "checking" || old.hash == up.hash) {
-		return errors.New("These answers were already authorized. Review the transfer result or save a changed answer before continuing")
-	}
 	if h.answers == nil {
 		h.answers = map[int64]*applicationAnswerTransfer{}
 	}
 	if old := h.answers[id]; old != nil {
-		up.approved = pendingAnswers(up.approved, old.attempted, false)
-		up.attempted = append(up.attempted, old.attempted...)
-		up.outcomes = append(up.outcomes, old.outcomes...)
+		newAnswers := pendingAnswers(up.approved, append(append([]preparedQuestion(nil), old.attempted...), old.approved...), false)
+		if handoff := h.handoffs[id]; handoff != nil && handoff.contactStatus != "" {
+			newAnswers = pendingAnswers(newAnswers, nil, true)
+		}
+		if len(newAnswers) == 0 {
+			return errors.New("No new answers are ready; review the existing outcomes in Chromium")
+		}
+		if old.resolve == nil {
+			old.resolve = map[string]func(context.Context, readOnlySession, preparedQuestion) (preparedQuestion, string){}
+		}
+		for _, q := range newAnswers {
+			if resolver := up.resolve[q.Key]; resolver != nil {
+				old.resolve[q.Key] = resolver
+			} else if up.current != nil {
+				current := up.current
+				old.resolve[q.Key] = func(_ context.Context, _ readOnlySession, q preparedQuestion) (preparedQuestion, string) {
+					if current(q) {
+						return q, "ready"
+					}
+					return q, "manual"
+				}
+			}
+		}
+		old.approved = append(old.approved, newAnswers...)
+		old.hash = up.hash
+		if old.status != "checking" {
+			old.status = "waiting"
+		}
+		return nil
 	}
 	if handoff := h.handoffs[id]; handoff != nil && handoff.contactStatus != "" {
 		up.approved = pendingAnswers(up.approved, nil, true)
@@ -158,17 +284,88 @@ func (h *sessionHost) tryAnswers(ctx context.Context, id int64) {
 		return
 	}
 	up.status = "checking"
+	batch := append([]preparedQuestion(nil), up.approved...)
+	resolvers := make(map[string]func(context.Context, readOnlySession, preparedQuestion) (preparedQuestion, string), len(up.resolve))
+	for key, resolver := range up.resolve {
+		resolvers[key] = resolver
+	}
+	current := up.current
 	h.mu.Unlock()
 	var outcomes []browser.AnswerOutcome
+	var waiting []preparedQuestion
+	var terminal []preparedQuestion
 	filler, ok := s.(answerFillSession)
-	for _, q := range up.approved {
+	for _, q := range batch {
 		out := browser.AnswerOutcome{Label: q.Field.Label, Status: "manual", Detail: "The approved answer changed or transfer is unavailable. Review it in Prepare."}
 		if ctx.Err() != nil {
-			out.Status = "uncertain"
-			out.Detail = "Transfer interrupted. Review this field in Chromium."
-		} else if ok && up.current(q) {
+			waiting = append(waiting, q)
+			continue
+		} else if ok {
+			fill := q
+			if resolve := resolvers[q.Key]; resolve != nil {
+				var status string
+				fill, status = resolve(ctx, s, q)
+				if status == "waiting" {
+					waiting = append(waiting, q)
+					continue
+				}
+				if status != "ready" {
+					if q.IsEarly {
+						terminal = append(terminal, q)
+					}
+					outcomes = append(outcomes, out)
+					continue
+				}
+			} else if current == nil || !current(q) {
+				outcomes = append(outcomes, out)
+				continue
+			}
+
+			if q.Revision > 0 && !q.IsEarly {
+				observation, err := s.Observe(ctx)
+				if err != nil {
+					waiting = append(waiting, q)
+					continue
+				}
+				result, err := browser.AsResult(q.Destination, observation)
+				if err != nil {
+					waiting = append(waiting, q)
+					continue
+				}
+				found, compatible := false, false
+				for _, field := range result.Fields {
+					if field.ID == q.Field.ID {
+						found = true
+						field.Group = q.Field.Group
+						compatible = earlyFieldSnapshot(field) == earlyFieldSnapshot(q.Field)
+						break
+					}
+				}
+				if !found {
+					waiting = append(waiting, q)
+					continue
+				}
+				if !compatible {
+					outcomes = append(outcomes, out)
+					continue
+				}
+			}
+			// Record the attempt before the external effect. A concurrent reader
+			// must never interpret an in-flight write as safe to replay.
+			h.mu.Lock()
+			if h.answers[id] != up {
+				h.mu.Unlock()
+				return
+			}
+			if ctx.Err() != nil {
+				h.mu.Unlock()
+				waiting = append(waiting, q)
+				continue
+			}
+			up.attempted = append(up.attempted, q)
+			h.mu.Unlock()
 			var err error
-			out, err = filler.FillAnswer(ctx, browser.AnswerValue{Field: q.Field, Value: q.Value})
+			out, err = filler.FillAnswer(ctx, browser.AnswerValue{Field: fill.Field, Value: q.Value})
 			if err != nil {
 				out = browser.AnswerOutcome{Label: q.Field.Label, Status: "uncertain", Detail: "This answer could not be verified. Review the live form; other successful fields remain completed."}
 			}
@@ -181,7 +378,11 @@ func (h *sessionHost) tryAnswers(ctx context.Context, id int64) {
 		return
 	}
 	up.outcomes = append(up.outcomes, outcomes...)
-	up.attempted = append(up.attempted, up.approved...)
-	up.status = "complete"
-	up.approved = nil
+	up.attempted = append(up.attempted, terminal...)
+	up.approved = append(waiting, up.approved[len(batch):]...)
+	if len(up.approved) > 0 {
+		up.status = "waiting"
+	} else {
+		up.status = "complete"
+	}
 }

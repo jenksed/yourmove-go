@@ -33,6 +33,7 @@ import (
 	"strings"
 
 	browser "github.com/jenksed/yourmove-go/internal/application/browser"
+	"github.com/jenksed/yourmove-go/internal/application/schema"
 )
 
 type continuationAnswerJSON struct {
@@ -40,6 +41,17 @@ type continuationAnswerJSON struct {
 	Label  string `json:"label"`
 	Value  string `json:"value"`
 	Source string `json:"source"`
+}
+
+type continuationEarlyAnswerCandidate struct {
+	ID                   int64        `json:"id"`
+	Destination          string       `json:"destination"`
+	DiscoverySource      string       `json:"discoverySource"`
+	DiscoveryFingerprint string       `json:"discoveryFingerprint"`
+	SourceQuestionID     string       `json:"sourceQuestionId"`
+	Field                schema.Field `json:"field"`
+	Revision             int64        `json:"revision"`
+	Value                string       `json:"value"`
 }
 
 type continuationProfileJSON struct {
@@ -131,6 +143,12 @@ func (a *App) buildContinuation(jobID int64) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	candidates := make([]continuationEarlyAnswerCandidate, 0)
+	for _, q := range early.Questions {
+		if q.Editable && q.EarlyAnswerID > 0 && q.Revision > 0 && strings.TrimSpace(q.Value) != "" {
+			candidates = append(candidates, continuationEarlyAnswerCandidate{ID: q.EarlyAnswerID, Destination: q.Destination, DiscoverySource: q.DiscoverySource, DiscoveryFingerprint: q.DiscoveryFingerprint, SourceQuestionID: q.SourceQuestionID, Field: q.Field, Revision: q.Revision, Value: q.Value})
+		}
+	}
 	letter, err := a.selectedCoverLetter(jobID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
@@ -146,6 +164,23 @@ func (a *App) buildContinuation(jobID int64) (map[string]any, error) {
 		prepWorkspace.BrowserState.Phase = ""
 	}
 	preparation := summarizePreparation(prepWorkspace)
+	for _, q := range early.Questions {
+		if !q.Editable || q.EarlyAnswerID == 0 || q.Revision == 0 || strings.TrimSpace(q.Value) == "" {
+			continue
+		}
+		if q.Reconciliation.LiveQuestionKey != "" {
+			_, liveErr := a.savedLiveAnswer(job, q.Reconciliation.LiveQuestionKey)
+			if liveErr == nil {
+				continue
+			}
+			if !errors.Is(liveErr, sql.ErrNoRows) {
+				return nil, liveErr
+			}
+		}
+		preparation.PendingAnswers = append(preparation.PendingAnswers, preparedQuestion{JobID: job.ID, Destination: q.Destination, Field: q.Field, Key: q.Key, Value: q.Value, Source: "Saved early answer — fills when the same question is found", Revision: q.Revision, Editable: true, IsEarly: true, EarlyAnswerID: q.EarlyAnswerID, DiscoverySource: q.DiscoverySource, DiscoveryFingerprint: q.DiscoveryFingerprint, SourceQuestionID: q.SourceQuestionID})
+	}
+	preparation.PendingAnswers = pendingAnswers(preparation.PendingAnswers, append(state.AnswerAttempted, state.AnswerPending...), false)
+	preparation.IncludeAnswers = len(preparation.PendingAnswers) > 0
 	snapshot := chooseApplicationQuestionSnapshot(job, state, live, early)
 	submissions, err := a.jobSubmissions(jobID)
 	if err != nil {
@@ -202,7 +237,7 @@ func (a *App) buildContinuation(jobID int64) (map[string]any, error) {
 			"includeResume": preparation.IncludeResume, "includeLetter": preparation.IncludeLetter,
 			"includeAnswers":   preparation.IncludeAnswers,
 			"answerSummary":    preparation.AnswerSummary,
-			"answerReviewHash": preparation.AnswerReviewHash(),
+			"answerReviewHash": reactAnswerScopeHash(preparation.PendingAnswers),
 		},
 		"handoff":      map[string]any{"allowed": handoff.Allowed, "reason": handoff.Reason},
 		"browser":      state,
@@ -215,6 +250,8 @@ func (a *App) buildContinuation(jobID int64) (map[string]any, error) {
 		},
 		"letter":                 letterJSON,
 		"pendingAnswers":         pending,
+		"answerScopeInternal":    preparation.PendingAnswers,
+		"earlyAnswerCandidates":  candidates,
 		"previousCount":          len(live.Previous),
 		"awaitingReconciliation": len(early.AwaitingReconciliation()),
 		"questionsAvailable":     snapshot.Available,
@@ -245,6 +282,7 @@ func (a *App) continuationAPI(w http.ResponseWriter, r *http.Request) {
 		writeResumeError(w, http.StatusInternalServerError, "Unable to load employer continuation")
 		return
 	}
+	delete(payload, "answerScopeInternal")
 	writeResumeJSON(w, http.StatusOK, payload)
 }
 
@@ -471,6 +509,20 @@ func (a *App) continuationContinueAPI(w http.ResponseWriter, r *http.Request) {
 		writeResumeError(w, http.StatusUnprocessableEntity, "No transfer material was selected. Review Prepare again.")
 		return
 	}
+	var authorizedAnswers *applicationAnswerTransfer
+	if input.IncludeAnswers {
+		payload, scopeErr := a.buildContinuation(jobID)
+		if scopeErr != nil {
+			writeResumeError(w, http.StatusInternalServerError, "Unable to read saved answers")
+			return
+		}
+		scope := payload["answerScopeInternal"].([]preparedQuestion)
+		if len(scope) == 0 || input.ReviewHash != reactAnswerScopeHash(scope) {
+			writeResumeError(w, http.StatusConflict, "Saved answers changed. Review them before filling.")
+			return
+		}
+		authorizedAnswers = a.reactAnswerTransfer(job, scope, input.ProfileRevision)
+	}
 	form := continueForm(input)
 	cmd := &http.Request{Method: http.MethodPost, PostForm: form}
 	cmd = cmd.WithContext(r.Context())
@@ -502,7 +554,10 @@ func (a *App) continuationContinueAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	run("letter", input.IncludeLetter, a.coverLetterCommand)
 	run("answers", input.IncludeAnswers, func(r *http.Request, id int64) (int, string) {
-		return a.answerTransferForAction(r, id, input.ProfileRevision != "")
+		if err := a.browsers.armAnswers(id, job.URL, authorizedAnswers); err != nil {
+			return http.StatusConflict, err.Error()
+		}
+		return http.StatusSeeOther, "Answer filling started"
 	})
 	writeResumeJSON(w, http.StatusOK, map[string]any{
 		"items": results, "browser": a.browsers.state(jobID),

@@ -83,7 +83,7 @@ func pendingAnswers(ready, attempted []preparedQuestion, contactsHandled bool) [
 		}
 		seen := false
 		for _, old := range attempted {
-			if (old.Key == q.Key || (old.Field.ID != "" && old.Field.ID == q.Field.ID)) && old.Value == q.Value {
+			if (old.Key == q.Key || (old.Field.ID != "" && old.Field.ID == q.Field.ID)) && (old.Value == q.Value || (old.IsEarly && q.IsEarly)) {
 				seen = true
 				break
 			}
@@ -208,7 +208,7 @@ func summarizePreparation(w jobWorkspace) HandoffPresentation {
 	}
 	if out.Action == "" && (s.LetterStatus == "checking" || s.LetterStatus == "waiting" || s.AnswerStatus == "waiting" || s.AnswerStatus == "checking") {
 		out.Title = "Transferring application material"
-		out.Detail = "The current browser remains open. Each item is checked independently; review its result below."
+		out.Detail = "The current browser remains open. Answers not found on this page remain eligible while waiting for a matching question; complete them manually if needed."
 	}
 	return out
 }

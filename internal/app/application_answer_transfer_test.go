@@ -12,11 +12,16 @@ import (
 type fakeAnswerBrowser struct {
 	*fakeBrowser
 	transferred []browser.AnswerValue
+	controls    []browser.Control
 }
 
 type uncertainAnswerBrowser struct {
 	*fakeBrowser
 	calls int
+}
+
+func (f *fakeAnswerBrowser) Observe(context.Context) (browser.Observation, error) {
+	return browser.Observation{URL: f.url, Forms: 1, Controls: f.controls}, nil
 }
 
 func (f *fakeAnswerBrowser) FillAnswer(_ context.Context, v browser.AnswerValue) (browser.AnswerOutcome, error) {
@@ -46,7 +51,7 @@ func TestAnswerTransferApprovalAndContinuation(t *testing.T) {
 			t.Fatal(rec.Code, rec.Body.String())
 		}
 	}
-	f := &fakeAnswerBrowser{fakeBrowser: &fakeBrowser{url: testAshbyPosting + "/application"}}
+	f := &fakeAnswerBrowser{fakeBrowser: &fakeBrowser{url: testAshbyPosting + "/application"}, controls: []browser.Control{{ID: "why", Label: "Why this team?", Kind: "textarea"}, {ID: "site", Label: "Website", Kind: "text"}}}
 	a.browsers.factory = func(context.Context, string) (readOnlySession, error) { return f, nil }
 	if err := a.browsers.start(context.Background(), 1, job.URL); err != nil {
 		t.Fatal(err)
@@ -137,5 +142,140 @@ func TestUncertainLocationTransferIsNotReplayed(t *testing.T) {
 	}
 	if filler.calls != 1 {
 		t.Fatalf("uncertain location replayed %d times", filler.calls)
+	}
+}
+
+func TestSavedAnswerWaitsForLaterControl(t *testing.T) {
+	a, _ := testWorkspace(t)
+	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com"}); err != nil {
+		t.Fatal(err)
+	}
+	field := schema.Field{ID: "browser:why", Label: "Why this team?", Kind: "textarea", Group: "rendered form"}
+	if _, err := a.saveInspection(1, schema.Result{Platform: "ashby", Source: "browser", ApplicationURL: testAshbyPosting + "/application", Fields: []schema.Field{field}}); err != nil {
+		t.Fatal(err)
+	}
+	job, _ := a.jobByID(1)
+	mux := newMux(a)
+	key := questionKey(job.URL, "ashby", field)
+	if rec := postApp(mux, "/jobs/1/answers/save", url.Values{"question_key": {key}, "revision": {"0"}, "answer": {"Saved value"}, "destination": {job.URL}}, "", ""); rec.Code != 303 {
+		t.Fatal(rec.Code, rec.Body.String())
+	}
+	f := &fakeAnswerBrowser{fakeBrowser: &fakeBrowser{url: job.URL + "/application"}}
+	a.browsers.sessions = map[int64]readOnlySession{1: f}
+	a.browsers.cancels = map[int64]context.CancelFunc{1: func() {}}
+	a.browsers.states = map[int64]browserRunState{1: {Destination: job.URL}}
+	defer a.browsers.closeAll()
+	prep, _ := a.prepareQuestions(job, CandidateProfile{})
+	if rec := postApp(mux, "/jobs/1/answers/transfer", url.Values{"review_hash": {prep.ReviewHash()}, "destination": {job.URL}}, "", ""); rec.Code != 303 {
+		t.Fatal(rec.Code, rec.Body.String())
+	}
+	a.browsers.tryAnswers(context.Background(), 1)
+	if len(f.transferred) != 0 || len(a.browsers.state(1).AnswerAttempted) != 0 || a.browsers.state(1).AnswerStatus != "waiting" {
+		t.Fatal("absent answer did not remain pending")
+	}
+	// Persist a different page to prove validity does not depend on latest inspection.
+	if _, err := a.saveInspection(1, schema.Result{Platform: "ashby", Source: "browser", ApplicationURL: job.URL + "/application/step2", Fields: []schema.Field{{ID: "browser:other", Label: "Other", Kind: "text"}}}); err != nil {
+		t.Fatal(err)
+	}
+	f.controls = []browser.Control{{ID: "why", Label: "Why this team?", Kind: "textarea"}}
+	a.browsers.tryAnswers(context.Background(), 1)
+	a.browsers.tryAnswers(context.Background(), 1)
+	if len(f.transferred) != 1 || f.transferred[0].Value != "Saved value" || len(a.browsers.state(1).AnswerAttempted) != 1 {
+		t.Fatalf("unexpected transfers: %+v", f.transferred)
+	}
+}
+
+type uncertainEarlyBrowser struct {
+	*fakeAnswerBrowser
+	calls int
+}
+
+func (f *uncertainEarlyBrowser) FillAnswer(_ context.Context, v browser.AnswerValue) (browser.AnswerOutcome, error) {
+	f.calls++
+	return browser.AnswerOutcome{Label: v.Field.Label, Status: "uncertain"}, nil
+}
+
+// The original authorization stays pending until its exact question appears.
+// A saved live decision (including a clear) or an edited early draft revokes it.
+func TestReactEarlyAnswerDelayedPrecedence(t *testing.T) {
+	for _, scenario := range []string{"fill once", "live clear", "early edit", "uncertain"} {
+		t.Run(scenario, func(t *testing.T) {
+			a, _ := testWorkspace(t)
+			job, discovery := earlyGreenhouseFixture(t, a)
+			if _, err := a.saveInspection(job.ID, discovery); err != nil {
+				t.Fatal(err)
+			}
+			early := earlyQuestionByID(t, a, job, "application:story", "")
+			mux := newMux(a)
+			if rec := postApp(mux, "/jobs/1/answers/early-save", earlySaveValues(job, early, "0", "Original answer"), "", ""); rec.Code != 303 {
+				t.Fatal(rec.Code, rec.Body.String())
+			}
+			payload, err := a.buildContinuation(job.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			scope := payload["answerScopeInternal"].([]preparedQuestion)
+			if len(scope) != 1 {
+				t.Fatalf("scope: %+v", scope)
+			}
+			fake := &fakeAnswerBrowser{fakeBrowser: &fakeBrowser{url: job.URL}}
+			var session readOnlySession = fake
+			var uncertain *uncertainEarlyBrowser
+			if scenario == "uncertain" {
+				uncertain = &uncertainEarlyBrowser{fakeAnswerBrowser: fake}
+				session = uncertain
+			}
+			a.browsers.sessions = map[int64]readOnlySession{job.ID: session}
+			a.browsers.cancels = map[int64]context.CancelFunc{job.ID: func() {}}
+			a.browsers.states = map[int64]browserRunState{job.ID: {Destination: job.URL}}
+			defer a.browsers.closeAll()
+			if err := a.browsers.armAnswers(job.ID, job.URL, a.reactAnswerTransfer(job, scope, "")); err != nil {
+				t.Fatal(err)
+			}
+			a.browsers.tryAnswers(context.Background(), job.ID)
+			if a.browsers.state(job.ID).AnswerStatus != "waiting" {
+				t.Fatal("missing field did not wait")
+			}
+			field := schema.Field{ID: "browser:story", Label: early.Field.Label, Kind: "textarea", Required: early.Field.Required, Group: "rendered form"}
+			if scenario == "live clear" {
+				if _, err := a.db.Exec(`INSERT INTO application_answers(job_id,destination,provider,question_key,label,answer,revision) VALUES(?,?,?,?,?,'',1)`, job.ID, job.URL, "greenhouse", questionKey(job.URL, "greenhouse", field), field.Label); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if scenario == "early edit" {
+				if rec := postApp(mux, "/jobs/1/answers/early-save", earlySaveValues(job, early, "1", "Changed answer"), "", ""); rec.Code != 303 {
+					t.Fatal(rec.Code, rec.Body.String())
+				}
+			}
+			fake.controls = []browser.Control{{ID: "story", Label: field.Label, Kind: field.Kind, Required: field.Required}}
+			a.browsers.tryAnswers(context.Background(), job.ID)
+			a.browsers.tryAnswers(context.Background(), job.ID)
+			if scenario == "fill once" && (len(fake.transferred) != 1 || fake.transferred[0].Value != "Original answer") {
+				t.Fatalf("transfers: %+v state=%+v", fake.transferred, a.browsers.state(job.ID))
+			}
+			if (scenario == "live clear" || scenario == "early edit") && len(fake.transferred) != 0 {
+				t.Fatalf("unexpected transfer: %+v", fake.transferred)
+			}
+			if scenario == "uncertain" && uncertain.calls != 1 {
+				t.Fatalf("uncertain write calls=%d", uncertain.calls)
+			}
+		})
+	}
+}
+
+func TestAnswerAuthorizationAddsWhileOtherAnswerWaits(t *testing.T) {
+	h := &sessionHost{sessions: map[int64]readOnlySession{1: &fakeAnswerBrowser{fakeBrowser: &fakeBrowser{url: testAshbyPosting + "/application"}}}, cancels: map[int64]context.CancelFunc{1: func() {}}, states: map[int64]browserRunState{1: {Destination: testAshbyPosting}}}
+	defer h.closeAll()
+	current := func(preparedQuestion) bool { return true }
+	first := preparedQuestion{Key: "first", Value: "one", Editable: true}
+	second := preparedQuestion{Key: "second", Value: "two", Editable: true}
+	if err := h.armAnswers(1, testAshbyPosting, &applicationAnswerTransfer{hash: "one", status: "waiting", approved: []preparedQuestion{first}, current: current}); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.armAnswers(1, testAshbyPosting, &applicationAnswerTransfer{hash: "two", status: "waiting", approved: []preparedQuestion{second}, current: current}); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.answers[1].approved) != 2 {
+		t.Fatalf("pending authorizations lost: %+v", h.answers[1].approved)
 	}
 }

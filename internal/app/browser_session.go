@@ -54,6 +54,7 @@ type resumeHandoff struct {
 }
 
 type browserRunState struct {
+	AnswerPending    []preparedQuestion       `json:"-"`
 	AnswerAttempted  []preparedQuestion       `json:"-"`
 	AnswerReviewHash string                   `json:"-"`
 	AnswerStatus     string                   `json:"answer_status"`
@@ -99,6 +100,7 @@ func (h *sessionHost) state(jobID int64) browserRunState {
 	state := h.states[jobID]
 	if answers := h.answers[jobID]; answers != nil {
 		state.AnswerAttempted = append([]preparedQuestion(nil), answers.attempted...)
+		state.AnswerPending = append([]preparedQuestion(nil), answers.approved...)
 		state.AnswerReviewHash = answers.hash
 		state.AnswerStatus = answers.status
 		state.AnswerOutcomes = answers.outcomes

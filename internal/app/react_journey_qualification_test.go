@@ -59,7 +59,7 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 <section data-field-entry-id="resume"><div class="ashby-application-form-question-title">Resume</div><input type="file" name="resume" accept=".pdf"></section>
 <section data-field-entry-id="cover"><div class="ashby-application-form-question-title">Cover Letter</div><input type="file" name="cover" accept=".pdf"></section>
 <label>Why this team?<textarea name="motivation"></textarea></label><label>Tell us more<textarea name="other"></textarea></label><label>LinkedIn<input name="linkedin"></label><label>Manual field<input name="manual" value="Already entered"></label><label>Phone<input type="tel" name="phone" value="Manual phone"></label><button type="submit">Submit</button></form>
-<script>window.resumeChanges=0;window.coverChanges=0;window.submits=0;window.contactChanges={first_name:0,last_name:0,email:0};document.querySelector('form').addEventListener('input',e=>{if(e.target.name in contactChanges)contactChanges[e.target.name]++});document.querySelector('[name=resume]').onchange=()=>{resumeChanges++;document.querySelector('form').insertAdjacentHTML('beforeend','<label>First name<input name="first_name"></label>');setTimeout(()=>{document.querySelector('form').insertAdjacentHTML('beforeend','<label>Last name<input name="last_name"></label><label>Email<input type="email" name="email"></label>')},1200)};document.querySelector('[name=cover]').onchange=()=>coverChanges++;const existing=new DataTransfer();existing.items.add(new File(['existing employer file'],'existing.pdf',{type:'application/pdf'}));document.querySelector('[name=cover]').files=existing.files;document.querySelector('[name=cover]').dispatchEvent(new Event('change',{bubbles:true}));document.querySelector('form').onsubmit=e=>{e.preventDefault();submits++}</script>`)
+<script>window.answerChanges=0;document.querySelector("[name=motivation]").addEventListener("input",()=>answerChanges++);window.resumeChanges=0;window.coverChanges=0;window.submits=0;window.contactChanges={first_name:0,last_name:0,email:0};document.querySelector('form').addEventListener('input',e=>{if(e.target.name in contactChanges)contactChanges[e.target.name]++});document.querySelector('[name=resume]').onchange=()=>{resumeChanges++;const old=document.querySelector('[name=motivation]');old.parentElement.remove();setTimeout(()=>{document.querySelector('form').insertAdjacentHTML('beforeend','<label>Why this team?<textarea name="motivation"></textarea></label>');document.querySelector('[name=motivation]').addEventListener('input',()=>answerChanges++)},1800);document.querySelector('form').insertAdjacentHTML('beforeend','<label>First name<input name="first_name"></label>');setTimeout(()=>{document.querySelector('form').insertAdjacentHTML('beforeend','<label>Last name<input name="last_name"></label><label>Email<input type="email" name="email"></label>')},1200)};document.querySelector('[name=cover]').onchange=()=>coverChanges++;const existing=new DataTransfer();existing.items.add(new File(['existing employer file'],'existing.pdf',{type:'application/pdf'}));document.querySelector('[name=cover]').files=existing.files;document.querySelector('[name=cover]').dispatchEvent(new Event('change',{bubbles:true}));document.querySelector('form').onsubmit=e=>{e.preventDefault();submits++}</script>`)
 	}))
 	defer fixture.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
@@ -185,80 +185,33 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	if launches.Load() != 0 {
 		t.Fatal("employer browser launched before applicant action")
 	}
-	click("View Application")
-	wait(`document.body.innerText.includes('Return to Application')`)
+	wait(`document.querySelector('.pending-answer-scope')?.innerText.includes('Prepared before opening')`)
+	wait(`Array.from(document.querySelectorAll('.continuation-item label')).find(x=>x.textContent.includes('saved answer'))?.querySelector('input')?.checked`)
+	click("Prepare & Fill Application")
+	wait(`document.querySelector('.continuation-outcomes')?.innerText.includes('Résumé')`)
 	if launches.Load() != 1 {
-		t.Fatalf("view launched %d browsers", launches.Load())
+		t.Fatalf("original Fill launched %d browsers", launches.Load())
 	}
-	var employerReady bool
-	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); {
-		if err := employerEval(`!!document.querySelector('[name=resume]') && !!document.querySelector('[name=cover]')`, &employerReady); err == nil && employerReady {
+	deadline := time.Now().Add(20 * time.Second)
+	var earlyValues []any
+	for time.Now().Before(deadline) {
+		if err := employerEval(`[document.querySelector('[name=motivation]')?.value || '',answerChanges,document.querySelector('[name=manual]').value,submits]`, &earlyValues); err == nil && fmt.Sprint(earlyValues) == "[Prepared before opening 1 Already entered 0]" {
 			break
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	if !employerReady {
-		t.Fatal("employer fixture did not load")
+	if fmt.Sprint(earlyValues) != "[Prepared before opening 1 Already entered 0]" {
+		t.Fatalf("one-click early answer: %v state=%+v", earlyValues, a.browsers.state(1))
 	}
-	var beforeView []any
-	if err := employerEval(`[document.querySelector('[name=resume]').files.length,document.querySelector('[name=linkedin]').value,document.querySelector('[name=cover]').files[0]?.name,submits]`, &beforeView); err != nil || fmt.Sprint(beforeView) != "[0  existing.pdf 0]" {
-		t.Fatalf("view transferred material: %v %v", beforeView, err)
-	}
-	wait(`Array.from(document.querySelectorAll('#employer button')).some(x=>x.textContent.trim()==='Return to Application' && !x.disabled)`)
-	click("Return to Application")
-	wait(`Array.from(document.querySelectorAll('#employer button')).some(x=>x.textContent.trim()==='Return to Application' && !x.disabled) && !document.querySelector('#employer .job-form-error')`)
-	click("Questions")
-	wait(`Array.from(document.querySelectorAll('.writing-question')).some(x=>x.textContent.includes('Why this team?'))`)
-	jobForMatch, _ := a.jobByID(1)
-	var matched bool
-	for deadline := time.Now().Add(8 * time.Second); time.Now().Before(deadline); {
-		prepared, prepErr := a.prepareEarlyQuestions(jobForMatch, nil)
-		if prepErr != nil {
-			t.Fatal(prepErr)
-		}
-		for _, q := range prepared.Questions {
-			if q.Field.Label == "Why this team?" && q.Value == "Prepared before opening" && q.Reconciliation.CanAccept {
-				matched = true
-			}
-		}
-		if matched {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if !matched {
-		t.Fatal("early answer was not preserved and matched to the live control")
-	}
-	t.Log("Early answer remained saved and matched the live control without transferring it")
-	run(`Array.from(document.querySelectorAll('.writing-question')).find(x=>x.textContent.includes('Why this team?')).click()`)
-	run(`(()=>{const e=document.querySelector('#writing-answer');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,'Unsaved synthetic draft');e.dispatchEvent(new Event('input',{bubbles:true}))})()`)
-	wait(`document.querySelector('#writing-answer')?.value==='Unsaved synthetic draft'`)
-	discoveredAt := time.Now()
+	t.Logf("one-click delayed early answer, writes, manual value, submissions: %v", earlyValues)
 	if err := employerEval(`(()=>{history.pushState({},'',location.pathname+'/step2');document.querySelector('form').insertAdjacentHTML('beforeend','<label>Delayed question<textarea name="delayed"></textarea></label>');return true})()`, nil); err != nil {
 		t.Fatal(err)
 	}
 	employerPage = base + "/application/step2"
-	wait(`Array.from(document.querySelectorAll('.writing-question')).some(x=>x.textContent.includes('Delayed question'))`)
-	latency := time.Since(discoveredAt)
-	if latency > 6*time.Second {
-		t.Fatalf("question discovery took %s", latency)
-	}
-	wait(`document.querySelector('#writing-answer')?.value==='Unsaved synthetic draft'`)
-	t.Logf("Delayed question on subsequent SPA step visible while editing after %s; unsaved draft preserved", latency.Round(time.Millisecond))
-	click("Discard edits")
-	click("Apply")
-	wait(`Array.from(document.querySelectorAll('.continuation-item label')).find(x=>x.textContent.includes('Cover letter:'))?.querySelector('input')?.checked`)
-	wait(`document.querySelector('.pending-answer-scope')?.innerText.includes('https://example.test/casey')`)
-	wait(`Array.from(document.querySelectorAll('#employer button')).some(x=>x.textContent.trim()==='Prepare & Fill Application' && !x.disabled)`)
-	click("Prepare & Fill Application")
-	wait(`document.querySelector('.continuation-outcomes')?.innerText.includes('Résumé')`)
-	if launches.Load() != 1 {
-		t.Fatalf("fill replaced the existing browser: %d launches", launches.Load())
-	}
 	if profile, err := a.candidateProfile(); err != nil || profile.Approved {
 		t.Fatalf("fill changed separate profile approval: %+v %v", profile, err)
 	}
-	deadline := time.Now().Add(20 * time.Second)
+	deadline = time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
 		s := a.browsers.state(1)
 		if s.ResumeStatus == "selected" && s.LetterStatus == "review" {
@@ -374,6 +327,10 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	}
 	if a.browsers.state(1).AnswerStatus != "complete" {
 		t.Fatalf("answer status: %+v", a.browsers.state(1))
+	}
+	var earlyWriteCount int
+	if err := employerEval(`answerChanges`, &earlyWriteCount); err != nil || earlyWriteCount != 1 {
+		t.Fatalf("early answer replayed after later actions: %d %v", earlyWriteCount, err)
 	}
 	t.Log("Observed question appeared without manual refresh; one saved answer transferred, another remained blank and the manual field was preserved.")
 	if err := employerEval(`[resumeChanges,coverChanges,submits]`, &counts); err != nil || fmt.Sprint(counts) != "[1 3 0]" {

@@ -23,6 +23,10 @@ type continuationBrowser struct {
 	uncertain                  bool
 }
 
+func (f *continuationBrowser) Observe(context.Context) (browser.Observation, error) {
+	return browser.Observation{URL: f.url, Forms: 1, Controls: []browser.Control{{ID: "why", Label: "Why this team?", Kind: "textarea"}}}, nil
+}
+
 func (f *continuationBrowser) AttachResume(context.Context, string) (chromium.AttachmentResult, error) {
 	f.resumes++
 	return chromium.AttachmentResult{Selected: true, Verified: true}, nil

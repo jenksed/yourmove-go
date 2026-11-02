@@ -109,22 +109,16 @@ func TestContinueRequiresSelectionAndDestination(t *testing.T) {
 		t.Fatalf("wrong destination accepted: %d %s", rec.Code, rec.Body.String())
 	}
 	// No browser session: arming must fail without transferring anything.
-	if rec := post(`{"destination":"` + testAshbyPosting + `","include_answers":true,"review_hash":"bogus"}`); rec.Code != http.StatusOK {
+	if rec := post(`{"destination":"` + testAshbyPosting + `","include_answers":true,"review_hash":"bogus"}`); rec.Code != http.StatusConflict {
 		t.Fatalf("continue status=%d %s", rec.Code, rec.Body.String())
-	} else {
-		var result struct {
-			Items []continueItemResult `json:"items"`
-		}
-		if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil || len(result.Items) != 1 || result.Items[0].OK {
-			t.Fatalf("unreviewed answers armed: %s", rec.Body.String())
-		}
+
 	}
 }
 
 func TestContinueAnswersTransferWithFakeBrowser(t *testing.T) {
 	a, _ := testWorkspace(t)
 	seedContinuationJob(t, a)
-	f := &fakeAnswerBrowser{fakeBrowser: &fakeBrowser{url: testAshbyPosting + "/application"}}
+	f := &fakeAnswerBrowser{fakeBrowser: &fakeBrowser{url: testAshbyPosting + "/application"}, controls: []browser.Control{{ID: "why", Label: "Why this team?", Kind: "textarea"}, {ID: "site", Label: "Website", Kind: "text"}}}
 	a.browsers.factory = func(context.Context, string) (readOnlySession, error) { return f, nil }
 	if err := a.browsers.start(context.Background(), 1, testAshbyPosting); err != nil {
 		t.Fatal(err)
@@ -137,7 +131,7 @@ func TestContinueAnswersTransferWithFakeBrowser(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	body := `{"destination":"` + testAshbyPosting + `","include_answers":true,"review_hash":"` + prep.ReviewHash() + `"}`
+	body := `{"destination":"` + testAshbyPosting + `","include_answers":true,"review_hash":"` + reactAnswerScopeHash(prep.ReadyAnswers()) + `"}`
 	req := httptest.NewRequest(http.MethodPost, "http://localhost/api/jobs/1/continue", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -329,7 +323,7 @@ func TestContinueAuthorizesEachMaterialIndependently(t *testing.T) {
 	a.browsers.cancels = map[int64]context.CancelFunc{1: func() {}}
 	job, _ := a.jobByID(1)
 	profile, _ := a.candidateProfile()
-	prep, err := a.prepareQuestions(job, profile)
+	_, err = a.prepareQuestions(job, profile)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -347,7 +341,7 @@ func TestContinueAuthorizesEachMaterialIndependently(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	payload := `{"destination":"` + testAshbyPosting + `","include_resume":true,"resume_id":"` + itoa(savedRole.ID) + `","resume_hash":"` + savedRole.SHA256 + `","transfer_contacts":true,"profile_revision":"` + itoa(profile.Revision) + `","include_letter":true,"draft_id":"` + itoa(draft.ID) + `","body_hash":"` + draft.ContentHash() + `","mode":"file","include_answers":true,"review_hash":"` + prep.ReviewHash() + `"}`
+	payload := `{"destination":"` + testAshbyPosting + `","include_resume":true,"resume_id":"` + itoa(savedRole.ID) + `","resume_hash":"` + savedRole.SHA256 + `","transfer_contacts":true,"profile_revision":"` + itoa(profile.Revision) + `","include_letter":true,"draft_id":"` + itoa(draft.ID) + `","body_hash":"` + draft.ContentHash() + `","mode":"file","include_answers":true,"review_hash":"` + continuationScope(t, a, 1)["preparation"].(map[string]any)["answerReviewHash"].(string) + `"}`
 	req := httptest.NewRequest(http.MethodPost, "http://localhost/api/jobs/1/continue", strings.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -503,5 +497,75 @@ func TestContinuationContactsAfterResumeSelection(t *testing.T) {
 	a.browsers.tryContacts(context.Background(), 1)
 	if fake.calls != 1 || fake.contactCalls != 1 || fake.approved.Email != profile.Email {
 		t.Fatalf("unexpected replay or contact values: uploads=%d contacts=%d", fake.calls, fake.contactCalls)
+	}
+}
+
+func TestContinuationIncludesSavedEarlyAnswerCandidates(t *testing.T) {
+	a, _ := testWorkspace(t)
+	job, discovery := earlyGreenhouseFixture(t, a)
+	if _, err := a.saveInspection(job.ID, discovery); err != nil {
+		t.Fatal(err)
+	}
+	q := earlyQuestionByID(t, a, job, "application:story", "")
+	const value = "A saved answer\nwith exact formatting."
+	if rec := postApp(newMux(a), "/jobs/1/answers/early-save", earlySaveValues(job, q, "0", value), "", ""); rec.Code != 303 {
+		t.Fatal(rec.Code, rec.Body.String())
+	}
+	if _, err := a.latestInspectionBySource(job.ID, "browser"); err == nil {
+		t.Fatal("unexpected browser inspection")
+	}
+	payload, err := a.buildContinuation(job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidates, ok := payload["earlyAnswerCandidates"].([]continuationEarlyAnswerCandidate)
+	if !ok || len(candidates) != 1 {
+		t.Fatalf("unexpected candidates: %#v", payload["earlyAnswerCandidates"])
+	}
+	got := candidates[0]
+	if got.ID <= 0 || got.Destination != job.URL || got.DiscoverySource != q.DiscoverySource || got.DiscoveryFingerprint != q.DiscoveryFingerprint || got.SourceQuestionID != q.SourceQuestionID || got.Revision != 1 || got.Value != value || got.Field.ID != q.Field.ID || got.Field.Label != q.Field.Label {
+		t.Fatalf("candidate mismatch: %+v", got)
+	}
+	if a.browsers.state(job.ID).Active || a.browsers.answers[job.ID] != nil {
+		t.Fatal("read-only continuation opened a browser or armed transfer")
+	}
+	preparation := payload["preparation"].(map[string]any)
+	pending := payload["pendingAnswers"].([]continuationAnswerJSON)
+	if preparation["includeAnswers"] != true || len(pending) != 1 || pending[0].Value != value {
+		t.Fatalf("saved early answer is not selectable for the original Fill: includeAnswers=%v pending=%+v", preparation["includeAnswers"], pending)
+	}
+}
+
+func TestContinuationRejectsChangedEarlyAnswerBeforeBrowserLaunch(t *testing.T) {
+	a, _ := testWorkspace(t)
+	job, discovery := earlyGreenhouseFixture(t, a)
+	if _, err := a.saveInspection(job.ID, discovery); err != nil {
+		t.Fatal(err)
+	}
+	q := earlyQuestionByID(t, a, job, "application:story", "")
+	mux := newMux(a)
+	if rec := postApp(mux, "/jobs/1/answers/early-save", earlySaveValues(job, q, "0", "Original"), "", ""); rec.Code != 303 {
+		t.Fatal(rec.Code)
+	}
+	payload, err := a.buildContinuation(job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := payload["preparation"].(map[string]any)["answerReviewHash"].(string)
+	if rec := postApp(mux, "/jobs/1/answers/early-save", earlySaveValues(job, q, "1", "Edited"), "", ""); rec.Code != 303 {
+		t.Fatal(rec.Code)
+	}
+	launches := 0
+	a.browsers.factory = func(context.Context, string) (readOnlySession, error) {
+		launches++
+		return nil, errors.New("unexpected launch")
+	}
+	body, _ := json.Marshal(map[string]any{"destination": job.URL, "include_resume": true, "include_answers": true, "review_hash": hash})
+	req := httptest.NewRequest(http.MethodPost, "http://localhost/api/jobs/1/continue", strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusConflict || launches != 0 {
+		t.Fatalf("stale scope status=%d launches=%d body=%s", rec.Code, launches, rec.Body.String())
 	}
 }
