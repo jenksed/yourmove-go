@@ -198,6 +198,20 @@ func TestExtractSmartRecruitersMetadataRejectsMismatchedAndUnpublishedResponses(
 	}
 }
 
+// Company slugs in copied browser URLs may use any letter case while the API
+// returns its canonical identifier. Case alone must not reject the posting.
+func TestExtractSmartRecruitersMetadataAcceptsCompanyCaseVariants(t *testing.T) {
+	posting := smartRecruitersFixturePosting(t)
+	posting.Company.Identifier = "SampleCO"
+	got, err := extractSmartRecruitersMetadata(smartRecruitersMarshalPosting(t, posting), smartRecruitersTestCompany, smartRecruitersTestID)
+	if err != nil {
+		t.Fatalf("company case variant rejected: %v", err)
+	}
+	if got.Title != "Senior API Engineer" {
+		t.Fatalf("title = %q", got.Title)
+	}
+}
+
 func TestSmartRecruitersEmptySectionsAndWorkplaceFactsAreConservative(t *testing.T) {
 	posting := smartRecruitersFixturePosting(t)
 	posting.JobAd.Sections.Qualifications.Text = ""

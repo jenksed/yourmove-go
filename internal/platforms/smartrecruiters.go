@@ -154,7 +154,7 @@ func extractSmartRecruitersMetadata(data []byte, requestedCompany, requestedID s
 	if err := json.Unmarshal(data, &posting); err != nil {
 		return Metadata{}, fmt.Errorf("decode SmartRecruiters posting: %w", err)
 	}
-	if posting.Company.Identifier != requestedCompany {
+	if !strings.EqualFold(posting.Company.Identifier, requestedCompany) {
 		return Metadata{}, fmt.Errorf("SmartRecruiters company identity mismatch: got %q, want %q", posting.Company.Identifier, requestedCompany)
 	}
 	if posting.ID != requestedID {
@@ -165,7 +165,7 @@ func extractSmartRecruitersMetadata(data []byte, requestedCompany, requestedID s
 	}
 	if posting.PostingURL != "" {
 		returnedCompany, returnedID, parseErr := parseSmartRecruitersURL(posting.PostingURL)
-		if parseErr != nil || returnedCompany != requestedCompany || returnedID != requestedID {
+		if parseErr != nil || !strings.EqualFold(returnedCompany, requestedCompany) || returnedID != requestedID {
 			return Metadata{}, fmt.Errorf("SmartRecruiters returned posting URL does not match requested identity")
 		}
 	}

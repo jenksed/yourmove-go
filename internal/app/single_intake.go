@@ -30,7 +30,11 @@ func (a *App) savePostingURL(ctx context.Context, rawURL, rawTitle string) (id i
 	if existing, ok := index[jobURL]; ok {
 		return existing, true, nil
 	}
-	metadata, status, note := fetchPostingDetails(ctx, jobURL)
+	fetch := a.enrichmentFetch
+	if fetch == nil {
+		fetch = fetchPostingDetails
+	}
+	metadata, status, note := fetch(ctx, jobURL)
 	manualTitle := title != ""
 	if title == "" {
 		title = metadata.Title
