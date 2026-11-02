@@ -279,7 +279,7 @@ func (a *App) continuationBrowserAPI(w http.ResponseWriter, r *http.Request) {
 		writeResumeError(w, http.StatusInternalServerError, "Unable to load opportunity")
 		return
 	}
-	if job.Stage == StageApplied || job.Stage == StageClosed || job.SubmissionCount > 0 {
+	if (job.Stage == StageApplied || job.Stage == StageClosed || job.SubmissionCount > 0) && input.Action != "focus" && input.Action != "stop" {
 		writeResumeError(w, http.StatusConflict, "Inspection is limited to active jobs")
 		return
 	}
@@ -306,6 +306,11 @@ func (a *App) continuationBrowserAPI(w http.ResponseWriter, r *http.Request) {
 			log.Printf("browser start: %v", err)
 			a.browsers.reportLaunchFailure(jobID, err)
 			fail("The employer browser could not be opened. " + a.browsers.state(jobID).Message)
+			return
+		}
+	case "focus":
+		if err := a.browsers.focus(r.Context(), jobID); err != nil {
+			fail("Could not return to the employer application. " + err.Error())
 			return
 		}
 	case "observe":

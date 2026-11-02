@@ -280,6 +280,29 @@ func selectTargetOwned(port int, targets []target, owns func(string) bool) (targ
 	return target{}, ErrNoMatchingTab
 }
 
+// Focus returns the existing owned application tab to the foreground.
+func (s *Session) Focus(ctx context.Context) error {
+	c, cancel := context.WithTimeout(ctx, 12*time.Second)
+	defer cancel()
+	if err := s.lockContext(c); err != nil {
+		return err
+	}
+	defer s.mu.Unlock()
+	if s.closed {
+		return errors.New("browser session closed")
+	}
+	t, err := s.target(c)
+	if err != nil {
+		return err
+	}
+	ws, err := dialCDP(c, t.WebSocketURL)
+	if err != nil {
+		return err
+	}
+	defer ws.Close(websocket.StatusNormalClosure, "")
+	return cdpCall(c, ws, 1, "Page.bringToFront", nil, nil)
+}
+
 func (s *Session) Observe(ctx context.Context) (browser.Observation, error) {
 	c, cancel := context.WithTimeout(ctx, 12*time.Second)
 	defer cancel()

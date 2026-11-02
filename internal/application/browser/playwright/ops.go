@@ -57,6 +57,29 @@ func (s *Session) lockContext(ctx context.Context) error {
 	return nil
 }
 
+// Focus returns the owned application page to the foreground without navigating.
+func (s *Session) Focus(ctx context.Context) error {
+	c, cancel := context.WithTimeout(ctx, 12*time.Second)
+	defer cancel()
+	if err := s.lockContext(c); err != nil {
+		return err
+	}
+	defer s.opMu.Unlock()
+	if s.isClosed() {
+		return errors.New("browser session closed")
+	}
+	var page struct {
+		URL string `json:"url"`
+	}
+	if err := s.call(c, "pageUrl", nil, &page); err != nil {
+		return err
+	}
+	if !s.owns(page.URL) {
+		return errors.New("Return to the saved employer application in the managed browser")
+	}
+	return s.call(c, "focus", nil, nil)
+}
+
 // Observe captures the read-only projection of the current employer page.
 func (s *Session) Observe(ctx context.Context) (browser.Observation, error) {
 	c, cancel := context.WithTimeout(ctx, 12*time.Second)

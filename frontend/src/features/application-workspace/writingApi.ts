@@ -61,6 +61,7 @@ export interface WritingPrevious {
 }
 
 export interface QuestionsSnapshot {
+  browserActive: boolean;
   available: boolean;
   source: string;
   partial: boolean;

@@ -73,14 +73,12 @@ function QuestionEditor({
 export function WritingSection({
   jobId,
   destination,
-  legacyHref,
   onMaterialSaved,
   readOnly,
   active,
 }: {
   jobId: number;
   destination: string;
-  legacyHref: string;
   onMaterialSaved: () => void;
   readOnly: boolean;
   active: boolean;
@@ -89,8 +87,11 @@ export function WritingSection({
   const [loading, setLoading] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string>("");
   const [selectedId, setSelectedId] = useState<string>("");
+  const selectedIdRef = useRef("");
+  selectedIdRef.current = selectedId;
   const [draft, setDraft] = useState<string>("");
   const [dirty, setDirty] = useState<boolean>(false);
+  const requestRef = useRef(0);
   const dirtyRef = useRef(false);
   dirtyRef.current = dirty;
   const [saveError, setSaveError] = useState<string>("");
@@ -114,10 +115,12 @@ export function WritingSection({
   const [aiError, setAiError] = useState<string>("");
 
   const reload = useCallback(async () => {
+    const request = ++requestRef.current;
     setLoading(true);
     setLoadError("");
     try {
       const next = await fetchQuestions(jobId);
+      if (request !== requestRef.current) return;
       setSnapshot(next);
       setAssistance(null);
       setAssistOpen(false);
@@ -133,24 +136,34 @@ export function WritingSection({
     void reload();
   }, [reload]);
 
-  // Observation is read-only. Refresh on return to this activity or window,
-  // but never replace an editor that became dirty while the request was pending.
+  // Refresh the inventory without replacing the selected editor or its draft.
   useEffect(() => {
     if (!active) return;
     let cancelled = false;
+    let inFlight = false;
     const refreshObserved = async () => {
-      if (dirtyRef.current) return;
+      if (inFlight) return;
+      inFlight = true;
+      const request = ++requestRef.current;
       try {
         const next = await fetchQuestions(jobId);
-        if (!cancelled && !dirtyRef.current) setSnapshot(next);
+        if (!cancelled && request === requestRef.current) setSnapshot((previous) => {
+          const selected = previous && [...previous.live, ...previous.early].find((q) => questionId(q) === selectedIdRef.current);
+          if (selected && ![...next.live, ...next.early].some((q) => questionId(q) === selectedIdRef.current)) {
+            if (selected.isEarly) next.early = [...next.early, selected];
+            else next.live = [...next.live, selected];
+          }
+          return next;
+        });
       } catch {
-        // Keep the last successful inventory; the explicit refresh shows errors.
-      }
+        // Keep the last successful inventory; manual refresh reports errors.
+      } finally { inFlight = false; }
     };
     void refreshObserved();
     window.addEventListener("focus", refreshObserved);
-    return () => { cancelled = true; window.removeEventListener("focus", refreshObserved); };
-  }, [active, jobId]);
+    const timer = window.setInterval(() => void refreshObserved(), snapshot?.browserActive ? 1000 : 4000);
+    return () => { cancelled = true; window.removeEventListener("focus", refreshObserved); window.clearInterval(timer); };
+  }, [active, jobId, snapshot?.browserActive]);
 
   const allQuestions = useMemo(() => {
     if (!snapshot) return [];
@@ -322,6 +335,7 @@ export function WritingSection({
     try {
       await aiAdoptCheck(jobId, ticket.ticket, selected.key, String(selected.revision));
       setDraft(ticket.answer);
+      dirtyRef.current = true;
       setDirty(true);
       setSaveNotice("Suggestion placed in your editor. Review it, then save to keep it.");
     } catch (error) {
@@ -369,9 +383,6 @@ export function WritingSection({
           <button className="button button-secondary" type="button" disabled={dirty} onClick={() => void reload()}>
             Refresh questions
           </button>
-          <a className="button button-secondary" href={`${legacyHref}#prepare`}>
-            Employer transfer review
-          </a>
         </div>
       </div>
 
@@ -398,8 +409,7 @@ export function WritingSection({
         <div className="empty-state">
           <h3>No questions discovered yet</h3>
           <p>
-            Run an inspection from the <a href={`/jobs/${jobId}/inspection`}>employer browser details</a> or the legacy
-            Prepare section, then return here to answer.
+            Open the application from Apply. Questions appear here as YourMove discovers them.
           </p>
         </div>
       )}
@@ -482,7 +492,8 @@ export function WritingSection({
                   disabled={!selected.editable || !snapshot.editingAllowed || readOnly}
                   onChange={(next) => {
                     setDraft(next);
-                    setDirty(next !== selected.value);
+                    dirtyRef.current = next !== selected.value;
+                    setDirty(dirtyRef.current);
                   }}
                 />
                 {selected.libraryEligible && snapshot.editingAllowed && !readOnly && (
@@ -574,7 +585,8 @@ export function WritingSection({
                                     type="button"
                                     onClick={() => {
                                       setDraft(s.excerpt);
-                                      setDirty(s.excerpt !== selected.value);
+                                      dirtyRef.current = s.excerpt !== selected.value;
+                                      setDirty(dirtyRef.current);
                                     }}
                                   >
                                     Start from this phrasing
@@ -774,7 +786,6 @@ export function WritingSection({
           {snapshot.profileCount > 0 && `${snapshot.profileCount} approved candidate facts are ready. `}
           {snapshot.employerOnlyCount > 0 && `${snapshot.employerOnlyCount} fields need employer-side completion. `}
           {snapshot.manualReviewCount > 0 && `${snapshot.manualReviewCount} fields need manual review. `}
-          <a href={`${legacyHref}#prepare`}>See the full breakdown</a>.
         </p>
       )}
 

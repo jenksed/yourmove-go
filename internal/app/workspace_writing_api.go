@@ -271,6 +271,7 @@ func (a *App) buildWritingQuestions(jobID int64) (map[string]any, error) {
 
 	editingAllowed := job.Stage != StageApplied && job.Stage != StageClosed && job.SubmissionCount == 0
 	return map[string]any{
+		"browserActive": a.browsers.state(job.ID).Active,
 		"available": snapshot.Available, "source": snapshot.Source,
 		"partial": snapshot.Partial, "anchor": snapshot.Anchor,
 		"activeContext": activeContext,

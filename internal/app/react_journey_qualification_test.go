@@ -69,7 +69,6 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	var employer *chromium.Session
 	var firefox *playwright.Session
 	var launches atomic.Int32
-	a.browsers.pollEvery = 100 * time.Millisecond
 	a.browsers.factory = func(c context.Context, _ string) (readOnlySession, error) {
 		launches.Add(1)
 		if os.Getenv("YOURMOVE_QUAL_ENGINE") == "firefox" {
@@ -117,11 +116,12 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 		}
 		return nil
 	}
+	employerPage := base + "/application"
 	employerEval := func(expression string, out any) error {
 		if firefox != nil {
 			return firefox.FixtureEvaluate(ctx, expression, out)
 		}
-		return eval(employer, base+"/application", expression, out)
+		return eval(employer, employerPage, expression, out)
 	}
 	run := func(expression string) {
 		t.Helper()
@@ -169,12 +169,54 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	if launches.Load() != 0 {
 		t.Fatal("employer browser launched before applicant action")
 	}
+	click("View Application")
+	wait(`document.body.innerText.includes('Return to Application')`)
+	if launches.Load() != 1 {
+		t.Fatalf("view launched %d browsers", launches.Load())
+	}
+	var employerReady bool
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); {
+		if err := employerEval(`!!document.querySelector('[name=resume]') && !!document.querySelector('[name=cover]')`, &employerReady); err == nil && employerReady {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !employerReady {
+		t.Fatal("employer fixture did not load")
+	}
+	var beforeView []any
+	if err := employerEval(`[document.querySelector('[name=resume]').files.length,document.querySelector('[name=linkedin]').value,document.querySelector('[name=cover]').files[0]?.name,submits]`, &beforeView); err != nil || fmt.Sprint(beforeView) != "[0  existing.pdf 0]" {
+		t.Fatalf("view transferred material: %v %v", beforeView, err)
+	}
+	wait(`Array.from(document.querySelectorAll('#employer button')).some(x=>x.textContent.trim()==='Return to Application' && !x.disabled)`)
+	click("Return to Application")
+	wait(`Array.from(document.querySelectorAll('#employer button')).some(x=>x.textContent.trim()==='Return to Application' && !x.disabled) && !document.querySelector('#employer .job-form-error')`)
+	click("Questions")
+	wait(`Array.from(document.querySelectorAll('.writing-question')).some(x=>x.textContent.includes('Why this team?'))`)
+	run(`Array.from(document.querySelectorAll('.writing-question')).find(x=>x.textContent.includes('Why this team?')).click()`)
+	run(`(()=>{const e=document.querySelector('#writing-answer');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,'Unsaved synthetic draft');e.dispatchEvent(new Event('input',{bubbles:true}))})()`)
+	wait(`document.querySelector('#writing-answer')?.value==='Unsaved synthetic draft'`)
+	discoveredAt := time.Now()
+	if err := employerEval(`(()=>{history.pushState({},'',location.pathname+'/step2');document.querySelector('form').insertAdjacentHTML('beforeend','<label>Delayed question<textarea name="delayed"></textarea></label>');return true})()`, nil); err != nil {
+		t.Fatal(err)
+	}
+	employerPage = base + "/application/step2"
+	wait(`Array.from(document.querySelectorAll('.writing-question')).some(x=>x.textContent.includes('Delayed question'))`)
+	latency := time.Since(discoveredAt)
+	if latency > 6*time.Second {
+		t.Fatalf("question discovery took %s", latency)
+	}
+	wait(`document.querySelector('#writing-answer')?.value==='Unsaved synthetic draft'`)
+	t.Logf("Delayed question on subsequent SPA step visible while editing after %s; unsaved draft preserved", latency.Round(time.Millisecond))
+	click("Discard edits")
+	click("Apply")
 	wait(`Array.from(document.querySelectorAll('.continuation-item label')).find(x=>x.textContent.includes('Cover letter:'))?.querySelector('input')?.checked`)
 	wait(`document.querySelector('.pending-answer-scope')?.innerText.includes('https://example.test/casey')`)
+	wait(`Array.from(document.querySelectorAll('#employer button')).some(x=>x.textContent.trim()==='Prepare & Fill Application' && !x.disabled)`)
 	click("Prepare & Fill Application")
-	wait(`document.body.innerText.includes('Recheck form')`)
+	wait(`document.querySelector('.continuation-outcomes')?.innerText.includes('Résumé')`)
 	if launches.Load() != 1 {
-		t.Fatalf("one fill click launched %d browsers", launches.Load())
+		t.Fatalf("fill replaced the existing browser: %d launches", launches.Load())
 	}
 	if profile, err := a.candidateProfile(); err != nil || profile.Approved {
 		t.Fatalf("fill changed separate profile approval: %+v %v", profile, err)
@@ -263,6 +305,7 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 		t.Fatal("employer resume bytes differ")
 	}
 	wait(`document.querySelector(".continuation-outcomes")?.innerText.includes("Résumé") && document.querySelector(".continuation-outcomes")?.innerText.includes("Cover letter")`)
+	run(`Array.from(document.querySelectorAll('#employer summary')).find(x=>x.textContent.includes('Browser troubleshooting')).click()`)
 	click("Recheck form")
 	time.Sleep(500 * time.Millisecond)
 	var counts []int
@@ -270,8 +313,8 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 		t.Fatalf("recheck changed employer form: %v %v", counts, err)
 	}
 	click("Questions")
-	wait(`Array.from(document.querySelectorAll('.writing-question')).some(x=>x.textContent.includes('Why this team?'))`)
-	run(`Array.from(document.querySelectorAll('.writing-question')).find(x=>x.textContent.includes('Why this team?')).click()`)
+	wait(`Array.from(document.querySelectorAll('.writing-question')).some(x=>x.textContent.includes('Delayed question'))`)
+	run(`Array.from(document.querySelectorAll('.writing-question')).find(x=>x.textContent.includes('Delayed question')).click()`)
 	const answer = "I enjoy helping customers solve challenging support problems."
 	run(fmt.Sprintf(`(()=>{const e=document.querySelector('#writing-answer');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,%q);e.dispatchEvent(new Event('input',{bubbles:true}))})()`, answer))
 	click("Save answer locally")
@@ -283,7 +326,7 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	deadline = time.Now().Add(15 * time.Second)
 	var employerValues []string
 	for time.Now().Before(deadline) {
-		err = employerEval(`[document.querySelector('[name=motivation]').value,document.querySelector('[name=other]').value,document.querySelector('[name=manual]').value]`, &employerValues)
+		err = employerEval(`[document.querySelector('[name=delayed]').value,document.querySelector('[name=other]').value,document.querySelector('[name=manual]').value]`, &employerValues)
 		if err == nil && fmt.Sprint(employerValues) == fmt.Sprint([]string{answer, "", "Already entered"}) && a.browsers.state(1).AnswerStatus == "complete" {
 			break
 		}
@@ -305,6 +348,26 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	if !strings.Contains(observed.ResumeName, "journey") {
 		t.Fatalf("unexpected resume name %q", observed.ResumeName)
 	}
+
+	// A separate explicit Fill action must also open a closed session itself.
+	run(`window.confirm=()=>true`)
+	click("Close browser")
+	wait(`Array.from(document.querySelectorAll('#employer button')).some(x=>x.textContent.trim()==='View Application' && !x.disabled)`)
+	wait(`Array.from(document.querySelectorAll('#employer button')).some(x=>x.textContent.trim()==='Prepare & Fill Application' && !x.disabled)`)
+	employerPage = base + "/application"
+	click("Prepare & Fill Application")
+	wait(`document.body.innerText.includes('Return to Application')`)
+	if launches.Load() != 2 {
+		t.Fatalf("direct Fill did not launch one new browser: %d", launches.Load())
+	}
+	deadline = time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) && a.browsers.state(1).ResumeStatus != "selected" {
+		time.Sleep(100 * time.Millisecond)
+	}
+	if a.browsers.state(1).ResumeStatus != "selected" {
+		t.Fatalf("direct Fill did not attach resume: %+v", a.browsers.state(1))
+	}
+	t.Log("An explicit Fill click opened a fresh session and selected the résumé without a separate View action.")
 
 	// Leaving an unsubmitted job requires an explicit decision before browser-only work is closed.
 	wait(`document.querySelector('#submission')?.innerText.includes('Next synthetic opportunity')`)
@@ -399,8 +462,8 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	click("Documents")
 	wait(`document.body.innerText.includes('journey-resume.pdf') && document.querySelector('input[name=workspace-resume]:checked')?.parentElement.innerText.includes('journey-resume.pdf') && document.querySelector('#letter-body')?.value.includes('synthetic support role')`)
 	click("Questions")
-	wait(`document.body.innerText.includes('Why this team?')`)
-	run(`Array.from(document.querySelectorAll('.writing-question')).find(x=>x.textContent.includes('Why this team?')).click()`)
+	wait(`document.body.innerText.includes('Delayed question')`)
+	run(`Array.from(document.querySelectorAll('.writing-question')).find(x=>x.textContent.includes('Delayed question')).click()`)
 	wait(`document.querySelector('#writing-answer')?.value === "I enjoy helping customers solve challenging support problems."`)
 	click("Apply")
 	wait(`document.body.innerText.includes('saved materials remain') || document.body.innerText.includes('disconnected')`)

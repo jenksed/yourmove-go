@@ -103,6 +103,12 @@ async function handle(req) {
           return { ok: false, error: c };
         }
       }
+      case 'focus': {
+        const page = currentPage();
+        if (!page) return { ok: false, error: { kind: 'closed', message: 'the managed browser has no open pages' } };
+        await page.bringToFront();
+        return { ok: true, value: null };
+      }
       case 'pageUrl': {
         const page = currentPage();
         if (!page) return { ok: false, error: { kind: 'closed', message: 'the managed browser has no open pages' } };

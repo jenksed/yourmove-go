@@ -118,7 +118,11 @@ func (h *sessionHost) state(jobID int64) browserRunState {
 		state.ContactOutcomes = up.contactResult.Fields
 		switch up.contactStatus {
 		case "waiting":
-			state.ContactSummary = "Waiting for supported contact controls. Continue in the employer browser if this step needs your input."
+			if len(up.contactResult.Fields) == 0 {
+				state.ContactSummary = "Waiting for the application form to load."
+			} else {
+				state.ContactSummary = up.contactResult.Summary() + " Fields not found on this page can be completed manually; YourMove keeps watching."
+			}
 		case "checking":
 			state.ContactSummary = "Filling the contact information you approved…"
 		case "complete":
@@ -203,6 +207,20 @@ func (h *sessionHost) start(ctx context.Context, jobID int64, jobURL string) err
 	h.mu.Unlock()
 	return err
 }
+func (h *sessionHost) focus(ctx context.Context, jobID int64) error {
+	h.mu.Lock()
+	session := h.sessions[jobID]
+	h.mu.Unlock()
+	if session == nil {
+		return errors.New("Open the application first")
+	}
+	focuser, ok := session.(interface{ Focus(context.Context) error })
+	if !ok {
+		return errors.New("Return to the existing employer browser window")
+	}
+	return focuser.Focus(ctx)
+}
+
 func (h *sessionHost) inspect(ctx context.Context, jobID int64) (browser.Observation, error) {
 	h.mu.Lock()
 	s := h.sessions[jobID]
@@ -459,7 +477,7 @@ func (h *sessionHost) watch(jobID int64, jobURL string, save func(browser.Observ
 	session := h.sessions[jobID]
 	interval := h.pollEvery
 	if interval <= 0 {
-		interval = 2200 * time.Millisecond
+		interval = 750 * time.Millisecond
 	}
 	h.mu.Unlock()
 	go func() {

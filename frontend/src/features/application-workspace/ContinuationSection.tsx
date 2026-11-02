@@ -5,6 +5,7 @@
 // personally completed act recorded separately.
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { openPosting } from "../opportunities/api";
 import {
   authorizeContinue,
   browserAction,
@@ -40,9 +41,10 @@ function outcomeText(status: string): string {
   }
 }
 
-export function ContinuationSection({ jobId, materialRevision }: { jobId: number; materialRevision: number }): React.JSX.Element {
+export function ContinuationSection({ jobId, materialRevision, active }: { jobId: number; materialRevision: number; active: boolean }): React.JSX.Element {
   const [snapshot, setSnapshot] = useState<ContinuationSnapshot | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
   const [loadError, setLoadError] = useState<string>("");
   const [wantLetter, setWantLetter] = useState<boolean>(false);
   const [wantAnswers, setWantAnswers] = useState<boolean>(false);
@@ -57,6 +59,7 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
 
   const reload = useCallback(async () => {
     const request = ++requestRef.current;
+    setRefreshing(true);
     try {
       const next = await fetchContinuation(jobId);
       if (request !== requestRef.current) return;
@@ -66,7 +69,7 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
       if (request !== requestRef.current) return;
       setLoadError(error instanceof Error ? error.message : "Unable to load employer continuation");
     } finally {
-      if (request === requestRef.current) setLoading(false);
+      if (request === requestRef.current) { setLoading(false); setRefreshing(false); }
     }
   }, [jobId]);
 
@@ -81,6 +84,10 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
   useEffect(() => {
     void reload();
   }, [reload, materialRevision]);
+
+  useEffect(() => {
+    if (active) void reload();
+  }, [active, reload]);
 
   useEffect(() => {
     if (!snapshot) return;
@@ -126,6 +133,7 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
 
   const runBrowser = useCallback(
     async (action: BrowserAction) => {
+      if (action === "stop" && !window.confirm("Closing the employer browser may lose unsaved form work. Close it?")) return;
       setActionError("");
       setActionNotice("");
       setBusy(true);
@@ -210,9 +218,6 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
             Your selected information will be filled in the employer application. Review it there and submit personally.
           </p>
         </div>
-        <a className="button button-secondary" href={`/jobs/${jobId}/inspection`}>
-          Browser details
-        </a>
       </div>
 
       <dl className="fact-list workspace-facts">
@@ -254,48 +259,37 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
       )}
 
       <div className="workspace-source-actions">
-        {!snapshot.editingAllowed ? (
-          <small>This application is recorded as complete. Browser assistance is read-only history below.</small>
-        ) : !browser.active ? (
-          <button className="button button-primary" type="button" disabled={busy} onClick={() => void runBrowser("start")}>
-            {busy ? "Opening…" : "View Application"}
-          </button>
+        {!snapshot.editingAllowed && !browser.active ? (
+          <small>This application is recorded as complete.</small>
+        ) : !snapshot.ownsPosting ? (
+          snapshot.desktop ? (
+            <button className="button button-secondary" type="button" onClick={() => void openPosting(jobId).catch((error: unknown) => setActionError(error instanceof Error ? error.message : "Could not open the application."))}>View Application</button>
+          ) : <a className="button button-secondary" href={snapshot.destination} target="_blank" rel="noreferrer">View Application</a>
         ) : (
-          <>
-            <button className="button button-secondary" type="button" disabled={busy} onClick={() => void runBrowser("observe")}>
-              Recheck form
-            </button>
-            <button className="button button-secondary" type="button" disabled={busy} onClick={() => void runBrowser("stop")}>
-              Close browser
-            </button>
-          </>
+          <button className="button button-secondary" type="button" disabled={busy} onClick={() => void runBrowser(browser.active ? "focus" : "start")}>
+            {busy ? "Opening…" : browser.active ? "Return to Application" : "View Application"}
+          </button>
         )}
         <small>Viewing sends no saved material.</small>
-        {browser.resume_retryable && (
-          <button className="button button-secondary" type="button" disabled={busy} onClick={() => void runBrowser("retry-resume")}>
-            Retry resume check
-          </button>
-        )}
-        {browser.active && (
-          <details>
-            <summary>Reopen application</summary>
-            <p className="small-muted">
-              Reopening starts a fresh browser; browser-only values and attachment state may be lost. Previous
-              uploads will not be replayed.
-            </p>
-            <label className="confirm-row">
-              <input type="checkbox" checked={confirmRestart} onChange={(event) => setConfirmRestart(event.target.checked)} />
-              <span>I understand reopening may lose browser-only work.</span>
-            </label>
-            <button className="button button-secondary" type="button" disabled={busy || !confirmRestart} onClick={() => void runBrowser("restart")}>
-              Reopen application
-            </button>
-          </details>
-        )}
       </div>
+      <details className="workspace-source-actions">
+        <summary>Browser troubleshooting</summary>
+        <a href={`/jobs/${jobId}/inspection`}>Browser details</a>
+        {browser.active && <>
+          <button className="button button-secondary" type="button" disabled={busy} onClick={() => void runBrowser("observe")}>Recheck form</button>
+          <button className="button button-secondary" type="button" disabled={busy} onClick={() => void runBrowser("stop")}>Close browser</button>
+          <p className="small-muted">Reopening starts a fresh browser and may lose browser-only work. Previous uploads are not replayed.</p>
+          <label className="confirm-row">
+            <input type="checkbox" checked={confirmRestart} onChange={(event) => setConfirmRestart(event.target.checked)} />
+            <span>I understand reopening may lose browser-only work.</span>
+          </label>
+          <button className="button button-secondary" type="button" disabled={busy || !confirmRestart} onClick={() => void runBrowser("restart")}>Reopen application</button>
+        </>}
+        {browser.resume_retryable && <button className="button button-secondary" type="button" disabled={busy} onClick={() => void runBrowser("retry-resume")}>Retry resume check</button>}
+      </details>
 
       <div className="continuation-scope" aria-label="Transfer scope">
-        <h3>Exact transfer scope</h3>
+        <h3>Information to fill</h3>
         {snapshot.resume ? (
           <div className="continuation-item">
             <p><strong>Résumé:</strong> {snapshot.resume.name} · {snapshot.resume.kind} · Version {snapshot.resume.version}
@@ -389,7 +383,7 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
         <button
           className="button button-primary"
           type="button"
-          disabled={busy || !snapshot.resume?.valid || (!prep.includeResume && !contactsOnly && !(wantLetter && prep.includeLetter) && !(wantAnswers && prep.includeAnswers))}
+          disabled={busy || refreshing || !snapshot.resume?.valid || (!prep.includeResume && !contactsOnly && !(wantLetter && prep.includeLetter) && !(wantAnswers && prep.includeAnswers))}
           onClick={() => void runAuthorize()}
         >
           {busy ? "Preparing…" : "Prepare & Fill Application"}
@@ -415,7 +409,7 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
           {browser.contact_summary !== "" && <p>{browser.contact_summary}</p>}
           {(browser.contact_outcomes ?? []).map((o) => (
             <p key={o.key} role="status" className="inline-hint">
-              <strong>{o.key} · {o.status === "missing" ? "Waiting for a supported control" : o.status === "uncertain" ? "Uncertain" : o.status === "filled" ? "Filled and verified" : o.status === "correct" || (o.status === "manual" && o.detail?.startsWith("Existing")) ? "Already present" : "Requires manual entry"}</strong> · {o.detail}
+              <strong>{o.key} · {o.status === "missing" ? "Not found on this page" : o.status === "uncertain" ? "Uncertain" : o.status === "skipped" ? "Not provided" : o.status === "filled" ? "Filled and verified" : o.status === "correct" || (o.status === "manual" && o.detail?.startsWith("Existing")) ? "Already present" : "Requires manual entry"}</strong> · {o.detail}
             </p>
           ))}
           {browser.letter_status !== "" && (

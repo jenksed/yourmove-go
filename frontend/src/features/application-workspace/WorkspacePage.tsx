@@ -546,12 +546,12 @@ export function WorkspacePage(): React.JSX.Element {
 
               <div hidden={activity !== "questions"}>
                 <p>Open the employer application from Apply to discover its questions. Answer any you choose; the rest can be completed on the employer site.</p>
-                {snapshot.job.id > 0 && <WritingSection jobId={snapshot.job.id} destination={snapshot.job.url} legacyHref={snapshot.legacyHref} onMaterialSaved={materialSaved} readOnly={applied} active={activity === "questions"} />}
+                {snapshot.job.id > 0 && <WritingSection jobId={snapshot.job.id} destination={snapshot.job.url} onMaterialSaved={materialSaved} readOnly={applied} active={activity === "questions"} />}
                 <button className="button button-primary workspace-next-button" type="button" onClick={() => setActivity("apply")}>Continue to application</button>
               </div>
 
               <div hidden={activity !== "apply"}>
-                {snapshot.job.id > 0 && <ContinuationSection jobId={snapshot.job.id} materialRevision={materialRevision} />}
+                {snapshot.job.id > 0 && <ContinuationSection jobId={snapshot.job.id} materialRevision={materialRevision} active={activity === "apply"} />}
               </div>
 
               <div hidden={activity !== "apply" && activity !== "applied"} id="history">
@@ -559,25 +559,7 @@ export function WorkspacePage(): React.JSX.Element {
                 <a className="button button-secondary" href="/jobs">Back to Opportunities</a>
               </div>
 
-              <section hidden={activity !== "apply"} className="panel" aria-labelledby="workspace-continue-title">
-                <div className="section-heading">
-                  <div>
-                    <p className="eyebrow">LEGACY WORKSPACE</p>
-                    <h2 id="workspace-continue-title">Troubleshooting and legacy views</h2>
-                    <p className="section-subtitle">
-                      The full workflow above is React-owned. These links remain for deep troubleshooting.
-                    </p>
-                  </div>
-                </div>
-                <ul className="workspace-legacy-links">
-                  <li>
-                    <a href={`${snapshot.legacyHref}#prepare`}>Legacy Prepare and transfer review →</a>
-                  </li>
-                  <li>
-                    <a href={`/jobs/${snapshot.job.id}/inspection`}>Employer browser details and troubleshooting →</a>
-                  </li>
-                </ul>
-              </section>
+
             </>
           )}
         </main>

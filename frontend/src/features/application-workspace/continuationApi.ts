@@ -151,7 +151,7 @@ export async function fetchContinuation(jobId: number): Promise<ContinuationSnap
   return (await response.json()) as ContinuationSnapshot;
 }
 
-export type BrowserAction = "start" | "observe" | "restart" | "retry-resume" | "stop";
+export type BrowserAction = "start" | "focus" | "observe" | "restart" | "retry-resume" | "stop";
 
 export async function browserAction(
   jobId: number,
