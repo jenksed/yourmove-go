@@ -428,6 +428,7 @@ export function WorkspacePage(): React.JSX.Element {
               </details>
 
               <button className="button button-primary workspace-next-button" type="button" onClick={() => setActivity("documents")}>Prepare application</button>
+              <button className="button button-secondary workspace-next-button" type="button" onClick={() => setActivity("apply")}>Open application</button>
               </div>
 
               <div hidden={activity !== "documents"}>
@@ -551,10 +552,9 @@ export function WorkspacePage(): React.JSX.Element {
 
               <div hidden={activity !== "apply"}>
                 {snapshot.job.id > 0 && <ContinuationSection jobId={snapshot.job.id} materialRevision={materialRevision} />}
-                <button className="button button-secondary workspace-next-button" type="button" onClick={() => setActivity("applied")}>I have submitted my application</button>
               </div>
 
-              <div hidden={activity !== "applied"} id="history">
+              <div hidden={activity !== "apply" && activity !== "applied"} id="history">
                 {snapshot.job.id > 0 && <SubmissionSection jobId={snapshot.job.id} onRecorded={completionRecorded} />}
                 <a className="button button-secondary" href="/jobs">Back to Opportunities</a>
               </div>

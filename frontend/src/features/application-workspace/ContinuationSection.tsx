@@ -76,6 +76,9 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
     setWantAnswers(false);
     setSnapshot(null);
     setLoading(true);
+  }, [jobId]);
+
+  useEffect(() => {
     void reload();
   }, [reload, materialRevision]);
 

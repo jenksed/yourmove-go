@@ -39,6 +39,9 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com", Title: "Synthetic React journey", Description: "Synthetic support role"}); err != nil {
 		t.Fatal(err)
 	}
+	if err := a.saveJob(Job{URL: "https://jobs.ashbyhq.com/fixture/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Host: "jobs.ashbyhq.com", Title: "Next synthetic opportunity"}); err != nil {
+		t.Fatal(err)
+	}
 	resumeBytes := mustQualificationPDF(t)
 	if _, err := a.importResume("journey-resume.pdf", bytes.NewReader(resumeBytes)); err != nil {
 		t.Fatal(err)
@@ -260,6 +263,24 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 		t.Fatalf("unexpected resume name %q", observed.ResumeName)
 	}
 
+	// Leaving an unsubmitted job requires an explicit decision before browser-only work is closed.
+	wait(`document.querySelector('#submission')?.innerText.includes('Next synthetic opportunity')`)
+	run(`window.confirm=()=>false`)
+	click("Next opportunity → Next synthetic opportunity")
+	wait(`document.querySelector('#submission')?.innerText.includes('Next synthetic opportunity')`)
+	if !a.browsers.state(1).Active {
+		t.Fatal("cancelling navigation closed the browser")
+	}
+	run(`window.confirm=()=>true`)
+	click("Next opportunity → Next synthetic opportunity")
+	page = app.URL + "/jobs/2"
+	wait(`document.body.innerText.includes('Next synthetic opportunity')`)
+	job, err := a.jobByID(1)
+	if err != nil || job.Stage == StageApplied || job.SubmissionCount != 0 || a.browsers.state(1).Active {
+		t.Fatalf("unsubmitted navigation changed state: %+v %v", job, err)
+	}
+	t.Log("Cancelled navigation kept the browser; confirmed navigation closed it and preserved the unsubmitted job.")
+
 	// Stop the fixture host and its sole SQLite writer, then run the same
 	// ordinary executable twice against that exact synthetic workspace.
 	ui.Close()
@@ -341,12 +362,13 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	click("Apply")
 	wait(`document.body.innerText.includes('saved materials remain') || document.body.innerText.includes('disconnected')`)
 	click("Applied")
-	run(`document.querySelector('.submission-disclosure summary').click()`)
-	click("Review current selection for recording")
-	wait(`document.body.innerText.includes('I confirm that I submitted')`)
-	run(`Array.from(document.querySelectorAll('#submission label')).find(x=>x.textContent.includes('I confirm that I submitted')).querySelector('input').click()`)
-	click("Record completed application")
+	click("I submitted this application")
 	wait(`document.body.innerText.includes('Submission recorded locally.')`)
+	wait(`(async()=>{const history=await (await fetch('/api/jobs/1/submissions')).json();const job=await (await fetch('/api/jobs/1/workspace')).json();return history.count===1 && job.job.stage==='applied'})()`)
+	click("Next opportunity → Next synthetic opportunity")
+	page = baseURL + "/jobs/2"
+	wait(`document.body.innerText.includes('Next synthetic opportunity')`)
+
 	t.Log("Same executable restarted in the same isolated workspace; selected resume, manual letter and captured question remained in React, disconnected session disclosed; explicit local completion recorded.")
 }
 

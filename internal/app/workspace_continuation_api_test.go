@@ -249,7 +249,7 @@ func TestSubmissionReviewSubmitAndHistory(t *testing.T) {
 	}
 }
 
-func TestContinuationNextRequiresApplied(t *testing.T) {
+func TestContinuationNextWithoutSubmission(t *testing.T) {
 	a, _ := testWorkspace(t)
 	seedContinuationJob(t, a)
 	next := func() *httptest.ResponseRecorder {
@@ -257,8 +257,25 @@ func TestContinuationNextRequiresApplied(t *testing.T) {
 		newMux(a).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "http://localhost/api/jobs/1/next", nil))
 		return rec
 	}
-	if rec := next(); rec.Code != http.StatusConflict {
+	if rec := next(); rec.Code != http.StatusOK {
 		t.Fatalf("next before applied: %d %s", rec.Code, rec.Body.String())
+	}
+	job, err := a.jobByID(1)
+	if err != nil || job.Stage == StageApplied || job.SubmissionCount != 0 {
+		t.Fatalf("navigation changed submission state: %+v %v", job, err)
+	}
+	f := &fakeBrowser{url: testAshbyPosting + "/application"}
+	a.browsers.factory = func(context.Context, string) (readOnlySession, error) { return f, nil }
+	if err := a.browsers.start(context.Background(), 1, testAshbyPosting); err != nil {
+		t.Fatal(err)
+	}
+	if rec := next(); rec.Code != http.StatusConflict || f.timesClosed() != 0 {
+		t.Fatalf("active browser not protected: %d", rec.Code)
+	}
+	rec := httptest.NewRecorder()
+	newMux(a).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "http://localhost/api/jobs/1/next?close_browser=yes", nil))
+	if rec.Code != http.StatusOK || f.timesClosed() != 1 {
+		t.Fatalf("confirmed close: %d, closes %d", rec.Code, f.timesClosed())
 	}
 	token := reviewedSubmissionToken(t, a, 1)
 	if err := a.recordSubmission(1, "done", token); err != nil {

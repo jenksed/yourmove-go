@@ -526,8 +526,15 @@ func (h *sessionHost) watch(jobID int64, jobURL string, save func(browser.Observ
 		}
 	}()
 }
-func (h *sessionHost) close(jobID int64) error {
+
+var errBrowserCloseNeedsConsent = errors.New("the employer browser is open; closing it may lose unsaved form work")
+
+func (h *sessionHost) close(jobID int64, approved ...bool) error {
 	h.mu.Lock()
+	if len(approved) > 0 && (h.starting || (!approved[0] && h.sessions[jobID] != nil)) {
+		h.mu.Unlock()
+		return errBrowserCloseNeedsConsent
+	}
 	s := h.sessions[jobID]
 	delete(h.sessions, jobID)
 	if c := h.cancels[jobID]; c != nil {

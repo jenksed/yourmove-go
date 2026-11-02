@@ -594,17 +594,19 @@ func (a *App) continuationSubmissionsAPI(w http.ResponseWriter, r *http.Request)
 		out = append(out, continuationSubmissionJSON{ID: s.ID, SubmittedAt: s.SubmittedAt, ResumeName: s.ResumeName, ResumeSHA256: s.ResumeSHA256, Notes: s.Notes})
 	}
 	var next *NextAction
-	if len(submissions) > 0 {
-		if jobs, loadErr := a.allJobs(); loadErr == nil {
-			next = recommendNext(jobs)
+	if jobs, loadErr := a.allJobs(); loadErr == nil {
+		remaining := make([]Job, 0, len(jobs))
+		for _, job := range jobs {
+			if job.ID != jobID {
+				remaining = append(remaining, job)
+			}
 		}
+		next = recommendNext(remaining)
 	}
 	writeResumeJSON(w, http.StatusOK, map[string]any{"submissions": out, "count": len(out), "next": next})
 }
 
-// POST /api/jobs/{id}/next closes the completed application's managed
-// browser and recommends the next opportunity. Recording completion alone
-// keeps the employer browser open for review.
+// POST /api/jobs/{id}/next closes an authorized managed browser and recommends another opportunity.
 func (a *App) continuationNextAPI(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -615,17 +617,11 @@ func (a *App) continuationNextAPI(w http.ResponseWriter, r *http.Request) {
 		writeResumeError(w, http.StatusNotFound, "Unknown job")
 		return
 	}
-	job, err := a.jobByID(jobID)
-	if errors.Is(err, sql.ErrNoRows) {
+	if _, err := a.jobByID(jobID); errors.Is(err, sql.ErrNoRows) {
 		writeResumeError(w, http.StatusNotFound, "Unknown job")
 		return
-	}
-	if err != nil {
+	} else if err != nil {
 		writeResumeError(w, http.StatusInternalServerError, "Unable to load opportunity")
-		return
-	}
-	if job.Stage != StageApplied || job.SubmissionCount == 0 {
-		writeResumeError(w, http.StatusConflict, "Record the completed application before moving on. The current employer browser remains open.")
 		return
 	}
 	jobs, err := a.allJobs()
@@ -633,13 +629,23 @@ func (a *App) continuationNextAPI(w http.ResponseWriter, r *http.Request) {
 		writeResumeError(w, http.StatusInternalServerError, "Unable to load the next opportunity")
 		return
 	}
-	if err := a.browsers.close(jobID); err != nil {
-		writeResumeError(w, http.StatusInternalServerError, "Could not close the completed application browser. Close it in Chromium, then return to Opportunities.")
+	if err := a.browsers.close(jobID, r.URL.Query().Get("close_browser") == "yes"); err != nil {
+		if errors.Is(err, errBrowserCloseNeedsConsent) {
+			writeResumeError(w, http.StatusConflict, "The employer browser is open or opening. Closing it may lose unsaved form work.")
+			return
+		}
+		writeResumeError(w, http.StatusInternalServerError, "Could not close the employer browser. Return to the application before moving on.")
 		return
 	}
+	remaining := make([]Job, 0, len(jobs))
+	for _, job := range jobs {
+		if job.ID != jobID {
+			remaining = append(remaining, job)
+		}
+	}
 	target := "/jobs"
-	if next := recommendNext(jobs); next != nil {
+	if next := recommendNext(remaining); next != nil {
 		target = "/jobs/" + strconv.FormatInt(next.JobID, 10) + "#prepare"
 	}
-	writeResumeJSON(w, http.StatusOK, map[string]any{"target": target, "next": recommendNext(jobs)})
+	writeResumeJSON(w, http.StatusOK, map[string]any{"target": target, "next": recommendNext(remaining)})
 }
