@@ -359,7 +359,7 @@ func fetchPostingDetails(ctx context.Context, rawURL string) (platforms.Metadata
 	case errors.Is(err, platforms.ErrClosed):
 		return platforms.Metadata{}, "closed", "This job is closed; the employer is no longer hiring for this posting."
 	case errors.Is(err, platforms.ErrUnsupported):
-		return platforms.Metadata{}, "unsupported", "This platform has no metadata extractor yet."
+		return platforms.Metadata{}, "unsupported", "Your job is saved. Copy the description from the employer page and paste it into Edit details."
 	case err != nil:
 		log.Printf("extract job metadata: %v", err)
 		return platforms.Metadata{}, "failed", err.Error()
