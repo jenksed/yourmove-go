@@ -26,17 +26,19 @@ function QuestionEditor({
   question,
   value,
   onChange,
+  disabled,
 }: {
   question: WritingQuestion;
   value: string;
   onChange: (next: string) => void;
+  disabled: boolean;
 }): React.JSX.Element {
   const kind = question.kind.toLowerCase();
   if ((kind === "select" || kind === "radio" || kind === "multi_value_single_select") && question.options && question.options.length > 0) {
     return (
       <div className="field">
         <label htmlFor="writing-answer">Your answer — choose an observed option</label>
-        <select id="writing-answer" value={value} onChange={(event) => onChange(event.target.value)}>
+        <select id="writing-answer" disabled={disabled} value={value} onChange={(event) => onChange(event.target.value)}>
           <option value="">No answer yet</option>
           {question.options.map((option) => (
             <option key={option} value={option}>
@@ -51,7 +53,7 @@ function QuestionEditor({
     return (
       <div className="field">
         <label htmlFor="writing-answer">Your answer</label>
-        <select id="writing-answer" value={value} onChange={(event) => onChange(event.target.value)}>
+        <select id="writing-answer" disabled={disabled} value={value} onChange={(event) => onChange(event.target.value)}>
           <option value="">No answer yet</option>
           <option value="true">Yes</option>
           <option value="false">No</option>
@@ -63,7 +65,7 @@ function QuestionEditor({
   return (
     <div className="field field-full">
       <label htmlFor="writing-answer">Your answer</label>
-      <textarea id="writing-answer" rows={rows} value={value} onChange={(event) => onChange(event.target.value)} />
+      <textarea id="writing-answer" rows={rows} readOnly={disabled} value={value} onChange={(event) => onChange(event.target.value)} />
     </div>
   );
 }
@@ -448,6 +450,7 @@ export function WritingSection({
                 <QuestionEditor
                   question={selected}
                   value={draft}
+                  disabled={!selected.editable || !snapshot.editingAllowed || readOnly}
                   onChange={(next) => {
                     setDraft(next);
                     setDirty(next !== selected.value);

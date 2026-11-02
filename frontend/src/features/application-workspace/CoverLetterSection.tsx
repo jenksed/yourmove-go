@@ -244,6 +244,7 @@ export function CoverLetterSection({
               id="letter-body"
               rows={14}
               value={draft}
+              readOnly={!snapshot.editingAllowed || readOnly}
               onChange={(event) => {
                 setDraft(event.target.value);
                 setDirty(event.target.value !== (snapshot.current?.body ?? ""));

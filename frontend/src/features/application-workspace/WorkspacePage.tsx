@@ -256,6 +256,8 @@ export function WorkspacePage(): React.JSX.Element {
                 <p>{applied ? "Review your submission history below." : snapshot.preparation.detail}</p>
               </section>
 
+              {applied && <div id="history"><SubmissionSection jobId={snapshot.job.id} onRecorded={completionRecorded} /></div>}
+
               <section className="panel" aria-labelledby="opportunity-title">
                 <div className="section-heading">
                   <div>
@@ -616,7 +618,7 @@ export function WorkspacePage(): React.JSX.Element {
                     }))}
                   />
                   <ContinuationSection jobId={snapshot.job.id} materialRevision={materialRevision} />
-                  <div id="history"><SubmissionSection jobId={snapshot.job.id} onRecorded={completionRecorded} /></div>
+                  {!applied && <div id="history"><SubmissionSection jobId={snapshot.job.id} onRecorded={completionRecorded} /></div>}
                 </>
               )}
 
