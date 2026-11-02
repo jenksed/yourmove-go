@@ -36,6 +36,7 @@ function suggestionText(status: string): string {
 
 export function WorkspacePage(): React.JSX.Element {
   const jobId = workspaceIdFromPath(window.location.pathname);
+  const [activity, setActivity] = useState<"job" | "documents" | "questions" | "apply" | "applied">("job");
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
   const [loadError, setLoadError] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
@@ -101,10 +102,15 @@ export function WorkspacePage(): React.JSX.Element {
   }, [reload]);
 
   useEffect(() => {
-    if (!snapshot || initialHashHandled.current || !window.location.hash) return;
+    if (!snapshot || initialHashHandled.current) return;
     initialHashHandled.current = true;
-    const id = window.location.hash.slice(1);
-    window.requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView());
+    const hash = window.location.hash.slice(1);
+    if (["prepare", "workspace-resume-title", "cover-letters"].includes(hash)) setActivity("documents");
+    else if (["writing", "questions"].includes(hash)) setActivity("questions");
+    else if (["employer", "apply"].includes(hash)) setActivity("apply");
+    else if (["submission", "history", "applied"].includes(hash)) setActivity("applied");
+    else if (snapshot.job.submissionCount > 0 || snapshot.job.stage === "applied") setActivity("applied");
+    else if (snapshot.selectedResumeId > 0) setActivity("questions");
   }, [snapshot]);
 
   const handleSaveDetails = useCallback(
@@ -241,23 +247,14 @@ export function WorkspacePage(): React.JSX.Element {
                 </div>
               </div>
 
-              <nav className="workspace-jump" aria-label="Application activities">
-                <a href="#opportunity-title">Opportunity</a>
-                <a href="#workspace-resume-title">Résumé</a>
-                <a href="#writing">Answers</a>
-                <a href="#cover-letters">Cover letter</a>
-                <a href="#employer">Employer</a>
-                <a href="#submission">History</a>
+              <nav className="workspace-tabs" aria-label="Application activities">
+                {(["job", "documents", "questions", "apply", "applied"] as const).map((tab) => (
+                  <button key={tab} type="button" aria-current={activity === tab ? "page" : undefined}
+                    onClick={() => setActivity(tab)}>{tab === "job" ? "Job" : tab === "documents" ? "Documents" : tab === "questions" ? "Questions" : tab === "apply" ? "Apply" : "Applied"}</button>
+                ))}
               </nav>
 
-              <section className="panel workspace-next" aria-labelledby="next-action-title">
-                <p className="eyebrow">NEXT USEFUL ACTION</p>
-                <h2 id="next-action-title">{applied ? "Application recorded" : snapshot.preparation.title}</h2>
-                <p>{applied ? "Review your submission history below." : snapshot.preparation.detail}</p>
-              </section>
-
-              {applied && <div id="history"><SubmissionSection jobId={snapshot.job.id} onRecorded={completionRecorded} /></div>}
-
+              <div hidden={activity !== "job"}>
               <section className="panel" aria-labelledby="opportunity-title">
                 <div className="section-heading">
                   <div>
@@ -327,7 +324,7 @@ export function WorkspacePage(): React.JSX.Element {
                 </div>
               </section>
 
-              <details className="panel detail-editor" open>
+              <details className="panel detail-editor">
                 <summary>
                   <span>
                     <strong>Edit job and tracking</strong>
@@ -430,6 +427,10 @@ export function WorkspacePage(): React.JSX.Element {
                 </form>
               </details>
 
+              <button className="button button-primary workspace-next-button" type="button" onClick={() => setActivity("documents")}>Prepare application</button>
+              </div>
+
+              <div hidden={activity !== "documents"}>
               <section className="panel" id="prepare" aria-labelledby="workspace-resume-title">
                 <div className="section-heading">
                   <div>
@@ -529,100 +530,36 @@ export function WorkspacePage(): React.JSX.Element {
                 )}
               </section>
 
-              <section className="panel" aria-labelledby="workspace-prep-title">
-                <div className="section-heading">
-                  <div>
-                    <p className="eyebrow">PREPARATION</p>
-                    <h2 id="workspace-prep-title">What is ready, what needs attention</h2>
-                  </div>
-                </div>
-                <dl className="readiness-grid">
-                  <div>
-                    <dt>Resume</dt>
-                    <dd>
-                      {snapshot.readiness.resumeReady
-                        ? "Selected locally"
-                        : "Needs attention · choose or repair a resume above"}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Candidate profile</dt>
-                    <dd>
-                      {snapshot.readiness.profileApproved ? (
-                        "Approved by you"
-                      ) : (
-                        <>
-                          Not approved · contacts excluded · <a href="/candidate">Review candidate information</a>
-                        </>
-                      )}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Application answers</dt>
-                    <dd>
-                      {snapshot.readiness.questionsAvailable
-                        ? `${snapshot.readiness.needsAnswerCount} need your input · ${snapshot.readiness.preparedCount} prepared locally`
-                        : "Questions not discovered yet"}
-                    </dd>
-                    {snapshot.readiness.questionsAvailable && (
-                      <small>
-                        {snapshot.readiness.questionSource}
-                        {snapshot.readiness.questionPartial && " · Partial inspection"}
-                      </small>
-                    )}
-                  </div>
-                  <div>
-                    <dt>Employer-side work</dt>
-                    <dd>
-                      {snapshot.readiness.questionsAvailable
-                        ? snapshot.readiness.manualWorkCount > 0
-                          ? `${snapshot.readiness.manualWorkCount} fields need employer-side completion or manual review`
-                          : "None identified in this inspection"
-                        : "Not assessed"}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Cover letter</dt>
-                    <dd>
-                      {snapshot.readiness.coverLetterSaved
-                        ? `Saved draft ready to review (${snapshot.letters.count} saved)`
-                        : "Optional · no saved draft"}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Browser session</dt>
-                    <dd>{snapshot.readiness.browserStatus}</dd>
-                  </div>
-                </dl>
-                <p className="small-muted">
-                  {snapshot.submissions.count} recorded submission{snapshot.submissions.count === 1 ? "" : "s"} ·{" "}
-                  {snapshot.preparation.recovery ? "recovery guidance applies" : "no recovery blocker"} ·{" "}
-                  {snapshot.handoff.allowed ? snapshot.handoff.reason : snapshot.handoff.reason}
-                </p>
-              </section>
+              {snapshot.job.id > 0 && <CoverLetterSection
+                jobId={snapshot.job.id}
+                selectedResumeId={snapshot.selectedResumeId}
+                onMaterialSaved={materialSaved}
+                readOnly={applied}
+                resumeOptions={snapshot.resumeOptions.map((option) => ({
+                  id: option.id, name: option.name, kind: option.kind,
+                  version: option.version, archived: option.archived,
+                }))}
+              />}
+              <button className="button button-primary workspace-next-button" type="button" onClick={() => setActivity("questions")}>Continue to questions</button>
+              </div>
 
-              {snapshot.job.id > 0 && (
-                <>
-                  <WritingSection jobId={snapshot.job.id} destination={snapshot.job.url} legacyHref={snapshot.legacyHref} onMaterialSaved={materialSaved} readOnly={applied} />
-                  <CoverLetterSection
-                    jobId={snapshot.job.id}
-                    selectedResumeId={snapshot.selectedResumeId}
-                    onMaterialSaved={materialSaved}
-                    readOnly={applied}
-                    resumeOptions={snapshot.resumeOptions.map((option) => ({
-                      id: option.id,
-                      name: option.name,
-                      kind: option.kind,
-                      version: option.version,
-                      archived: option.archived,
-                    }))}
-                  />
-                  <ContinuationSection jobId={snapshot.job.id} materialRevision={materialRevision} />
-                  {!applied && <div id="history"><SubmissionSection jobId={snapshot.job.id} onRecorded={completionRecorded} /></div>}
-                </>
-              )}
+              <div hidden={activity !== "questions"}>
+                <p>Open the employer application from Apply to discover its questions. Answer any you choose; the rest can be completed on the employer site.</p>
+                {snapshot.job.id > 0 && <WritingSection jobId={snapshot.job.id} destination={snapshot.job.url} legacyHref={snapshot.legacyHref} onMaterialSaved={materialSaved} readOnly={applied} />}
+                <button className="button button-primary workspace-next-button" type="button" onClick={() => setActivity("apply")}>Continue to application</button>
+              </div>
 
-              <section className="panel" aria-labelledby="workspace-continue-title">
+              <div hidden={activity !== "apply"}>
+                {snapshot.job.id > 0 && <ContinuationSection jobId={snapshot.job.id} materialRevision={materialRevision} />}
+                <button className="button button-secondary workspace-next-button" type="button" onClick={() => setActivity("applied")}>I have submitted my application</button>
+              </div>
+
+              <div hidden={activity !== "applied"} id="history">
+                {snapshot.job.id > 0 && <SubmissionSection jobId={snapshot.job.id} onRecorded={completionRecorded} />}
+                <a className="button button-secondary" href="/jobs">Back to Opportunities</a>
+              </div>
+
+              <section hidden={activity !== "apply"} className="panel" aria-labelledby="workspace-continue-title">
                 <div className="section-heading">
                   <div>
                     <p className="eyebrow">LEGACY WORKSPACE</p>
