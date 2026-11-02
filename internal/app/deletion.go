@@ -48,6 +48,9 @@ func (a *App) deleteJobs(ids []int64, allowHistory bool) (int64, error) {
 		if _, err := tx.Exec(`DELETE FROM application_answers WHERE job_id=?`, id); err != nil {
 			return 0, err
 		}
+		if _, err := tx.Exec(`DELETE FROM ai_answer_provenance WHERE job_id=?`, id); err != nil {
+			return 0, err
+		}
 		if _, err := tx.Exec(`DELETE FROM application_fields WHERE inspection_id IN (SELECT id FROM application_inspections WHERE job_id=?)`, id); err != nil {
 			return 0, err
 		}

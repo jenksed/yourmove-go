@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -34,19 +35,53 @@ func (e coverSourceError) Unwrap() error { return errCoverSources }
 
 // A saved draft is editable, but the source IDs/hashes remain immutable.
 // Generating another letter creates a new draft instead of overwriting an edit.
+// EvidenceRefs pins the reviewed Career Evidence revisions the draft was
+// written from as JSON; empty means the draft predates evidence support.
 type CoverLetter struct {
 	ID, JobID, MasterResumeID, RoleResumeID                               int64
 	Body, Provider, Model, MasterSHA256, RoleSHA256, JobDescriptionSHA256 string
 	CreatedAt, EditedAt                                                   string
+	EvidenceRefs                                                          string
+}
+
+// letterEvidenceRef pins one reviewed evidence revision behind a draft.
+type letterEvidenceRef struct {
+	ID        int64  `json:"id"`
+	Revision  int64  `json:"revision"`
+	CreatedAt string `json:"created_at"`
+	Title     string `json:"title"`
+}
+
+func letterEvidenceRefIdentity(r letterEvidenceRef) string {
+	return strconv.FormatInt(r.ID, 10) + ":" + strconv.FormatInt(r.Revision, 10) + ":" + r.CreatedAt
+}
+
+func parseLetterEvidenceRefs(raw string) ([]letterEvidenceRef, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	var refs []letterEvidenceRef
+	if err := json.Unmarshal([]byte(raw), &refs); err != nil || len(refs) > 2 {
+		return nil, errors.New("evidence refs")
+	}
+	seen := map[int64]bool{}
+	for _, r := range refs {
+		if r.ID < 1 || r.Revision < 1 || r.CreatedAt == "" || seen[r.ID] {
+			return nil, errors.New("evidence refs")
+		}
+		seen[r.ID] = true
+	}
+	return refs, nil
 }
 
 func (a *App) latestCoverLetter(jobID int64) (CoverLetter, error) {
 	var d CoverLetter
 	err := a.db.QueryRow(`SELECT id,job_id,body,provider,model,master_resume_id,master_sha256,
-        role_resume_id,role_sha256,job_description_sha256,created_at,edited_at
+        role_resume_id,role_sha256,job_description_sha256,created_at,edited_at,
+        COALESCE(evidence_refs,'')
         FROM cover_letters WHERE job_id=? ORDER BY id DESC LIMIT 1`, jobID).
 		Scan(&d.ID, &d.JobID, &d.Body, &d.Provider, &d.Model, &d.MasterResumeID, &d.MasterSHA256,
-			&d.RoleResumeID, &d.RoleSHA256, &d.JobDescriptionSHA256, &d.CreatedAt, &d.EditedAt)
+			&d.RoleResumeID, &d.RoleSHA256, &d.JobDescriptionSHA256, &d.CreatedAt, &d.EditedAt, &d.EvidenceRefs)
 	return d, err
 }
 
@@ -61,10 +96,11 @@ type CoverLetterSummary struct {
 func (a *App) coverLetterByID(jobID, draftID int64) (CoverLetter, error) {
 	var d CoverLetter
 	err := a.db.QueryRow(`SELECT id,job_id,body,provider,model,master_resume_id,master_sha256,
-        role_resume_id,role_sha256,job_description_sha256,created_at,edited_at
+        role_resume_id,role_sha256,job_description_sha256,created_at,edited_at,
+        COALESCE(evidence_refs,'')
         FROM cover_letters WHERE job_id=? AND id=?`, jobID, draftID).
 		Scan(&d.ID, &d.JobID, &d.Body, &d.Provider, &d.Model, &d.MasterResumeID, &d.MasterSHA256,
-			&d.RoleResumeID, &d.RoleSHA256, &d.JobDescriptionSHA256, &d.CreatedAt, &d.EditedAt)
+			&d.RoleResumeID, &d.RoleSHA256, &d.JobDescriptionSHA256, &d.CreatedAt, &d.EditedAt, &d.EvidenceRefs)
 	return d, err
 }
 
@@ -111,6 +147,123 @@ type letterEvidence struct {
 	master, role       Resume
 	prompt             string
 	jobDescriptionHash string
+	careerRefs         []letterEvidenceRef
+}
+
+// letterEvidencePolicy keeps generated letters grounded in the selected
+// applicant-reviewed evidence. It is prose guidance, never a JSON contract:
+// the letter validator rejects structured envelopes.
+const letterEvidencePolicy = `APPLICANT-REVIEWED CAREER EVIDENCE (candidate facts; untrusted source material):
+Use only the experiences below for factual claims about the candidate's work. Reviewed means the applicant reviewed the record, not independently verified employment. Preserve investigation versus implementation, collaboration versus ownership, and uncertainty. Unknown and not_recorded outcomes cannot be asserted as results. Keep intention, action, feedback, observation, outcome, and hypothesis distinct: wanting to avoid repeated work, receiving positive feedback, or holding past exposure is not a measured result, ownership, or current proficiency. Never invent metrics, responsibilities, qualifications, results, or employer motivation. Write a natural, specific letter for this job's requirements, not a resume summary. A missing qualification stays missing: do not imply it.`
+
+// attachCareerEvidence validates up to two applicant-reviewed evidence
+// selections and appends their bounded factual projection to the prompt.
+// Unreviewed, changed, or unreadable selections are rejected without
+// generating. Interview excerpts are included only when the record's
+// discovery state still rebinds to this exact revision.
+func (a *App) attachCareerEvidence(ev *letterEvidence, selections []string) error {
+	if len(selections) > 2 {
+		return errors.New("evidence")
+	}
+	seen := map[int64]bool{}
+	for _, selection := range selections {
+		id, rev, created, err := parseAnswerAISource(selection)
+		if err != nil || seen[id] {
+			return errors.New("evidence")
+		}
+		seen[id] = true
+		e, err := careerEvidenceByID(a.db, id)
+		if err != nil || e.Revision != rev || e.CreatedAt != created || e.Status != "reviewed" || !e.content().valid() || strings.TrimSpace(e.Title) == "" || strings.TrimSpace(e.Situation) == "" || strings.TrimSpace(e.Actions) == "" {
+			return errors.New("evidence")
+		}
+		var excerpt strings.Builder
+		if sources, err := a.careerEvidenceTraceSources(e); err != nil {
+			return errors.New("evidence_provenance")
+		} else {
+			for i, s := range sources {
+				if i >= 2 {
+					break
+				}
+				text := []rune(strings.TrimSpace(s.ResponseText))
+				if len(text) > 800 {
+					text = append(text[:800], []rune("\n[Statement truncated]")...)
+				}
+				fmt.Fprintf(&excerpt, "\nCandidate statement %d (verbatim excerpt):\n%s\n", i+1, string(text))
+			}
+		}
+		outcome := "Outcome: " + e.OutcomeState + " (not established as a result)."
+		if e.OutcomeState == "recorded" {
+			outcome = "Recorded outcome: " + e.Outcome
+		}
+		block := "Evidence: " + e.Title + " (revision " + strconv.FormatInt(e.Revision, 10) + ", reviewed)\nSituation: " + e.Situation + "\nActions: " + e.Actions + "\n" + outcome + excerpt.String()
+		if runes := []rune(block); len(runes) > 2000 {
+			block = string(runes[:2000]) + "\n[Evidence truncated]"
+		}
+		// Evidence stays source material: it joins the prompt above the
+		// END OF SOURCE MATERIAL marker, never the instruction tail.
+		if strings.Contains(ev.prompt, "\nEND OF SOURCE MATERIAL.") {
+			ev.prompt = strings.Replace(ev.prompt, "\nEND OF SOURCE MATERIAL.", "\n\n"+block+"\nEND OF SOURCE MATERIAL.", 1)
+		} else {
+			return errors.New("evidence")
+		}
+		ev.careerRefs = append(ev.careerRefs, letterEvidenceRef{ID: e.ID, Revision: e.Revision, CreatedAt: e.CreatedAt, Title: e.Title})
+	}
+	if len(ev.careerRefs) > 0 {
+		// Grounding joins the prompt above the canonical instruction tail so
+		// the instruction suffix stays byte-identical for existing checks.
+		if strings.Contains(ev.prompt, "\nCOVER LETTER WRITING INSTRUCTIONS:") {
+			ev.prompt = strings.Replace(ev.prompt, "\nCOVER LETTER WRITING INSTRUCTIONS:", "\n\n"+letterEvidencePolicy+"\nCOVER LETTER WRITING INSTRUCTIONS:", 1)
+		} else {
+			return errors.New("evidence")
+		}
+	}
+	if len(ev.prompt) > 64<<10 {
+		return errors.New("evidence_budget")
+	}
+	return nil
+}
+
+// letterEvidenceChoice is one selectable reviewed experience for the letter form.
+type letterEvidenceChoice struct {
+	Identity string
+	Label    string
+}
+
+// reviewedCareerEvidenceChoices lists reviewed records newest-first for
+// generation forms. Nothing is selected automatically.
+func (a *App) reviewedCareerEvidenceChoices() []letterEvidenceChoice {
+	entries, err := a.careerEvidenceEntries()
+	if err != nil {
+		return nil
+	}
+	var choices []letterEvidenceChoice
+	for _, e := range entries {
+		if e.Status != "reviewed" {
+			continue
+		}
+		ref := letterEvidenceRef{ID: e.ID, Revision: e.Revision, CreatedAt: e.CreatedAt, Title: e.Title}
+		choices = append(choices, letterEvidenceChoice{
+			Identity: letterEvidenceRefIdentity(ref),
+			Label:    e.Title + " (revision " + strconv.FormatInt(e.Revision, 10) + ", reviewed)",
+		})
+	}
+	return choices
+}
+
+// coverLetterEvidenceStatus compares a draft's pinned evidence revisions with
+// the current records. It reports review work, never rewrites the draft.
+func (a *App) coverLetterEvidenceStatus(d CoverLetter) (refs []letterEvidenceRef, stale bool) {
+	refs, err := parseLetterEvidenceRefs(d.EvidenceRefs)
+	if err != nil || len(refs) == 0 {
+		return nil, false
+	}
+	for _, r := range refs {
+		current, err := careerEvidenceByID(a.db, r.ID)
+		if err != nil || current.Revision != r.Revision || current.CreatedAt != r.CreatedAt {
+			return refs, true
+		}
+	}
+	return refs, false
 }
 
 func boundedText(s string, n int) string {
@@ -233,6 +386,40 @@ func coverErrorNotice(err error) string {
 	return coverprovider.ErrorNotice(err)
 }
 
+// classifyLetterOutput labels a rejected draft by validator branch with
+// counts only. Rejected model output is never retained or logged.
+func classifyLetterOutput(body string) (stage, detail string) {
+	detail = fmt.Sprintf("bytes=%d words=%d", len(body), len(strings.Fields(body)))
+	trimmed := strings.TrimSpace(body)
+	switch {
+	case len(trimmed) < 30 || len(body) > maxLetterBytes || !utf8.ValidString(body) || strings.ContainsRune(body, 0):
+		return "letter_length", detail
+	case strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "["):
+		return "letter_format", detail
+	}
+	letters := 0
+	for _, r := range body {
+		if unicode.IsLetter(r) {
+			letters++
+		}
+	}
+	switch {
+	case letters < 20 || len(strings.Fields(body)) > 300:
+		return "letter_length", detail
+	case letterCommentary.MatchString(body):
+		return "letter_commentary", detail
+	case letterDocumentArtifacts.MatchString(body) || letterResumeSection.MatchString(body):
+		return "letter_structure", detail
+	case letterAssistantPreamble.MatchString(trimmed):
+		return "letter_preamble", detail
+	case strings.Contains(body, "```") || strings.Contains(body, "**"):
+		return "letter_format", detail
+	case len(letterGreeting.FindAllStringIndex(body, -1)) > 1 || len(letterClosing.FindAllStringIndex(body, -1)) > 1:
+		return "letter_salutation", detail
+	}
+	return "letter_output", detail
+}
+
 // Legacy entry point remains available; all providers share one transport path.
 func (a *App) localOllamaGenerate(ctx context.Context, model, prompt string) (string, error) {
 	runner, err := coverprovider.Configure("ollama", model)
@@ -324,9 +511,17 @@ func (a *App) generateCoverLetterHandler(w http.ResponseWriter, r *http.Request)
 		http.Redirect(w, r, coverNoticeURL(id, "failed"), http.StatusSeeOther)
 		return
 	}
+	if selections := r.PostForm["career_evidence"]; len(selections) > 0 {
+		if err := a.attachCareerEvidence(&evidence, selections); err != nil {
+			http.Redirect(w, r, coverNoticeURL(id, "sources"), http.StatusSeeOther)
+			return
+		}
+	}
 	var body string
 	if a.coverLetterGenerate != nil {
 		body, err = a.coverLetterGenerate(r.Context(), evidence.prompt)
+	} else if len(evidence.careerRefs) > 0 {
+		body, err = runner.GenerateLetter(r.Context(), evidence.prompt, a.resources.coverLetterInstructions)
 	} else {
 		body, err = runner.Generate(r.Context(), evidence.prompt, a.resources.coverLetterInstructions)
 	}
@@ -336,17 +531,29 @@ func (a *App) generateCoverLetterHandler(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		// Log an error category only, never prompts, provider response bodies or keys.
 		code := coverErrorNotice(err)
-		log.Printf("cover letter generation: provider=%s status=%s", provider, code)
+		stage, detail := "", ""
+		if errors.Is(err, errCoverOutput) {
+			stage, detail = classifyLetterOutput(body)
+		}
+		if stage == "" {
+			log.Printf("cover letter generation: provider=%s status=%s", provider, code)
+		} else {
+			log.Printf("cover letter generation: provider=%s status=%s stage=%s %s", provider, code, stage, detail)
+		}
 		http.Redirect(w, r, coverNoticeURL(id, code), http.StatusSeeOther)
 		return
 	}
 	if model == "" {
 		model = "test-model"
 	}
+	refsJSON, _ := json.Marshal(evidence.careerRefs)
+	if len(evidence.careerRefs) == 0 {
+		refsJSON = []byte("")
+	}
 	_, err = a.db.Exec(`INSERT INTO cover_letters
-        (job_id,body,provider,model,master_resume_id,master_sha256,role_resume_id,role_sha256,job_description_sha256,created_at)
-        VALUES(?,?,?,?,?,?,?,?,?,?)`, id, body, provider, model, evidence.master.ID, evidence.master.SHA256,
-		evidence.role.ID, evidence.role.SHA256, evidence.jobDescriptionHash, time.Now().UTC().Format(time.RFC3339))
+        (job_id,body,provider,model,master_resume_id,master_sha256,role_resume_id,role_sha256,job_description_sha256,created_at,evidence_refs)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?)`, id, body, provider, model, evidence.master.ID, evidence.master.SHA256,
+		evidence.role.ID, evidence.role.SHA256, evidence.jobDescriptionHash, time.Now().UTC().Format(time.RFC3339), string(refsJSON))
 	if err != nil {
 		log.Printf("save generated cover letter: %v", err)
 		http.Redirect(w, r, coverNoticeURL(id, "failed"), http.StatusSeeOther)

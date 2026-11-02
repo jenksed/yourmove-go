@@ -1,0 +1,451 @@
+/* YM-004A Application Workspace compositions.
+   Quiet Ink tokens and shell controls live in shared/quiet-ink.css;
+   opportunity list primitives are reused from the Opportunities slice. */
+
+.workspace-page .breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-muted);
+  font-size: 12px;
+  margin-bottom: 14px;
+}
+
+.workspace-page .breadcrumbs a {
+  color: var(--color-muted);
+}
+
+.workspace-next {
+  border-inline-start: 3px solid var(--color-primary);
+}
+
+.workspace-jump {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin: 0 0 18px;
+  padding: 0 0 14px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.workspace-jump a {
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 650;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+}
+
+#cover-letters > .writing-editor,
+#cover-letters > .field {
+  max-width: 780px;
+}
+
+.workspace-next h2 {
+  margin: 6px 0 8px;
+}
+
+.workspace-facts {
+  display: grid;
+  gap: 12px;
+  padding: 0 24px 8px;
+}
+
+.workspace-facts > div {
+  display: grid;
+  gap: 4px;
+}
+
+.workspace-facts dt {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.075em;
+  color: var(--color-muted);
+  font-weight: 760;
+}
+
+.workspace-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.workspace-url {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+.workspace-source-actions {
+  display: grid;
+  gap: 10px;
+  padding: 12px 24px 0;
+  max-width: 560px;
+}
+
+.workspace-description {
+  padding: 16px 24px 24px;
+  max-width: 90ch;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.workspace-suggestion {
+  margin: 0 24px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface-muted);
+  padding: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.workspace-suggestion h3 {
+  margin: 6px 0;
+}
+
+.workspace-suggestion-note {
+  padding: 0 24px;
+}
+
+.workspace-options {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0 24px 8px;
+  display: grid;
+  gap: 10px;
+}
+
+.transfer-ready {
+  color: var(--color-success);
+}
+
+.transfer-blocked {
+  color: var(--color-attention);
+}
+
+.transfer-note {
+  color: var(--color-muted);
+}
+
+.readiness-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  padding: 0 24px 12px;
+}
+
+.readiness-grid > div {
+  display: grid;
+  gap: 4px;
+}
+
+.readiness-grid dt {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.075em;
+  color: var(--color-muted);
+  font-weight: 760;
+}
+
+.readiness-grid dd {
+  margin: 0;
+}
+
+.workspace-legacy-links {
+  list-style: none;
+  margin: 0;
+  padding: 0 24px 24px;
+  display: grid;
+  gap: 10px;
+}
+
+/* YM-004B application writing compositions. */
+
+.writing-notice {
+  margin: 0 24px 12px;
+  padding: 10px 14px;
+  border-inline-start: 3px solid var(--color-attention);
+  background: var(--color-surface-muted);
+  border-radius: 0 8px 8px 0;
+  font-size: 13px;
+}
+
+.writing-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
+  gap: 16px;
+  padding: 0 24px 8px;
+}
+
+.writing-question-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.writing-question {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  text-align: start;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  cursor: pointer;
+}
+
+.writing-question small {
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.writing-question.is-selected {
+  border-color: var(--color-primary);
+  background: var(--color-surface-muted);
+}
+
+.writing-editor {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  padding: 16px;
+}
+
+.writing-editor h3 {
+  margin: 0;
+}
+
+.writing-assist {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 12px;
+}
+
+.writing-assist h4 {
+  margin: 4px 0 0;
+}
+
+.writing-assist h5 {
+  margin: 8px 0 4px;
+  font-size: 13px;
+}
+
+.writing-suggestions {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.writing-suggestions li {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface-muted);
+  padding: 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.writing-suggestions p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.writing-sources {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.writing-ticket {
+  display: grid;
+  gap: 10px;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.writing-answer-preview {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface-muted);
+  padding: 12px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.writing-previous {
+  padding: 0 24px 20px;
+  display: grid;
+  gap: 8px;
+}
+
+.writing-previous h3 {
+  margin: 8px 0 0;
+  font-size: 14px;
+}
+
+/* YM-004C employer continuation compositions. */
+
+.continuation-scope {
+  display: grid;
+  gap: 12px;
+  padding: 0 24px 8px;
+}
+
+.continuation-scope h3 {
+  margin: 8px 0 0;
+  font-size: 14px;
+}
+
+.continuation-item {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  padding: 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.pending-answer-scope {
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.pending-answer-scope > div {
+  display: grid;
+  gap: 2px;
+}
+
+.pending-answer-scope dt {
+  font-weight: 650;
+}
+
+.pending-answer-scope dd {
+  margin: 0;
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+}
+
+.continuation-outcomes {
+  margin: 12px 24px 20px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  padding: 16px;
+  display: grid;
+  gap: 10px;
+}
+
+.continuation-outcomes h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.transfer-contact-outcomes {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.transfer-contact-outcomes li {
+  display: grid;
+  gap: 2px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 8px;
+}
+
+.submission-success {
+  margin: 0 24px 12px;
+  padding: 10px 14px;
+  border-inline-start: 3px solid var(--color-success);
+  background: var(--color-surface-muted);
+  border-radius: 0 8px 8px 0;
+}
+
+.submission-disclosure {
+  margin: 0 24px 20px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+
+.submission-disclosure-body {
+  padding: 16px;
+  display: grid;
+  gap: 10px;
+}
+
+.confirmation-note {
+  font-size: 13px;
+  color: var(--color-muted);
+}
+
+.timeline {
+  list-style: none;
+  margin: 0 24px 12px;
+  padding: 0 0 0 20px;
+  display: grid;
+  gap: 14px;
+  border-left: 2px solid var(--color-border);
+}
+
+.timeline-content {
+  display: grid;
+  gap: 4px;
+}
+
+.timeline-content time {
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+.timeline-note {
+  font-size: 13px;
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+}
+
+.summary-count {
+  font-size: 12px;
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+@media (max-width: 860px) {
+  .writing-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .workspace-suggestion {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .readiness-grid {
+    grid-template-columns: 1fr;
+  }
+}

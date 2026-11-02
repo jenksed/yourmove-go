@@ -40,6 +40,27 @@ func (a *App) frontendDistFS() fs.FS {
 	return nil
 }
 
+// serveJobWorkspace prefers the React Application Workspace bundle when
+// embedded, keeping the Go-rendered job page for legacy writing/employer
+// actions and no-JS fallback. ?legacy=1 forces the Go page; legacy forms
+// that carry draft/cover/question state also stay on the Go page so deep
+// links keep working. All POST /jobs/{id}/* operations remain Go-owned, and
+// their redirects back to /jobs/{id} land on the functioning React
+// workspace, so the applicant is never stranded after a legacy action.
+func (a *App) serveJobWorkspace(w http.ResponseWriter, r *http.Request) {
+	if len(a.resources.frontendIndex) > 0 {
+		query := r.URL.Query()
+		if query.Get("legacy") == "" && !query.Has("draft") && !query.Has("cover") &&
+			!query.Has("question") && !query.Has("early_question") {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Header().Set("Cache-Control", "no-store")
+			_, _ = w.Write(a.resources.frontendIndex)
+			return
+		}
+	}
+	a.jobDetail(w, r)
+}
+
 // serveOpportunities prefers the React bundle when embedded, keeping the
 // existing Go form POST on /jobs for compatibility and no-JS fallback.
 // All other job routes remain Go-rendered.
