@@ -234,7 +234,8 @@ func (h *sessionHost) armAnswers(id int64, destination string, up *applicationAn
 		h.answers = map[int64]*applicationAnswerTransfer{}
 	}
 	if old := h.answers[id]; old != nil {
-		newAnswers := pendingAnswers(up.approved, append(append([]preparedQuestion(nil), old.attempted...), old.approved...), false)
+		newAnswers := pendingAnswers(up.approved, old.attempted, false)
+		newAnswers = excludePendingAuthorizations(newAnswers, old.approved)
 		if handoff := h.handoffs[id]; handoff != nil && handoff.contactStatus != "" {
 			newAnswers = pendingAnswers(newAnswers, nil, true)
 		}
@@ -293,7 +294,6 @@ func (h *sessionHost) tryAnswers(ctx context.Context, id int64) {
 	h.mu.Unlock()
 	var outcomes []browser.AnswerOutcome
 	var waiting []preparedQuestion
-	var terminal []preparedQuestion
 	filler, ok := s.(answerFillSession)
 	for _, q := range batch {
 		out := browser.AnswerOutcome{Label: q.Field.Label, Status: "manual", Detail: "The approved answer changed or transfer is unavailable. Review it in Prepare."}
@@ -310,9 +310,6 @@ func (h *sessionHost) tryAnswers(ctx context.Context, id int64) {
 					continue
 				}
 				if status != "ready" {
-					if q.IsEarly {
-						terminal = append(terminal, q)
-					}
 					outcomes = append(outcomes, out)
 					continue
 				}
@@ -362,6 +359,12 @@ func (h *sessionHost) tryAnswers(ctx context.Context, id int64) {
 				waiting = append(waiting, q)
 				continue
 			}
+			// A prior dispatch may have happened after this snapshot was authorized.
+			if len(pendingAnswers([]preparedQuestion{q}, up.attempted, false)) == 0 {
+				h.mu.Unlock()
+				outcomes = append(outcomes, out)
+				continue
+			}
 			up.attempted = append(up.attempted, q)
 			h.mu.Unlock()
 			var err error
@@ -378,7 +381,6 @@ func (h *sessionHost) tryAnswers(ctx context.Context, id int64) {
 		return
 	}
 	up.outcomes = append(up.outcomes, outcomes...)
-	up.attempted = append(up.attempted, terminal...)
 	up.approved = append(waiting, up.approved[len(batch):]...)
 	if len(up.approved) > 0 {
 		up.status = "waiting"

@@ -179,7 +179,8 @@ func (a *App) buildContinuation(jobID int64) (map[string]any, error) {
 		}
 		preparation.PendingAnswers = append(preparation.PendingAnswers, preparedQuestion{JobID: job.ID, Destination: q.Destination, Field: q.Field, Key: q.Key, Value: q.Value, Source: "Saved early answer — fills when the same question is found", Revision: q.Revision, Editable: true, IsEarly: true, EarlyAnswerID: q.EarlyAnswerID, DiscoverySource: q.DiscoverySource, DiscoveryFingerprint: q.DiscoveryFingerprint, SourceQuestionID: q.SourceQuestionID})
 	}
-	preparation.PendingAnswers = pendingAnswers(preparation.PendingAnswers, append(state.AnswerAttempted, state.AnswerPending...), false)
+	preparation.PendingAnswers = pendingAnswers(preparation.PendingAnswers, state.AnswerAttempted, false)
+	preparation.PendingAnswers = excludePendingAuthorizations(preparation.PendingAnswers, state.AnswerPending)
 	preparation.IncludeAnswers = len(preparation.PendingAnswers) > 0
 	snapshot := chooseApplicationQuestionSnapshot(job, state, live, early)
 	submissions, err := a.jobSubmissions(jobID)

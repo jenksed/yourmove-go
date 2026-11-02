@@ -2,7 +2,11 @@ package app
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/jenksed/yourmove-go/internal/application/browser"
@@ -256,8 +260,24 @@ func TestReactEarlyAnswerDelayedPrecedence(t *testing.T) {
 			if (scenario == "live clear" || scenario == "early edit") && len(fake.transferred) != 0 {
 				t.Fatalf("unexpected transfer: %+v", fake.transferred)
 			}
-			if scenario == "uncertain" && uncertain.calls != 1 {
-				t.Fatalf("uncertain write calls=%d", uncertain.calls)
+			if scenario == "uncertain" {
+				if uncertain.calls != 1 {
+					t.Fatalf("uncertain write calls=%d", uncertain.calls)
+				}
+				if rec := postApp(mux, "/jobs/1/answers/early-save", earlySaveValues(job, early, "1", "Changed after uncertain write"), "", ""); rec.Code != 303 {
+					t.Fatal(rec.Code, rec.Body.String())
+				}
+				payload, err := a.buildContinuation(job.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if pending := payload["pendingAnswers"].([]continuationAnswerJSON); len(pending) != 0 {
+					t.Fatalf("uncertain dispatch became eligible: %+v", pending)
+				}
+				a.browsers.tryAnswers(context.Background(), job.ID)
+				if uncertain.calls != 1 {
+					t.Fatalf("uncertain write replayed %d times", uncertain.calls)
+				}
 			}
 		})
 	}
@@ -277,5 +297,97 @@ func TestAnswerAuthorizationAddsWhileOtherAnswerWaits(t *testing.T) {
 	}
 	if len(h.answers[1].approved) != 2 {
 		t.Fatalf("pending authorizations lost: %+v", h.answers[1].approved)
+	}
+}
+
+func TestChangedEarlyAnswerCanBeReauthorizedAfterRejectedWithoutDispatch(t *testing.T) {
+	a, _ := testWorkspace(t)
+	job, discovery := earlyGreenhouseFixture(t, a)
+	if _, err := a.saveInspection(job.ID, discovery); err != nil {
+		t.Fatal(err)
+	}
+	early := earlyQuestionByID(t, a, job, "application:story", "")
+	mux := newMux(a)
+	save := func(rev, value string) {
+		t.Helper()
+		if rec := postApp(mux, "/jobs/1/answers/early-save", earlySaveValues(job, early, rev, value), "", ""); rec.Code != 303 {
+			t.Fatal(rec.Code, rec.Body.String())
+		}
+	}
+	save("0", "Answer A")
+	fake := &fakeAnswerBrowser{fakeBrowser: &fakeBrowser{url: job.URL}}
+	a.browsers.sessions = map[int64]readOnlySession{job.ID: fake}
+	a.browsers.cancels = map[int64]context.CancelFunc{job.ID: func() {}}
+	a.browsers.states = map[int64]browserRunState{job.ID: {Destination: job.URL}}
+	defer a.browsers.closeAll()
+	authorize := func(payload map[string]any) {
+		t.Helper()
+		body, _ := json.Marshal(map[string]any{"destination": job.URL, "include_answers": true, "review_hash": payload["preparation"].(map[string]any)["answerReviewHash"]})
+		req := httptest.NewRequest(http.MethodPost, "http://localhost/api/jobs/1/continue", strings.NewReader(string(body)))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		var result struct {
+			Items []continueItemResult `json:"items"`
+		}
+		if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &result) != nil || len(result.Items) != 1 || !result.Items[0].OK {
+			t.Fatalf("authorization: %d %s", rec.Code, rec.Body.String())
+		}
+	}
+	payload, err := a.buildContinuation(job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authorize(payload)
+	a.browsers.tryAnswers(context.Background(), job.ID)
+	if a.browsers.state(job.ID).AnswerStatus != "waiting" {
+		t.Fatal("A did not wait")
+	}
+	save("1", "Answer B")
+	payload, err = a.buildContinuation(job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pending := payload["pendingAnswers"].([]continuationAnswerJSON); len(pending) != 1 || pending[0].Value != "Answer B" {
+		t.Fatalf("B missing while A waits: %+v", pending)
+	}
+	a.browsers.tryAnswers(context.Background(), job.ID)
+	if len(fake.transferred) != 0 || len(a.browsers.state(job.ID).AnswerAttempted) != 0 {
+		t.Fatal("A was treated as dispatched")
+	}
+	payload, err = a.buildContinuation(job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pending := payload["pendingAnswers"].([]continuationAnswerJSON)
+	if len(pending) != 1 || pending[0].Value != "Answer B" {
+		t.Fatalf("B missing from Fill scope: %+v", pending)
+	}
+	authorize(payload)
+	fake.controls = []browser.Control{{ID: "story", Label: early.Field.Label, Kind: "textarea", Required: early.Field.Required}}
+	a.browsers.tryAnswers(context.Background(), job.ID)
+	a.browsers.tryAnswers(context.Background(), job.ID)
+	if len(fake.transferred) != 1 || fake.transferred[0].Value != "Answer B" {
+		t.Fatalf("writes: %+v", fake.transferred)
+	}
+}
+
+func TestQueuedChangedEarlyAnswerDoesNotReplayPriorDispatch(t *testing.T) {
+	f := &fakeAnswerBrowser{fakeBrowser: &fakeBrowser{url: testAshbyPosting + "/application"}}
+	first := preparedQuestion{Key: "early-key", IsEarly: true, Value: "A", Revision: 1}
+	second := preparedQuestion{Key: "early-key", IsEarly: true, Value: "B", Revision: 2}
+	h := &sessionHost{
+		sessions: map[int64]readOnlySession{1: f},
+		cancels:  map[int64]context.CancelFunc{1: func() {}},
+		states:   map[int64]browserRunState{1: {Destination: testAshbyPosting}},
+		answers: map[int64]*applicationAnswerTransfer{1: {
+			status: "waiting", approved: []preparedQuestion{second}, attempted: []preparedQuestion{first},
+			current: func(preparedQuestion) bool { return true },
+		}},
+	}
+	defer h.closeAll()
+	h.tryAnswers(context.Background(), 1)
+	if len(f.transferred) != 0 || len(h.state(1).AnswerAttempted) != 1 {
+		t.Fatalf("queued answer replayed a prior dispatch: writes=%+v state=%+v", f.transferred, h.state(1))
 	}
 }
