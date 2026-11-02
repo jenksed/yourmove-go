@@ -3,7 +3,7 @@ import { AppNavigation } from "../../shared/AppNavigation";
 // Reads and writes through Go-owned JSON contracts only. The source URL is
 // displayed, never edited here; resume bytes never enter this client.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   assignWorkspaceResume,
   fetchWorkspace,
@@ -55,6 +55,7 @@ export function WorkspacePage(): React.JSX.Element {
   const [resumeNotice, setResumeNotice] = useState<string>("");
   const [refreshBusy, setRefreshBusy] = useState<boolean>(false);
   const [refreshError, setRefreshError] = useState<string>("");
+  const initialHashHandled = useRef(false);
   const [materialRevision, setMaterialRevision] = useState<number>(0);
   const materialSaved = useCallback(() => setMaterialRevision((value) => value + 1), []);
 
@@ -98,6 +99,13 @@ export function WorkspacePage(): React.JSX.Element {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  useEffect(() => {
+    if (!snapshot || initialHashHandled.current || !window.location.hash) return;
+    initialHashHandled.current = true;
+    const id = window.location.hash.slice(1);
+    window.requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView());
+  }, [snapshot]);
 
   const handleSaveDetails = useCallback(
     async (event: React.FormEvent) => {
@@ -213,7 +221,7 @@ export function WorkspacePage(): React.JSX.Element {
 
           {snapshot && (
             <>
-              <div className="page-heading">
+              <div className="page-heading" id="overview">
                 <div>
                   <p className="eyebrow">APPLICATION WORKSPACE</p>
                   <h1>{snapshot.job.displayTitle}</h1>
@@ -608,7 +616,7 @@ export function WorkspacePage(): React.JSX.Element {
                     }))}
                   />
                   <ContinuationSection jobId={snapshot.job.id} materialRevision={materialRevision} />
-                  <SubmissionSection jobId={snapshot.job.id} onRecorded={completionRecorded} />
+                  <div id="history"><SubmissionSection jobId={snapshot.job.id} onRecorded={completionRecorded} /></div>
                 </>
               )}
 
