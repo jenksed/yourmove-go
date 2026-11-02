@@ -178,38 +178,38 @@ func (a *App) buildContinuation(jobID int64) (map[string]any, error) {
 		}
 	}
 	return map[string]any{
-		"destination":   job.URL,
-		"ownsPosting":   browser.OwnsPostingURL(job.URL, job.URL),
-		"desktop":       a.openPosting != nil,
-		"applied":       job.Stage == StageApplied || job.SubmissionCount > 0,
-		"closed":        job.Stage == StageClosed,
+		"destination":    job.URL,
+		"ownsPosting":    browser.OwnsPostingURL(job.URL, job.URL),
+		"desktop":        a.openPosting != nil,
+		"applied":        job.Stage == StageApplied || job.SubmissionCount > 0,
+		"closed":         job.Stage == StageClosed,
 		"editingAllowed": editingAllowed,
 		"preparation": map[string]any{
 			"title": preparation.Title, "detail": preparation.Detail,
 			"recovery": preparation.Recovery, "action": preparation.Action,
-			"external": preparation.OpenExternally,
+			"external":      preparation.OpenExternally,
 			"includeResume": preparation.IncludeResume, "includeLetter": preparation.IncludeLetter,
-			"includeAnswers": preparation.IncludeAnswers,
-			"answerSummary": preparation.AnswerSummary,
+			"includeAnswers":   preparation.IncludeAnswers,
+			"answerSummary":    preparation.AnswerSummary,
 			"answerReviewHash": preparation.AnswerReviewHash(),
 		},
-		"handoff":     map[string]any{"allowed": handoff.Allowed, "reason": handoff.Reason},
-		"browser":     state,
+		"handoff":      map[string]any{"allowed": handoff.Allowed, "reason": handoff.Reason},
+		"browser":      state,
 		"otherBrowser": otherJSON,
 		"savedBrowser": savedJSON,
-		"resume":      resumeJSON,
+		"resume":       resumeJSON,
 		"profile": continuationProfileJSON{
 			Approved: profile.Approved, Revision: profile.Revision,
 			FullName: fullName, Email: profile.Email, Phone: profile.Phone,
 		},
-		"letter":         letterJSON,
-		"pendingAnswers": pending,
-		"previousCount":  len(live.Previous),
+		"letter":                 letterJSON,
+		"pendingAnswers":         pending,
+		"previousCount":          len(live.Previous),
 		"awaitingReconciliation": len(early.AwaitingReconciliation()),
-		"questionsAvailable": snapshot.Available,
-		"submissions":    submissionJSON,
-		"submissionCount": len(submissions),
-		"legacyHref":     workspaceLegacyHref(jobID),
+		"questionsAvailable":     snapshot.Available,
+		"submissions":            submissionJSON,
+		"submissionCount":        len(submissions),
+		"legacyHref":             workspaceLegacyHref(jobID),
 	}, nil
 }
 
@@ -281,7 +281,8 @@ func (a *App) continuationBrowserAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	switch input.Action {
 	case "start":
-		if err := a.browsers.start(r.Context(), jobID, job.URL); err == nil {
+		err = a.browsers.start(r.Context(), jobID, job.URL)
+		if err == nil {
 			a.browsers.watch(jobID, job.URL, func(o browser.Observation) (int64, error) {
 				result, e := browser.AsResult(job.URL, o)
 				if e != nil {
@@ -355,18 +356,18 @@ func (a *App) continuationBrowserAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 type continueInput struct {
-	Destination       string `json:"destination"`
-	IncludeResume     bool   `json:"include_resume"`
-	ResumeID          string `json:"resume_id"`
-	ResumeHash        string `json:"resume_hash"`
-	TransferContacts  bool   `json:"transfer_contacts"`
-	ProfileRevision   string `json:"profile_revision"`
-	IncludeLetter     bool   `json:"include_letter"`
-	DraftID           string `json:"draft_id"`
-	BodyHash          string `json:"body_hash"`
-	Mode              string `json:"mode"`
-	IncludeAnswers    bool   `json:"include_answers"`
-	ReviewHash        string `json:"review_hash"`
+	Destination      string `json:"destination"`
+	IncludeResume    bool   `json:"include_resume"`
+	ResumeID         string `json:"resume_id"`
+	ResumeHash       string `json:"resume_hash"`
+	TransferContacts bool   `json:"transfer_contacts"`
+	ProfileRevision  string `json:"profile_revision"`
+	IncludeLetter    bool   `json:"include_letter"`
+	DraftID          string `json:"draft_id"`
+	BodyHash         string `json:"body_hash"`
+	Mode             string `json:"mode"`
+	IncludeAnswers   bool   `json:"include_answers"`
+	ReviewHash       string `json:"review_hash"`
 }
 
 type continueItemResult struct {
@@ -546,7 +547,7 @@ func (a *App) continuationSubmitAPI(w http.ResponseWriter, r *http.Request) {
 	if err := a.recordSubmission(jobID, strings.TrimSpace(input.Notes), input.SubmissionToken); err != nil {
 		if errors.Is(err, ErrSubmissionReviewStale) {
 			writeResumeJSON(w, http.StatusConflict, map[string]string{
-				"code": "stale",
+				"code":    "stale",
 				"message": "Your confirmation was not recorded. This review expired, or the selected resume changed or is unavailable. Review the current resume, then confirm again.",
 			})
 			return
@@ -557,7 +558,7 @@ func (a *App) continuationSubmitAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		log.Printf("record application: %v", err)
 		writeResumeJSON(w, http.StatusInternalServerError, map[string]string{
-			"code": "failed",
+			"code":    "failed",
 			"message": "YourMove could not confirm whether this recording completed. Check submission history before retrying. If no record appears, return to Prepare and try again.",
 		})
 		return
