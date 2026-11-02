@@ -125,7 +125,7 @@ func (a *App) buildContinuation(jobID int64) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	letter, err := a.latestCoverLetter(jobID)
+	letter, err := a.selectedCoverLetter(jobID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
@@ -392,6 +392,7 @@ func continueForm(input continueInput) url.Values {
 		form.Set("include_letter", "yes")
 	}
 	form.Set("draft_id", input.DraftID)
+	form.Set("require_selected_letter", "yes")
 	form.Set("body_hash", input.BodyHash)
 	form.Set("mode", input.Mode)
 	if input.IncludeAnswers {

@@ -5,10 +5,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+  createManualLetter,
   fetchLetterDraft,
   fetchLetters,
   generateLetter,
   saveLetterDraft,
+  selectLetterDraft,
   type LettersSnapshot,
 } from "./writingApi";
 
@@ -37,6 +39,7 @@ export function CoverLetterSection({
   const [loading, setLoading] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string>("");
   const [selectedId, setSelectedId] = useState<number>(0);
+  const [manualDraft, setManualDraft] = useState<string>("");
   const [draft, setDraft] = useState<string>("");
   const [dirty, setDirty] = useState<boolean>(false);
   const [saveError, setSaveError] = useState<string>("");
@@ -63,12 +66,8 @@ export function CoverLetterSection({
         const wanted = selectId ?? next.current?.id ?? 0;
         setSelectedId(wanted);
         if (wanted > 0) {
-          try {
-            const opened = await fetchLetterDraft(jobId, wanted);
-            setDraft(opened.body);
-          } catch {
-            setDraft(next.current?.body ?? "");
-          }
+          const opened = await fetchLetterDraft(jobId, wanted);
+          setDraft(opened.body);
         } else {
           setDraft("");
         }
@@ -91,13 +90,13 @@ export function CoverLetterSection({
   }, [selectedResumeId]);
 
   useEffect(() => {
-    if (!dirty) return;
+    if (!dirty && manualDraft === "") return;
     const guard = (event: BeforeUnloadEvent) => {
       event.preventDefault();
     };
     window.addEventListener("beforeunload", guard);
     return () => window.removeEventListener("beforeunload", guard);
-  }, [dirty]);
+  }, [dirty, manualDraft]);
 
   const openDraft = useCallback(
     async (id: number) => {
@@ -110,6 +109,10 @@ export function CoverLetterSection({
       setSaveNotice("");
       try {
         const opened = await fetchLetterDraft(jobId, id);
+        if (!readOnly) {
+          await selectLetterDraft(jobId, id);
+          onMaterialSaved();
+        }
         setSelectedId(id);
         setDraft(opened.body);
         setDirty(false);
@@ -121,7 +124,7 @@ export function CoverLetterSection({
         setSaveError(error instanceof Error ? error.message : "Unable to open the draft");
       }
     },
-    [dirty, selectedId, jobId],
+    [dirty, selectedId, jobId, onMaterialSaved, readOnly],
   );
 
   const handleSave = useCallback(async () => {
@@ -142,6 +145,20 @@ export function CoverLetterSection({
     }
   }, [selectedId, jobId, draft, reload, onMaterialSaved]);
 
+  const handleManual = useCallback(async () => {
+    setSaveError("");
+    setSaving(true);
+    try {
+      const result = await createManualLetter(jobId, manualDraft);
+      setManualDraft("");
+      onMaterialSaved();
+      await reload(result.draftId);
+      setSaveNotice("Your letter was saved.");
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Unable to save the letter");
+    } finally { setSaving(false); }
+  }, [jobId, manualDraft, onMaterialSaved, reload]);
+
   const handleGenerate = useCallback(async () => {
     setGenError("");
     setGenNotice("");
@@ -155,7 +172,14 @@ export function CoverLetterSection({
         confirm_external: confirmExternal ? "yes" : "",
         confirm_local: confirmLocal ? "yes" : "",
       });
-      setGenNotice("New draft generated. Your other drafts are unchanged.");
+      try {
+        await selectLetterDraft(jobId, result.draftId);
+        setGenNotice("New draft generated and selected. Your other drafts are unchanged.");
+      } catch {
+        setGenNotice("The draft was generated, but could not be selected. Choose it from saved drafts.");
+        await reload();
+        return;
+      }
       onMaterialSaved();
       setConfirmExternal(false);
       setConfirmLocal(false);
@@ -193,8 +217,7 @@ export function CoverLetterSection({
           <p className="eyebrow">COVER LETTERS</p>
           <h2 id="letters-title">Prepare your cover letter</h2>
           <p className="section-subtitle">
-            Generate from your selected résumé and reviewed experience, edit the exact text, and reopen earlier
-            drafts without losing their wording.
+            Write your own letter or optionally generate a draft, then review and save the exact text.
           </p>
         </div>
       </div>
@@ -210,9 +233,9 @@ export function CoverLetterSection({
 
       {snapshot.drafts.length > 0 && (
         <div className="field">
-          <label htmlFor="letter-draft">Saved drafts</label>
+          <label htmlFor="letter-draft">Selected cover letter</label>
           <select id="letter-draft" value={selectedId} onChange={(event) => void openDraft(Number(event.target.value))}>
-            <option value={0}>Choose a draft…</option>
+            <option value={0} disabled>Choose a draft…</option>
             {snapshot.drafts.map((item) => (
               <option key={item.id} value={item.id}>
                 Draft {item.id} · {item.provider} · {item.editedAt !== "" ? item.editedAt : item.createdAt}
@@ -282,12 +305,24 @@ export function CoverLetterSection({
       {snapshot.drafts.length === 0 && (
         <div className="empty-state">
           <h3>No cover-letter drafts yet</h3>
-          <p>Generate one below, or return later — nothing here changes your résumé or opportunity.</p>
+          <p>Write one below or return later.</p>
         </div>
       )}
 
       {snapshot.editingAllowed && !readOnly && (
         <details className="panel detail-editor" open={snapshot.drafts.length === 0}>
+          <summary><strong>Write a letter</strong></summary>
+          <div className="editor-content field">
+            <label htmlFor="manual-letter">Your letter</label>
+            <textarea id="manual-letter" rows={10} value={manualDraft} onChange={(event) => setManualDraft(event.target.value)} />
+            <button className="button button-primary" type="button" disabled={saving || dirty || manualDraft.trim() === ""} onClick={() => void handleManual()}>Save new letter</button>
+            {saveError !== "" && <p role="alert">{saveError}</p>}
+          </div>
+        </details>
+      )}
+
+      {snapshot.editingAllowed && !readOnly && (
+        <details className="panel detail-editor">
           <summary>
             <span>
               <strong>Generate a new draft</strong>

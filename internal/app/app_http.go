@@ -110,6 +110,8 @@ func newMux(app *App) http.Handler {
 	mux.HandleFunc("POST /api/jobs/{id}/assistance", app.writingAssistAPI)
 	mux.HandleFunc("GET /api/jobs/{id}/letters", app.writingLettersAPI)
 	mux.HandleFunc("POST /api/jobs/{id}/letters", app.writingLetterGenerateAPI)
+	mux.HandleFunc("POST /api/jobs/{id}/letters/manual", app.writingLetterManualAPI)
+	mux.HandleFunc("POST /api/jobs/{id}/letters/select", app.writingLetterSelectAPI)
 	mux.HandleFunc("GET /api/jobs/{id}/letters/{draft}", app.writingLetterAPI)
 	mux.HandleFunc("POST /api/jobs/{id}/letters/{draft}", app.writingLetterSaveAPI)
 	mux.HandleFunc("GET /api/jobs/{id}/continuation", app.continuationAPI)

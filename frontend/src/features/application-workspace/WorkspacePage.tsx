@@ -545,7 +545,7 @@ export function WorkspacePage(): React.JSX.Element {
 
               <div hidden={activity !== "questions"}>
                 <p>Open the employer application from Apply to discover its questions. Answer any you choose; the rest can be completed on the employer site.</p>
-                {snapshot.job.id > 0 && <WritingSection jobId={snapshot.job.id} destination={snapshot.job.url} legacyHref={snapshot.legacyHref} onMaterialSaved={materialSaved} readOnly={applied} />}
+                {snapshot.job.id > 0 && <WritingSection jobId={snapshot.job.id} destination={snapshot.job.url} legacyHref={snapshot.legacyHref} onMaterialSaved={materialSaved} readOnly={applied} active={activity === "questions"} />}
                 <button className="button button-primary workspace-next-button" type="button" onClick={() => setActivity("apply")}>Continue to application</button>
               </div>
 

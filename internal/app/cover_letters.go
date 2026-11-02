@@ -76,13 +76,26 @@ func parseLetterEvidenceRefs(raw string) ([]letterEvidenceRef, error) {
 
 func (a *App) latestCoverLetter(jobID int64) (CoverLetter, error) {
 	var d CoverLetter
-	err := a.db.QueryRow(`SELECT id,job_id,body,provider,model,master_resume_id,master_sha256,
-        role_resume_id,role_sha256,job_description_sha256,created_at,edited_at,
+	err := a.db.QueryRow(`SELECT id,job_id,body,provider,model,COALESCE(master_resume_id,0),master_sha256,
+        COALESCE(role_resume_id,0),role_sha256,job_description_sha256,created_at,edited_at,
         COALESCE(evidence_refs,'')
         FROM cover_letters WHERE job_id=? ORDER BY id DESC LIMIT 1`, jobID).
 		Scan(&d.ID, &d.JobID, &d.Body, &d.Provider, &d.Model, &d.MasterResumeID, &d.MasterSHA256,
 			&d.RoleResumeID, &d.RoleSHA256, &d.JobDescriptionSHA256, &d.CreatedAt, &d.EditedAt, &d.EvidenceRefs)
 	return d, err
+}
+
+// selectedCoverLetter preserves an explicit choice; older workspaces retain
+// their previous latest-draft behavior until a choice is made.
+func (a *App) selectedCoverLetter(jobID int64) (CoverLetter, error) {
+	var id sql.NullInt64
+	if err := a.db.QueryRow(`SELECT selected_cover_letter_id FROM jobs WHERE id=?`, jobID).Scan(&id); err != nil {
+		return CoverLetter{}, err
+	}
+	if id.Valid {
+		return a.coverLetterByID(jobID, id.Int64)
+	}
+	return a.latestCoverLetter(jobID)
 }
 
 type CoverLetterSummary struct {
@@ -95,8 +108,8 @@ type CoverLetterSummary struct {
 
 func (a *App) coverLetterByID(jobID, draftID int64) (CoverLetter, error) {
 	var d CoverLetter
-	err := a.db.QueryRow(`SELECT id,job_id,body,provider,model,master_resume_id,master_sha256,
-        role_resume_id,role_sha256,job_description_sha256,created_at,edited_at,
+	err := a.db.QueryRow(`SELECT id,job_id,body,provider,model,COALESCE(master_resume_id,0),master_sha256,
+        COALESCE(role_resume_id,0),role_sha256,job_description_sha256,created_at,edited_at,
         COALESCE(evidence_refs,'')
         FROM cover_letters WHERE job_id=? AND id=?`, jobID, draftID).
 		Scan(&d.ID, &d.JobID, &d.Body, &d.Provider, &d.Model, &d.MasterResumeID, &d.MasterSHA256,
@@ -121,8 +134,12 @@ func (a *App) listCoverLetters(jobID int64) ([]CoverLetterSummary, error) {
 	return result, rows.Err()
 }
 
+func validLetterBody(body string) bool {
+	return len(strings.TrimSpace(body)) >= 30 && len(body) <= maxLetterBytes && utf8.ValidString(body) && !strings.ContainsRune(body, 0)
+}
+
 func (a *App) saveCoverLetterBody(jobID, draftID int64, body string) error {
-	if len(strings.TrimSpace(body)) < 30 || len(body) > maxLetterBytes || !utf8.ValidString(body) || strings.ContainsRune(body, 0) {
+	if !validLetterBody(body) {
 		return errors.New("draft must contain between 30 and 12000 bytes")
 	}
 	result, err := a.db.Exec(`UPDATE cover_letters SET body=?,edited_at=? WHERE id=? AND job_id=?`,
