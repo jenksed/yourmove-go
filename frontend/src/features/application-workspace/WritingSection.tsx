@@ -77,6 +77,7 @@ export function WritingSection({
   readOnly,
   active,
   discoveryStatus,
+  onRetryDiscovery,
 }: {
   jobId: number;
   destination: string;
@@ -84,6 +85,7 @@ export function WritingSection({
   readOnly: boolean;
   active: boolean;
   discoveryStatus: string;
+  onRetryDiscovery: () => void;
 }): React.JSX.Element {
   const [snapshot, setSnapshot] = useState<QuestionsSnapshot | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -392,7 +394,7 @@ export function WritingSection({
 
       {discoveryStatus === "checking" && <p role="status">Checking for application questions…</p>}
       {discoveryStatus === "unsupported" && <p className="writing-notice">This employer does not offer an early question preview. You can continue to Apply; additional questions may appear on the employer form.</p>}
-      {discoveryStatus === "failed" && <p className="writing-notice">We could not check questions right now. Your saved work is safe, and you can continue to Apply.</p>}
+      {discoveryStatus === "failed" && <p className="writing-notice">We could not check questions right now. Your saved work is safe. <button className="button button-secondary" type="button" onClick={onRetryDiscovery}>Retry question check</button> You can also continue to Apply.</p>}
 
       {snapshot.partial && (
         <p className="writing-notice" role="note">

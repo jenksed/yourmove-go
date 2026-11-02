@@ -61,14 +61,18 @@ export function WorkspacePage(): React.JSX.Element {
   const [materialRevision, setMaterialRevision] = useState<number>(0);
   const [discoveryStatus, setDiscoveryStatus] = useState<string>("");
   const discoveryStarted = useRef(false);
+  const retryDiscovery = useCallback(() => {
+    if (jobId === null) return;
+    discoveryStarted.current = true;
+    setDiscoveryStatus("checking");
+    void discoverQuestions(jobId).then(setDiscoveryStatus).catch(() => setDiscoveryStatus("failed"));
+  }, [jobId]);
   const materialSaved = useCallback(() => setMaterialRevision((value) => value + 1), []);
 
   useEffect(() => {
     if (jobId === null || !snapshot || discoveryStarted.current || (activity !== "documents" && activity !== "questions")) return;
-    discoveryStarted.current = true;
-    setDiscoveryStatus("checking");
-    void discoverQuestions(jobId).then(setDiscoveryStatus).catch(() => setDiscoveryStatus("failed"));
-  }, [activity, jobId, snapshot]);
+    retryDiscovery();
+  }, [activity, jobId, snapshot, retryDiscovery]);
 
   const detailsDirty = snapshot !== null && (
     title !== snapshot.job.title || company !== snapshot.job.company ||
@@ -556,7 +560,7 @@ export function WorkspacePage(): React.JSX.Element {
 
               <div hidden={activity !== "questions"}>
                 <p>Answer any available questions you choose; the rest can be completed on the employer site.</p>
-                {snapshot.job.id > 0 && <WritingSection jobId={snapshot.job.id} destination={snapshot.job.url} onMaterialSaved={materialSaved} readOnly={applied} active={activity === "questions"} discoveryStatus={discoveryStatus} />}
+                {snapshot.job.id > 0 && <WritingSection jobId={snapshot.job.id} destination={snapshot.job.url} onMaterialSaved={materialSaved} readOnly={applied} active={activity === "questions"} discoveryStatus={discoveryStatus} onRetryDiscovery={retryDiscovery} />}
                 <button className="button button-primary workspace-next-button" type="button" onClick={() => setActivity("apply")}>Continue to application</button>
               </div>
 
