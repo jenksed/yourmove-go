@@ -31,3 +31,6 @@ jobs.db-shm
 
 # Local code-quality analysis artifacts
 /.quality/
+
+# Playwright bridge runtime: reproducible via scripts/setup-playwright-bridge.sh.
+internal/application/browser/playwright/bridge/node_modules/

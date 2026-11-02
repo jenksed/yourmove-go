@@ -48,7 +48,7 @@ func TestAnswerTransferApprovalAndContinuation(t *testing.T) {
 	}
 	f := &fakeAnswerBrowser{fakeBrowser: &fakeBrowser{url: testAshbyPosting + "/application"}}
 	a.browsers.factory = func(context.Context, string) (readOnlySession, error) { return f, nil }
-	if err := a.browsers.start(context.Background(), 1, job.URL); err != nil {
+	if err := a.browsers.start(context.Background(), 1, job.URL, ""); err != nil {
 		t.Fatal(err)
 	}
 	defer a.browsers.closeAll()

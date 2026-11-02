@@ -25,11 +25,11 @@ import (
 	"github.com/jenksed/yourmove-go/internal/application/schema"
 )
 
-// These errors distinguish a closed application tab from temporary navigation
-// (such as an employer login page in the managed browser).
-var ErrNoMatchingTab = errors.New("saved application is not the current browser page")
-var ErrNoPageTargets = errors.New("the managed browser has no open pages")
-var ErrBrowserUnavailable = errors.New("the managed browser is no longer reachable")
+// Session-lifecycle sentinels are owned by the browser package so every engine
+// reports the same conditions. Aliases preserve the existing chromium paths.
+var ErrNoMatchingTab = browser.ErrNoMatchingTab
+var ErrNoPageTargets = browser.ErrNoPageTargets
+var ErrBrowserUnavailable = browser.ErrBrowserUnavailable
 
 type Session struct {
 	mu         sync.Mutex

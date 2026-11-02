@@ -11,6 +11,7 @@ import (
 
 	browser "github.com/jenksed/yourmove-go/internal/application/browser"
 	"github.com/jenksed/yourmove-go/internal/application/browser/chromium"
+	"github.com/jenksed/yourmove-go/internal/application/browser/playwright"
 	"github.com/jenksed/yourmove-go/internal/application/discovery"
 )
 
@@ -55,6 +56,7 @@ type inspectionPageModel struct {
 	BrowserState     browserRunState
 	SelectedResume   *Resume
 	Handoff          HandoffEligibility
+	Engines          []playwright.EngineInfo
 }
 
 func (a *App) inspectionPage(w http.ResponseWriter, r *http.Request) {
@@ -77,7 +79,7 @@ func (a *App) inspectionPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unable to read profile", 500)
 		return
 	}
-	view := inspectionPageModel{Job: job, Profile: profile, BrowserSupported: browser.OwnsPostingURL(job.URL, job.URL)}
+	view := inspectionPageModel{Job: job, Profile: profile, BrowserSupported: browser.OwnsPostingURL(job.URL, job.URL), Engines: playwright.AvailableEngines()}
 	view.BrowserState = a.browsers.state(id)
 	view.BrowserOpen = view.BrowserState.Active
 	if job.SelectedResumeID > 0 {

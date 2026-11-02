@@ -13,7 +13,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/jenksed/yourmove-go/internal/application/browser"
-	"github.com/jenksed/yourmove-go/internal/application/browser/chromium"
 )
 
 // A letter approval is separate from resume/submission authority and belongs
@@ -25,8 +24,8 @@ type coverLetterTransfer struct {
 	current                                        func() bool
 }
 type coverLetterSession interface {
-	AttachCoverLetter(context.Context, string, string) (chromium.AttachmentResult, error)
-	FillCoverLetter(context.Context, string) (chromium.AttachmentResult, error)
+	AttachCoverLetter(context.Context, string, string) (browser.AttachmentResult, error)
+	FillCoverLetter(context.Context, string) (browser.AttachmentResult, error)
 }
 
 func (a *App) transferCoverLetter(w http.ResponseWriter, r *http.Request) {
@@ -136,7 +135,7 @@ func (h *sessionHost) tryCoverLetter(ctx context.Context, jobID int64) {
 	h.mu.Unlock()
 	stale := up.current != nil && !up.current()
 	filler, ok := s.(coverLetterSession)
-	var result chromium.AttachmentResult
+	var result browser.AttachmentResult
 	var err error
 	if stale {
 		err = errors.New("saved letter or destination changed after approval")
@@ -153,22 +152,22 @@ func (h *sessionHost) tryCoverLetter(ctx context.Context, jobID int64) {
 		return
 	}
 	switch {
-	case errors.Is(err, chromium.ErrNoCoverInput):
+	case errors.Is(err, browser.ErrNoCoverInput):
 		up.status = "waiting"
 	case stale:
 		up.status = "review"
 		up.message = "The saved letter or destination changed before transfer. Review and authorize the current draft. No letter was transferred."
-	case errors.Is(err, chromium.ErrDocumentFormat):
+	case errors.Is(err, browser.ErrDocumentFormat):
 		up.status = "review"
 		up.message = "The employer's cover-letter control does not accept PDF. Use its supported text control, or attach an accepted document manually. No file was selected."
-	case errors.Is(err, chromium.ErrExistingDocument):
+	case errors.Is(err, browser.ErrExistingDocument):
 		up.status = "review"
 		up.message = "Existing employer attachment preserved. Review it in Chromium before changing documents."
-	case errors.Is(err, chromium.ErrAmbiguousCoverInput):
+	case errors.Is(err, browser.ErrAmbiguousCoverInput):
 		up.status = "review"
 		up.message = "No unique cover-letter upload control. Complete the attachment manually in Chromium."
 	case err != nil:
-		var preflight *chromium.PreflightError
+		var preflight *browser.PreflightError
 		if errors.As(err, &preflight) {
 			up.status = "review"
 			up.message = "The cover-letter control could not be checked. No file was selected; review before authorizing another attempt."

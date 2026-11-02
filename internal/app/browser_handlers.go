@@ -12,8 +12,35 @@ import (
 	"strconv"
 
 	browser "github.com/jenksed/yourmove-go/internal/application/browser"
-	"github.com/jenksed/yourmove-go/internal/application/browser/chromium"
+	"github.com/jenksed/yourmove-go/internal/application/browser/playwright"
 )
+
+// selectedEngine reads the requested browser engine for session start and
+// restart. Empty means the release-path Chromium default. A requested engine
+// must be supported and installed; otherwise the operation is rejected before
+// any browser launches.
+func selectedEngine(r *http.Request) (string, bool) {
+	engine := r.PostForm.Get("engine")
+	if engine == "" {
+		return playwright.EngineChromium, true
+	}
+	if !playwright.ValidEngine(engine) {
+		return "", false
+	}
+	if engine != playwright.EngineChromium {
+		ready, _ := playwright.BridgeReady()
+		if !ready {
+			return "", false
+		}
+		for _, info := range playwright.AvailableEngines() {
+			if info.Name == engine {
+				return engine, info.Available
+			}
+		}
+		return "", false
+	}
+	return engine, true
+}
 
 func (a *App) browserStatus(w http.ResponseWriter, r *http.Request) {
 	id, err := parseJobID(r)
@@ -56,9 +83,18 @@ func (a *App) browserOperation(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Managed inspection supports saved Ashby, Greenhouse, and Lever postings", 422)
 		return
 	}
+	engine, engineOK := selectedEngine(r)
+	if !engineOK {
+		http.Error(w, "Choose a supported browser engine that is installed in this environment", 422)
+		return
+	}
 	switch r.PathValue("action") {
 	case "start":
-		if err = a.browsers.start(r.Context(), id, job.URL); err == nil {
+		if requested := r.PostForm.Get("engine"); requested != "" && a.browsers.engineConflict(id, requested) {
+			http.Error(w, "Close the existing managed browser before opening another engine", 409)
+			return
+		}
+		if err = a.browsers.start(r.Context(), id, job.URL, engine); err == nil {
 			// The background observer is a *read-only* operation. No profile or
 			// document is ever sent through this route.
 			a.browsers.watch(id, job.URL, func(o browser.Observation) (int64, error) {
@@ -90,10 +126,10 @@ func (a *App) browserOperation(w http.ResponseWriter, r *http.Request) {
 		}
 		if err != nil {
 			log.Printf("inspection for job %d: %v", id, err)
-			if errors.Is(err, chromium.ErrNoPageTargets) || errors.Is(err, chromium.ErrBrowserUnavailable) {
+			if errors.Is(err, browser.ErrNoPageTargets) || errors.Is(err, browser.ErrBrowserUnavailable) {
 				a.browsers.interrupt(id, "The application browser or its tab was closed. Reopen the application; the selected resume remains in YourMove, but unsaved form data may be lost.")
 			} else {
-				a.browsers.setState(id, "attention", "Could not inspect this page. Return to the employer posting in Chromium, or use Reopen application. No data was uploaded.", 0, false)
+				a.browsers.setState(id, "attention", "Could not inspect this page. Return to the employer posting in "+a.browsers.engineLabel(id)+", or use Reopen application. No data was uploaded.", 0, false)
 			}
 		}
 	case "restart":
@@ -104,7 +140,7 @@ func (a *App) browserOperation(w http.ResponseWriter, r *http.Request) {
 		// Never carry a previous file authorization into a restarted browser.
 		// The selected job resume stays assigned but requires fresh consent.
 		_ = a.browsers.close(id)
-		if err = a.browsers.start(r.Context(), id, job.URL); err != nil {
+		if err = a.browsers.start(r.Context(), id, job.URL, engine); err != nil {
 			a.browsers.reportLaunchFailure(id, err)
 			break
 		}
@@ -226,7 +262,16 @@ func (a *App) resumeHandoffCommand(r *http.Request, id int64) (int, string) {
 		os.RemoveAll(dir)
 		return 500, "Unable to prepare resume"
 	}
-	if err := a.browsers.start(r.Context(), id, job.URL); err != nil {
+	engine, engineOK := selectedEngine(r)
+	if !engineOK {
+		os.RemoveAll(dir)
+		return 422, "Choose a supported browser engine that is installed in this environment"
+	}
+	if requested := r.PostForm.Get("engine"); requested != "" && a.browsers.engineConflict(id, requested) {
+		os.RemoveAll(dir)
+		return 409, "Close the existing managed browser before opening another engine"
+	}
+	if err := a.browsers.start(r.Context(), id, job.URL, engine); err != nil {
 		os.RemoveAll(dir)
 		a.browsers.reportLaunchFailure(id, err)
 		return http.StatusSeeOther, returnURL

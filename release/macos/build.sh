@@ -28,7 +28,33 @@ xcrun clang --version >> "$release_output/toolchain.txt"
 xcrun --show-sdk-version >> "$release_output/toolchain.txt"
 go version -m "$release_output/YourMove.app/Contents/MacOS/YourMove" > "$release_output/build-info.txt"
 xcrun vtool -show-build "$release_output/YourMove.app/Contents/MacOS/YourMove" > "$release_output/deployment-target.txt"
-/usr/bin/codesign --force --sign - "$release_output/YourMove.app"
+# Stage the self-contained Playwright runtime (bridge, Node, browsers) when
+# its sources are available. YOURMOVE_BUNDLE_PLAYWRIGHT controls this:
+#   auto (default) — stage when complete, otherwise continue without it and
+#     record the absence; the bundle still runs with the Chromium CDP default.
+#   required       — fail if staging is impossible (use for release candidates).
+#   skip           — never stage.
+bundle_mode="${YOURMOVE_BUNDLE_PLAYWRIGHT:-auto}"
+case "$bundle_mode" in
+  skip)
+    echo 'Skipping Playwright staging (YOURMOVE_BUNDLE_PLAYWRIGHT=skip).'
+    ;;
+  auto|required)
+    if bash "$release_repo/release/macos/stage-playwright.sh" "$release_output/YourMove.app"; then
+      echo 'Playwright runtime staged.'
+    elif [[ "$bundle_mode" == required ]]; then
+      echo 'Playwright staging is required but failed.' >&2
+      exit 1
+    else
+      echo 'Playwright runtime NOT staged; bundle runs with the Chromium CDP default only.'
+    fi
+    ;;
+  *)
+    echo "Unknown YOURMOVE_BUNDLE_PLAYWRIGHT=$bundle_mode (expected auto, required, or skip)." >&2
+    exit 1
+    ;;
+esac
+/usr/bin/codesign --force --sign - --deep "$release_output/YourMove.app"
 /usr/bin/codesign --verify --strict "$release_output/YourMove.app"
 (cd "$release_output" && shasum -a 256 source-manifest.json YourMove.app/Contents/Info.plist YourMove.app/Contents/MacOS/YourMove > SHA256SUMS.local)
 echo "Local ad-hoc candidate: $release_output/YourMove.app"

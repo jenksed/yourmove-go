@@ -11,6 +11,7 @@ import (
 
 	browser "github.com/jenksed/yourmove-go/internal/application/browser"
 	"github.com/jenksed/yourmove-go/internal/application/browser/chromium"
+	"github.com/jenksed/yourmove-go/internal/application/browser/playwright"
 )
 
 // Read-only inspection does not confer transfer authority. The handoff alone
@@ -21,7 +22,7 @@ type readOnlySession interface {
 }
 
 type resumeAttachmentSession interface {
-	AttachResume(context.Context, string) (chromium.AttachmentResult, error)
+	AttachResume(context.Context, string) (browser.AttachmentResult, error)
 }
 
 type contactFillSession interface {
@@ -47,6 +48,7 @@ type browserRunState struct {
 	AnswerStatus     string                   `json:"answer_status"`
 	AnswerOutcomes   []browser.AnswerOutcome  `json:"answer_outcomes,omitempty"`
 	Destination      string                   `json:"-"`
+	Engine           string                   `json:"engine"`
 	LetterStatus     string                   `json:"letter_status"`
 	LetterMessage    string                   `json:"letter_message"`
 	Contacts         *browser.ContactValues   `json:"-"`
@@ -65,6 +67,43 @@ type browserRunState struct {
 	HandoffTitle     string                   `json:"handoff_title"`
 	HandoffDetail    string                   `json:"handoff_detail"`
 	HandoffRecovery  bool                     `json:"handoff_recovery"`
+}
+
+// engineDisplay names the engine for session UI and diagnostics. Sessions
+// started before engine tracking keep the established Chromium wording.
+func engineDisplay(engine string) string {
+	switch engine {
+	case playwright.EngineFirefox:
+		return "Firefox"
+	case playwright.EngineWebKit:
+		return "WebKit"
+	default:
+		return "Chromium"
+	}
+}
+
+// engineLabel reports the display name of the engine owning a session.
+func (h *sessionHost) engineLabel(jobID int64) string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return engineDisplay(h.states[jobID].Engine)
+}
+
+// EngineLabel names the session engine for templates and diagnostics.
+func (s browserRunState) EngineLabel() string { return engineDisplay(s.Engine) }
+
+// engineConflict reports whether an explicitly requested engine would
+// silently replace the active session's engine. Empty requests and empty
+// session records never conflict, so established transfer flows that carry
+// no engine choice keep running on the active session.
+func (h *sessionHost) engineConflict(jobID int64, engine string) bool {
+	if engine == "" {
+		return false
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	current := h.states[jobID].Engine
+	return h.sessions[jobID] != nil && current != "" && current != engine
 }
 
 type sessionHost struct {
@@ -103,15 +142,16 @@ func (h *sessionHost) state(jobID int64) browserRunState {
 		state.Contacts = up.contacts
 		state.ContactStatus = up.contactStatus
 		state.ContactOutcomes = up.contactResult.Fields
+		engine := engineDisplay(state.Engine)
 		switch up.contactStatus {
 		case "waiting":
-			state.ContactSummary = "Waiting for supported contact controls. Continue in Chromium if this step needs your input."
+			state.ContactSummary = "Waiting for supported contact controls. Continue in " + engine + " if this step needs your input."
 		case "checking":
 			state.ContactSummary = "Filling the contact information you approved…"
 		case "complete":
 			state.ContactSummary = up.contactResult.Summary()
 		case "attention":
-			state.ContactSummary = "Contact transfer could not be fully verified. Review the remaining fields in Chromium; nothing will be replayed."
+			state.ContactSummary = "Contact transfer could not be fully verified. Review the remaining fields in " + engine + "; nothing will be replayed."
 		}
 	}
 	if h.starting && !state.Active {
@@ -145,9 +185,24 @@ func (h *sessionHost) setState(jobID int64, phase, message string, latestID int6
 	}
 	h.states[jobID] = s
 }
-func (h *sessionHost) start(ctx context.Context, jobID int64, jobURL string) error {
+
+// start opens the one visible managed employer browser for a job. The engine
+// selects the driver: Chromium keeps the established CDP path, while Firefox
+// and WebKit run through the managed Playwright bridge. An empty engine
+// means the release-path Chromium default.
+func (h *sessionHost) start(ctx context.Context, jobID int64, jobURL, engine string) error {
+	switch engine {
+	case "", playwright.EngineChromium:
+		engine = playwright.EngineChromium
+	case playwright.EngineFirefox, playwright.EngineWebKit:
+	default:
+		return errors.New("unsupported browser engine")
+	}
 	h.mu.Lock()
 	if h.sessions[jobID] != nil {
+		// An active session keeps its engine; the open endpoint rejects an
+		// explicitly different engine before reaching this point, while
+		// transfer commands without an engine choice continue where they are.
 		h.mu.Unlock()
 		return nil
 	}
@@ -159,7 +214,8 @@ func (h *sessionHost) start(ctx context.Context, jobID int64, jobURL string) err
 	factory := h.factory
 	h.mu.Unlock()
 	if factory == nil {
-		factory = func(c context.Context, u string) (readOnlySession, error) { return chromium.Launch(c, u) }
+		selected := engine
+		factory = func(c context.Context, u string) (readOnlySession, error) { return launchEngine(c, selected, u) }
 	}
 	session, err := factory(ctx, jobURL)
 	h.mu.Lock()
@@ -172,10 +228,20 @@ func (h *sessionHost) start(ctx context.Context, jobID int64, jobURL string) err
 		if h.states == nil {
 			h.states = map[int64]browserRunState{}
 		}
-		h.states[jobID] = browserRunState{Destination: jobURL, Active: true, Phase: "watching", Message: "Chromium is opening the application's URL directly. Waiting for the resume field; continue manually if the employer requires another step."}
+		h.states[jobID] = browserRunState{Destination: jobURL, Engine: engine, Active: true, Phase: "watching", Message: engineDisplay(engine) + " is opening the application's URL directly. Waiting for the resume field; continue manually if the employer requires another step."}
 	}
 	h.mu.Unlock()
 	return err
+}
+
+// launchEngine is the production session factory. Chromium keeps the
+// established CDP implementation; other engines run through the managed
+// Playwright bridge, which resolves installed browsers and never downloads.
+func launchEngine(ctx context.Context, engine, posting string) (readOnlySession, error) {
+	if engine == playwright.EngineFirefox || engine == playwright.EngineWebKit {
+		return playwright.Launch(ctx, engine, posting)
+	}
+	return chromium.Launch(ctx, posting)
 }
 func (h *sessionHost) inspect(ctx context.Context, jobID int64) (browser.Observation, error) {
 	h.mu.Lock()
@@ -266,17 +332,17 @@ func (h *sessionHost) tryResume(ctx context.Context, jobID int64) {
 		return
 	}
 	result, err := uploader.AttachResume(ctx, up.path)
-	if errors.Is(err, chromium.ErrNoResumeInput) {
+	if errors.Is(err, browser.ErrNoResumeInput) {
 		h.resumeResult(jobID, up, "waiting", "No resume field is available on this step yet. Continue in the employer browser; YourMove will check subsequent pages.")
 		return
 	}
 	if err != nil {
-		var preflight *chromium.PreflightError
+		var preflight *browser.PreflightError
 		if errors.As(err, &preflight) {
 			h.resumePreflightFailure(jobID, up)
 			return
 		}
-		h.resumeResult(jobID, up, "attention", "Unable to confirm whether the employer received the resume. Inspect the attachment in Chromium; do not resend automatically. ("+err.Error()+")")
+		h.resumeResult(jobID, up, "attention", "Unable to confirm whether the employer received the resume. Inspect the attachment in "+h.engineLabel(jobID)+"; do not resend automatically. ("+err.Error()+")")
 		return
 	}
 	if result.Selected {
@@ -365,7 +431,7 @@ func (h *sessionHost) reportLaunchFailure(jobID int64, err error) {
 	if h.states == nil {
 		h.states = make(map[int64]browserRunState)
 	}
-	h.states[jobID] = browserRunState{Phase: "interrupted", Message: "Could not reopen the employer browser: " + err.Error() + ". Check Chromium and try Reopen application."}
+	h.states[jobID] = browserRunState{Phase: "interrupted", Message: "Could not reopen the employer browser: " + err.Error() + ". Check the managed browser engine and try Reopen application."}
 }
 
 func (h *sessionHost) has(jobID int64) bool { return h.state(jobID).Active }
@@ -411,7 +477,8 @@ func (h *sessionHost) watch(jobID int64, jobURL string, save func(browser.Observ
 				return
 			}
 			if err != nil {
-				if errors.Is(err, chromium.ErrNoPageTargets) {
+				engine := h.engineLabel(jobID)
+				if errors.Is(err, browser.ErrNoPageTargets) {
 					missingPages++
 					if missingPages >= 2 {
 						h.interrupt(jobID, "The application tab was closed. Reopen the application to continue. Any unsaved employer form values and attachment state may have been lost; no file will be uploaded automatically.")
@@ -420,16 +487,16 @@ func (h *sessionHost) watch(jobID int64, jobURL string, save func(browser.Observ
 				} else {
 					missingPages = 0
 				}
-				if errors.Is(err, chromium.ErrBrowserUnavailable) {
+				if errors.Is(err, browser.ErrBrowserUnavailable) {
 					unavailable++
 					if unavailable >= 2 {
-						h.interrupt(jobID, "Chromium was closed or disconnected. Reopen the application to continue. Unsaved employer changes may have been lost; YourMove will not replay the resume upload.")
+						h.interrupt(jobID, engine+" was closed or disconnected. Reopen the application to continue. Unsaved employer changes may have been lost; YourMove will not replay the resume upload.")
 						return
 					}
 				} else {
 					unavailable = 0
 				}
-				if errors.Is(err, chromium.ErrNoMatchingTab) {
+				if errors.Is(err, browser.ErrNoMatchingTab) {
 					h.setState(jobID, "attention", "This browser is on another page (possibly sign-in). Return to this employer application, or use Reopen application to start over. No document was resent.", 0, false)
 				} else {
 					h.setState(jobID, "attention", "This page cannot be inspected right now. Return to the employer application, or use Reopen application to restart from its posting.", 0, false)
@@ -446,7 +513,7 @@ func (h *sessionHost) watch(jobID int64, jobURL string, save func(browser.Observ
 					pending = ""
 					pendingCount = 0
 				} else if len(observation.Controls) == 0 && observation.Forms == 0 && len(observation.Actions) == 0 && len(observation.Frames) == 0 {
-					h.setState(jobID, "watching", "Waiting for the application form to finish loading. If this job requires another step, continue in Chromium.", 0, false)
+					h.setState(jobID, "watching", "Waiting for the application form to finish loading. If this job requires another step, continue in "+h.engineLabel(jobID)+".", 0, false)
 					pending = ""
 					pendingCount = 0
 				} else {

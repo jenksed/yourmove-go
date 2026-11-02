@@ -53,7 +53,7 @@ func TestControlledApplicationBriefClipboardAndWorkspace(t *testing.T) {
 	}
 	fake := &fakeBrowser{url: job.URL + "/application"}
 	a.browsers.factory = func(context.Context, string) (readOnlySession, error) { return fake, nil }
-	if err := a.browsers.start(context.Background(), job.ID, job.URL); err != nil {
+	if err := a.browsers.start(context.Background(), job.ID, job.URL, ""); err != nil {
 		t.Fatal(err)
 	}
 	a.browsers.setState(job.ID, "detected", "Synthetic current browser observation.", liveID, false)

@@ -38,7 +38,7 @@ func TestResumeResultCannotReachReplacementSession(t *testing.T) {
 				old.err = errors.New("unknown")
 			}
 			h := sessionHost{factory: func(context.Context, string) (readOnlySession, error) { return old, nil }}
-			if err := h.start(context.Background(), 1, testAshbyPosting); err != nil {
+			if err := h.start(context.Background(), 1, testAshbyPosting, ""); err != nil {
 				t.Fatal(err)
 			}
 			if err := h.armResume(1, t.TempDir(), "old.pdf", "old.pdf", nil); err != nil {
@@ -51,7 +51,7 @@ func TestResumeResultCannotReachReplacementSession(t *testing.T) {
 				t.Fatal(err)
 			}
 			h.factory = func(context.Context, string) (readOnlySession, error) { return &preflightFakeBrowser{}, nil }
-			if err := h.start(context.Background(), 1, testAshbyPosting); err != nil {
+			if err := h.start(context.Background(), 1, testAshbyPosting, ""); err != nil {
 				t.Fatal(err)
 			}
 			defer h.closeAll()
@@ -83,7 +83,7 @@ func TestResumeHandoffRejectsExistingBrowserForEarlierDestination(t *testing.T) 
 	}
 	fake := &preflightFakeBrowser{}
 	a.browsers.factory = func(context.Context, string) (readOnlySession, error) { return fake, nil }
-	if err := a.browsers.start(context.Background(), 1, "https://jobs.ashbyhq.com/earlier/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"); err != nil {
+	if err := a.browsers.start(context.Background(), 1, "https://jobs.ashbyhq.com/earlier/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", ""); err != nil {
 		t.Fatal(err)
 	}
 	defer a.browsers.closeAll()

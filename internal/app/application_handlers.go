@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	browser "github.com/jenksed/yourmove-go/internal/application/browser"
+	"github.com/jenksed/yourmove-go/internal/application/browser/playwright"
 	"github.com/jenksed/yourmove-go/internal/documents"
 )
 
@@ -54,6 +55,7 @@ type jobWorkspace struct {
 	LetterResumes        []documentRow
 	Match                MatchRecommendation
 	HasFamilies          bool
+	Engines              []playwright.EngineInfo
 }
 
 type HandoffEligibility struct {

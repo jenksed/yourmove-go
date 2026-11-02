@@ -29,17 +29,18 @@
     <form method="POST" action="/jobs/{{.Job.ID}}/browser/observe"><button class="button button-secondary" type="submit">Recheck this page</button></form>
     <form method="POST" action="/jobs/{{.Job.ID}}/browser/stop"><button class="button button-secondary" type="submit">Close managed browser</button></form>
   </div>
-  {{if eq .BrowserState.Phase "attention"}}<div class="g53-state" role="alert"><div><strong>{{if .BrowserState.ResumeRetryable}}Resume check needs a retry{{else}}Employer page needs attention{{end}}</strong><p>{{if .BrowserState.ResumeRetryable}}The previous read did not select or upload any file. Use Retry resume check above after the application settles.{{else}}You can navigate back to the saved posting in Chromium, or reopen it from YourMove. Reopening may discard unsaved form entries.{{end}}</p></div></div>{{end}}
+  {{if eq .BrowserState.Phase "attention"}}<div class="g53-state" role="alert"><div><strong>{{if .BrowserState.ResumeRetryable}}Resume check needs a retry{{else}}Employer page needs attention{{end}}</strong><p>{{if .BrowserState.ResumeRetryable}}The previous read did not select or upload any file. Use Retry resume check above after the application settles.{{else}}You can navigate back to the saved posting in {{.BrowserState.EngineLabel}}, or reopen it from YourMove. Reopening may discard unsaved form entries.{{end}}</p></div></div>{{end}}
   {{if eq .BrowserState.Phase "attention"}}<div class="g53-recovery-action">{{else}}<details class="g53-detail"><summary>Application tab missing? Reopen the application</summary>{{end}}
     <form method="POST" action="/jobs/{{.Job.ID}}/browser/restart">
       <label class="confirm-row"><input type="checkbox" name="confirm_restart" value="yes" required><span>Restart the managed employer browser. Unsaved answers and attachment state in the old browser may be lost. YourMove will not automatically re-upload the resume.</span></label>
+      {{template "engine-selector" .Engines}}
       <button type="submit" class="button button-secondary">Reopen application ↗</button>
     </form>
   {{if eq .BrowserState.Phase "attention"}}</div>{{else}}</details>{{end}}
-  <p class="small-muted">Keep Chromium open to finish the employer form yourself. When the resume is selected, check the employer’s upload or acceptance message before submitting. If automatic attachment is uncertain, choose the file manually in Chromium. Use Recheck this page if automatic observation is unavailable.</p>
+  <p class="small-muted">Keep {{.BrowserState.EngineLabel}} open to finish the employer form yourself. When the resume is selected, check the employer’s upload or acceptance message before submitting. If automatic attachment is uncertain, choose the file manually in {{.BrowserState.EngineLabel}}. Use Recheck this page if automatic observation is unavailable.</p>
   {{else}}
-  <div class="g53-button-row"><form method="POST" action="/jobs/{{.Job.ID}}/browser/start"><button class="button {{if or .Handoff.Allowed (eq .BrowserState.Phase "interrupted")}}button-secondary{{else}}button-primary{{end}}" type="submit">{{if eq .BrowserState.Phase "interrupted"}}Open application (no automatic upload) ↗{{else}}Open browser (read-only) ↗{{end}}</button></form></div>
-  <p class="small-muted">Opens an isolated Chromium window directly at this employer application. Keep it open while completing the application's pages. Inspection snapshots remain saved after the window closes.</p>
+  <div class="g53-button-row"><form method="POST" action="/jobs/{{.Job.ID}}/browser/start">{{template "engine-selector" .Engines}}<button class="button {{if or .Handoff.Allowed (eq .BrowserState.Phase "interrupted")}}button-secondary{{else}}button-primary{{end}}" type="submit">{{if eq .BrowserState.Phase "interrupted"}}Open application (no automatic upload) ↗{{else}}Open browser (read-only) ↗{{end}}</button></form></div>
+  <p class="small-muted">Opens one isolated employer-browser window directly at this application. Keep it open while completing the application's pages. Inspection snapshots remain saved after the window closes.</p>
   {{end}}
   <details class="g53-detail"><summary>Form observations and troubleshooting (optional)</summary>
   {{if .BrowserItem}}

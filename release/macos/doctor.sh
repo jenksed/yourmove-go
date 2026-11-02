@@ -58,6 +58,8 @@ check 'PNG icon source present' test -s release/macos/YourMove-icon-1024.png
 check 'Build script references bundled icon' grep -Fq 'Contents/Resources/YourMove.icns' release/macos/build.sh
 check 'Build script syntax' bash -n release/macos/build.sh
 check 'Distribution script syntax' bash -n release/macos/distribute.sh
+check 'Playwright staging script syntax' bash -n release/macos/stage-playwright.sh
+check 'Playwright bundle setup script syntax' bash -n scripts/setup-playwright-bundle.sh
 
 if [[ -n "$(git status --porcelain)" ]]; then
   printf 'WARN  Working tree has uncommitted changes (prepare.sh requires clean source).\n'

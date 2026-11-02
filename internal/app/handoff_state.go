@@ -28,7 +28,7 @@ func summarizeHandoff(s browserRunState) HandoffPresentation {
 	case "selected":
 		return HandoffPresentation{Title: "Resume selected — verify with the employer", Detail: "YourMove selected the approved file. Confirm the employer displays or accepts the attachment; finish and submit the form yourself.", Recovery: false}
 	case "attention":
-		return HandoffPresentation{Title: "Resume needs your attention", Detail: "Check the existing attachment in Chromium. If its outcome is unknown, no automatic reupload will occur.", Recovery: true}
+		return HandoffPresentation{Title: "Resume needs your attention", Detail: "Check the existing attachment in " + engineDisplay(s.Engine) + ". If its outcome is unknown, no automatic reupload will occur.", Recovery: true}
 	case "checking":
 		return HandoffPresentation{Title: "Checking resume control", Detail: "The browser is open. YourMove is checking the approved file destination; do not close or refresh it.", Recovery: false}
 	case "waiting":
@@ -37,5 +37,5 @@ func summarizeHandoff(s browserRunState) HandoffPresentation {
 	if s.Phase == "attention" {
 		return HandoffPresentation{Title: "Employer page needs attention", Detail: "Return to the current application's form or reopen it deliberately. YourMove cannot submit it.", Recovery: true}
 	}
-	return HandoffPresentation{Title: "Browser open — manual preparation", Detail: "Complete the employer's application in Chromium. YourMove is observing only; no resume upload is authorized in this session.", Recovery: false}
+	return HandoffPresentation{Title: "Browser open — manual preparation", Detail: "Complete the employer's application in " + engineDisplay(s.Engine) + ". YourMove is observing only; no resume upload is authorized in this session.", Recovery: false}
 }

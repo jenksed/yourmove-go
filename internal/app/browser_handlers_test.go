@@ -116,15 +116,15 @@ func TestSessionHostBusyAndLaunchFailure(t *testing.T) {
 	var h sessionHost
 	bad := errors.New("missing browser")
 	h.factory = func(context.Context, string) (readOnlySession, error) { return nil, bad }
-	if err := h.start(context.Background(), 1, testAshbyPosting); !errors.Is(err, bad) {
+	if err := h.start(context.Background(), 1, testAshbyPosting, ""); !errors.Is(err, bad) {
 		t.Fatal(err)
 	}
 	mock := &fakeBrowser{}
 	h.factory = func(context.Context, string) (readOnlySession, error) { return mock, nil }
-	if err := h.start(context.Background(), 1, testAshbyPosting); err != nil {
+	if err := h.start(context.Background(), 1, testAshbyPosting, ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.start(context.Background(), 2, testAshbyPosting); err == nil {
+	if err := h.start(context.Background(), 2, testAshbyPosting, ""); err == nil {
 		t.Fatal("multiple inspectors allowed")
 	}
 	h.closeAll()
@@ -137,7 +137,7 @@ func TestInspectionWatchesSettledStepsAndStops(t *testing.T) {
 	f := &fakeBrowser{url: testAshbyPosting + "/application"}
 	host := sessionHost{pollEvery: 12 * time.Millisecond}
 	host.factory = func(context.Context, string) (readOnlySession, error) { return f, nil }
-	if err := host.start(context.Background(), 8, testAshbyPosting); err != nil {
+	if err := host.start(context.Background(), 8, testAshbyPosting, ""); err != nil {
 		t.Fatal(err)
 	}
 	var capturesMu sync.Mutex
@@ -500,7 +500,7 @@ func TestContactHandoffApprovalAndNoReplay(t *testing.T) {
 func TestReadOnlyBrowserNeverFillsContacts(t *testing.T) {
 	fake := &contactFakeBrowser{}
 	h := sessionHost{factory: func(context.Context, string) (readOnlySession, error) { return fake, nil }}
-	if err := h.start(context.Background(), 1, testAshbyPosting); err != nil {
+	if err := h.start(context.Background(), 1, testAshbyPosting, ""); err != nil {
 		t.Fatal(err)
 	}
 	defer h.closeAll()
