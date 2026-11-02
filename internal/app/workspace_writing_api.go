@@ -728,6 +728,10 @@ func (a *App) buildWritingLetters(jobID int64, draftID int64) (map[string]any, e
 	for _, id := range []string{"codex", "claude-cli", "ollama", "openai", "anthropic", "openrouter", "compatible"} {
 		configured[id] = coverprovider.Configured(id)
 	}
+	evidenceChoices := a.reviewedCareerEvidenceChoices()
+	if evidenceChoices == nil {
+		evidenceChoices = []letterEvidenceChoice{}
+	}
 	return map[string]any{
 		"drafts":  draftJSON,
 		"current": currentJSON,
@@ -737,7 +741,7 @@ func (a *App) buildWritingLetters(jobID int64, draftID int64) (map[string]any, e
 			"jobDescriptionReady": sources.JobDescriptionReady,
 			"ready":               sources.Ready,
 		},
-		"evidenceChoices": a.reviewedCareerEvidenceChoices(),
+		"evidenceChoices": evidenceChoices,
 		"providers":       applicationAnswerAIProviders(configured),
 		"defaultProvider": "ollama",
 		"defaultModel":    coverprovider.DefaultModel("ollama"),

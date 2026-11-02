@@ -283,6 +283,7 @@ func TestWritingLettersGenerateSaveReopen(t *testing.T) {
 	}
 	var letters struct {
 		Drafts  []map[string]any `json:"drafts"`
+		EvidenceChoices []json.RawMessage `json:"evidenceChoices"`
 		Current *struct {
 			Body string `json:"body"`
 		} `json:"current"`
@@ -292,6 +293,9 @@ func TestWritingLettersGenerateSaveReopen(t *testing.T) {
 	}
 	if len(letters.Drafts) != 1 || letters.Current == nil || !strings.Contains(letters.Current.Body, "slow MySQL queries") {
 		t.Fatalf("draft not listed: %s", getRec.Body.String())
+	}
+	if letters.EvidenceChoices == nil {
+		t.Fatalf("empty evidence choices must be an array: %s", getRec.Body.String())
 	}
 	edited := "Dear Hiring Manager,\n\nI am excited to apply for the support role. Edited by the applicant with exact wording preserved.\n\nSincerely,\nSynthetic Applicant"
 	save := postWritingJSON(t, a, http.MethodPost, "/api/jobs/1/letters/1", `{"body":`+jsonString(edited)+`}`)

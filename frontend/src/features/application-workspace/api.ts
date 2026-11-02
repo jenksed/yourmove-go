@@ -115,7 +115,7 @@ export interface WorkspaceDetailsInput {
 
 async function readError(response: Response): Promise<string> {
   try {
-    const data = (await response.json()) as { error?: string };
+    const data = (await response.clone().json()) as { error?: string };
     if (data && typeof data.error === "string" && data.error.trim() !== "") {
       return data.error;
     }

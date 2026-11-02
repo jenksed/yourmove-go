@@ -1,3 +1,4 @@
+import { AppNavigation } from "../../shared/AppNavigation";
 // YM-004A React Application Workspace: one coherent preparation activity.
 // Reads and writes through Go-owned JSON contracts only. The source URL is
 // displayed, never edited here; resume bytes never enter this client.
@@ -54,6 +55,19 @@ export function WorkspacePage(): React.JSX.Element {
   const [resumeNotice, setResumeNotice] = useState<string>("");
   const [refreshBusy, setRefreshBusy] = useState<boolean>(false);
   const [refreshError, setRefreshError] = useState<string>("");
+
+  const detailsDirty = snapshot !== null && (
+    title !== snapshot.job.title || company !== snapshot.job.company ||
+    description !== snapshot.job.description || salary !== snapshot.job.salaryText ||
+    stage !== snapshot.job.stage || priority !== snapshot.job.priority
+  );
+
+  useEffect(() => {
+    if (!detailsDirty) return;
+    const guard = (event: BeforeUnloadEvent) => { event.preventDefault(); };
+    window.addEventListener("beforeunload", guard);
+    return () => window.removeEventListener("beforeunload", guard);
+  }, [detailsDirty]);
 
   const reload = useCallback(async () => {
     if (jobId === null) {
@@ -115,6 +129,10 @@ export function WorkspacePage(): React.JSX.Element {
   const handleAssign = useCallback(
     async (resumeId: number) => {
       if (jobId === null) return;
+      if (detailsDirty) {
+        setResumeError("Save your job edits before changing the selected document.");
+        return;
+      }
       setResumeError("");
       setResumeNotice("");
       setResumeBusy(true);
@@ -134,11 +152,15 @@ export function WorkspacePage(): React.JSX.Element {
         setResumeBusy(false);
       }
     },
-    [jobId, reload],
+    [jobId, reload, detailsDirty],
   );
 
   const handleRefresh = useCallback(async () => {
     if (jobId === null) return;
+    if (detailsDirty) {
+      setRefreshError("Save your job edits before refreshing the posting.");
+      return;
+    }
     setRefreshError("");
     setRefreshBusy(true);
     try {
@@ -149,7 +171,7 @@ export function WorkspacePage(): React.JSX.Element {
     } finally {
       setRefreshBusy(false);
     }
-  }, [jobId, reload]);
+  }, [jobId, reload, detailsDirty]);
 
   const applied = snapshot !== null && (snapshot.job.submissionCount > 0 || snapshot.job.stage === "applied");
 
@@ -158,86 +180,7 @@ export function WorkspacePage(): React.JSX.Element {
       <a className="skip-link" href="#main-content">
         Skip to content
       </a>
-      <aside className="sidebar" aria-label="Primary navigation">
-        <a className="brand" href="/jobs" aria-label="YourMove — Opportunities">
-          <img
-            className="brand-wordmark brand-light"
-            src="/static/yourmove-wordmark-primary.svg"
-            alt="YourMove"
-            width="166"
-            height="49"
-          />
-          <img
-            className="brand-wordmark brand-dark"
-            src="/static/yourmove-wordmark-reverse.svg"
-            alt=""
-            width="166"
-            height="49"
-          />
-        </a>
-        <nav className="primary-nav" aria-label="Workspace">
-          <div className="nav-group">
-            <p className="nav-caption">Work</p>
-            <a className="nav-item" href="/jobs">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <rect x="3" y="7" width="18" height="14" rx="2" />
-                <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13h18" />
-              </svg>
-              Opportunities
-            </a>
-            <a className="nav-item" href="/applications">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="m4 12 5 5L20 6" />
-                <path d="M20 13v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h10" />
-              </svg>
-              Submissions
-            </a>
-          </div>
-          <div className="nav-group">
-            <p className="nav-caption">Your materials</p>
-            <a className="nav-item" href="/resumes">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h8" />
-              </svg>
-              Documents
-            </a>
-            <a className="nav-item" href="/candidate">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="12" cy="8" r="4" />
-                <path d="M4 21v-3a8 8 0 0 1 16 0v3" />
-              </svg>
-              Candidate profile
-            </a>
-            <a className="nav-item" href="/answer-library">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" />
-              </svg>
-              Answer Library
-            </a>
-            <a className="nav-item" href="/career-evidence">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M4 19V5m0 14h16M7 15l4-4 3 2 5-6" />
-                <circle cx="7" cy="15" r="1" />
-                <circle cx="11" cy="11" r="1" />
-                <circle cx="14" cy="13" r="1" />
-                <circle cx="19" cy="7" r="1" />
-              </svg>
-              Career Evidence
-            </a>
-            <a className="nav-item" href="/career">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M12 2v20M2 12h20" />
-                <circle cx="12" cy="12" r="9" />
-              </svg>
-              Career Discovery
-            </a>
-          </div>
-        </nav>
-        <div className="sidebar-bottom">
-          <span className="local-dot" aria-hidden="true" />
-          <span>Local workspace</span>
-        </div>
-      </aside>
+      <AppNavigation />
       <div className="app-main">
         <main id="main-content" className="page-container workspace-page">
           <nav className="breadcrumbs" aria-label="Breadcrumb">
@@ -277,6 +220,15 @@ export function WorkspacePage(): React.JSX.Element {
                   </a>
                 </div>
               </div>
+
+              <nav className="workspace-jump" aria-label="Application activities">
+                <a href="#opportunity-title">Opportunity</a>
+                <a href="#workspace-resume-title">Résumé</a>
+                <a href="#writing">Answers</a>
+                <a href="#cover-letters">Cover letter</a>
+                <a href="#employer">Employer</a>
+                <a href="#submission">History</a>
+              </nav>
 
               <section className="panel workspace-next" aria-labelledby="next-action-title">
                 <p className="eyebrow">NEXT USEFUL ACTION</p>
@@ -448,6 +400,7 @@ export function WorkspacePage(): React.JSX.Element {
                     </p>
                   )}
                   <div className="form-actions">
+                    {detailsDirty && <span className="small-muted">Unsaved job edits</span>}
                     <button className="button button-primary" type="submit" disabled={detailsBusy}>
                       {detailsBusy ? "Saving…" : "Save changes"}
                     </button>
@@ -455,7 +408,7 @@ export function WorkspacePage(): React.JSX.Element {
                 </form>
               </details>
 
-              <section className="panel" aria-labelledby="workspace-resume-title">
+              <section className="panel" id="prepare" aria-labelledby="workspace-resume-title">
                 <div className="section-heading">
                   <div>
                     <p className="eyebrow">RESUME</p>

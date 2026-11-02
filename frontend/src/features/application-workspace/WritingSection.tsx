@@ -321,7 +321,9 @@ export function WritingSection({
               ? snapshot.activeContext === "live"
                 ? `${snapshot.source}. Your text saves locally in YourMove; nothing is filled on the employer site from here.`
                 : `${snapshot.source}. These definitions are published by the employer but not yet verified on the live form; save locally and reconcile later.` + " Nothing is filled on the employer site from here."
-              : "Questions have not been discovered for this posting yet. Saved writing below is preserved."}
+              : allQuestions.length > 0
+                ? "These questions came from a previous inspection. Review the current employer form before transferring any answers."
+                : "Questions have not been discovered for this posting yet. Saved writing below is preserved."}
           </p>
         </div>
         <a className="button button-secondary" href={`${legacyHref}#prepare`}>
@@ -346,7 +348,7 @@ export function WritingSection({
         </p>
       )}
 
-      {!snapshot.available && snapshot.previous.length === 0 && (
+      {!snapshot.available && allQuestions.length === 0 && snapshot.previous.length === 0 && (
         <div className="empty-state">
           <h3>No questions discovered yet</h3>
           <p>

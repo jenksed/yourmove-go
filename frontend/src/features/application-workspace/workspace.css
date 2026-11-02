@@ -19,6 +19,28 @@
   border-inline-start: 3px solid var(--color-primary);
 }
 
+.workspace-jump {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin: 0 0 18px;
+  padding: 0 0 14px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.workspace-jump a {
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 650;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+}
+
+#cover-letters > .writing-editor,
+#cover-letters > .field {
+  max-width: 780px;
+}
+
 .workspace-next h2 {
   margin: 6px 0 8px;
 }
