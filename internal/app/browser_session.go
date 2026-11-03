@@ -82,12 +82,12 @@ type browserRunState struct {
 }
 
 type sessionHost struct {
-	answers   map[int64]*applicationAnswerTransfer
-	letters   map[int64]*coverLetterTransfer
-	mu        sync.Mutex
-	sessions  map[int64]readOnlySession
-	starting  bool
-	factory   func(context.Context, string) (readOnlySession, error)
+	answers  map[int64]*applicationAnswerTransfer
+	letters  map[int64]*coverLetterTransfer
+	mu       sync.Mutex
+	sessions map[int64]readOnlySession
+	starting bool
+	factory  func(context.Context, string) (readOnlySession, error)
 	// engine resolves the employer-application browser. Nil keeps the
 	// historical environment-only default for direct sessionHost users.
 	engine    func() (string, error)

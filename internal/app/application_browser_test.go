@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -135,6 +136,42 @@ func TestApplicationBrowserPriorLayoutMigratesCleanly(t *testing.T) {
 	var table string
 	if err := reopened.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='settings'`).Scan(&table); err != nil {
 		t.Fatalf("settings table missing after reopen: %v", err)
+	}
+}
+
+func TestApplicationBrowserMissingBinaryFailsCleanly(t *testing.T) {
+	a, _ := testWorkspace(t)
+	t.Setenv("YOURMOVE_APPLICATION_BROWSER", "")
+	t.Setenv("YOURMOVE_CHROMIUM", "/nonexistent/chrome")
+	t.Setenv("PLAYWRIGHT_BROWSERS_PATH", t.TempDir())
+	if err := a.saveApplicationBrowserSetting("chromium"); err != nil {
+		t.Fatal(err)
+	}
+	result, err := insertJob(a.db, Job{
+		URL:  "https://jobs.ashbyhq.com/synthetic/00000000-0000-4000-8000-000000000001",
+		Host: "jobs.ashbyhq.com", Title: "Missing Binary Probe",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.browsers.start(context.Background(), id, "https://jobs.ashbyhq.com/synthetic/00000000-0000-4000-8000-000000000001"); err == nil {
+		t.Fatal("session started without a browser binary")
+	} else if !strings.Contains(err.Error(), "executable") {
+		t.Fatalf("missing-binary error is unclear: %v", err)
+	}
+	if a.browsers.has(id) {
+		t.Fatal("failed launch left a session behind")
+	}
+	job, err := a.jobByID(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.Title != "Missing Binary Probe" {
+		t.Fatal("failed launch altered the saved job")
 	}
 }
 
