@@ -36,12 +36,6 @@ func (a *App) renderFamilies(w http.ResponseWriter, preview *familyPageData) {
 }
 
 func (a *App) familyPage(w http.ResponseWriter, r *http.Request) { a.renderFamilies(w, nil) }
-func (a *App) utilitiesPage(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := a.resources.utilitiesTemplate.Execute(w, nil); err != nil {
-		log.Printf("render utilities: %v", err)
-	}
-}
 
 func familyFromForm(r *http.Request) RoleFamily {
 	return RoleFamily{Name: r.PostForm.Get("name"), TitleTerms: r.PostForm.Get("title_terms"), ContextTerms: r.PostForm.Get("context_terms"), ExcludeTerms: r.PostForm.Get("exclude_terms")}
