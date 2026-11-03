@@ -5,6 +5,7 @@
 // personally completed act recorded separately.
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { openPosting } from "../opportunities/api";
 import {
   authorizeContinue,
   browserAction,
@@ -16,11 +17,11 @@ import {
 function outcomeText(status: string): string {
   switch (status) {
     case "filled":
-      return "Filled and verified in Chromium";
+      return "Filled and verified in the browser";
     case "correct":
-      return "Already correct in Chromium; left unchanged";
+      return "Already present; left unchanged";
     case "uncertain":
-      return "Uncertain; inspect this field in Chromium before continuing";
+      return "Uncertain; inspect this field in the employer browser before continuing";
     case "complete":
       return "Complete";
     case "waiting":
@@ -28,21 +29,23 @@ function outcomeText(status: string): string {
     case "checking":
       return "Checking the current form";
     case "attention":
-      return "Needs attention in Chromium";
+      return "Requires manual work";
     case "review":
-      return "Review in Chromium";
+      return "Review in the employer browser";
     case "selected":
-      return "Selected in browser";
+      return "Selected and verified in the browser";
+    case "present":
+      return "Already present; left unchanged";
     default:
       return status === "" ? "Not started" : status;
   }
 }
 
-export function ContinuationSection({ jobId, materialRevision }: { jobId: number; materialRevision: number }): React.JSX.Element {
+export function ContinuationSection({ jobId, materialRevision, active }: { jobId: number; materialRevision: number; active: boolean }): React.JSX.Element {
   const [snapshot, setSnapshot] = useState<ContinuationSnapshot | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
   const [loadError, setLoadError] = useState<string>("");
-  const [wantResume, setWantResume] = useState<boolean>(false);
   const [wantLetter, setWantLetter] = useState<boolean>(false);
   const [wantAnswers, setWantAnswers] = useState<boolean>(false);
   const [letterMode, setLetterMode] = useState<string>("file");
@@ -50,11 +53,13 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
   const [busy, setBusy] = useState<boolean>(false);
   const [actionError, setActionError] = useState<string>("");
   const [actionNotice, setActionNotice] = useState<string>("");
+  const selectionInitialized = useRef({ letter: false, answers: false });
   const pollRef = useRef<number | null>(null);
   const requestRef = useRef<number>(0);
 
   const reload = useCallback(async () => {
     const request = ++requestRef.current;
+    setRefreshing(true);
     try {
       const next = await fetchContinuation(jobId);
       if (request !== requestRef.current) return;
@@ -64,18 +69,38 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
       if (request !== requestRef.current) return;
       setLoadError(error instanceof Error ? error.message : "Unable to load employer continuation");
     } finally {
-      if (request === requestRef.current) setLoading(false);
+      if (request === requestRef.current) { setLoading(false); setRefreshing(false); }
     }
   }, [jobId]);
 
   useEffect(() => {
-    setWantResume(false);
+    selectionInitialized.current = { letter: false, answers: false };
     setWantLetter(false);
     setWantAnswers(false);
     setSnapshot(null);
     setLoading(true);
+  }, [jobId]);
+
+  useEffect(() => {
     void reload();
   }, [reload, materialRevision]);
+
+  useEffect(() => {
+    if (active) void reload();
+  }, [active, reload]);
+
+  useEffect(() => {
+    if (!snapshot) return;
+    const prep = snapshot.preparation;
+    if (prep.includeLetter && !selectionInitialized.current.letter) {
+      selectionInitialized.current.letter = true;
+      setWantLetter(true);
+    }
+    if (prep.includeAnswers && !selectionInitialized.current.answers) {
+      selectionInitialized.current.answers = true;
+      setWantAnswers(true);
+    }
+  }, [snapshot]);
 
   const needsPoll = snapshot !== null && (
     snapshot.browser.active ||
@@ -108,6 +133,7 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
 
   const runBrowser = useCallback(
     async (action: BrowserAction) => {
+      if (action === "stop" && !window.confirm("Closing the employer browser may lose unsaved form work. Close it?")) return;
       setActionError("");
       setActionNotice("");
       setBusy(true);
@@ -134,26 +160,25 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
     setActionNotice("");
     setBusy(true);
     try {
+      const contactsOnly = snapshot.browser.active && ["selected", "present"].includes(snapshot.browser.resume_status) && snapshot.browser.contact_status === "" && !!snapshot.resume?.valid;
       const result = await authorizeContinue(jobId, {
         destination: snapshot.destination,
-        include_resume: wantResume,
+        include_resume: snapshot.preparation.includeResume,
         resume_id: snapshot.resume ? String(snapshot.resume.id) : "",
         resume_hash: snapshot.resume ? snapshot.resume.sha256 : "",
-        transfer_contacts: wantResume && snapshot.profile.approved,
+        transfer_contacts: snapshot.preparation.includeResume || contactsOnly,
         profile_revision: String(snapshot.profile.revision),
-        include_letter: wantLetter,
+        include_letter: wantLetter && snapshot.preparation.includeLetter,
         draft_id: snapshot.letter ? String(snapshot.letter.id) : "",
         body_hash: snapshot.letter ? snapshot.letter.contentHash : "",
         mode: letterMode,
-        include_answers: wantAnswers,
+        include_answers: wantAnswers && snapshot.preparation.includeAnswers,
         review_hash: snapshot.preparation.answerReviewHash,
       });
       const failed = result.items.filter((item) => !item.ok);
       if (failed.length === 0) {
-        setActionNotice("Authorization recorded. Review the browser outcomes below; nothing is submitted automatically.");
-        setWantResume(false);
-        setWantLetter(false);
-        setWantAnswers(false);
+        setActionNotice("Filling started. Review the results below and submit personally.");
+            setWantLetter(false);
       } else {
         setActionError(failed.map((item) => `${item.item}: ${item.detail}`).join(" "));
       }
@@ -163,7 +188,7 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
     } finally {
       setBusy(false);
     }
-  }, [snapshot, jobId, wantResume, wantLetter, wantAnswers, letterMode, reload]);
+  }, [snapshot, jobId, wantLetter, wantAnswers, letterMode, reload]);
 
   if (loading) return <p role="status">Loading employer continuation…</p>;
   if (loadError !== "" && !snapshot) {
@@ -180,6 +205,7 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
 
   const prep = snapshot.preparation;
   const browser = snapshot.browser;
+  const contactsOnly = browser.active && ["selected", "present"].includes(browser.resume_status) && browser.contact_status === "" && !!snapshot.resume?.valid;
   const activeTransfer = browser.resume_status !== "" || browser.contact_status !== "" || browser.letter_status !== "" || browser.answer_status !== "";
 
   return (
@@ -187,15 +213,11 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
       <div className="section-heading">
         <div>
           <p className="eyebrow">EMPLOYER CONTINUATION</p>
-          <h2 id="continuation-title">Review, authorize, and observe</h2>
+          <h2 id="continuation-title">Prepare your application</h2>
           <p className="section-subtitle">
-            YourMove proposes the exact scope below. Only material you select is authorized, and only the
-            employer browser carries it out. You still submit personally.
+            Your selected information will be filled in the employer application. Review it there and submit personally.
           </p>
         </div>
-        <a className="button button-secondary" href={`/jobs/${jobId}/inspection`}>
-          Browser details
-        </a>
       </div>
 
       <dl className="fact-list workspace-facts">
@@ -206,7 +228,7 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
         <div>
           <dt>Browser session</dt>
           <dd>
-            {browser.active ? `Open in this session${browser.phase !== "" ? ` · ${browser.phase}` : ""}` : browser.phase === "interrupted" ? `Interrupted · ${browser.message}` : "Not open"}
+            {browser.active ? `Open · ${browser.engine || "Chromium"}${browser.phase !== "" ? ` · ${browser.phase}` : ""}` : browser.phase === "interrupted" ? `Interrupted · ${browser.message}` : "Not open"}
           </dd>
         </div>
       </dl>
@@ -214,7 +236,7 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
       {snapshot.otherBrowser && (
         <p className="writing-notice" role="note">
           Another application browser is open for {snapshot.otherBrowser.title}. Return to that application to
-          preserve its browser work, or close its Chromium window before opening this job.
+          preserve its browser work, or close its employer browser window before opening this job.
         </p>
       )}
       {snapshot.savedBrowser && !browser.active && (
@@ -237,70 +259,51 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
       )}
 
       <div className="workspace-source-actions">
-        {!snapshot.editingAllowed ? (
-          <small>This application is recorded as complete. Browser assistance is read-only history below.</small>
-        ) : !browser.active ? (
-          <button className="button button-primary" type="button" disabled={busy} onClick={() => void runBrowser("start")}>
-            {busy ? "Opening…" : prep.action !== "" ? prep.action : "Open employer browser"}
-          </button>
+        {!snapshot.editingAllowed && !browser.active ? (
+          <small>This application is recorded as complete.</small>
+        ) : !snapshot.ownsPosting ? (
+          snapshot.desktop ? (
+            <button className="button button-secondary" type="button" onClick={() => void openPosting(jobId).catch((error: unknown) => setActionError(error instanceof Error ? error.message : "Could not open the application."))}>View Application</button>
+          ) : <a className="button button-secondary" href={snapshot.destination} target="_blank" rel="noreferrer">View Application</a>
         ) : (
-          <>
-            <button className="button button-secondary" type="button" disabled={busy} onClick={() => void runBrowser("observe")}>
-              Recheck form
-            </button>
-            <button className="button button-secondary" type="button" disabled={busy} onClick={() => void runBrowser("stop")}>
-              Close browser
-            </button>
-          </>
-        )}
-        <small>Opening sends no saved material. Recheck the form before authorizing a transfer.</small>
-        {browser.resume_retryable && (
-          <button className="button button-secondary" type="button" disabled={busy} onClick={() => void runBrowser("retry-resume")}>
-            Retry resume check
+          <button className="button button-secondary" type="button" disabled={busy} onClick={() => void runBrowser(browser.active ? "focus" : "start")}>
+            {busy ? "Opening…" : browser.active ? "Return to Application" : "View Application"}
           </button>
         )}
-        {browser.active && (
-          <details>
-            <summary>Reopen application</summary>
-            <p className="small-muted">
-              Reopening starts a fresh browser; browser-only values and attachment state may be lost. Previous
-              uploads will not be replayed.
-            </p>
-            <label className="confirm-row">
-              <input type="checkbox" checked={confirmRestart} onChange={(event) => setConfirmRestart(event.target.checked)} />
-              <span>I understand reopening may lose browser-only work.</span>
-            </label>
-            <button className="button button-secondary" type="button" disabled={busy || !confirmRestart} onClick={() => void runBrowser("restart")}>
-              Reopen application
-            </button>
-          </details>
-        )}
+        <small>Viewing sends no saved material.</small>
       </div>
+      <details className="workspace-source-actions">
+        <summary>Browser troubleshooting</summary>
+        <a href={`/jobs/${jobId}/inspection`}>Browser details</a>
+        {browser.active && <>
+          <button className="button button-secondary" type="button" disabled={busy} onClick={() => void runBrowser("observe")}>Recheck form</button>
+          <button className="button button-secondary" type="button" disabled={busy} onClick={() => void runBrowser("stop")}>Close browser</button>
+          <p className="small-muted">Reopening starts a fresh browser and may lose browser-only work. Previous uploads are not replayed.</p>
+          <label className="confirm-row">
+            <input type="checkbox" checked={confirmRestart} onChange={(event) => setConfirmRestart(event.target.checked)} />
+            <span>I understand reopening may lose browser-only work.</span>
+          </label>
+          <button className="button button-secondary" type="button" disabled={busy || !confirmRestart} onClick={() => void runBrowser("restart")}>Reopen application</button>
+        </>}
+        {browser.resume_retryable && <button className="button button-secondary" type="button" disabled={busy} onClick={() => void runBrowser("retry-resume")}>Retry resume check</button>}
+      </details>
 
       <div className="continuation-scope" aria-label="Transfer scope">
-        <h3>Exact transfer scope</h3>
+        <h3>Information to fill</h3>
         {snapshot.resume ? (
           <div className="continuation-item">
-            <label className="confirm-row">
-              <input type="checkbox" checked={wantResume} disabled={!prep.includeResume} onChange={(event) => setWantResume(event.target.checked)} />
-              <span>
-                <strong>Résumé:</strong> {snapshot.resume.name} · {snapshot.resume.kind} · Version {snapshot.resume.version}
-                {snapshot.resume.valid ? "" : " · unavailable"}
-              </span>
-            </label>
+            <p><strong>Résumé:</strong> {snapshot.resume.name} · {snapshot.resume.kind} · Version {snapshot.resume.version}
+              {snapshot.resume.valid ? "" : " · unavailable"}
+            </p>
             {!prep.includeResume && <small>{snapshot.handoff.reason}</small>}
-            {prep.includeResume && snapshot.profile.approved && (
+            {(prep.includeResume || contactsOnly) && (
               <p className="small-muted">
                 Contact information to fill: {snapshot.profile.fullName} · {snapshot.profile.email}
-                {snapshot.profile.phone !== "" ? ` · ${snapshot.profile.phone}` : ""} (approved revision{" "}
-                {snapshot.profile.revision})
+                {snapshot.profile.phone !== "" ? ` · ${snapshot.profile.phone}` : ""}
               </p>
             )}
-            {prep.includeResume && !snapshot.profile.approved && (
-              <p className="small-muted">
-                Contact filling disabled — <a href="/candidate">complete the candidate profile</a> to include contacts.
-                Résumé attachment remains available.
-              </p>
+            {(prep.includeResume || contactsOnly) && (!snapshot.profile.firstName || !snapshot.profile.lastName || !snapshot.profile.email || !snapshot.profile.phone) && (
+              <p className="small-muted">Missing: {[!snapshot.profile.firstName && "first name", !snapshot.profile.lastName && "last name", !snapshot.profile.email && "email", !snapshot.profile.phone && "phone"].filter(Boolean).join(", ")}. <a href="/candidate">Update Candidate Profile</a> or enter these manually.</p>
             )}
           </div>
         ) : (
@@ -310,7 +313,7 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
         {snapshot.letter ? (
           <div className="continuation-item">
             <label className="confirm-row">
-              <input type="checkbox" checked={wantLetter} disabled={!prep.includeLetter} onChange={(event) => setWantLetter(event.target.checked)} />
+              <input type="checkbox" checked={wantLetter && prep.includeLetter} disabled={!prep.includeLetter} onChange={(event) => setWantLetter(event.target.checked)} />
               <span>
                 <strong>Cover letter:</strong> Draft {snapshot.letter.id} · {snapshot.letter.provider}
               </span>
@@ -335,7 +338,7 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
         {snapshot.pendingAnswers.length > 0 ? (
           <div className="continuation-item">
             <label className="confirm-row">
-              <input type="checkbox" checked={wantAnswers} disabled={!prep.includeAnswers} onChange={(event) => setWantAnswers(event.target.checked)} />
+              <input type="checkbox" checked={wantAnswers && prep.includeAnswers} disabled={!prep.includeAnswers} onChange={(event) => setWantAnswers(event.target.checked)} />
               <span>
                 <strong>
                   {snapshot.pendingAnswers.length} saved {snapshot.pendingAnswers.length === 1 ? "answer" : "answers"} ready for transfer
@@ -347,7 +350,7 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
                 <div key={answer.key}>
                   <dt>{answer.label}</dt>
                   <dd>
-                    {answer.value} — {answer.source} · Eligible for transfer
+                    {answer.value} — {answer.source === "Approved candidate information" ? "Candidate Profile" : answer.source}
                   </dd>
                 </div>
               ))}
@@ -361,7 +364,7 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
         {(snapshot.previousCount > 0 || snapshot.awaitingReconciliation > 0) && (
           <p className="small-muted">
             {snapshot.previousCount > 0 && `${snapshot.previousCount} earlier saved answers are excluded from transfer. `}
-            {snapshot.awaitingReconciliation > 0 && `${snapshot.awaitingReconciliation} early answers await reconciliation and are excluded.`}
+            {snapshot.awaitingReconciliation > 0 && "Saved early answers are filled only when the same question is found in this browser session."}
           </p>
         )}
       </div>
@@ -380,10 +383,10 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
         <button
           className="button button-primary"
           type="button"
-          disabled={busy || (!wantResume && !wantLetter && !wantAnswers)}
+          disabled={busy || refreshing || !snapshot.resume?.valid || (!prep.includeResume && !contactsOnly && !(wantLetter && prep.includeLetter) && !(wantAnswers && prep.includeAnswers))}
           onClick={() => void runAuthorize()}
         >
-          {busy ? "Authorizing…" : prep.action !== "" ? prep.action : "Authorize selected transfer"}
+          {busy ? "Preparing…" : "Prepare & Fill Application"}
         </button>
       </div>
       <p className="small-muted">
@@ -393,7 +396,7 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
 
       {activeTransfer && (
         <div className="continuation-outcomes" aria-label="Transfer outcomes">
-          <h3>{browser.active ? "Observed in Chromium" : "Last observed browser results"}</h3>
+          <h3>{browser.active ? "Observed in the employer browser" : "Last observed browser results"}</h3>
           {browser.resume_status !== "" && (
             <p>
               <strong>Résumé · {outcomeText(browser.resume_status)}</strong>
@@ -404,9 +407,9 @@ export function ContinuationSection({ jobId, materialRevision }: { jobId: number
             </p>
           )}
           {browser.contact_summary !== "" && <p>{browser.contact_summary}</p>}
-          {(browser.contact_outcomes ?? []).filter((o) => o.status === "uncertain").map((o) => (
+          {(browser.contact_outcomes ?? []).map((o) => (
             <p key={o.key} role="status" className="inline-hint">
-              <strong>{o.key} · Uncertain transfer</strong> · {o.detail}
+              <strong>{o.key} · {o.status === "missing" ? "Not found on this page" : o.status === "uncertain" ? "Uncertain" : o.status === "skipped" ? "Not provided" : o.status === "filled" ? "Filled and verified" : o.status === "correct" || (o.status === "manual" && o.detail?.startsWith("Existing")) ? "Already present" : "Requires manual entry"}</strong> · {o.detail}
             </p>
           ))}
           {browser.letter_status !== "" && (

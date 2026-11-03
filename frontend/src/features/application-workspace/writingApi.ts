@@ -61,6 +61,7 @@ export interface WritingPrevious {
 }
 
 export interface QuestionsSnapshot {
+  browserActive: boolean;
   available: boolean;
   source: string;
   partial: boolean;
@@ -77,6 +78,11 @@ export interface QuestionsSnapshot {
   };
   live: WritingQuestion[];
   early: WritingQuestion[];
+  // Unified applicant-facing projection: one coherent list merging both
+  // contexts. Each row keeps its own save identity; grouping follows
+  // triageCategory (answer/profile/employer/review).
+  questions: WritingQuestion[];
+  unidentifiedCount: number;
   previous: WritingPrevious[];
   profileCount: number;
   employerOnlyCount: number;
@@ -214,12 +220,27 @@ async function readError(response: Response): Promise<string> {
   return `Request failed (${response.status})`;
 }
 
+export async function fetchBrief(jobId: number, scope: string): Promise<string> {
+  const normalized = scope === "all" ? "all" : "unanswered";
+  const response = await fetch(`/jobs/${jobId}/brief?format=brief&scope=${encodeURIComponent(normalized)}`, {
+    headers: { Accept: "text/plain" },
+  });
+  if (!response.ok) throw new Error(await readError(response));
+  return await response.text();
+}
+
 export async function fetchQuestions(jobId: number): Promise<QuestionsSnapshot> {
   const response = await fetch(`/api/jobs/${jobId}/questions`, {
     headers: { Accept: "application/json" },
   });
   if (!response.ok) throw new Error(await readError(response));
   return (await response.json()) as QuestionsSnapshot;
+}
+
+export async function discoverQuestions(jobId: number): Promise<string> {
+  const response = await fetch(`/api/jobs/${jobId}/questions/discover`, { method: "POST", headers: { Accept: "application/json" } });
+  if (!response.ok) throw new Error(await readError(response));
+  return ((await response.json()) as { status: string }).status;
 }
 
 export interface SaveAnswerInput {

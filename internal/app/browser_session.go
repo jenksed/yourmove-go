@@ -11,6 +11,7 @@ import (
 
 	browser "github.com/jenksed/yourmove-go/internal/application/browser"
 	"github.com/jenksed/yourmove-go/internal/application/browser/chromium"
+	"github.com/jenksed/yourmove-go/internal/application/browser/playwright"
 )
 
 // Read-only inspection does not confer transfer authority. The handoff alone
@@ -20,6 +21,8 @@ type readOnlySession interface {
 	Close() error
 }
 
+type browserEngineSession interface{ Engine() string }
+
 type resumeAttachmentSession interface {
 	AttachResume(context.Context, string) (chromium.AttachmentResult, error)
 }
@@ -28,7 +31,15 @@ type contactFillSession interface {
 	FillContacts(context.Context, browser.ContactValues) (browser.ContactResult, error)
 }
 
+type resumeHandoffInfo struct {
+	resumeID       int64
+	resumeHash     string
+	contactCurrent func() bool
+}
+
 type resumeHandoff struct {
+	resumeID          int64
+	resumeHash        string
 	preflightFailures int
 	retryable         bool
 	dir               string
@@ -39,14 +50,17 @@ type resumeHandoff struct {
 	contacts          *browser.ContactValues
 	contactStatus     string
 	contactResult     browser.ContactResult
+	contactCurrent    func() bool
 }
 
 type browserRunState struct {
+	AnswerPending    []preparedQuestion       `json:"-"`
 	AnswerAttempted  []preparedQuestion       `json:"-"`
 	AnswerReviewHash string                   `json:"-"`
 	AnswerStatus     string                   `json:"answer_status"`
 	AnswerOutcomes   []browser.AnswerOutcome  `json:"answer_outcomes,omitempty"`
 	Destination      string                   `json:"-"`
+	Engine           string                   `json:"engine"`
 	LetterStatus     string                   `json:"letter_status"`
 	LetterMessage    string                   `json:"letter_message"`
 	Contacts         *browser.ContactValues   `json:"-"`
@@ -86,6 +100,7 @@ func (h *sessionHost) state(jobID int64) browserRunState {
 	state := h.states[jobID]
 	if answers := h.answers[jobID]; answers != nil {
 		state.AnswerAttempted = append([]preparedQuestion(nil), answers.attempted...)
+		state.AnswerPending = append([]preparedQuestion(nil), answers.approved...)
 		state.AnswerReviewHash = answers.hash
 		state.AnswerStatus = answers.status
 		state.AnswerOutcomes = answers.outcomes
@@ -105,13 +120,17 @@ func (h *sessionHost) state(jobID int64) browserRunState {
 		state.ContactOutcomes = up.contactResult.Fields
 		switch up.contactStatus {
 		case "waiting":
-			state.ContactSummary = "Waiting for supported contact controls. Continue in Chromium if this step needs your input."
+			if len(up.contactResult.Fields) == 0 {
+				state.ContactSummary = "Waiting for the application form to load."
+			} else {
+				state.ContactSummary = up.contactResult.Summary() + " Fields not found on this page can be completed manually; YourMove keeps watching."
+			}
 		case "checking":
 			state.ContactSummary = "Filling the contact information you approved…"
 		case "complete":
 			state.ContactSummary = up.contactResult.Summary()
 		case "attention":
-			state.ContactSummary = "Contact transfer could not be fully verified. Review the remaining fields in Chromium; nothing will be replayed."
+			state.ContactSummary = "Contact transfer could not be fully verified. Review the remaining fields in the employer browser; nothing will be replayed."
 		}
 	}
 	if h.starting && !state.Active {
@@ -159,7 +178,16 @@ func (h *sessionHost) start(ctx context.Context, jobID int64, jobURL string) err
 	factory := h.factory
 	h.mu.Unlock()
 	if factory == nil {
-		factory = func(c context.Context, u string) (readOnlySession, error) { return chromium.Launch(c, u) }
+		factory = func(c context.Context, u string) (readOnlySession, error) {
+			switch os.Getenv("YOURMOVE_APPLICATION_BROWSER") {
+			case "", "chromium":
+				return chromium.Launch(c, u)
+			case "firefox":
+				return playwright.Launch(c, playwright.EngineFirefox, u)
+			default:
+				return nil, errors.New("unsupported application browser; choose chromium or firefox")
+			}
+		}
 	}
 	session, err := factory(ctx, jobURL)
 	h.mu.Lock()
@@ -172,11 +200,29 @@ func (h *sessionHost) start(ctx context.Context, jobID int64, jobURL string) err
 		if h.states == nil {
 			h.states = map[int64]browserRunState{}
 		}
-		h.states[jobID] = browserRunState{Destination: jobURL, Active: true, Phase: "watching", Message: "Chromium is opening the application's URL directly. Waiting for the resume field; continue manually if the employer requires another step."}
+		engine := "chromium"
+		if named, ok := session.(browserEngineSession); ok {
+			engine = named.Engine()
+		}
+		h.states[jobID] = browserRunState{Destination: jobURL, Engine: engine, Active: true, Phase: "watching", Message: "The " + engine + " employer browser is opening the application's URL directly. Waiting for the resume field; continue manually if the employer requires another step."}
 	}
 	h.mu.Unlock()
 	return err
 }
+func (h *sessionHost) focus(ctx context.Context, jobID int64) error {
+	h.mu.Lock()
+	session := h.sessions[jobID]
+	h.mu.Unlock()
+	if session == nil {
+		return errors.New("Open the application first")
+	}
+	focuser, ok := session.(interface{ Focus(context.Context) error })
+	if !ok {
+		return errors.New("Return to the existing employer browser window")
+	}
+	return focuser.Focus(ctx)
+}
+
 func (h *sessionHost) inspect(ctx context.Context, jobID int64) (browser.Observation, error) {
 	h.mu.Lock()
 	s := h.sessions[jobID]
@@ -186,7 +232,7 @@ func (h *sessionHost) inspect(ctx context.Context, jobID int64) (browser.Observa
 	}
 	return s.Observe(ctx)
 }
-func (h *sessionHost) armResume(jobID int64, dir, path, name string, contacts *browser.ContactValues) error {
+func (h *sessionHost) armResume(jobID int64, dir, path, name string, contacts *browser.ContactValues, details ...resumeHandoffInfo) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.sessions[jobID] == nil {
@@ -202,11 +248,27 @@ func (h *sessionHost) armResume(jobID int64, dir, path, name string, contacts *b
 		return errors.New("resume preparation already authorized for this browser; close it to start a different document")
 	}
 	h.handoffs[jobID] = &resumeHandoff{dir: dir, path: path, name: name, status: "waiting", message: "Opening the application directly and looking for its resume field. The browser remains yours for any later pages."}
+	if len(details) > 0 {
+		h.handoffs[jobID].resumeID = details[0].resumeID
+		h.handoffs[jobID].resumeHash = details[0].resumeHash
+		h.handoffs[jobID].contactCurrent = details[0].contactCurrent
+	}
 	if contacts != nil {
 		snapshot := *contacts
 		h.handoffs[jobID].contacts = &snapshot
 		h.handoffs[jobID].contactStatus = "waiting"
 	}
+	return nil
+}
+
+func (h *sessionHost) armExistingContacts(jobID int64, destination string, resumeID int64, resumeHash string, contacts *browser.ContactValues, current func() bool) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	up := h.handoffs[jobID]
+	if h.sessions[jobID] == nil || h.states[jobID].Destination != destination || up == nil || (up.status != "selected" && up.status != "present") || up.resumeID != resumeID || up.resumeHash != resumeHash || up.contactStatus != "" {
+		return errors.New("Contact filling is unavailable or has already been attempted in this session")
+	}
+	up.contacts, up.contactStatus, up.contactCurrent = contacts, "waiting", current
 	return nil
 }
 
@@ -222,8 +284,24 @@ func (h *sessionHost) tryContacts(ctx context.Context, jobID int64) {
 	}
 	up.contactStatus = "checking"
 	approved := *up.contacts
+	current := up.contactCurrent
+	approved.Attempted = map[string]bool{}
+	for _, outcome := range up.contactResult.Fields {
+		if outcome.Status != "missing" {
+			approved.Attempted[outcome.Key] = true
+		}
+	}
 	h.mu.Unlock()
 	filler, ok := session.(contactFillSession)
+	if current != nil && !current() {
+		h.mu.Lock()
+		if h.handoffs[jobID] == up {
+			up.contactStatus = "attention"
+			up.contactResult.Fields = append(up.contactResult.Fields, browser.ContactOutcome{Key: "profile", Status: "manual", Detail: "Candidate Profile changed. Review it before filling."})
+		}
+		h.mu.Unlock()
+		return
+	}
 	var result browser.ContactResult
 	var err error
 	if ok {
@@ -236,14 +314,28 @@ func (h *sessionHost) tryContacts(ctx context.Context, jobID int64) {
 	if h.handoffs[jobID] != up {
 		return // A closed/replaced browser never inherits the old approval.
 	}
-	up.contactResult = result
+	if result.Ready {
+		previous := up.contactResult.Fields
+		up.contactResult = result
+		for _, outcome := range previous {
+			if outcome.Status != "missing" {
+				up.contactResult.Fields = append(up.contactResult.Fields, outcome)
+			}
+		}
+	}
+	waiting := !result.Ready
+	for _, outcome := range up.contactResult.Fields {
+		if outcome.Status == "missing" {
+			waiting = true
+		}
+	}
 	switch {
 	case err != nil:
 		up.contactStatus = "attention"
-	case !result.Ready:
-		up.contactStatus = "waiting" // Read-only wait; no contact mutation occurred.
+	case waiting:
+		up.contactStatus = "waiting"
 	default:
-		up.contactStatus = "complete" // Never replay a changed or cleared user value.
+		up.contactStatus = "complete"
 	}
 }
 func (h *sessionHost) tryResume(ctx context.Context, jobID int64) {
@@ -270,21 +362,25 @@ func (h *sessionHost) tryResume(ctx context.Context, jobID int64) {
 		h.resumeResult(jobID, up, "waiting", "No resume field is available on this step yet. Continue in the employer browser; YourMove will check subsequent pages.")
 		return
 	}
+	if errors.Is(err, chromium.ErrExistingDocument) {
+		h.resumeResult(jobID, up, "present", "An attachment is already present and was left unchanged. Check it in the employer form.")
+		return
+	}
 	if err != nil {
 		var preflight *chromium.PreflightError
 		if errors.As(err, &preflight) {
 			h.resumePreflightFailure(jobID, up)
 			return
 		}
-		h.resumeResult(jobID, up, "attention", "Unable to confirm whether the employer received the resume. Inspect the attachment in Chromium; do not resend automatically. ("+err.Error()+")")
+		h.resumeResult(jobID, up, "attention", "Unable to confirm whether the employer received the resume. Inspect the attachment in the employer browser; do not resend automatically. ("+err.Error()+")")
 		return
 	}
 	if result.Selected {
-		msg := result.Detail
 		if !result.Verified {
-			msg = "File selection was attempted but the browser could not verify it. Review the attachment manually."
+			h.resumeResult(jobID, up, "attention", "Uncertain: file selection was attempted but could not be verified. Review the attachment; it will not be retried automatically.")
+			return
 		}
-		h.resumeResult(jobID, up, "selected", msg)
+		h.resumeResult(jobID, up, "selected", result.Detail)
 		return
 	}
 	h.resumeResult(jobID, up, "attention", "Resume selection could not be confirmed; attach manually")
@@ -365,7 +461,7 @@ func (h *sessionHost) reportLaunchFailure(jobID int64, err error) {
 	if h.states == nil {
 		h.states = make(map[int64]browserRunState)
 	}
-	h.states[jobID] = browserRunState{Phase: "interrupted", Message: "Could not reopen the employer browser: " + err.Error() + ". Check Chromium and try Reopen application."}
+	h.states[jobID] = browserRunState{Phase: "interrupted", Message: "Could not reopen the employer browser: " + err.Error() + ". Check the employer browser and try Reopen application."}
 }
 
 func (h *sessionHost) has(jobID int64) bool { return h.state(jobID).Active }
@@ -383,7 +479,7 @@ func (h *sessionHost) watch(jobID int64, jobURL string, save func(browser.Observ
 	session := h.sessions[jobID]
 	interval := h.pollEvery
 	if interval <= 0 {
-		interval = 2200 * time.Millisecond
+		interval = 750 * time.Millisecond
 	}
 	h.mu.Unlock()
 	go func() {
@@ -411,7 +507,7 @@ func (h *sessionHost) watch(jobID int64, jobURL string, save func(browser.Observ
 				return
 			}
 			if err != nil {
-				if errors.Is(err, chromium.ErrNoPageTargets) {
+				if errors.Is(err, browser.ErrNoPageTargets) {
 					missingPages++
 					if missingPages >= 2 {
 						h.interrupt(jobID, "The application tab was closed. Reopen the application to continue. Any unsaved employer form values and attachment state may have been lost; no file will be uploaded automatically.")
@@ -420,16 +516,16 @@ func (h *sessionHost) watch(jobID int64, jobURL string, save func(browser.Observ
 				} else {
 					missingPages = 0
 				}
-				if errors.Is(err, chromium.ErrBrowserUnavailable) {
+				if errors.Is(err, browser.ErrBrowserUnavailable) {
 					unavailable++
 					if unavailable >= 2 {
-						h.interrupt(jobID, "Chromium was closed or disconnected. Reopen the application to continue. Unsaved employer changes may have been lost; YourMove will not replay the resume upload.")
+						h.interrupt(jobID, "the employer browser was closed or disconnected. Reopen the application to continue. Unsaved employer changes may have been lost; YourMove will not replay the resume upload.")
 						return
 					}
 				} else {
 					unavailable = 0
 				}
-				if errors.Is(err, chromium.ErrNoMatchingTab) {
+				if errors.Is(err, browser.ErrNoMatchingTab) {
 					h.setState(jobID, "attention", "This browser is on another page (possibly sign-in). Return to this employer application, or use Reopen application to start over. No document was resent.", 0, false)
 				} else {
 					h.setState(jobID, "attention", "This page cannot be inspected right now. Return to the employer application, or use Reopen application to restart from its posting.", 0, false)
@@ -446,7 +542,7 @@ func (h *sessionHost) watch(jobID int64, jobURL string, save func(browser.Observ
 					pending = ""
 					pendingCount = 0
 				} else if len(observation.Controls) == 0 && observation.Forms == 0 && len(observation.Actions) == 0 && len(observation.Frames) == 0 {
-					h.setState(jobID, "watching", "Waiting for the application form to finish loading. If this job requires another step, continue in Chromium.", 0, false)
+					h.setState(jobID, "watching", "Waiting for the application form to finish loading. If this job requires another step, continue in the employer browser.", 0, false)
 					pending = ""
 					pendingCount = 0
 				} else {
@@ -509,8 +605,15 @@ func (h *sessionHost) watch(jobID int64, jobURL string, save func(browser.Observ
 		}
 	}()
 }
-func (h *sessionHost) close(jobID int64) error {
+
+var errBrowserCloseNeedsConsent = errors.New("the employer browser is open; closing it may lose unsaved form work")
+
+func (h *sessionHost) close(jobID int64, approved ...bool) error {
 	h.mu.Lock()
+	if len(approved) > 0 && (h.starting || (!approved[0] && h.sessions[jobID] != nil)) {
+		h.mu.Unlock()
+		return errBrowserCloseNeedsConsent
+	}
 	s := h.sessions[jobID]
 	delete(h.sessions, jobID)
 	if c := h.cancels[jobID]; c != nil {

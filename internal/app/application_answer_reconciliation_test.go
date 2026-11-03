@@ -420,3 +420,56 @@ func readyGreenhouseEarlyAnswer(t *testing.T) (*App, Job, earlyApplicationQuesti
 	}
 	return a, job, question, values
 }
+
+// Separate Ashby preview and live browser loads rotate the per-form UUID
+// namespace while the trailing question identity stays stable (observed on the
+// live Render posting). Reconciliation must match the stable suffix; wording
+// alone must never authorize a mapping.
+func TestAshbyPreviewNamespaceRotationStillReconciles(t *testing.T) {
+	job := Job{URL: testAshbyPosting}
+	questionUUID := "a523cd20-b243-4230-9a13-50ac028dd5a0"
+	previewNS := "dbe80884-3066-496f-8b75-f210a7d8c20b"
+	liveNS := "d1b4c2ae-c739-49c2-b261-83cbaefb6c1c"
+	previewField := schema.Field{ID: "preview:" + previewNS + "_" + questionUUID, Label: "Tell us about a developer product you genuinely enjoy using and why.", Kind: "text"}
+	liveField := schema.Field{ID: "browser:" + liveNS + "_" + questionUUID, Label: "Tell us about a developer product you genuinely enjoy using and why.", Kind: "text"}
+	answer := earlyApplicationAnswer{
+		Destination: job.URL, DiscoverySource: "preview", SourceQuestionID: previewField.ID,
+		QuestionLabel: previewField.Label, Field: previewField, DiscoveryFingerprint: "preview-fp",
+		Answer: "I enjoy using Render because deploys are boring in the best way.", Revision: 1,
+	}
+	public := Inspection{Source: "preview", ApplicationURL: job.URL + "/application", Fingerprint: "preview-fp", Fields: []InspectedField{{Field: previewField}}}
+	live := Inspection{
+		Source: "browser", Platform: "ashby", ApplicationURL: job.URL + "/application",
+		Completeness: "rendered_partial", Fingerprint: "live-fp",
+		Fields: []InspectedField{{Field: liveField}},
+	}
+	result := reconcileEarlyAnswer(job, answer, &public, live, true)
+	if result.Status != "Ready for explicit review" || !result.CanAccept {
+		t.Fatalf("rotated namespace refused a stable match: %+v", result)
+	}
+	if result.LiveField.ID != liveField.ID || result.LiveQuestionKey != questionKey(job.URL, "ashby", liveField) {
+		t.Fatalf("live identity not preserved: %+v", result)
+	}
+	// A different stable identity with identical wording authorizes nothing.
+	otherField := liveField
+	otherField.ID = "browser:" + liveNS + "_873c44bf-c40a-45b2-973a-858bc7c851ed"
+	otherLive := live
+	otherLive.Fields = []InspectedField{{Field: otherField}}
+	changed := reconcileEarlyAnswer(job, answer, &public, otherLive, true)
+	if changed.CanAccept || changed.Status != "Question changed" {
+		t.Fatalf("wording-only match gained authority: %+v", changed)
+	}
+}
+
+func TestAshbyStableFieldSuffixKeepsUnnamespacedIdentities(t *testing.T) {
+	for id, want := range map[string]string{
+		"preview:stable-group": "stable-group",
+		"browser:stable-group": "stable-group",
+		"preview:dbe80884-3066-496f-8b75-f210a7d8c20b__systemfield_name": "systemfield_name",
+		"browser:d1b4c2ae-c739-49c2-b261-83cbaefb6c1c_a523cd20-b243-4230-9a13-50ac028dd5a0": "a523cd20-b243-4230-9a13-50ac028dd5a0",
+	} {
+		if got := ashbyStableFieldSuffix(id); got != want {
+			t.Fatalf("ashbyStableFieldSuffix(%q)=%q, want %q", id, got, want)
+		}
+	}
+}

@@ -33,6 +33,7 @@ import (
 	"strings"
 
 	browser "github.com/jenksed/yourmove-go/internal/application/browser"
+	"github.com/jenksed/yourmove-go/internal/application/schema"
 )
 
 type continuationAnswerJSON struct {
@@ -42,12 +43,25 @@ type continuationAnswerJSON struct {
 	Source string `json:"source"`
 }
 
+type continuationEarlyAnswerCandidate struct {
+	ID                   int64        `json:"id"`
+	Destination          string       `json:"destination"`
+	DiscoverySource      string       `json:"discoverySource"`
+	DiscoveryFingerprint string       `json:"discoveryFingerprint"`
+	SourceQuestionID     string       `json:"sourceQuestionId"`
+	Field                schema.Field `json:"field"`
+	Revision             int64        `json:"revision"`
+	Value                string       `json:"value"`
+}
+
 type continuationProfileJSON struct {
-	Approved bool   `json:"approved"`
-	Revision int64  `json:"revision"`
-	FullName string `json:"fullName"`
-	Email    string `json:"email"`
-	Phone    string `json:"phone"`
+	Approved  bool   `json:"approved"`
+	Revision  int64  `json:"revision"`
+	FullName  string `json:"fullName"`
+	FirstName string `json:"firstName"`
+	LastName  string `json:"lastName"`
+	Email     string `json:"email"`
+	Phone     string `json:"phone"`
 }
 
 type continuationLetterJSON struct {
@@ -117,13 +131,23 @@ func (a *App) buildContinuation(jobID int64) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	live, err := a.prepareQuestions(job, profile)
+	// The explicit Fill action authorizes the displayed profile snapshot, without
+	// changing its separate approval state for other workflows.
+	profileForFill := profile
+	profileForFill.Approved = true
+	live, err := a.prepareQuestions(job, profileForFill)
 	if err != nil {
 		return nil, err
 	}
 	early, err := a.prepareEarlyQuestions(job, nil)
 	if err != nil {
 		return nil, err
+	}
+	candidates := make([]continuationEarlyAnswerCandidate, 0)
+	for _, q := range early.Questions {
+		if q.Editable && q.EarlyAnswerID > 0 && q.Revision > 0 && strings.TrimSpace(q.Value) != "" {
+			candidates = append(candidates, continuationEarlyAnswerCandidate{ID: q.EarlyAnswerID, Destination: q.Destination, DiscoverySource: q.DiscoverySource, DiscoveryFingerprint: q.DiscoveryFingerprint, SourceQuestionID: q.SourceQuestionID, Field: q.Field, Revision: q.Revision, Value: q.Value})
+		}
 	}
 	letter, err := a.selectedCoverLetter(jobID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -132,9 +156,32 @@ func (a *App) buildContinuation(jobID int64) (map[string]any, error) {
 	state := a.browsers.state(jobID)
 	prepWorkspace := jobWorkspace{
 		Job: job, BrowserState: state, Handoff: handoff,
-		Questions: live, EarlyQuestions: early, Letter: letter, Profile: profile,
+		Questions: live, EarlyQuestions: early, Letter: letter, Profile: profileForFill,
+	}
+	// A failed launch with no transfer can be retried by the React fill action.
+	// Retain interrupted status for display; never re-arm an attempted upload.
+	if !state.Active && state.Phase == "interrupted" && state.ResumeStatus == "" {
+		prepWorkspace.BrowserState.Phase = ""
 	}
 	preparation := summarizePreparation(prepWorkspace)
+	for _, q := range early.Questions {
+		if !q.Editable || q.EarlyAnswerID == 0 || q.Revision == 0 || strings.TrimSpace(q.Value) == "" {
+			continue
+		}
+		if q.Reconciliation.LiveQuestionKey != "" {
+			_, liveErr := a.savedLiveAnswer(job, q.Reconciliation.LiveQuestionKey)
+			if liveErr == nil {
+				continue
+			}
+			if !errors.Is(liveErr, sql.ErrNoRows) {
+				return nil, liveErr
+			}
+		}
+		preparation.PendingAnswers = append(preparation.PendingAnswers, preparedQuestion{JobID: job.ID, Destination: q.Destination, Field: q.Field, Key: q.Key, Value: q.Value, Source: "Saved early answer — fills when the same question is found", Revision: q.Revision, Editable: true, IsEarly: true, EarlyAnswerID: q.EarlyAnswerID, DiscoverySource: q.DiscoverySource, DiscoveryFingerprint: q.DiscoveryFingerprint, SourceQuestionID: q.SourceQuestionID})
+	}
+	preparation.PendingAnswers = pendingAnswers(preparation.PendingAnswers, state.AnswerAttempted, false)
+	preparation.PendingAnswers = excludePendingAuthorizations(preparation.PendingAnswers, state.AnswerPending)
+	preparation.IncludeAnswers = len(preparation.PendingAnswers) > 0
 	snapshot := chooseApplicationQuestionSnapshot(job, state, live, early)
 	submissions, err := a.jobSubmissions(jobID)
 	if err != nil {
@@ -178,38 +225,40 @@ func (a *App) buildContinuation(jobID int64) (map[string]any, error) {
 		}
 	}
 	return map[string]any{
-		"destination":   job.URL,
-		"ownsPosting":   browser.OwnsPostingURL(job.URL, job.URL),
-		"desktop":       a.openPosting != nil,
-		"applied":       job.Stage == StageApplied || job.SubmissionCount > 0,
-		"closed":        job.Stage == StageClosed,
+		"destination":    job.URL,
+		"ownsPosting":    browser.OwnsPostingURL(job.URL, job.URL),
+		"desktop":        a.openPosting != nil,
+		"applied":        job.Stage == StageApplied || job.SubmissionCount > 0,
+		"closed":         job.Stage == StageClosed,
 		"editingAllowed": editingAllowed,
 		"preparation": map[string]any{
 			"title": preparation.Title, "detail": preparation.Detail,
 			"recovery": preparation.Recovery, "action": preparation.Action,
-			"external": preparation.OpenExternally,
+			"external":      preparation.OpenExternally,
 			"includeResume": preparation.IncludeResume, "includeLetter": preparation.IncludeLetter,
-			"includeAnswers": preparation.IncludeAnswers,
-			"answerSummary": preparation.AnswerSummary,
-			"answerReviewHash": preparation.AnswerReviewHash(),
+			"includeAnswers":   preparation.IncludeAnswers,
+			"answerSummary":    preparation.AnswerSummary,
+			"answerReviewHash": reactAnswerScopeHash(preparation.PendingAnswers),
 		},
-		"handoff":     map[string]any{"allowed": handoff.Allowed, "reason": handoff.Reason},
-		"browser":     state,
+		"handoff":      map[string]any{"allowed": handoff.Allowed, "reason": handoff.Reason},
+		"browser":      state,
 		"otherBrowser": otherJSON,
 		"savedBrowser": savedJSON,
-		"resume":      resumeJSON,
+		"resume":       resumeJSON,
 		"profile": continuationProfileJSON{
 			Approved: profile.Approved, Revision: profile.Revision,
-			FullName: fullName, Email: profile.Email, Phone: profile.Phone,
+			FullName: fullName, FirstName: profile.FirstName, LastName: profile.LastName, Email: profile.Email, Phone: profile.Phone,
 		},
-		"letter":         letterJSON,
-		"pendingAnswers": pending,
-		"previousCount":  len(live.Previous),
+		"letter":                 letterJSON,
+		"pendingAnswers":         pending,
+		"answerScopeInternal":    preparation.PendingAnswers,
+		"earlyAnswerCandidates":  candidates,
+		"previousCount":          len(live.Previous),
 		"awaitingReconciliation": len(early.AwaitingReconciliation()),
-		"questionsAvailable": snapshot.Available,
-		"submissions":    submissionJSON,
-		"submissionCount": len(submissions),
-		"legacyHref":     workspaceLegacyHref(jobID),
+		"questionsAvailable":     snapshot.Available,
+		"submissions":            submissionJSON,
+		"submissionCount":        len(submissions),
+		"legacyHref":             workspaceLegacyHref(jobID),
 	}, nil
 }
 
@@ -234,6 +283,7 @@ func (a *App) continuationAPI(w http.ResponseWriter, r *http.Request) {
 		writeResumeError(w, http.StatusInternalServerError, "Unable to load employer continuation")
 		return
 	}
+	delete(payload, "answerScopeInternal")
 	writeResumeJSON(w, http.StatusOK, payload)
 }
 
@@ -268,7 +318,7 @@ func (a *App) continuationBrowserAPI(w http.ResponseWriter, r *http.Request) {
 		writeResumeError(w, http.StatusInternalServerError, "Unable to load opportunity")
 		return
 	}
-	if job.Stage == StageApplied || job.Stage == StageClosed || job.SubmissionCount > 0 {
+	if (job.Stage == StageApplied || job.Stage == StageClosed || job.SubmissionCount > 0) && input.Action != "focus" && input.Action != "stop" {
 		writeResumeError(w, http.StatusConflict, "Inspection is limited to active jobs")
 		return
 	}
@@ -281,7 +331,8 @@ func (a *App) continuationBrowserAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	switch input.Action {
 	case "start":
-		if err := a.browsers.start(r.Context(), jobID, job.URL); err == nil {
+		err = a.browsers.start(r.Context(), jobID, job.URL)
+		if err == nil {
 			a.browsers.watch(jobID, job.URL, func(o browser.Observation) (int64, error) {
 				result, e := browser.AsResult(job.URL, o)
 				if e != nil {
@@ -294,6 +345,11 @@ func (a *App) continuationBrowserAPI(w http.ResponseWriter, r *http.Request) {
 			log.Printf("browser start: %v", err)
 			a.browsers.reportLaunchFailure(jobID, err)
 			fail("The employer browser could not be opened. " + a.browsers.state(jobID).Message)
+			return
+		}
+	case "focus":
+		if err := a.browsers.focus(r.Context(), jobID); err != nil {
+			fail("Could not return to the employer application. " + err.Error())
 			return
 		}
 	case "observe":
@@ -355,18 +411,18 @@ func (a *App) continuationBrowserAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 type continueInput struct {
-	Destination       string `json:"destination"`
-	IncludeResume     bool   `json:"include_resume"`
-	ResumeID          string `json:"resume_id"`
-	ResumeHash        string `json:"resume_hash"`
-	TransferContacts  bool   `json:"transfer_contacts"`
-	ProfileRevision   string `json:"profile_revision"`
-	IncludeLetter     bool   `json:"include_letter"`
-	DraftID           string `json:"draft_id"`
-	BodyHash          string `json:"body_hash"`
-	Mode              string `json:"mode"`
-	IncludeAnswers    bool   `json:"include_answers"`
-	ReviewHash        string `json:"review_hash"`
+	Destination      string `json:"destination"`
+	IncludeResume    bool   `json:"include_resume"`
+	ResumeID         string `json:"resume_id"`
+	ResumeHash       string `json:"resume_hash"`
+	TransferContacts bool   `json:"transfer_contacts"`
+	ProfileRevision  string `json:"profile_revision"`
+	IncludeLetter    bool   `json:"include_letter"`
+	DraftID          string `json:"draft_id"`
+	BodyHash         string `json:"body_hash"`
+	Mode             string `json:"mode"`
+	IncludeAnswers   bool   `json:"include_answers"`
+	ReviewHash       string `json:"review_hash"`
 }
 
 type continueItemResult struct {
@@ -432,9 +488,41 @@ func (a *App) continuationContinueAPI(w http.ResponseWriter, r *http.Request) {
 		writeResumeError(w, http.StatusConflict, "The employer destination changed. Review Prepare again.")
 		return
 	}
-	if !input.IncludeResume && !input.IncludeLetter && !input.IncludeAnswers {
+	// React's Fill action carries the displayed profile revision and résumé
+	// identity even for subsequent material. Revalidate both before any effect.
+	if input.ProfileRevision != "" {
+		profile, profileErr := a.candidateProfile()
+		if profileErr != nil || input.ProfileRevision != strconv.FormatInt(profile.Revision, 10) {
+			writeResumeError(w, http.StatusConflict, "Candidate Profile changed. Review it before filling.")
+			return
+		}
+		resume, resumeErr := a.resumeByID(job.SelectedResumeID)
+		if resumeErr != nil || input.ResumeID != strconv.FormatInt(resume.ID, 10) || input.ResumeHash != resume.SHA256 || resume.ArchivedAt != "" {
+			writeResumeError(w, http.StatusConflict, "Select an available résumé before filling.")
+			return
+		}
+		if _, err := a.readResumeBytes(resume); err != nil {
+			writeResumeError(w, http.StatusConflict, "The selected résumé is missing or changed. Select it again before filling.")
+			return
+		}
+	}
+	if !input.IncludeResume && !input.IncludeLetter && !input.IncludeAnswers && !input.TransferContacts {
 		writeResumeError(w, http.StatusUnprocessableEntity, "No transfer material was selected. Review Prepare again.")
 		return
+	}
+	var authorizedAnswers *applicationAnswerTransfer
+	if input.IncludeAnswers {
+		payload, scopeErr := a.buildContinuation(jobID)
+		if scopeErr != nil {
+			writeResumeError(w, http.StatusInternalServerError, "Unable to read saved answers")
+			return
+		}
+		scope := payload["answerScopeInternal"].([]preparedQuestion)
+		if len(scope) == 0 || input.ReviewHash != reactAnswerScopeHash(scope) {
+			writeResumeError(w, http.StatusConflict, "Saved answers changed. Review them before filling.")
+			return
+		}
+		authorizedAnswers = a.reactAnswerTransfer(job, scope, input.ProfileRevision)
 	}
 	form := continueForm(input)
 	cmd := &http.Request{Method: http.MethodPost, PostForm: form}
@@ -447,9 +535,31 @@ func (a *App) continuationContinueAPI(w http.ResponseWriter, r *http.Request) {
 		status, detail := fn(cmd, jobID)
 		results = append(results, continueItemResult{Item: item, OK: status == http.StatusSeeOther, Status: status, Detail: detail})
 	}
-	run("resume", input.IncludeResume, a.resumeHandoffCommand)
+	run("resume", input.IncludeResume, func(r *http.Request, id int64) (int, string) { return a.resumeHandoffForAction(r, id, true) })
+	if input.TransferContacts && !input.IncludeResume {
+		status, detail := http.StatusConflict, "The selected résumé or Candidate Profile changed. Review them before filling."
+		resume, resumeErr := a.resumeByID(job.SelectedResumeID)
+		profile, profileErr := a.candidateProfile()
+		if resumeErr == nil && profileErr == nil && input.ResumeID == strconv.FormatInt(resume.ID, 10) && input.ResumeHash == resume.SHA256 && input.ProfileRevision == strconv.FormatInt(profile.Revision, 10) {
+			if _, readErr := a.readResumeBytes(resume); readErr == nil {
+				contacts := &browser.ContactValues{Revision: profile.Revision, FirstName: profile.FirstName, LastName: profile.LastName, Email: profile.Email, Phone: profile.Phone}
+				current := func() bool { p, e := a.candidateProfile(); return e == nil && p.Revision == profile.Revision }
+				if armErr := a.browsers.armExistingContacts(jobID, job.URL, resume.ID, resume.SHA256, contacts, current); armErr == nil {
+					status, detail = http.StatusSeeOther, "Contact filling started"
+				} else {
+					detail = armErr.Error()
+				}
+			}
+		}
+		results = append(results, continueItemResult{Item: "contacts", OK: status == http.StatusSeeOther, Status: status, Detail: detail})
+	}
 	run("letter", input.IncludeLetter, a.coverLetterCommand)
-	run("answers", input.IncludeAnswers, a.answerTransferCommand)
+	run("answers", input.IncludeAnswers, func(r *http.Request, id int64) (int, string) {
+		if err := a.browsers.armAnswers(id, job.URL, authorizedAnswers); err != nil {
+			return http.StatusConflict, err.Error()
+		}
+		return http.StatusSeeOther, "Answer filling started"
+	})
 	writeResumeJSON(w, http.StatusOK, map[string]any{
 		"items": results, "browser": a.browsers.state(jobID),
 	})
@@ -546,7 +656,7 @@ func (a *App) continuationSubmitAPI(w http.ResponseWriter, r *http.Request) {
 	if err := a.recordSubmission(jobID, strings.TrimSpace(input.Notes), input.SubmissionToken); err != nil {
 		if errors.Is(err, ErrSubmissionReviewStale) {
 			writeResumeJSON(w, http.StatusConflict, map[string]string{
-				"code": "stale",
+				"code":    "stale",
 				"message": "Your confirmation was not recorded. This review expired, or the selected resume changed or is unavailable. Review the current resume, then confirm again.",
 			})
 			return
@@ -557,7 +667,7 @@ func (a *App) continuationSubmitAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		log.Printf("record application: %v", err)
 		writeResumeJSON(w, http.StatusInternalServerError, map[string]string{
-			"code": "failed",
+			"code":    "failed",
 			"message": "YourMove could not confirm whether this recording completed. Check submission history before retrying. If no record appears, return to Prepare and try again.",
 		})
 		return
@@ -593,17 +703,19 @@ func (a *App) continuationSubmissionsAPI(w http.ResponseWriter, r *http.Request)
 		out = append(out, continuationSubmissionJSON{ID: s.ID, SubmittedAt: s.SubmittedAt, ResumeName: s.ResumeName, ResumeSHA256: s.ResumeSHA256, Notes: s.Notes})
 	}
 	var next *NextAction
-	if len(submissions) > 0 {
-		if jobs, loadErr := a.allJobs(); loadErr == nil {
-			next = recommendNext(jobs)
+	if jobs, loadErr := a.allJobs(); loadErr == nil {
+		remaining := make([]Job, 0, len(jobs))
+		for _, job := range jobs {
+			if job.ID != jobID {
+				remaining = append(remaining, job)
+			}
 		}
+		next = recommendNext(remaining)
 	}
 	writeResumeJSON(w, http.StatusOK, map[string]any{"submissions": out, "count": len(out), "next": next})
 }
 
-// POST /api/jobs/{id}/next closes the completed application's managed
-// browser and recommends the next opportunity. Recording completion alone
-// keeps the employer browser open for review.
+// POST /api/jobs/{id}/next closes an authorized managed browser and recommends another opportunity.
 func (a *App) continuationNextAPI(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -614,17 +726,11 @@ func (a *App) continuationNextAPI(w http.ResponseWriter, r *http.Request) {
 		writeResumeError(w, http.StatusNotFound, "Unknown job")
 		return
 	}
-	job, err := a.jobByID(jobID)
-	if errors.Is(err, sql.ErrNoRows) {
+	if _, err := a.jobByID(jobID); errors.Is(err, sql.ErrNoRows) {
 		writeResumeError(w, http.StatusNotFound, "Unknown job")
 		return
-	}
-	if err != nil {
+	} else if err != nil {
 		writeResumeError(w, http.StatusInternalServerError, "Unable to load opportunity")
-		return
-	}
-	if job.Stage != StageApplied || job.SubmissionCount == 0 {
-		writeResumeError(w, http.StatusConflict, "Record the completed application before moving on. The current employer browser remains open.")
 		return
 	}
 	jobs, err := a.allJobs()
@@ -632,13 +738,23 @@ func (a *App) continuationNextAPI(w http.ResponseWriter, r *http.Request) {
 		writeResumeError(w, http.StatusInternalServerError, "Unable to load the next opportunity")
 		return
 	}
-	if err := a.browsers.close(jobID); err != nil {
-		writeResumeError(w, http.StatusInternalServerError, "Could not close the completed application browser. Close it in Chromium, then return to Opportunities.")
+	if err := a.browsers.close(jobID, r.URL.Query().Get("close_browser") == "yes"); err != nil {
+		if errors.Is(err, errBrowserCloseNeedsConsent) {
+			writeResumeError(w, http.StatusConflict, "The employer browser is open or opening. Closing it may lose unsaved form work.")
+			return
+		}
+		writeResumeError(w, http.StatusInternalServerError, "Could not close the employer browser. Return to the application before moving on.")
 		return
 	}
+	remaining := make([]Job, 0, len(jobs))
+	for _, job := range jobs {
+		if job.ID != jobID {
+			remaining = append(remaining, job)
+		}
+	}
 	target := "/jobs"
-	if next := recommendNext(jobs); next != nil {
+	if next := recommendNext(remaining); next != nil {
 		target = "/jobs/" + strconv.FormatInt(next.JobID, 10) + "#prepare"
 	}
-	writeResumeJSON(w, http.StatusOK, map[string]any{"target": target, "next": recommendNext(jobs)})
+	writeResumeJSON(w, http.StatusOK, map[string]any{"target": target, "next": recommendNext(remaining)})
 }

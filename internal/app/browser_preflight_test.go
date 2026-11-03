@@ -13,6 +13,8 @@ type preflightFakeBrowser struct {
 	calls          int
 	failPreflight  bool
 	failAfterWrite bool
+	existing       bool
+	unverified     bool
 }
 
 func (b *preflightFakeBrowser) Observe(context.Context) (browser.Observation, error) {
@@ -21,6 +23,12 @@ func (b *preflightFakeBrowser) Observe(context.Context) (browser.Observation, er
 func (b *preflightFakeBrowser) Close() error { return nil }
 func (b *preflightFakeBrowser) AttachResume(context.Context, string) (chromium.AttachmentResult, error) {
 	b.calls++
+	if b.existing {
+		return chromium.AttachmentResult{}, chromium.ErrExistingDocument
+	}
+	if b.unverified {
+		return chromium.AttachmentResult{Selected: true}, nil
+	}
 	if b.failPreflight {
 		return chromium.AttachmentResult{}, &chromium.PreflightError{Cause: errors.New("transient CDP read error")}
 	}
@@ -85,5 +93,33 @@ func TestAmbiguousAttachmentOutcomeNeverRetransmits(t *testing.T) {
 	}
 	if err := h.retryResumePreflight(14); err == nil {
 		t.Fatal("unsafe retry permitted")
+	}
+}
+
+func TestResumeExistingAndUnverifiedAreNotReplayed(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		fake *preflightFakeBrowser
+		want string
+	}{
+		{"existing", &preflightFakeBrowser{existing: true}, "present"},
+		{"unverified", &preflightFakeBrowser{unverified: true}, "attention"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := sessionHost{factory: func(context.Context, string) (readOnlySession, error) { return tc.fake, nil }}
+			if err := h.start(context.Background(), 1, testAshbyPosting); err != nil {
+				t.Fatal(err)
+			}
+			defer h.closeAll()
+			if err := h.armResume(1, t.TempDir(), "/tmp/mock.pdf", "mock.pdf", nil); err != nil {
+				t.Fatal(err)
+			}
+			h.tryResume(context.Background(), 1)
+			h.tryResume(context.Background(), 1)
+			state := h.state(1)
+			if state.ResumeStatus != tc.want || state.ResumeRetryable || tc.fake.calls != 1 {
+				t.Fatalf("state=%+v calls=%d", state, tc.fake.calls)
+			}
+		})
 	}
 }

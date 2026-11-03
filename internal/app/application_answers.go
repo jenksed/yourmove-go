@@ -33,7 +33,8 @@ type preparedQuestion struct {
 	Revision                  int64
 	Editable                  bool
 	LibraryEligible           bool
-	IsEarly                   bool   // Presentation only; this never grants live question authority.
+	IsEarly                   bool
+	EarlyAnswerID             int64
 	DiscoverySource           string // Presentation identity for early-only assistance requests.
 	DiscoveryFingerprint      string
 	SourceQuestionID          string

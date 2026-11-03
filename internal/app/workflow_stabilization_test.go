@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jenksed/yourmove-go/internal/application/browser"
 	"github.com/jenksed/yourmove-go/internal/application/schema"
 )
 
@@ -73,7 +74,7 @@ func TestEarlySavedAnswersStayExcludedUntilReconciledAndAuthorized(t *testing.T)
 	if len(prepared.ReadyAnswers()) != 2 || len(a.browsers.answers) != 0 {
 		t.Fatal("acceptance lost answers or authorized filling")
 	}
-	fake := &fakeAnswerBrowser{fakeBrowser: &fakeBrowser{url: job.URL}}
+	fake := &fakeAnswerBrowser{fakeBrowser: &fakeBrowser{url: job.URL}, controls: []browser.Control{{ID: "story", Label: "Describe a time you improved a system", Kind: "textarea", Required: true}, {ID: "other-story", Label: second.Label, Kind: second.Kind, Required: second.Required}}}
 	a.browsers.factory = func(context.Context, string) (readOnlySession, error) { return fake, nil }
 	if err = a.browsers.start(context.Background(), 1, job.URL); err != nil {
 		t.Fatal(err)

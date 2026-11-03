@@ -16,6 +16,7 @@ import { CoverLetterSection } from "./CoverLetterSection";
 import { ContinuationSection } from "./ContinuationSection";
 import { SubmissionSection } from "./SubmissionSection";
 import { WritingSection } from "./WritingSection";
+import { discoverQuestions } from "./writingApi";
 
 function suggestionText(status: string): string {
   switch (status) {
@@ -58,7 +59,20 @@ export function WorkspacePage(): React.JSX.Element {
   const [refreshError, setRefreshError] = useState<string>("");
   const initialHashHandled = useRef(false);
   const [materialRevision, setMaterialRevision] = useState<number>(0);
+  const [discoveryStatus, setDiscoveryStatus] = useState<string>("");
+  const discoveryStarted = useRef(false);
+  const retryDiscovery = useCallback(() => {
+    if (jobId === null) return;
+    discoveryStarted.current = true;
+    setDiscoveryStatus("checking");
+    void discoverQuestions(jobId).then(setDiscoveryStatus).catch(() => setDiscoveryStatus("failed"));
+  }, [jobId]);
   const materialSaved = useCallback(() => setMaterialRevision((value) => value + 1), []);
+
+  useEffect(() => {
+    if (jobId === null || !snapshot || discoveryStarted.current || (activity !== "documents" && activity !== "questions")) return;
+    retryDiscovery();
+  }, [activity, jobId, snapshot, retryDiscovery]);
 
   const detailsDirty = snapshot !== null && (
     title !== snapshot.job.title || company !== snapshot.job.company ||
@@ -428,6 +442,7 @@ export function WorkspacePage(): React.JSX.Element {
               </details>
 
               <button className="button button-primary workspace-next-button" type="button" onClick={() => setActivity("documents")}>Prepare application</button>
+              <button className="button button-secondary workspace-next-button" type="button" onClick={() => setActivity("apply")}>Open application</button>
               </div>
 
               <div hidden={activity !== "documents"}>
@@ -544,40 +559,21 @@ export function WorkspacePage(): React.JSX.Element {
               </div>
 
               <div hidden={activity !== "questions"}>
-                <p>Open the employer application from Apply to discover its questions. Answer any you choose; the rest can be completed on the employer site.</p>
-                {snapshot.job.id > 0 && <WritingSection jobId={snapshot.job.id} destination={snapshot.job.url} legacyHref={snapshot.legacyHref} onMaterialSaved={materialSaved} readOnly={applied} active={activity === "questions"} />}
+                <p>Answer any available questions you choose; the rest can be completed on the employer site.</p>
+                {snapshot.job.id > 0 && <WritingSection jobId={snapshot.job.id} destination={snapshot.job.url} onMaterialSaved={materialSaved} readOnly={applied} active={activity === "questions"} discoveryStatus={discoveryStatus} onRetryDiscovery={retryDiscovery} />}
                 <button className="button button-primary workspace-next-button" type="button" onClick={() => setActivity("apply")}>Continue to application</button>
               </div>
 
               <div hidden={activity !== "apply"}>
-                {snapshot.job.id > 0 && <ContinuationSection jobId={snapshot.job.id} materialRevision={materialRevision} />}
-                <button className="button button-secondary workspace-next-button" type="button" onClick={() => setActivity("applied")}>I have submitted my application</button>
+                {snapshot.job.id > 0 && <ContinuationSection jobId={snapshot.job.id} materialRevision={materialRevision} active={activity === "apply"} />}
               </div>
 
-              <div hidden={activity !== "applied"} id="history">
+              <div hidden={activity !== "apply" && activity !== "applied"} id="history">
                 {snapshot.job.id > 0 && <SubmissionSection jobId={snapshot.job.id} onRecorded={completionRecorded} />}
                 <a className="button button-secondary" href="/jobs">Back to Opportunities</a>
               </div>
 
-              <section hidden={activity !== "apply"} className="panel" aria-labelledby="workspace-continue-title">
-                <div className="section-heading">
-                  <div>
-                    <p className="eyebrow">LEGACY WORKSPACE</p>
-                    <h2 id="workspace-continue-title">Troubleshooting and legacy views</h2>
-                    <p className="section-subtitle">
-                      The full workflow above is React-owned. These links remain for deep troubleshooting.
-                    </p>
-                  </div>
-                </div>
-                <ul className="workspace-legacy-links">
-                  <li>
-                    <a href={`${snapshot.legacyHref}#prepare`}>Legacy Prepare and transfer review →</a>
-                  </li>
-                  <li>
-                    <a href={`/jobs/${snapshot.job.id}/inspection`}>Employer browser details and troubleshooting →</a>
-                  </li>
-                </ul>
-              </section>
+
             </>
           )}
         </main>

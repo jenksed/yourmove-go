@@ -32,6 +32,7 @@ export interface BrowserOutcome {
 
 export interface ContinuationBrowser {
   active: boolean;
+  engine: string;
   phase: string;
   message: string;
   latest_id: number;
@@ -61,6 +62,8 @@ export interface ContinuationProfile {
   approved: boolean;
   revision: number;
   fullName: string;
+  firstName: string;
+  lastName: string;
   email: string;
   phone: string;
 }
@@ -148,7 +151,7 @@ export async function fetchContinuation(jobId: number): Promise<ContinuationSnap
   return (await response.json()) as ContinuationSnapshot;
 }
 
-export type BrowserAction = "start" | "observe" | "restart" | "retry-resume" | "stop";
+export type BrowserAction = "start" | "focus" | "observe" | "restart" | "retry-resume" | "stop";
 
 export async function browserAction(
   jobId: number,
@@ -206,19 +209,25 @@ export async function mintSubmissionReview(jobId: number): Promise<SubmissionRev
   return (await response.json()) as SubmissionReview;
 }
 
+export class StaleSubmissionError extends Error {}
+
 export async function recordSubmission(jobId: number, notes: string, token: string): Promise<void> {
   const response = await fetch(`/api/jobs/${jobId}/submit`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({ confirm: "yes", notes, submission_token: token }),
   });
-  if (!response.ok) throw new Error(await readError(response));
+  if (!response.ok) {
+    const message = await readError(response);
+    if (response.status === 409) throw new StaleSubmissionError(message);
+    throw new Error(message);
+  }
 }
 
 export interface SubmissionsSnapshot {
   submissions: ContinuationSubmission[];
   count: number;
-  next: { JobID: number; Title: string; Href: string; Label: string; Reason: string } | null;
+  next: { jobId: number; title: string; href: string; label: string; reason: string } | null;
 }
 
 export async function fetchSubmissions(jobId: number): Promise<SubmissionsSnapshot> {
@@ -229,8 +238,8 @@ export async function fetchSubmissions(jobId: number): Promise<SubmissionsSnapsh
   return (await response.json()) as SubmissionsSnapshot;
 }
 
-export async function moveNext(jobId: number): Promise<{ target: string }> {
-  const response = await fetch(`/api/jobs/${jobId}/next`, {
+export async function moveNext(jobId: number, closeBrowser = false): Promise<{ target: string }> {
+  const response = await fetch(`/api/jobs/${jobId}/next${closeBrowser ? "?close_browser=yes" : ""}`, {
     method: "POST",
     headers: { Accept: "application/json" },
   });

@@ -30,6 +30,7 @@ type App struct {
 	openPosting               func(string) error           // desktop-only native default-browser action
 	inspectApplication        func(context.Context, string) (schema.Result, error)
 	previewApplication        func(context.Context, string) (schema.Result, error)
+	earlyDiscoveryMu          sync.Mutex
 	browsers                  sessionHost
 	coverLetterGenerate       func(context.Context, string) (string, error) // test override; production uses local Ollama
 }
@@ -106,6 +107,7 @@ func newMux(app *App) http.Handler {
 	mux.HandleFunc("POST /api/jobs/{id}/details", app.workspaceDetailsAPI)
 	mux.HandleFunc("POST /api/jobs/{id}/refresh", app.workspaceRefreshAPI)
 	mux.HandleFunc("GET /api/jobs/{id}/questions", app.writingQuestionsAPI)
+	mux.HandleFunc("POST /api/jobs/{id}/questions/discover", app.writingDiscoverAPI)
 	mux.HandleFunc("POST /api/jobs/{id}/answers", app.writingSaveAPI)
 	mux.HandleFunc("POST /api/jobs/{id}/assistance", app.writingAssistAPI)
 	mux.HandleFunc("GET /api/jobs/{id}/letters", app.writingLettersAPI)
