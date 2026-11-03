@@ -873,17 +873,7 @@ export function WritingSection({
       {(profileItems.length > 0 || employerItems.length > 0 || reviewItems.length > 0) && (
         <div className="writing-previous" aria-label="Fields outside the writing tasks">
           {profileItems.length > 0 && (
-            <div>
-              <h3>Handled by your approved Candidate Profile</h3>
-              <p className="small-muted">These transfer with your authorization from Apply; they are not writing tasks.</p>
-              <ul className="writing-suggestions">
-                {profileItems.map((q) => (
-                  <li key={questionId(q)}>
-                    <strong>{q.label}</strong>
-                  </li>
-                ))}
-              </ul>
-            </div>
+            <p className="small-muted">Candidate Profile fields are handled automatically when authorized.</p>
           )}
           {employerItems.length > 0 && (
             <div>

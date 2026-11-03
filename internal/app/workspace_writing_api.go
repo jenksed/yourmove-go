@@ -239,17 +239,22 @@ func earlyRowDrafted(q earlyApplicationQuestion) bool {
 // is reconciled or saved as a live answer, so it is never shown as
 // simultaneously unanswered and prepared. Unmatched rows from either context
 // are preserved, and a stale live inspection never displaces current preview
-// information: without drafts, the preferred context wins. It also returns
-// the number of generic unidentified controls condensed into a notice.
+// information: without drafts, the preferred context wins. Rows that are both
+// outside the applicant-written tasks may additionally merge on identity and
+// wording alone, so the current valid observation describes one employer-side
+// requirement once; applicant-written questions never merge that way. It also
+// returns the unidentified-control count from the preferred context only, so
+// the notice reflects the current observation instead of adding both
+// inventories together.
 func unifyQuestionInventories(liveRows []preparedQuestion, earlyRows []earlyApplicationQuestion, preferLive bool) ([]writingQuestionJSON, int) {
-	unidentified := 0
+	liveUnidentified, earlyUnidentified := 0, 0
 	liveKept := make([]preparedQuestion, 0, len(liveRows))
 	for _, q := range liveRows {
 		if displayDocumentControl(q.Field) {
 			continue
 		}
 		if displayUnidentifiedControl(q.Field.ID) {
-			unidentified++
+			liveUnidentified++
 			continue
 		}
 		liveKept = append(liveKept, q)
@@ -260,31 +265,45 @@ func unifyQuestionInventories(liveRows []preparedQuestion, earlyRows []earlyAppl
 			continue
 		}
 		if displayUnidentifiedControl(q.SourceQuestionID) {
-			unidentified++
+			earlyUnidentified++
 			continue
 		}
 		earlyKept = append(earlyKept, q)
 	}
 	liveUsed := make([]bool, len(liveKept))
 	earlyUsed := make([]bool, len(earlyKept))
-	matchEarly := func(live preparedQuestion) int {
-		want := displayQuestionIdentity(live.Field.ID)
+	liveCategory := func(i int) string {
+		category, _ := liveWritingTriage(liveKept[i])
+		return category
+	}
+	// findCounterpart locates the first unused row with the same qualified
+	// identity. Strict mode additionally requires compatible field details;
+	// relaxed mode is display-only for pairs that are both outside the
+	// applicant-written tasks and share the same wording.
+	findEarly := func(liveIdx int, strict bool) int {
+		want := displayQuestionIdentity(liveKept[liveIdx].Field.ID)
 		if want == "" {
 			return -1
 		}
-		for i, early := range earlyKept {
-			if earlyUsed[i] || displayQuestionIdentity(early.SourceQuestionID) != want {
+		for j, early := range earlyKept {
+			if earlyUsed[j] || displayQuestionIdentity(early.SourceQuestionID) != want {
 				continue
 			}
-			if !displayQuestionsCompatible(live.Field, early.Field, early.DiscoverySource) {
+			if strict {
+				if !displayQuestionsCompatible(liveKept[liveIdx].Field, early.Field, early.DiscoverySource) {
+					continue
+				}
+			} else if liveCategory(liveIdx) == "answer" || early.TriageCategory == "answer" {
+				continue
+			} else if reconciliationLabel(liveKept[liveIdx].Field.Label) != reconciliationLabel(early.Field.Label) {
 				continue
 			}
-			return i
+			return j
 		}
 		return -1
 	}
-	matchLive := func(early earlyApplicationQuestion) int {
-		want := displayQuestionIdentity(early.SourceQuestionID)
+	findLive := func(earlyIdx int, strict bool) int {
+		want := displayQuestionIdentity(earlyKept[earlyIdx].SourceQuestionID)
 		if want == "" {
 			return -1
 		}
@@ -292,10 +311,38 @@ func unifyQuestionInventories(liveRows []preparedQuestion, earlyRows []earlyAppl
 			if liveUsed[i] || displayQuestionIdentity(live.Field.ID) != want {
 				continue
 			}
-			if !displayQuestionsCompatible(live.Field, early.Field, early.DiscoverySource) {
+			if strict {
+				if !displayQuestionsCompatible(live.Field, earlyKept[earlyIdx].Field, earlyKept[earlyIdx].DiscoverySource) {
+					continue
+				}
+			} else if liveCategory(i) == "answer" || earlyKept[earlyIdx].TriageCategory == "answer" {
+				continue
+			} else if reconciliationLabel(live.Field.Label) != reconciliationLabel(earlyKept[earlyIdx].Field.Label) {
 				continue
 			}
 			return i
+		}
+		return -1
+	}
+	matchEarly := func(live preparedQuestion) int {
+		for i := range liveKept {
+			if liveKept[i].Key == live.Key {
+				if j := findEarly(i, true); j >= 0 {
+					return j
+				}
+				return findEarly(i, false)
+			}
+		}
+		return -1
+	}
+	matchLive := func(early earlyApplicationQuestion) int {
+		for j := range earlyKept {
+			if earlyKept[j].Key == early.Key {
+				if i := findLive(j, true); i >= 0 {
+					return i
+				}
+				return findLive(j, false)
+			}
 		}
 		return -1
 	}
@@ -352,7 +399,10 @@ func unifyQuestionInventories(liveRows []preparedQuestion, earlyRows []earlyAppl
 			}
 		}
 	}
-	return out, unidentified
+	if preferLive {
+		return out, liveUnidentified
+	}
+	return out, earlyUnidentified
 }
 
 func toWritingEarlyQuestion(q earlyApplicationQuestion) writingQuestionJSON {

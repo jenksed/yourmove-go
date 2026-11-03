@@ -487,7 +487,8 @@ func TestWritingQuestionsUnifiedProjection(t *testing.T) {
 		"story": "e523cd20-b243-4230-9a13-50ac028dd5a0", "hear": "f73c44bf-c40a-45b2-973a-858bc7c851ed",
 		"pronouns": "a93c8020-5d35-4732-98bc-3e6fd7535612", "race": "b1111111-1111-4111-8111-111111111111",
 		"vet": "c2222222-2222-4222-8222-222222222222", "infoA": "d3333333-3333-4333-8333-333333333333",
-		"infoB": "e4444444-4444-4444-8444-444444444444",
+		"infoB": "e4444444-4444-4444-8444-444444444444", "extra": "f5555555-5555-4555-8555-555555555555",
+		"workauth": "b6666666-4666-4666-8666-666666666666",
 	}
 	previewID := func(suffix string) string { return "preview:" + nsA + suffix }
 	liveID := func(suffix string) string { return "browser:" + nsB + suffix }
@@ -503,11 +504,13 @@ func TestWritingQuestionsUnifiedProjection(t *testing.T) {
 		{ID: previewID("_"+quid["hear"]), Label: "How did you hear about Render?", Kind: "combobox"},
 		{ID: previewID("_"+quid["pronouns"]), Label: "Pronouns", Kind: "text"},
 		{ID: previewID("_"+quid["race"]), Label: "Race", Kind: "radio", Sensitive: true, Options: []string{"Asian", "Decline to self-identify"}},
+		{ID: previewID("_"+quid["workauth"]), Label: "Work authorization status", Kind: "text"},
 		{ID: previewID("_"+quid["vet"]), Label: "Veteran Status", Kind: "radio", Sensitive: true, Options: []string{"I am not a protected veteran", "I decline to self-identify"}},
 		{ID: previewID("__systemfield_resume"), Label: "Resume", Kind: "file", Required: true},
 		{ID: previewID("_aab326cd-f9c6-4608-9262-4a98b773a08e"), Label: "Cover Letter", Kind: "file"},
 		{ID: "preview:unidentified-controls", Label: "Controls without a stable field identity", Kind: "unsupported_ambiguous"},
 		{ID: previewID("_"+quid["infoA"]), Label: "Other information", Kind: "text"},
+		{ID: previewID("_"+quid["extra"]), Label: "Extra note", Kind: "text"},
 	}
 	if _, err := a.saveInspection(1, schema.Result{Platform: "ashby", Source: "preview", Completeness: "rendered_preview_partial", ApplicationURL: testAshbyPosting + "/application", Fields: previewFields}); err != nil {
 		t.Fatal(err)
@@ -535,12 +538,14 @@ func TestWritingQuestionsUnifiedProjection(t *testing.T) {
 		{ID: liveID("_"+quid["hear"]), Label: "How did you hear about Render?", Kind: "combobox"},
 		{ID: liveID("_"+quid["pronouns"]), Label: "Pronouns", Kind: "radio", Options: []string{"She/her", "They/them", "He/him", "Decline to state"}},
 		{ID: liveID("_"+quid["race"]), Label: "Race", Kind: "radio", Sensitive: true, Options: []string{"Asian", "Decline to self-identify"}},
+		{ID: liveID("_"+quid["workauth"]), Label: "Work authorization status", Kind: "radio", Options: []string{"Yes", "No"}},
 		{ID: liveID("_"+quid["vet"]), Label: "Veteran Status", Kind: "radio", Sensitive: true, Options: []string{"I am not a protected veteran", "I decline to self-identify"}},
 		{ID: liveID("__systemfield_resume"), Label: "Resume", Kind: "file", Required: true},
 		{ID: liveID("_aab326cd-f9c6-4608-9262-4a98b773a08e"), Label: "Cover Letter", Kind: "file"},
 		{ID: "browser:unidentified-controls", Label: "Controls without a stable field identity", Kind: "unsupported_ambiguous"},
 		{ID: liveID("_"+quid["infoA"]), Label: "Other information", Kind: "text"},
 		{ID: liveID("_"+quid["infoB"]), Label: "Other information", Kind: "text"},
+		{ID: liveID("_"+quid["extra"]), Label: "Extra note", Kind: "textarea"},
 	}
 	liveRowID, err := a.saveInspection(1, schema.Result{Platform: "ashby", Source: "browser", Completeness: "rendered_partial", ApplicationURL: testAshbyPosting + "/application", Fields: liveFields})
 	if err != nil {
@@ -573,7 +578,7 @@ func TestWritingQuestionsUnifiedProjection(t *testing.T) {
 	// early editor identity; profile, employer, and manual rows are categorized.
 	payload := writingQuestions(t, a, 1)
 	byLabel := unifiedByLabel(payload)
-	for label, want := range map[string]int{"Website": 1, storyLabel: 1, "How did you hear about Render?": 1, "Name": 1, "Email": 1, "Phone": 1, "Location": 1, "LinkedIn": 1, "Pronouns": 2, "Race": 1, "Veteran Status": 1, "Other information": 2} {
+	for label, want := range map[string]int{"Website": 1, storyLabel: 1, "How did you hear about Render?": 1, "Name": 1, "Email": 1, "Phone": 1, "Location": 1, "LinkedIn": 1, "Pronouns": 1, "Race": 1, "Work authorization status": 1, "Veteran Status": 1, "Other information": 2, "Extra note": 2} {
 		if len(byLabel[label]) != want {
 			t.Fatalf("phase 1 %q rows=%d, want %d", label, len(byLabel[label]), want)
 		}
@@ -583,8 +588,8 @@ func TestWritingQuestionsUnifiedProjection(t *testing.T) {
 			t.Fatalf("phase 1 %q should not be a question row: %v", absent, byLabel[absent])
 		}
 	}
-	if got, _ := payload["unidentifiedCount"].(float64); got != 2 {
-		t.Fatalf("phase 1 unidentifiedCount=%v, want 2", payload["unidentifiedCount"])
+	if got, _ := payload["unidentifiedCount"].(float64); got != 1 {
+		t.Fatalf("phase 1 unidentifiedCount=%v, want 1", payload["unidentifiedCount"])
 	}
 	for _, row := range byLabel["Website"] {
 		if row["isEarly"] != true || row["value"] != drafts[previewID("_"+quid["web"])] || row["triageCategory"] != "answer" {
@@ -607,8 +612,18 @@ func TestWritingQuestionsUnifiedProjection(t *testing.T) {
 		}
 	}
 	for _, row := range byLabel["Pronouns"] {
-		if row["triageCategory"] != "profile" && row["triageCategory"] != "employer" {
-			t.Fatalf("phase 1 Pronouns mislabeled as a writing task: %v", row)
+		if row["isEarly"] != true || row["triageCategory"] != "profile" {
+			t.Fatalf("phase 1 Pronouns should be the single early profile row: %v", row)
+		}
+	}
+	for _, row := range byLabel["Work authorization status"] {
+		if row["isEarly"] != true || row["triageCategory"] != "employer" || row["kind"] != "text" {
+			t.Fatalf("phase 1 employer-side wording change should show the early row once: %v", row)
+		}
+	}
+	for _, row := range byLabel["Extra note"] {
+		if row["triageCategory"] != "answer" {
+			t.Fatalf("phase 1 kind-drifted applicant question merged or mislabeled: %v", row)
 		}
 	}
 	for _, label := range []string{"Race", "Veteran Status"} {
@@ -618,7 +633,7 @@ func TestWritingQuestionsUnifiedProjection(t *testing.T) {
 	}
 	for _, label := range answerLabels(byLabel) {
 		switch label {
-		case "Website", storyLabel, "Other information":
+		case "Website", storyLabel, "Other information", "Extra note":
 		default:
 			t.Fatalf("phase 1 unexpected writing task %q", label)
 		}
@@ -628,18 +643,36 @@ func TestWritingQuestionsUnifiedProjection(t *testing.T) {
 	}
 
 	// Phase 2: the managed browser is open at the live observation. The same
-	// unified rows appear; saved drafts keep their early identity.
+	// unified rows appear; saved drafts keep their early identity. Active is
+	// derived from a live session, so attach the test fake session.
 	a.browsers.mu.Lock()
 	if a.browsers.states == nil {
 		a.browsers.states = map[int64]browserRunState{}
 	}
-	a.browsers.states[1] = browserRunState{Active: true, Destination: testAshbyPosting, LatestID: liveRowID}
+	a.browsers.states[1] = browserRunState{Destination: testAshbyPosting, LatestID: liveRowID}
+	if a.browsers.sessions == nil {
+		a.browsers.sessions = map[int64]readOnlySession{}
+	}
+	a.browsers.sessions[1] = &fakeBrowser{url: testAshbyPosting + "/application"}
 	a.browsers.mu.Unlock()
 	payload = writingQuestions(t, a, 1)
 	byLabel = unifiedByLabel(payload)
-	for label, want := range map[string]int{"Website": 1, storyLabel: 1, "How did you hear about Render?": 1, "Other information": 2} {
+	for label, want := range map[string]int{"Website": 1, storyLabel: 1, "How did you hear about Render?": 1, "Pronouns": 1, "Work authorization status": 1, "Other information": 2, "Extra note": 2} {
 		if len(byLabel[label]) != want {
 			t.Fatalf("phase 2 %q rows=%d, want %d", label, len(byLabel[label]), want)
+		}
+	}
+	if got, _ := payload["unidentifiedCount"].(float64); got != 1 {
+		t.Fatalf("phase 2 unidentifiedCount=%v, want 1", payload["unidentifiedCount"])
+	}
+	for _, row := range byLabel["Pronouns"] {
+		if row["isEarly"] != false || row["triageCategory"] != "profile" {
+			t.Fatalf("phase 2 Pronouns should be the live profile row once: %v", row)
+		}
+	}
+	for _, row := range byLabel["Work authorization status"] {
+		if row["isEarly"] != false || row["triageCategory"] != "employer" || row["kind"] != "radio" {
+			t.Fatalf("phase 2 employer-side wording change should show the live row once: %v", row)
 		}
 	}
 	for _, row := range byLabel["Website"] {
@@ -657,7 +690,15 @@ func TestWritingQuestionsUnifiedProjection(t *testing.T) {
 	}
 
 	// Phase 3: a live answer saved for a merged pair wins the single row.
-	liveKeyA := questionKey(testAshbyPosting, "ashby", liveFields[14])
+	liveKeyA := ""
+	for _, field := range liveFields {
+		if field.Label == "Other information" && strings.HasSuffix(field.ID, quid["infoA"]) {
+			liveKeyA = questionKey(testAshbyPosting, "ashby", field)
+		}
+	}
+	if liveKeyA == "" {
+		t.Fatal("live infoA field missing")
+	}
 	if rec := postWritingJSON(t, a, http.MethodPost, "/api/jobs/1/answers",
 		`{"question_key":"`+liveKeyA+`","revision":0,"destination":"`+testAshbyPosting+`","answer":"Live-side note"}`); rec.Code != http.StatusOK {
 		t.Fatalf("live save status=%d body=%s", rec.Code, rec.Body.String())

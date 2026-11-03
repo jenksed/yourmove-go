@@ -55,6 +55,7 @@ func TestReactQuestionsUnifiedList(t *testing.T) {
 		{ID: preview("_f73c44bf-c40a-45b2-973a-858bc7c851ed"), Label: "How did you hear about Render?", Kind: "combobox"},
 		{ID: preview("_a93c8020-5d35-4732-98bc-3e6fd7535612"), Label: "Pronouns", Kind: "text"},
 		{ID: preview("_b1111111-1111-4111-8111-111111111111"), Label: "Race", Kind: "radio", Sensitive: true, Options: []string{"Asian", "Decline to self-identify"}},
+		{ID: preview("_b6666666-4666-4666-8666-666666666666"), Label: "Work authorization status", Kind: "text"},
 		{ID: preview("_c2222222-2222-4222-8222-222222222222"), Label: "Veteran Status", Kind: "radio", Sensitive: true, Options: []string{"I am not a protected veteran", "I decline to self-identify"}},
 		{ID: preview("__systemfield_resume"), Label: "Resume", Kind: "file", Required: true},
 		{ID: preview("_aab326cd-f9c6-4608-9262-4a98b773a08e"), Label: "Cover Letter", Kind: "file"},
@@ -170,17 +171,27 @@ func TestReactQuestionsUnifiedList(t *testing.T) {
 	if err := eval(`document.querySelector('.writing-previous')?.innerText || ''`, &guidance); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Handled by your approved Candidate Profile", "Name", "Complete on the employer site", "Race", "Needs manual completion", "How did you hear about Render?"} {
+	for _, want := range []string{"Candidate Profile fields are handled automatically when authorized.", "Complete on the employer site", "Race", "Needs manual completion", "How did you hear about Render?", "Work authorization status"} {
 		if !strings.Contains(guidance, want) {
 			t.Fatalf("phase 1 guidance missing %q: %s", want, guidance)
+		}
+	}
+	for _, absent := range []string{"LinkedIn", "Location"} {
+		if strings.Contains(guidance, absent) {
+			t.Fatalf("phase 1 profile field listed instead of summarized: %q in %s", absent, guidance)
+		}
+	}
+	for text, want := range map[string]int{"Work authorization status": 1, "How did you hear about Render?": 1, "Pronouns": 0} {
+		if got := strings.Count(guidance, text); got != want {
+			t.Fatalf("phase 1 guidance %q count=%d, want %d: %s", text, got, want, guidance)
 		}
 	}
 	var notices string
 	if err := eval(`Array.from(document.querySelectorAll('.writing-notice')).map(x=>x.innerText).join('\n')`, &notices); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(notices, "could not be stably identified") {
-		t.Fatalf("phase 1 unidentified notice missing: %s", notices)
+	if !strings.Contains(notices, "One employer control could not be stably identified; inspect it directly in the employer browser.") {
+		t.Fatalf("phase 1 unidentified notice wrong: %s", notices)
 	}
 
 	// Opening the managed browser must not duplicate the list, and saved
@@ -197,6 +208,7 @@ func TestReactQuestionsUnifiedList(t *testing.T) {
 		{ID: live("_f73c44bf-c40a-45b2-973a-858bc7c851ed"), Label: "How did you hear about Render?", Kind: "combobox"},
 		{ID: live("_a93c8020-5d35-4732-98bc-3e6fd7535612"), Label: "Pronouns", Kind: "radio", Options: []string{"She/her", "They/them", "He/him", "Decline to state"}},
 		{ID: live("_b1111111-1111-4111-8111-111111111111"), Label: "Race", Kind: "radio", Sensitive: true, Options: []string{"Asian", "Decline to self-identify"}},
+		{ID: live("_b6666666-4666-4666-8666-666666666666"), Label: "Work authorization status", Kind: "radio", Options: []string{"Yes", "No"}},
 		{ID: live("_c2222222-2222-4222-8222-222222222222"), Label: "Veteran Status", Kind: "radio", Sensitive: true, Options: []string{"I am not a protected veteran", "I decline to self-identify"}},
 		{ID: "browser:unidentified-controls", Label: "Controls without a stable field identity", Kind: "unsupported_ambiguous"},
 		{ID: live("_d3333333-3333-4333-8333-333333333333"), Label: "Other information", Kind: "text"},
@@ -210,7 +222,11 @@ func TestReactQuestionsUnifiedList(t *testing.T) {
 	if a.browsers.states == nil {
 		a.browsers.states = map[int64]browserRunState{}
 	}
-	a.browsers.states[1] = browserRunState{Active: true, Destination: testAshbyPosting, LatestID: liveRowID}
+	a.browsers.states[1] = browserRunState{Destination: testAshbyPosting, LatestID: liveRowID}
+	if a.browsers.sessions == nil {
+		a.browsers.sessions = map[int64]readOnlySession{}
+	}
+	a.browsers.sessions[1] = &fakeBrowser{url: testAshbyPosting + "/application"}
 	a.browsers.mu.Unlock()
 	click("Refresh questions")
 	wait(`Array.from(document.querySelectorAll('.writing-question strong')).filter(x=>x.textContent==='Other information').length===2`)
@@ -219,6 +235,30 @@ func TestReactQuestionsUnifiedList(t *testing.T) {
 		if count(got, label) != want {
 			t.Fatalf("phase 2 tasks %q: %v", label, got)
 		}
+	}
+	if err := eval(`document.querySelector('.writing-previous')?.innerText || ''`, &guidance); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Candidate Profile fields are handled automatically when authorized.", "Work authorization status", "How did you hear about Render?"} {
+		if !strings.Contains(guidance, want) {
+			t.Fatalf("phase 2 guidance missing %q: %s", want, guidance)
+		}
+	}
+	for _, absent := range []string{"LinkedIn", "Location"} {
+		if strings.Contains(guidance, absent) {
+			t.Fatalf("phase 2 profile field listed instead of summarized: %q in %s", absent, guidance)
+		}
+	}
+	for text, want := range map[string]int{"Work authorization status": 1, "How did you hear about Render?": 1, "Pronouns": 0} {
+		if got := strings.Count(guidance, text); got != want {
+			t.Fatalf("phase 2 guidance %q count=%d, want %d: %s", text, got, want, guidance)
+		}
+	}
+	if err := eval(`Array.from(document.querySelectorAll('.writing-notice')).map(x=>x.innerText).join('\n')`, &notices); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(notices, "One employer control could not be stably identified; inspect it directly in the employer browser.") {
+		t.Fatalf("phase 2 unidentified notice wrong: %s", notices)
 	}
 	run(`Array.from(document.querySelectorAll('.writing-question')).find(x=>x.textContent.includes('Website')).click()`)
 	wait(`document.querySelector('#writing-answer')?.value === 'https://example.test/portfolio'`)
@@ -229,5 +269,5 @@ func TestReactQuestionsUnifiedList(t *testing.T) {
 	if !strings.Contains(editor, "Published definition (preview)") {
 		t.Fatalf("saved draft lost its early editor identity: %s", editor)
 	}
-	t.Log("Unified React list: one row per distinct question; drafts prepared with early identity; profile, employer, manual, and unidentified rows truthfully separated.")
+	t.Log("Unified React list: one task row per distinct question; drafts prepared with early identity; profile fields summarized; employer and manual guidance shown once from the current observation; unidentified controls condensed into one notice.")
 }
