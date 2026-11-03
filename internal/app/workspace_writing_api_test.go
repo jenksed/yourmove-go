@@ -413,6 +413,65 @@ func jsonString(s string) string {
 	return string(b)
 }
 
+func TestWritingQuestionsIncludeManualCompletionFields(t *testing.T) {
+	a, _ := testWorkspace(t)
+	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com", Title: "Render posting"}); err != nil {
+		t.Fatal(err)
+	}
+	// Mirrors the observed Render preview: Website is a supported text field
+	// while "How did you hear about Render?" arrives as an option-less Ashby
+	// combobox that must stay manual-only but still be represented.
+	previewFields := []schema.Field{
+		{ID: "preview:form-namespace-1111-website", Label: "Website", Kind: "text"},
+		{ID: "preview:form-namespace-2222-hear", Label: "How did you hear about Render?", Kind: "combobox"},
+	}
+	if _, err := a.saveInspection(1, schema.Result{Platform: "ashby", Source: "preview", Completeness: "rendered_preview_partial", ApplicationURL: testAshbyPosting + "/application", Fields: previewFields}); err != nil {
+		t.Fatal(err)
+	}
+	liveFields := []schema.Field{
+		{ID: "browser:form-namespace-1111-website", Label: "Website", Kind: "text"},
+		{ID: "browser:form-namespace-2222-hear", Label: "How did you hear about Render?", Kind: "combobox"},
+	}
+	if _, err := a.saveInspection(1, schema.Result{Platform: "ashby", Source: "browser", Completeness: "rendered_partial", ApplicationURL: testAshbyPosting + "/application", Fields: liveFields}); err != nil {
+		t.Fatal(err)
+	}
+	payload := writingQuestions(t, a, 1)
+	early, _ := payload["early"].([]any)
+	if len(early) != 2 {
+		t.Fatalf("early inventory hid a discovered question: %v", payload["early"])
+	}
+	var sawEditable, sawManual bool
+	for _, item := range early {
+		q := item.(map[string]any)
+		switch q["label"] {
+		case "Website":
+			if q["editable"] != true {
+				t.Fatalf("Website should stay editable: %v", q)
+			}
+			sawEditable = true
+		case "How did you hear about Render?":
+			if q["editable"] != false || q["triageCategory"] != "review" || q["manualReason"] == "" {
+				t.Fatalf("combobox source question misrepresented: %v", q)
+			}
+			sawManual = true
+		}
+	}
+	if !sawEditable || !sawManual {
+		t.Fatalf("early inventory incomplete: editable=%v manual=%v", sawEditable, sawManual)
+	}
+	live, _ := payload["live"].([]any)
+	if len(live) != 2 {
+		t.Fatalf("live inventory hid a discovered question: %v", payload["live"])
+	}
+	counts, _ := payload["manualReviewCount"].(float64)
+	if counts != 1 {
+		t.Fatalf("manual review count=%v, want 1", payload["manualReviewCount"])
+	}
+	if got := reviewCount(t, a); got != 0 {
+		t.Fatalf("questions read created %d submission reviews", got)
+	}
+}
+
 func TestManualLetterCreationAndValidation(t *testing.T) {
 	a, _ := testWorkspace(t)
 	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com", Title: "Manual letter"}); err != nil {

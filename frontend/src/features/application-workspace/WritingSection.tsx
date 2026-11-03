@@ -10,6 +10,7 @@ import {
   aiGenerate,
   aiReview,
   fetchAssistance,
+  fetchBrief,
   fetchQuestions,
   saveAnswer,
   type AssistanceSnapshot,
@@ -117,6 +118,11 @@ export function WritingSection({
   const [ticket, setTicket] = useState<AiTicket | null>(null);
   const [aiBusy, setAiBusy] = useState<boolean>(false);
   const [aiError, setAiError] = useState<string>("");
+  const [briefScope, setBriefScope] = useState<string>("unanswered");
+  const [briefBusy, setBriefBusy] = useState<boolean>(false);
+  const [briefError, setBriefError] = useState<string>("");
+  const [briefNotice, setBriefNotice] = useState<string>("");
+  const [briefFallback, setBriefFallback] = useState<string>("");
 
   const reload = useCallback(async () => {
     const request = ++requestRef.current;
@@ -333,6 +339,34 @@ export function WritingSection({
     setTicket(null);
   }, [ticket, jobId]);
 
+  const handleCopyBrief = useCallback(async () => {
+    setBriefError("");
+    setBriefNotice("");
+    setBriefFallback("");
+    setBriefBusy(true);
+    try {
+      // Reuses the Go-owned plain-text formatter; saved answers, credentials,
+      // and private applicant data never enter the brief.
+      const text = await fetchBrief(jobId, briefScope);
+      if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
+        setBriefFallback(text);
+        setBriefNotice("Clipboard access is unavailable here. Copy the text below manually.");
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(text);
+        setBriefNotice("Copied. Paste it into any text editor.");
+      } catch {
+        setBriefFallback(text);
+        setBriefNotice("Clipboard access was denied. Copy the text below manually.");
+      }
+    } catch (error) {
+      setBriefError(error instanceof Error ? error.message : "Unable to copy the application brief");
+    } finally {
+      setBriefBusy(false);
+    }
+  }, [jobId, briefScope]);
+
   const handleUseSuggestion = useCallback(async () => {
     if (!ticket?.answer || !selected) return;
     setAiError("");
@@ -391,6 +425,47 @@ export function WritingSection({
       </div>
 
       {dirty && <p className="small-muted">Save your answer before refreshing the question list.</p>}
+
+      <div className="workspace-source-actions" aria-label="Application brief">
+        <div>
+          <strong>Application brief</strong>
+          <p className="small-muted">
+            Saved job details, the full job description, and available actionable questions as plain text.
+            Saved answers are never included.
+            {snapshot.available
+              ? ` Source: ${snapshot.source}${snapshot.partial ? " (partial inspection; later questions may be missing)" : ""}.`
+              : " Questions have not been discovered yet; the brief still includes the saved job details."}
+          </p>
+        </div>
+        <div className="field">
+          <label htmlFor="brief-scope">Questions to include</label>
+          <select id="brief-scope" value={briefScope} onChange={(event) => setBriefScope(event.target.value)}>
+            <option value="unanswered">Unanswered actionable questions only</option>
+            <option value="all">All actionable questions · wording only</option>
+          </select>
+        </div>
+        <div>
+          <button className="button button-secondary" type="button" disabled={briefBusy} onClick={() => void handleCopyBrief()}>
+            {briefBusy ? "Copying…" : "Copy application brief"}
+          </button>
+        </div>
+        {briefError !== "" && (
+          <p className="job-form-error" role="alert">
+            {briefError}
+          </p>
+        )}
+        {briefNotice !== "" && (
+          <p className="form-notice" role="status">
+            {briefNotice}
+          </p>
+        )}
+        {briefFallback !== "" && (
+          <div className="field field-full">
+            <label htmlFor="brief-fallback">Application brief (select and copy manually)</label>
+            <textarea id="brief-fallback" rows={12} readOnly value={briefFallback} onFocus={(event) => event.target.select()} />
+          </div>
+        )}
+      </div>
 
       {discoveryStatus === "checking" && <p role="status">Checking for application questions…</p>}
       {discoveryStatus === "unsupported" && <p className="writing-notice">This employer does not offer an early question preview. You can continue to Apply; additional questions may appear on the employer form.</p>}

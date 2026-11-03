@@ -129,6 +129,7 @@ func toWritingEvidenceSuggestions(in []careerEvidenceSuggestion) []writingEviden
 }
 
 func toWritingQuestion(q preparedQuestion) writingQuestionJSON {
+	category, manualReason := liveWritingTriage(q)
 	return writingQuestionJSON{
 		Key: q.Key, Label: q.Field.Label, Kind: q.Field.Kind, Required: q.Field.Required,
 		Options:            safePublishedOptions(q.Field.Kind, q.Field.Options),
@@ -143,10 +144,30 @@ func toWritingQuestion(q preparedQuestion) writingQuestionJSON {
 		DiscoverySource:    q.DiscoverySource,
 		DiscoveryPrint:     q.DiscoveryFingerprint,
 		SourceQuestionID:   q.SourceQuestionID,
+		TriageCategory:     category,
+		ManualReason:       manualReason,
 		ReusableKey:        q.ReusableKey,
 		ReusableRevision:   q.ReusableRevision,
 		LibrarySuggestions: toWritingLibrarySuggestions(q.LibrarySuggestions),
 		EvidenceSuggestion: toWritingEvidenceSuggestions(q.CareerEvidenceSuggestions),
+	}
+}
+
+// liveWritingTriage mirrors questionPreparation.partitionQuestions so the React
+// inventory names the same category the legacy workbench uses. It only labels
+// presentation; save and transfer authority stay with Editable and the
+// server-owned validators.
+func liveWritingTriage(q preparedQuestion) (string, string) {
+	readyProfile := q.Editable && q.Value != "" && q.Source == "Approved candidate information"
+	switch {
+	case readyProfile:
+		return "profile", ""
+	case employerOnlyQuestion(q.Field):
+		return "employer", "This question is excluded from saved-answer transfer by existing privacy or legal policy. Complete it in the employer application."
+	case !q.Editable:
+		return "review", "This published control is unsupported for saved-answer transfer. Complete it manually in the employer application."
+	default:
+		return "answer", ""
 	}
 }
 
@@ -212,23 +233,34 @@ func (a *App) buildWritingQuestions(jobID int64) (map[string]any, error) {
 		activeContext = "live"
 	}
 
-	liveQuestions := live.ActionableQuestions()
-	if len(liveQuestions) > 0 {
-		library, err := a.answerLibrarySuggestionsForQuestions(liveQuestions)
+	liveActionable := live.ActionableQuestions()
+	if len(liveActionable) > 0 {
+		library, err := a.answerLibrarySuggestionsForQuestions(liveActionable)
 		if err != nil {
 			return nil, err
 		}
-		evidence, err := a.careerEvidenceSuggestionsForQuestions(liveQuestions)
+		evidence, err := a.careerEvidenceSuggestionsForQuestions(liveActionable)
 		if err != nil {
 			return nil, err
 		}
-		for i := range liveQuestions {
-			liveQuestions[i].LibrarySuggestions = library[liveQuestions[i].Key]
-			liveQuestions[i].CareerEvidenceSuggestions = evidence[liveQuestions[i].Key]
+		for i := range liveActionable {
+			liveActionable[i].LibrarySuggestions = library[liveActionable[i].Key]
+			liveActionable[i].CareerEvidenceSuggestions = evidence[liveActionable[i].Key]
 		}
 	}
-	liveJSON := make([]writingQuestionJSON, 0, len(liveQuestions))
-	for _, q := range liveQuestions {
+	// The inventory is the full discovered set: classification determines
+	// available actions, never hides observed questions. Suggestion lookups
+	// above stay keyed on the actionable subset.
+	liveByKey := make(map[string]preparedQuestion, len(liveActionable))
+	for _, q := range liveActionable {
+		liveByKey[q.Key] = q
+	}
+	liveJSON := make([]writingQuestionJSON, 0, len(live.WorkbenchQuestions()))
+	for _, q := range live.WorkbenchQuestions() {
+		if enriched, ok := liveByKey[q.Key]; ok {
+			q.LibrarySuggestions = enriched.LibrarySuggestions
+			q.CareerEvidenceSuggestions = enriched.CareerEvidenceSuggestions
+		}
 		liveJSON = append(liveJSON, toWritingQuestion(q))
 	}
 
@@ -256,8 +288,17 @@ func (a *App) buildWritingQuestions(jobID int64) (map[string]any, error) {
 			earlyActionable[i].CareerEvidence = evidence[earlyActionable[i].Key]
 		}
 	}
-	earlyJSON := make([]writingQuestionJSON, 0, len(earlyActionable))
+	// As with live questions, the early inventory is the full discovered set.
+	earlyByKey := make(map[string]earlyApplicationQuestion, len(earlyActionable))
 	for _, q := range earlyActionable {
+		earlyByKey[q.Key] = q
+	}
+	earlyJSON := make([]writingQuestionJSON, 0, len(early.WorkbenchQuestions()))
+	for _, q := range early.WorkbenchQuestions() {
+		if enriched, ok := earlyByKey[q.Key]; ok {
+			q.LibrarySuggestions = enriched.LibrarySuggestions
+			q.CareerEvidence = enriched.CareerEvidence
+		}
 		earlyJSON = append(earlyJSON, toWritingEarlyQuestion(q))
 	}
 

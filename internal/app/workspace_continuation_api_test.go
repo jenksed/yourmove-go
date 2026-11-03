@@ -536,6 +536,108 @@ func TestContinuationIncludesSavedEarlyAnswerCandidates(t *testing.T) {
 	}
 }
 
+// The live Render posting rotates Ashby's per-form UUID namespace between the
+// read-only preview and the managed browser load while the trailing question
+// identity stays stable. Saved preview answers must reconcile against the live
+// form from the original Fill scope, while the option-less source combobox
+// stays visible with a manual-only reason.
+func TestContinuationReconcilesEarlyAnswersAcrossAshbyNamespaceRotation(t *testing.T) {
+	a, _ := testWorkspace(t)
+	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com", Title: "Render posting", Description: "Build the modern cloud for developers.\nFull description end marker."}); err != nil {
+		t.Fatal(err)
+	}
+	job, err := a.jobByID(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previewNS := "dbe80884-3066-496f-8b75-f210a7d8c20b"
+	liveNS := "d1b4c2ae-c739-49c2-b261-83cbaefb6c1c"
+	websiteID, storyID, hearID := previewNS+"_b0f9c56d-5a87-4137-9a0a-f0241d0af505", previewNS+"_a523cd20-b243-4230-9a13-50ac028dd5a0", previewNS+"_873c44bf-c40a-45b2-973a-858bc7c851ed"
+	preview := schema.Result{Platform: "ashby", Source: "preview", Completeness: "rendered_preview_partial", ApplicationURL: testAshbyPosting + "/application", Fields: []schema.Field{
+		{ID: "preview:" + websiteID, Label: "Website", Kind: "text"},
+		{ID: "preview:" + storyID, Label: "Tell us about a developer product you genuinely enjoy using and why.", Kind: "text"},
+		{ID: "preview:" + hearID, Label: "How did you hear about Render?", Kind: "combobox"},
+	}}
+	if _, err := a.saveInspection(job.ID, preview); err != nil {
+		t.Fatal(err)
+	}
+	mux := newMux(a)
+	saved := map[string]string{
+		websiteID: "https://example.test/portfolio",
+		storyID:   "I enjoy using Render because deploys are boring in the best way.",
+	}
+	for id, value := range saved {
+		q := earlyQuestionByID(t, a, job, "preview:"+id, "")
+		if rec := postApp(mux, "/jobs/1/answers/early-save", earlySaveValues(job, q, "0", value), "", ""); rec.Code != 303 {
+			t.Fatalf("save %s: %d %s", id, rec.Code, rec.Body.String())
+		}
+	}
+	live := schema.Result{Platform: "ashby", Source: "browser", Completeness: "rendered_partial", ApplicationURL: testAshbyPosting + "/application", Fields: []schema.Field{
+		{ID: "browser:" + liveNS + "_b0f9c56d-5a87-4137-9a0a-f0241d0af505", Label: "Website", Kind: "text"},
+		{ID: "browser:" + liveNS + "_a523cd20-b243-4230-9a13-50ac028dd5a0", Label: "Tell us about a developer product you genuinely enjoy using and why.", Kind: "text"},
+		{ID: "browser:" + liveNS + "_873c44bf-c40a-45b2-973a-858bc7c851ed", Label: "How did you hear about Render?", Kind: "combobox"},
+	}}
+	if _, err := a.saveInspection(job.ID, live); err != nil {
+		t.Fatal(err)
+	}
+	preparation, err := a.prepareEarlyQuestions(job, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := make(map[string]earlyApplicationQuestion)
+	for _, q := range preparation.Questions {
+		byID[q.SourceQuestionID] = q
+	}
+	if len(preparation.Questions) != 3 {
+		t.Fatalf("preview inventory hid a discovered question: %+v", preparation.Questions)
+	}
+	for id, value := range saved {
+		q := byID["preview:"+id]
+		if q.Revision != 1 || q.Value != value || q.Reconciliation.Status != "Ready for explicit review" || !q.Reconciliation.CanAccept {
+			t.Fatalf("saved answer not reconcilable: %+v", q.Reconciliation)
+		}
+		if q.Reconciliation.LiveField.ID != "browser:"+liveNS+"_"+id[len(previewNS)+1:] {
+			t.Fatalf("live identity not preserved: %+v", q.Reconciliation.LiveField)
+		}
+	}
+	hear := byID["preview:"+hearID]
+	if hear.Editable || hear.TriageCategory != "review" || hear.ManualReason == "" {
+		t.Fatalf("source combobox misrepresented: %+v", hear)
+	}
+	payload, err := a.buildContinuation(job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pending := payload["pendingAnswers"].([]continuationAnswerJSON)
+	prep := payload["preparation"].(map[string]any)
+	if prep["includeAnswers"] != true || len(pending) != 2 {
+		t.Fatalf("saved answers missing from the original Fill scope: includeAnswers=%v pending=%+v", prep["includeAnswers"], pending)
+	}
+	for _, p := range pending {
+		if savedValue, ok := map[string]string{"Website": saved[websiteID], "Tell us about a developer product you genuinely enjoy using and why.": saved[storyID]}[p.Label]; !ok || savedValue != p.Value {
+			t.Fatalf("pending answer mismatch: %+v", p)
+		}
+	}
+	if a.browsers.state(job.ID).Active || a.browsers.answers[job.ID] != nil {
+		t.Fatal("read-only continuation opened a browser or armed transfer")
+	}
+	brief := briefRoute(a, "/jobs/1/brief?scope=all")
+	if brief.Code != 200 {
+		t.Fatalf("brief status=%d body=%s", brief.Code, brief.Body.String())
+	}
+	text := brief.Body.String()
+	for _, want := range []string{"Build the modern cloud for developers.", "Full description end marker.", "Website", "Tell us about a developer product you genuinely enjoy using and why.", "Inspection is partial"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("brief missing %q", want)
+		}
+	}
+	for _, excluded := range []string{saved[websiteID], saved[storyID]} {
+		if strings.Contains(text, excluded) {
+			t.Errorf("brief leaked a saved answer: %q", excluded)
+		}
+	}
+}
+
 func TestContinuationRejectsChangedEarlyAnswerBeforeBrowserLaunch(t *testing.T) {
 	a, _ := testWorkspace(t)
 	job, discovery := earlyGreenhouseFixture(t, a)

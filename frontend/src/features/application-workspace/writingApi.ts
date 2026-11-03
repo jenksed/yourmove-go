@@ -215,6 +215,15 @@ async function readError(response: Response): Promise<string> {
   return `Request failed (${response.status})`;
 }
 
+export async function fetchBrief(jobId: number, scope: string): Promise<string> {
+  const normalized = scope === "all" ? "all" : "unanswered";
+  const response = await fetch(`/jobs/${jobId}/brief?format=brief&scope=${encodeURIComponent(normalized)}`, {
+    headers: { Accept: "text/plain" },
+  });
+  if (!response.ok) throw new Error(await readError(response));
+  return await response.text();
+}
+
 export async function fetchQuestions(jobId: number): Promise<QuestionsSnapshot> {
   const response = await fetch(`/api/jobs/${jobId}/questions`, {
     headers: { Accept: "application/json" },
