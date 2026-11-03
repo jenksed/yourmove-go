@@ -152,7 +152,7 @@ export function OpportunitiesPage(): React.JSX.Element {
         if (result.duplicate) {
           setSingleNotice("Already in your workspace; existing details retained.");
         } else {
-          setSingleNotice("Saved. Review and refresh when ready.");
+          setSingleNotice("Saved to Opportunities. Open it below to review the role and prepare your application.");
           setSingleUrl("");
           setSingleTitle("");
         }
@@ -234,6 +234,7 @@ export function OpportunitiesPage(): React.JSX.Element {
           <div className="page-heading">
             <div>
               <h1>Opportunities</h1>
+              <p className="page-description">Find your next application, or save a posting to get started.</p>
             </div>
             <div className="heading-actions">
               <a className="button button-secondary" href="/resumes">
@@ -588,9 +589,9 @@ export function OpportunitiesPage(): React.JSX.Element {
                     })}
                     {visibleJobs.length === 0 && (
                       <div className="empty-state">
-                        <h3>No matching opportunities</h3>
-                        <p>Try a different search or stage.</p>
-                        <button
+                        <h3>{data.total === 0 ? "No opportunities saved yet" : "No matching opportunities"}</h3>
+                        <p>{data.total === 0 ? "Add a posting above to start your first application." : "Try a different search or stage."}</p>
+                        {data.total > 0 && <button
                           className="button button-secondary"
                           type="button"
                           onClick={() => {
@@ -600,7 +601,7 @@ export function OpportunitiesPage(): React.JSX.Element {
                           }}
                         >
                           Clear filters
-                        </button>
+                        </button>}
                       </div>
                     )}
                   </div>

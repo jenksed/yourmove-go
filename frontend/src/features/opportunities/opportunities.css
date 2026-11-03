@@ -91,7 +91,7 @@ a.progress-metric:hover span {text-decoration:underline;color:var(--color-primar
 .progress-metric strong,.progress-remaining strong {font-size:20px;letter-spacing:0}
 .queue-details {margin-top:8px;font-size:12px;max-width:560px}
 .queue-details summary {color:var(--color-muted)}
-.dashboard-next {padding:14px 16px;border:1px solid var(--color-border);border-left:3px solid var(--color-primary);border-radius:6px;display:block}
+.dashboard-next {padding:14px 16px;border:1px solid var(--color-border);border-radius:6px;display:block}
 .dashboard-next .eyebrow {margin-bottom:4px;letter-spacing:0;text-transform:none}
 .dashboard-next h2 {font-size:17px}
 .dashboard-next-company,.dashboard-next .small-muted {margin:3px 0 8px}

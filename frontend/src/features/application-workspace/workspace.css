@@ -16,7 +16,7 @@
 }
 
 .workspace-next {
-  border-inline-start: 3px solid var(--color-primary);
+  border: 1px solid var(--color-border);
 }
 
 .workspace-jump {
@@ -472,3 +472,24 @@
 }
 .workspace-next-button { margin: 1rem 0; }
 .workspace-page [hidden] { display: none !important; }
+
+/* Orientation stays with the active opportunity as work moves between activities. */
+.workspace-orientation {
+  display:flex; justify-content:space-between; align-items:center; gap:20px;
+  padding:16px 20px; border:1px solid var(--color-border);
+  border-radius:6px; background:var(--color-surface);
+}
+.workspace-orientation p, .workspace-step-end p { margin:4px 0 0; color:var(--color-muted); font-size:13px; line-height:1.5; }
+.workspace-orientation > span { flex-shrink:0; color:var(--color-muted); font-size:12px; font-weight:700; }
+.workspace-tabs { margin:16px 0 22px; gap:4px; }
+.workspace-tabs button { color:var(--color-muted); font:inherit; font-size:13px; padding:12px 14px; }
+.workspace-tabs button[aria-current="page"] { color:var(--color-text); }
+.workspace-tabs button:focus-visible { outline:2px solid var(--color-primary); outline-offset:-3px; }
+.workspace-step-end { display:flex; align-items:center; justify-content:space-between; gap:20px; padding:18px 20px; margin:18px 0 28px; border-top:1px solid var(--color-border); }
+@media (max-width: 860px) { .workspace-orientation, .workspace-step-end { align-items:flex-start; flex-direction:column; } }
+.workspace-unsaved, .workspace-empty-documents {
+  margin: 12px 0; padding: 12px 16px; border-left: 3px solid var(--color-attention);
+  background: var(--color-surface-muted); font-size: 13px; line-height: 1.5;
+}
+.workspace-empty-documents { margin: 0 24px 12px; }
+.workspace-unsaved button { border: 0; padding: 0; background: transparent; color: var(--color-primary); font: inherit; text-decoration: underline; cursor: pointer; }

@@ -19,13 +19,19 @@ if (!root) {
   throw new Error("Application root element missing");
 }
 
+// Career Discovery and Career Studio are parked for this version: their
+// components, styles, and Go handlers stay intact and covered by existing
+// tests, but no route selects them. Set careerDiscoveryEnabled to true to
+// restore both screens (and their AppNavigation entries) in a future version.
+const careerDiscoveryEnabled = false;
+
 // One bundle serves the migrated screens; Go routes (/jobs, /jobs/:id,
-// /resumes, /career, /career/studio) select the entry so full-page navigation
-// keeps working in Wails and the local browser. Unmigrated paths fall back to
+// /resumes) select the entry so full-page navigation keeps working in Wails and the local browser. Unmigrated paths fall back to
 // Opportunities. /jobs/:id serves the React workspace; ?legacy=1 (or
 // draft/cover/question state) forces the Go-rendered legacy job page, and the
-// workspace links there for writing, employer, and history work. The /career
-// match must not swallow the Go-rendered /career-evidence route.
+// workspace links there for writing, employer, and history work.
+// /career-evidence is Go-rendered and never matched here; parked /career
+// paths fall through to Opportunities while the flag above is false.
 const path = window.location.pathname;
 const search = window.location.search;
 const legacyJobPage =
@@ -38,9 +44,9 @@ function isJobWorkspace(p: string): boolean {
   return /^\/jobs\/\d+(?:\/)?$/.test(p);
 }
 const Page =
-  path === "/career/studio" || path.startsWith("/career/studio/")
+  careerDiscoveryEnabled && (path === "/career/studio" || path.startsWith("/career/studio/"))
     ? StudioPage
-    : path === "/career" || path.startsWith("/career/")
+    : careerDiscoveryEnabled && (path === "/career" || path.startsWith("/career/"))
       ? CareerPage
       : path.startsWith("/resumes")
         ? ResumesPage

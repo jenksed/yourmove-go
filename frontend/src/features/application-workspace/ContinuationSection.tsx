@@ -212,10 +212,10 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
     <section className="panel" aria-labelledby="continuation-title" id="employer">
       <div className="section-heading">
         <div>
-          <p className="eyebrow">EMPLOYER CONTINUATION</p>
-          <h2 id="continuation-title">Prepare your application</h2>
+          <p className="eyebrow">CONTINUE WITH THE EMPLOYER</p>
+          <h2 id="continuation-title">Review and open the application</h2>
           <p className="section-subtitle">
-            Your selected information will be filled in the employer application. Review it there and submit personally.
+            Open the employer application to review it. Where supported, you can choose information to fill; review the result and submit personally.
           </p>
         </div>
       </div>
@@ -386,7 +386,7 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
           disabled={busy || refreshing || !snapshot.resume?.valid || (!prep.includeResume && !contactsOnly && !(wantLetter && prep.includeLetter) && !(wantAnswers && prep.includeAnswers))}
           onClick={() => void runAuthorize()}
         >
-          {busy ? "Preparing…" : "Prepare & Fill Application"}
+          {busy ? "Preparing…" : "Fill selected information"}
         </button>
       </div>
       <p className="small-muted">

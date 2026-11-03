@@ -220,7 +220,7 @@ export function WorkspacePage(): React.JSX.Element {
       <a className="skip-link" href="#main-content">
         Skip to content
       </a>
-      <AppNavigation />
+      <AppNavigation active="opportunities" />
       <div className="app-main">
         <main id="main-content" className="page-container workspace-page">
           <nav className="breadcrumbs" aria-label="Breadcrumb">
@@ -253,7 +253,7 @@ export function WorkspacePage(): React.JSX.Element {
                 </div>
                 <div className="heading-actions">
                   <a className="button button-secondary" href="/jobs">
-                    Opportunities
+                    ← All opportunities
                   </a>
                   <a className="button button-secondary" href="/resumes">
                     Documents
@@ -261,10 +261,15 @@ export function WorkspacePage(): React.JSX.Element {
                 </div>
               </div>
 
+              <div className="workspace-orientation">
+                <div><strong>Your application, at your pace</strong><p>Review the role, prepare your materials, then continue on the employer site. You submit the application yourself.</p></div>
+                <span>{applied ? "Submission recorded" : snapshot.job.stageLabel}</span>
+              </div>
+              {detailsDirty && activity !== "job" && <p className="workspace-unsaved" role="status">Job edits are not saved. <button type="button" onClick={() => setActivity("job")}>Return to job details</button> to save them.</p>}
               <nav className="workspace-tabs" aria-label="Application activities">
                 {(["job", "documents", "questions", "apply", "applied"] as const).map((tab) => (
                   <button key={tab} type="button" aria-current={activity === tab ? "page" : undefined}
-                    onClick={() => setActivity(tab)}>{tab === "job" ? "Job" : tab === "documents" ? "Documents" : tab === "questions" ? "Questions" : tab === "apply" ? "Apply" : "Applied"}</button>
+                    onClick={() => setActivity(tab)}>{tab === "job" ? "1. Review job" : tab === "documents" ? "2. Documents" : tab === "questions" ? "3. Questions" : tab === "apply" ? "4. Apply" : "Submission history"}</button>
                 ))}
               </nav>
 
@@ -441,8 +446,7 @@ export function WorkspacePage(): React.JSX.Element {
                 </form>
               </details>
 
-              <button className="button button-primary workspace-next-button" type="button" onClick={() => setActivity("documents")}>Prepare application</button>
-              <button className="button button-secondary workspace-next-button" type="button" onClick={() => setActivity("apply")}>Open application</button>
+              <div className="workspace-step-end"><div><strong>Next: prepare your documents</strong><p>Choose a résumé and work on a cover letter before continuing.</p></div><button className="button button-primary" type="button" onClick={() => setActivity("documents")}>Continue to documents →</button></div>
               </div>
 
               <div hidden={activity !== "documents"}>
@@ -496,6 +500,7 @@ export function WorkspacePage(): React.JSX.Element {
                     {resumeNotice}
                   </p>
                 )}
+                {snapshot.resumeOptions.length === 0 && <p className="workspace-empty-documents">No selectable résumé yet. Add one in Documents, then return here to select it for this opportunity.</p>}
                 <ul className="resume-options workspace-options">
                   <li>
                     <label className="confirm-row">
@@ -555,13 +560,13 @@ export function WorkspacePage(): React.JSX.Element {
                   version: option.version, archived: option.archived,
                 }))}
               />}
-              <button className="button button-primary workspace-next-button" type="button" onClick={() => setActivity("questions")}>Continue to questions</button>
+              <div className="workspace-step-end"><div><strong>Next: application questions</strong><p>Prepare answers now, or complete them on the employer site.</p></div><button className="button button-primary" type="button" onClick={() => setActivity("questions")}>Continue to questions →</button></div>
               </div>
 
               <div hidden={activity !== "questions"}>
                 <p>Answer any available questions you choose; the rest can be completed on the employer site.</p>
                 {snapshot.job.id > 0 && <WritingSection jobId={snapshot.job.id} destination={snapshot.job.url} onMaterialSaved={materialSaved} readOnly={applied} active={activity === "questions"} discoveryStatus={discoveryStatus} onRetryDiscovery={retryDiscovery} />}
-                <button className="button button-primary workspace-next-button" type="button" onClick={() => setActivity("apply")}>Continue to application</button>
+                <div className="workspace-step-end"><div><strong>Next: continue with the employer</strong><p>Review what to share before opening or filling the application.</p></div><button className="button button-primary" type="button" onClick={() => setActivity("apply")}>Continue to application →</button></div>
               </div>
 
               <div hidden={activity !== "apply"}>

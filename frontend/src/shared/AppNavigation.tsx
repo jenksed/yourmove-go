@@ -66,17 +66,9 @@ export function AppNavigation({ active }: { active?: "opportunities" | "document
               </svg>
               Career Evidence
             </a>
-            <a className={active === "discovery" ? "nav-item is-active" : "nav-item"} aria-current={active === "discovery" ? "page" : undefined} href="/career">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M12 2v20M2 12h20" />
-                <circle cx="12" cy="12" r="9" />
-              </svg>
-              Career Discovery
-            </a>
-            <a className={active === "studio" ? "nav-item is-active" : "nav-item"} aria-current={active === "studio" ? "page" : undefined} href="/career/studio">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h8" /></svg>
-              Career Studio
-            </a>
+            {/* Career Discovery and Career Studio are parked for this
+                version: no menu entry. Their components and Go handlers
+                stay intact; see careerDiscoveryEnabled in main.tsx. */}
           </div>
           <div className="nav-group">
             <p className="nav-caption">Preferences and tools</p>
