@@ -487,8 +487,16 @@ func initJobsSchema(db *sql.DB) error {
 			(availability='unavailable' AND unavailable_reason IN ('absent','too_large','invalid','unsupported')
 			 AND source_json IS NULL AND source_content_sha256 IS NULL)
 		)
-	)`); err != nil {
+ 	)`); err != nil {
 		return fmt.Errorf("create job posting sources table: %w", err)
+	}
+	// Local operator preferences. Applicant records are never keyed off this
+	// table; unknown keys are preserved and a missing key means the default.
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS settings (
+		key TEXT PRIMARY KEY,
+		value TEXT NOT NULL DEFAULT ''
+	)`); err != nil {
+		return fmt.Errorf("create settings table: %w", err)
 	}
 	return nil
 }

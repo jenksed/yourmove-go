@@ -73,8 +73,11 @@ func engineInstalled(engine string) bool {
 			}
 		case EngineFirefox:
 			patterns = []string{
-				"firefox-*/firefox/Nightly.app/Contents/MacOS/firefox",
 				"firefox-*/firefox/firefox",
+				"firefox-*/firefox/Nightly.app/Contents/MacOS/firefox",
+				// Current Playwright layouts place the binary directly at
+				// firefox-<build>/firefox instead of nesting it one level deeper.
+				"firefox-*/firefox",
 			}
 		case EngineWebKit:
 			patterns = []string{"webkit-*/Playwright.app"}

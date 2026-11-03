@@ -50,6 +50,7 @@ func newMux(app *App) http.Handler {
 	mux.HandleFunc("POST /api/opportunities/delete", app.opportunitiesDeleteAPI)
 	mux.HandleFunc("POST /api/opportunities/{id}/open", app.opportunityOpenAPI)
 	mux.HandleFunc("GET /utilities", app.utilitiesPage)
+	mux.HandleFunc("POST /utilities/browser", app.saveApplicationBrowser)
 	mux.HandleFunc("GET /ai", app.aiConnectionsPage)
 	mux.HandleFunc("GET /candidate", app.candidatePage)
 	mux.HandleFunc("GET /requirements", app.requirementsPage)

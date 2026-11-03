@@ -85,11 +85,13 @@ func New(config Config) (*App, error) {
 	if err := indexUnindexedAnswerLibraryEntries(config.DB); err != nil {
 		return nil, fmt.Errorf("initialize Answer Library search index: %w", err)
 	}
-	return &App{
+	a := &App{
 		db: config.DB, resumeDir: config.ResumeDir, resources: resources,
 		pickResume: config.PickResume, chooseExportPath: config.ChooseExportPath,
 		openPosting: config.OpenPosting,
-	}, nil
+	}
+	a.browsers.engine = a.resolveApplicationBrowser
+	return a, nil
 }
 
 // Handler serves the localhost browser application.

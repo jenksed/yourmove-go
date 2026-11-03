@@ -88,6 +88,9 @@ type sessionHost struct {
 	sessions  map[int64]readOnlySession
 	starting  bool
 	factory   func(context.Context, string) (readOnlySession, error)
+	// engine resolves the employer-application browser. Nil keeps the
+	// historical environment-only default for direct sessionHost users.
+	engine    func() (string, error)
 	cancels   map[int64]context.CancelFunc
 	states    map[int64]browserRunState
 	handoffs  map[int64]*resumeHandoff
@@ -178,8 +181,19 @@ func (h *sessionHost) start(ctx context.Context, jobID int64, jobURL string) err
 	factory := h.factory
 	h.mu.Unlock()
 	if factory == nil {
+		resolve := h.engine
+		if resolve == nil {
+			resolve = defaultApplicationBrowserFromEnv
+		}
+		engine, resolveErr := resolve()
+		if resolveErr != nil {
+			h.mu.Lock()
+			h.starting = false
+			h.mu.Unlock()
+			return resolveErr
+		}
 		factory = func(c context.Context, u string) (readOnlySession, error) {
-			switch os.Getenv("YOURMOVE_APPLICATION_BROWSER") {
+			switch engine {
 			case "", "chromium":
 				return chromium.Launch(c, u)
 			case "firefox":

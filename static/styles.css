@@ -1295,4 +1295,5 @@ h1,.job-hero h1 {font-size:28px;line-height:1.2;margin-bottom:8px}
 .utility-browser { display:grid; grid-template-columns:minmax(0,1fr) minmax(200px,280px); gap:24px; align-items:start; margin-top:28px; padding:20px 22px; border:1px solid var(--color-border); border-radius:8px; background:var(--color-surface); }
 .utility-browser h2 { font-size:16px; margin:0 0 5px; }
 .utility-browser p,.utility-browser small { color:var(--color-muted); font-size:13px; line-height:1.55; margin:0; }
+.utility-notice { color:var(--color-attention); background:var(--color-attention-soft); padding:10px 12px; border-radius:7px; margin-top:10px; }
 @media(max-width:819px) { .utility-browser { grid-template-columns:1fr; gap:14px; } }

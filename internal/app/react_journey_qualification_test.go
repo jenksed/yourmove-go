@@ -154,7 +154,7 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	}
 	wait(`document.body.innerText.includes('Synthetic React journey')`)
 	discoveryStarted := time.Now()
-	click("Documents")
+	click("2. Documents")
 	wait(`!!document.querySelector('input[name=workspace-resume]:not(:checked)')`)
 	run(`Array.from(document.querySelectorAll('input[name=workspace-resume]')).find(x=>!x.checked).click()`)
 	wait(`document.body.innerText.includes('Selection saved')`)
@@ -169,7 +169,7 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	wait(`document.querySelector('#letter-draft')?.options.length===3`)
 	run(`(()=>{const e=document.querySelector('#letter-draft');e.value='1';e.dispatchEvent(new Event('change',{bubbles:true}))})()`)
 	wait(`document.querySelector('#letter-body')?.value.includes('synthetic support role')`)
-	click("Questions")
+	click("3. Questions")
 	wait(`Array.from(document.querySelectorAll('.writing-question')).some(x=>x.textContent.includes('Why this team?'))`)
 	t.Logf("Early Ashby question appeared without an applicant browser after %s", time.Since(discoveryStarted).Round(time.Millisecond))
 	if launches.Load() != 0 || previews.Load() != 1 {
@@ -180,14 +180,14 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	click("Save answer locally")
 	wait(`document.body.innerText.includes('Saved locally. It has not been filled')`)
 
-	click("Apply")
+	click("4. Apply")
 	wait(`document.body.innerText.includes('journey-resume.pdf')&&document.body.innerText.includes('Cover letter:')`)
 	if launches.Load() != 0 {
 		t.Fatal("employer browser launched before applicant action")
 	}
 	wait(`document.querySelector('.pending-answer-scope')?.innerText.includes('Prepared before opening')`)
 	wait(`Array.from(document.querySelectorAll('.continuation-item label')).find(x=>x.textContent.includes('saved answer'))?.querySelector('input')?.checked`)
-	click("Prepare & Fill Application")
+	click("Fill selected information")
 	wait(`document.querySelector('.continuation-outcomes')?.innerText.includes('Résumé')`)
 	if launches.Load() != 1 {
 		t.Fatalf("original Fill launched %d browsers", launches.Load())
@@ -302,14 +302,14 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	if err := employerEval(`[resumeChanges,coverChanges,submits]`, &counts); err != nil || fmt.Sprint(counts) != "[1 3 0]" {
 		t.Fatalf("recheck changed employer form: %v %v", counts, err)
 	}
-	click("Questions")
+	click("3. Questions")
 	wait(`Array.from(document.querySelectorAll('.writing-question')).some(x=>x.textContent.includes('Delayed question'))`)
 	run(`Array.from(document.querySelectorAll('.writing-question')).find(x=>x.textContent.includes('Delayed question')).click()`)
 	const answer = "I enjoy helping customers solve challenging support problems."
 	run(fmt.Sprintf(`(()=>{const e=document.querySelector('#writing-answer');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,%q);e.dispatchEvent(new Event('input',{bubbles:true}))})()`, answer))
 	click("Save answer locally")
 	wait(`document.body.innerText.includes('Saved locally.')`)
-	click("Apply")
+	click("4. Apply")
 	wait(`document.querySelector('.continuation-item')?.parentElement?.innerText.includes('saved answer')`)
 	wait(`Array.from(document.querySelectorAll('.continuation-item label')).find(x=>x.textContent.includes('saved answer'))?.querySelector('input')?.checked`)
 	run(`Array.from(document.querySelectorAll('#employer button')).filter(x=>x.classList.contains('button-primary')).at(-1).click()`)
@@ -347,9 +347,9 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	run(`window.confirm=()=>true`)
 	click("Close browser")
 	wait(`Array.from(document.querySelectorAll('#employer button')).some(x=>x.textContent.trim()==='View Application' && !x.disabled)`)
-	wait(`Array.from(document.querySelectorAll('#employer button')).some(x=>x.textContent.trim()==='Prepare & Fill Application' && !x.disabled)`)
+	wait(`Array.from(document.querySelectorAll('#employer button')).some(x=>x.textContent.trim()==='Fill selected information' && !x.disabled)`)
 	employerPage = base + "/application"
-	click("Prepare & Fill Application")
+	click("Fill selected information")
 	wait(`document.body.innerText.includes('Return to Application')`)
 	if launches.Load() != 2 {
 		t.Fatalf("direct Fill did not launch one new browser: %d", launches.Load())
@@ -453,15 +453,15 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	page = baseURL + "/jobs/1"
 	ui = runtimeUI
 	wait(`document.body.innerText.includes('Synthetic React journey')`)
-	click("Documents")
+	click("2. Documents")
 	wait(`document.body.innerText.includes('journey-resume.pdf') && document.querySelector('input[name=workspace-resume]:checked')?.parentElement.innerText.includes('journey-resume.pdf') && document.querySelector('#letter-body')?.value.includes('synthetic support role')`)
-	click("Questions")
+	click("3. Questions")
 	wait(`document.body.innerText.includes('Delayed question')`)
 	run(`Array.from(document.querySelectorAll('.writing-question')).find(x=>x.textContent.includes('Delayed question')).click()`)
 	wait(`document.querySelector('#writing-answer')?.value === "I enjoy helping customers solve challenging support problems."`)
-	click("Apply")
+	click("4. Apply")
 	wait(`document.body.innerText.includes('saved materials remain') || document.body.innerText.includes('disconnected')`)
-	click("Applied")
+	click("Submission history")
 	click("I submitted this application")
 	wait(`document.body.innerText.includes('Submission recorded locally.')`)
 	wait(`(async()=>{const history=await (await fetch('/api/jobs/1/submissions')).json();const job=await (await fetch('/api/jobs/1/workspace')).json();return history.count===1 && job.job.stage==='applied'})()`)

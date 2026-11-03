@@ -10,8 +10,8 @@
     <article class="utility-row"><div><p class="utility-category">APPLICATION QUESTIONS</p><h3>Discovered requirements</h3><p>Review public application questions observed across your saved jobs.</p></div><a class="button button-secondary" href="/requirements">Review question inventory →</a></article>
   </section>
   <section class="utility-browser" aria-labelledby="utility-browser-heading">
-    <div><h2 id="utility-browser-heading">Application browser</h2><p>Browser selection is not available in the interface yet. Existing browser settings remain in effect.</p></div>
-    <div class="field utility-browser-field"><label for="application-browser">Browser selection</label><select id="application-browser" disabled aria-describedby="browser-unavailable"><option>Not available yet</option></select><small id="browser-unavailable">This control is disabled and does not change your browser.</small></div>
+    <div><h2 id="utility-browser-heading">Application browser</h2><p>Choose the browser YourMove opens for employer applications. WebKit is not offered: the application session cannot launch it yet.</p>{{if .Notice}}<p class="utility-notice" role="status">{{.Notice}}</p>{{end}}</div>
+    <form method="POST" action="/utilities/browser" class="field utility-browser-field"><label for="application-browser">Browser selection</label><select id="application-browser" name="browser">{{range .BrowserEngines}}<option value="{{.Name}}" {{if eq .Name $.BrowserCurrent}}selected{{end}} {{if not .Available}}disabled{{end}}>{{.Label}}{{if not .Available}} — unavailable{{end}}</option>{{end}}</select>{{range .BrowserEngines}}{{if not .Available}}<small>{{.Label}}: {{.Reason}}.</small>{{end}}{{end}}<button class="button button-secondary" type="submit">Save browser</button></form>
   </section>
 </div>
 {{template "shell-close" .}}</body></html>
