@@ -4,7 +4,9 @@
 // contract below reuses the existing Go decisions and durable writes owned by
 // the legacy Prepare flow. This file adds transport only:
 //
-//   - GET  /api/jobs/{id}/questions   read-only inventory (live + early), token-free
+//   - GET  /api/jobs/{id}/questions   read-only inventory (live + early), token-free.
+//     The payload also carries the unified applicant-facing projection, which
+//     merges both contexts into one coherent list without removing data.
 //   - POST /api/jobs/{id}/answers     JSON twin of saveApplicationAnswer /
 //     saveEarlyApplicationAnswer, sharing persistApplicationAnswer and the
 //     early-answer upsert semantics (optimistic revision checks intact)
@@ -38,6 +40,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/jenksed/yourmove-go/internal/application/schema"
 	coverprovider "github.com/jenksed/yourmove-go/internal/coverletter/provider"
 )
 
@@ -171,6 +174,187 @@ func liveWritingTriage(q preparedQuestion) (string, string) {
 	}
 }
 
+// displayDocumentControl keeps résumé and cover-letter controls in the
+// Documents workflow: they never appear as applicant writing tasks. This
+// mirrors the live workbench filter, which already excludes them, for the
+// early inventory that preserves them.
+func displayDocumentControl(f schema.Field) bool {
+	return f.Kind == "file" || strings.Contains(strings.ToLower(f.Label), "cover letter")
+}
+
+// displayUnidentifiedControl reports generic buckets without a stable field
+// identity. They are condensed into one inspection notice instead of being
+// presented as questions.
+func displayUnidentifiedControl(id string) bool {
+	base := ashbyStableFieldSuffix(id)
+	base = strings.TrimPrefix(base, "application:")
+	return base == "unidentified-controls" || strings.HasPrefix(base, "unidentified-")
+}
+
+// displayQuestionIdentity keys the live and early observations of one employer
+// control for the applicant-facing projection only. It never grants save or
+// transfer authority: every write still revalidates the exact underlying
+// record. Empty means the row must never merge with another context, so two
+// genuinely distinct controls with identical wording stay separate.
+func displayQuestionIdentity(id string) string {
+	base := ashbyStableFieldSuffix(id)
+	base = strings.TrimPrefix(base, "application:")
+	if base == "" || base == "unidentified-controls" || strings.HasPrefix(base, "unidentified-") || positionalQuestionID.MatchString(base) {
+		return ""
+	}
+	return base
+}
+
+// displayQuestionsCompatible reports whether the live and early observations
+// describe the same control closely enough to present once. Any drift in
+// wording, control type, required status, or options keeps both rows so the
+// applicant sees the truth instead of a silent collapse.
+func displayQuestionsCompatible(live, early schema.Field, earlySource string) bool {
+	if reconciliationLabel(live.Label) != reconciliationLabel(early.Label) {
+		return false
+	}
+	kindsMatch := live.Kind == early.Kind
+	if earlySource == "public_api" {
+		kindsMatch = greenhouseControlTypesMatch(early.Kind, live.Kind)
+	}
+	if !kindsMatch {
+		return false
+	}
+	return live.Required == early.Required && sameOptions(live.Options, early.Options)
+}
+
+func liveRowAnswered(q preparedQuestion) bool {
+	return q.Revision > 0 && strings.TrimSpace(q.Value) != ""
+}
+
+func earlyRowDrafted(q earlyApplicationQuestion) bool {
+	return q.Revision > 0 && strings.TrimSpace(q.Value) != ""
+}
+
+// unifyQuestionInventories presents one coherent applicant-facing list from
+// the live and early inventories without removing previously discovered data.
+// Correspondence uses qualified field identities plus compatible field
+// details; wording alone never merges rows, and merging never confers save or
+// transfer authority. A saved early draft keeps its editor identity until it
+// is reconciled or saved as a live answer, so it is never shown as
+// simultaneously unanswered and prepared. Unmatched rows from either context
+// are preserved, and a stale live inspection never displaces current preview
+// information: without drafts, the preferred context wins. It also returns
+// the number of generic unidentified controls condensed into a notice.
+func unifyQuestionInventories(liveRows []preparedQuestion, earlyRows []earlyApplicationQuestion, preferLive bool) ([]writingQuestionJSON, int) {
+	unidentified := 0
+	liveKept := make([]preparedQuestion, 0, len(liveRows))
+	for _, q := range liveRows {
+		if displayDocumentControl(q.Field) {
+			continue
+		}
+		if displayUnidentifiedControl(q.Field.ID) {
+			unidentified++
+			continue
+		}
+		liveKept = append(liveKept, q)
+	}
+	earlyKept := make([]earlyApplicationQuestion, 0, len(earlyRows))
+	for _, q := range earlyRows {
+		if displayDocumentControl(q.Field) {
+			continue
+		}
+		if displayUnidentifiedControl(q.SourceQuestionID) {
+			unidentified++
+			continue
+		}
+		earlyKept = append(earlyKept, q)
+	}
+	liveUsed := make([]bool, len(liveKept))
+	earlyUsed := make([]bool, len(earlyKept))
+	matchEarly := func(live preparedQuestion) int {
+		want := displayQuestionIdentity(live.Field.ID)
+		if want == "" {
+			return -1
+		}
+		for i, early := range earlyKept {
+			if earlyUsed[i] || displayQuestionIdentity(early.SourceQuestionID) != want {
+				continue
+			}
+			if !displayQuestionsCompatible(live.Field, early.Field, early.DiscoverySource) {
+				continue
+			}
+			return i
+		}
+		return -1
+	}
+	matchLive := func(early earlyApplicationQuestion) int {
+		want := displayQuestionIdentity(early.SourceQuestionID)
+		if want == "" {
+			return -1
+		}
+		for i, live := range liveKept {
+			if liveUsed[i] || displayQuestionIdentity(live.Field.ID) != want {
+				continue
+			}
+			if !displayQuestionsCompatible(live.Field, early.Field, early.DiscoverySource) {
+				continue
+			}
+			return i
+		}
+		return -1
+	}
+	pick := func(live *preparedQuestion, early *earlyApplicationQuestion) writingQuestionJSON {
+		switch {
+		case early != nil && earlyRowDrafted(*early) && (live == nil || !liveRowAnswered(*live)):
+			return toWritingEarlyQuestion(*early)
+		case live != nil && liveRowAnswered(*live):
+			return toWritingQuestion(*live)
+		case live != nil && early != nil:
+			if preferLive {
+				return toWritingQuestion(*live)
+			}
+			return toWritingEarlyQuestion(*early)
+		case live != nil:
+			return toWritingQuestion(*live)
+		default:
+			return toWritingEarlyQuestion(*early)
+		}
+	}
+	var out []writingQuestionJSON
+	if preferLive {
+		for i := range liveKept {
+			if j := matchEarly(liveKept[i]); j >= 0 {
+				earlyUsed[j] = true
+				live, early := liveKept[i], earlyKept[j]
+				out = append(out, pick(&live, &early))
+			} else {
+				live := liveKept[i]
+				out = append(out, pick(&live, nil))
+			}
+		}
+		for j := range earlyKept {
+			if !earlyUsed[j] {
+				early := earlyKept[j]
+				out = append(out, pick(nil, &early))
+			}
+		}
+	} else {
+		for j := range earlyKept {
+			if i := matchLive(earlyKept[j]); i >= 0 {
+				liveUsed[i] = true
+				live, early := liveKept[i], earlyKept[j]
+				out = append(out, pick(&live, &early))
+			} else {
+				early := earlyKept[j]
+				out = append(out, pick(nil, &early))
+			}
+		}
+		for i := range liveKept {
+			if !liveUsed[i] {
+				live := liveKept[i]
+				out = append(out, pick(&live, nil))
+			}
+		}
+	}
+	return out, unidentified
+}
+
 func toWritingEarlyQuestion(q earlyApplicationQuestion) writingQuestionJSON {
 	out := writingQuestionJSON{
 		Key: q.Key, Label: q.Field.Label, Kind: q.Field.Kind, Required: q.Field.Required,
@@ -255,12 +439,15 @@ func (a *App) buildWritingQuestions(jobID int64) (map[string]any, error) {
 	for _, q := range liveActionable {
 		liveByKey[q.Key] = q
 	}
-	liveJSON := make([]writingQuestionJSON, 0, len(live.WorkbenchQuestions()))
-	for _, q := range live.WorkbenchQuestions() {
-		if enriched, ok := liveByKey[q.Key]; ok {
-			q.LibrarySuggestions = enriched.LibrarySuggestions
-			q.CareerEvidenceSuggestions = enriched.CareerEvidenceSuggestions
+	liveWorkbench := live.WorkbenchQuestions()
+	for i := range liveWorkbench {
+		if enriched, ok := liveByKey[liveWorkbench[i].Key]; ok {
+			liveWorkbench[i].LibrarySuggestions = enriched.LibrarySuggestions
+			liveWorkbench[i].CareerEvidenceSuggestions = enriched.CareerEvidenceSuggestions
 		}
+	}
+	liveJSON := make([]writingQuestionJSON, 0, len(liveWorkbench))
+	for _, q := range liveWorkbench {
 		liveJSON = append(liveJSON, toWritingQuestion(q))
 	}
 
@@ -293,14 +480,22 @@ func (a *App) buildWritingQuestions(jobID int64) (map[string]any, error) {
 	for _, q := range earlyActionable {
 		earlyByKey[q.Key] = q
 	}
-	earlyJSON := make([]writingQuestionJSON, 0, len(early.WorkbenchQuestions()))
-	for _, q := range early.WorkbenchQuestions() {
-		if enriched, ok := earlyByKey[q.Key]; ok {
-			q.LibrarySuggestions = enriched.LibrarySuggestions
-			q.CareerEvidence = enriched.CareerEvidence
+	earlyWorkbench := early.WorkbenchQuestions()
+	for i := range earlyWorkbench {
+		if enriched, ok := earlyByKey[earlyWorkbench[i].Key]; ok {
+			earlyWorkbench[i].LibrarySuggestions = enriched.LibrarySuggestions
+			earlyWorkbench[i].CareerEvidence = enriched.CareerEvidence
 		}
+	}
+	earlyJSON := make([]writingQuestionJSON, 0, len(earlyWorkbench))
+	for _, q := range earlyWorkbench {
 		earlyJSON = append(earlyJSON, toWritingEarlyQuestion(q))
 	}
+
+	// The applicant-facing projection merges the two inventories into one
+	// coherent list. The live and early arrays above keep the full
+	// discovered data; only this projection decides what the applicant sees.
+	unified, unidentified := unifyQuestionInventories(liveWorkbench, earlyWorkbench, snapshot.Anchor == "#application-questions")
 
 	previous := make([]writingPreviousJSON, 0, len(live.Previous)+len(early.Previous))
 	for _, p := range live.Previous {
@@ -340,6 +535,8 @@ func (a *App) buildWritingQuestions(jobID int64) (map[string]any, error) {
 		},
 		"live":     liveJSON,
 		"early":    earlyJSON,
+		"questions": unified,
+		"unidentifiedCount": unidentified,
 		"previous": previous,
 		"profileCount": len(live.ProfileQuestions()),
 		"employerOnlyCount": len(live.EmployerSiteQuestions()),

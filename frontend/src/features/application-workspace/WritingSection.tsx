@@ -23,6 +23,14 @@ function questionId(q: WritingQuestion): string {
   return `${q.isEarly ? "early" : "live"}:${q.key}`;
 }
 
+// triageOf follows the Go-owned triage category. Only "answer" rows are
+// applicant writing tasks; profile, employer, and review rows are concise
+// read-only guidance. Classification never grants transfer authority.
+function triageOf(q: WritingQuestion): string {
+  if (q.triageCategory !== "") return q.triageCategory;
+  return q.editable ? "answer" : "review";
+}
+
 function QuestionEditor({
   question,
   value,
@@ -158,10 +166,9 @@ export function WritingSection({
       try {
         const next = await fetchQuestions(jobId);
         if (!cancelled && request === requestRef.current) setSnapshot((previous) => {
-          const selected = previous && [...previous.live, ...previous.early].find((q) => questionId(q) === selectedIdRef.current);
-          if (selected && ![...next.live, ...next.early].some((q) => questionId(q) === selectedIdRef.current)) {
-            if (selected.isEarly) next.early = [...next.early, selected];
-            else next.live = [...next.live, selected];
+          const selected = previous && previous.questions.find((q) => questionId(q) === selectedIdRef.current);
+          if (selected && !next.questions.some((q) => questionId(q) === selectedIdRef.current)) {
+            next.questions = [...next.questions, selected];
           }
           return next;
         });
@@ -177,6 +184,7 @@ export function WritingSection({
 
   const allQuestions = useMemo(() => {
     if (!snapshot) return [];
+    if (snapshot.questions) return snapshot.questions;
     return [...snapshot.live, ...snapshot.early];
   }, [snapshot]);
 
@@ -398,8 +406,12 @@ export function WritingSection({
   }
   if (!snapshot) return <></>;
 
-  const needsAnswer = allQuestions.filter((q) => q.editable && q.value === "");
-  const prepared = allQuestions.filter((q) => q.editable && q.value !== "");
+  const answerTasks = allQuestions.filter((q) => triageOf(q) === "answer");
+  const profileItems = allQuestions.filter((q) => triageOf(q) === "profile");
+  const employerItems = allQuestions.filter((q) => triageOf(q) === "employer");
+  const reviewItems = allQuestions.filter((q) => triageOf(q) === "review");
+  const needsAnswer = answerTasks.filter((q) => q.value === "");
+  const prepared = answerTasks.filter((q) => q.value !== "");
 
   return (
     <section className="panel" aria-labelledby="writing-title" id="writing">
@@ -497,7 +509,7 @@ export function WritingSection({
         </div>
       )}
 
-      {allQuestions.length > 0 && (
+      {answerTasks.length > 0 && (
         <div className="writing-layout">
           <ul className="writing-question-list" aria-label="Application questions">
             {needsAnswer.map((q) => (
@@ -530,20 +542,6 @@ export function WritingSection({
                 </button>
               </li>
             ))}
-            {allQuestions
-              .filter((q) => !q.editable)
-              .map((q) => (
-                <li key={questionId(q)}>
-                  <button
-                    type="button"
-                    className={selectedId === questionId(q) ? "writing-question is-selected" : "writing-question"}
-                    onClick={() => pickQuestion(q)}
-                  >
-                    <strong>{q.label}</strong>
-                    <small>Manual or employer-only · read-only</small>
-                  </button>
-                </li>
-              ))}
           </ul>
 
           <div className="writing-editor" aria-live="polite">
@@ -864,12 +862,60 @@ export function WritingSection({
         </div>
       )}
 
-      {(snapshot.profileCount > 0 || snapshot.employerOnlyCount > 0 || snapshot.manualReviewCount > 0) && (
-        <p className="small-muted">
-          {snapshot.profileCount > 0 && `${snapshot.profileCount} approved candidate facts are ready. `}
-          {snapshot.employerOnlyCount > 0 && `${snapshot.employerOnlyCount} fields need employer-side completion. `}
-          {snapshot.manualReviewCount > 0 && `${snapshot.manualReviewCount} fields need manual review. `}
+      {(snapshot.unidentifiedCount > 0) && (
+        <p className="writing-notice" role="note">
+          {snapshot.unidentifiedCount === 1
+            ? "One employer control could not be stably identified; inspect it directly in the employer browser."
+            : `${snapshot.unidentifiedCount} employer controls could not be stably identified; inspect them directly in the employer browser.`}
         </p>
+      )}
+
+      {(profileItems.length > 0 || employerItems.length > 0 || reviewItems.length > 0) && (
+        <div className="writing-previous" aria-label="Fields outside the writing tasks">
+          {profileItems.length > 0 && (
+            <div>
+              <h3>Handled by your approved Candidate Profile</h3>
+              <p className="small-muted">These transfer with your authorization from Apply; they are not writing tasks.</p>
+              <ul className="writing-suggestions">
+                {profileItems.map((q) => (
+                  <li key={questionId(q)}>
+                    <strong>{q.label}</strong>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {employerItems.length > 0 && (
+            <div>
+              <h3>Complete on the employer site</h3>
+              <p className="small-muted">YourMove never fills these; review the wording and complete them personally.</p>
+              <ul className="writing-suggestions">
+                {employerItems.map((q) => (
+                  <li key={questionId(q)}>
+                    <strong>{q.label}</strong>
+                    <small>{q.required ? "Required by employer" : "Optional"}</small>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {reviewItems.length > 0 && (
+            <div>
+              <h3>Needs manual completion</h3>
+              <ul className="writing-suggestions">
+                {reviewItems.map((q) => (
+                  <li key={questionId(q)}>
+                    <strong>{q.label}</strong>
+                    <small>
+                      {q.required ? "Required by employer · " : ""}
+                      {q.manualReason !== "" ? q.manualReason : "This question requires manual completion in Chromium."}
+                    </small>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
       )}
 
       {snapshot.previous.length > 0 && (

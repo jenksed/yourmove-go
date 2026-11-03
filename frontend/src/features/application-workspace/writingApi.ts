@@ -78,6 +78,11 @@ export interface QuestionsSnapshot {
   };
   live: WritingQuestion[];
   early: WritingQuestion[];
+  // Unified applicant-facing projection: one coherent list merging both
+  // contexts. Each row keeps its own save identity; grouping follows
+  // triageCategory (answer/profile/employer/review).
+  questions: WritingQuestion[];
+  unidentifiedCount: number;
   previous: WritingPrevious[];
   profileCount: number;
   employerOnlyCount: number;
