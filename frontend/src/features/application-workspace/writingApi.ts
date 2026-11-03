@@ -234,7 +234,13 @@ export async function fetchQuestions(jobId: number): Promise<QuestionsSnapshot> 
     headers: { Accept: "application/json" },
   });
   if (!response.ok) throw new Error(await readError(response));
-  return (await response.json()) as QuestionsSnapshot;
+  const snapshot = (await response.json()) as QuestionsSnapshot;
+  // Go encodes empty lists as null; the workspace treats them as empty.
+  snapshot.questions ??= [];
+  snapshot.live ??= [];
+  snapshot.early ??= [];
+  snapshot.previous ??= [];
+  return snapshot;
 }
 
 export async function discoverQuestions(jobId: number): Promise<string> {
