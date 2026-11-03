@@ -22,6 +22,15 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v7
 
+      - name: Authenticate private Go modules
+        run: |
+          if [ -z "${{ secrets.CAREER_DISCOVERY_READ_TOKEN }}" ]; then
+            echo "CAREER_DISCOVERY_READ_TOKEN secret is not set; cannot fetch private Go modules." >&2
+            exit 1
+          fi
+          git config --global url."https://x-access-token:${{ secrets.CAREER_DISCOVERY_READ_TOKEN }}@github.com/".insteadOf "https://github.com/"
+          echo "GOPRIVATE=github.com/jenksed/*" >> "$GITHUB_ENV"
+
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
@@ -61,6 +70,15 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v7
+
+      - name: Authenticate private Go modules
+        run: |
+          if [ -z "${{ secrets.CAREER_DISCOVERY_READ_TOKEN }}" ]; then
+            echo "CAREER_DISCOVERY_READ_TOKEN secret is not set; cannot fetch private Go modules." >&2
+            exit 1
+          fi
+          git config --global url."https://x-access-token:${{ secrets.CAREER_DISCOVERY_READ_TOKEN }}@github.com/".insteadOf "https://github.com/"
+          echo "GOPRIVATE=github.com/jenksed/*" >> "$GITHUB_ENV"
 
       - name: Set up Go
         uses: actions/setup-go@v7
