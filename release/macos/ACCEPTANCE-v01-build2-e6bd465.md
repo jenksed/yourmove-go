@@ -11,7 +11,7 @@ Candidate-specific evidence for source SHA `e6bd465`. All applicant/job data bel
 | Candidate binary ZIP SHA-256 | `0a77e1ed3389e49b666ec6e91d7c32e22ebebf6f7c4f97a8fda812ec87128d95` |
 | Matching source ZIP SHA-256 | `2a8e6c00326128295f7393ccc9221544c373b0b79166b2b32646bec20d4d416e` |
 | Candidate output dir | `~/Projects/yourmove-builds/mac-candidate-20261103-154547-72831/` |
-| CI run and result | PENDING — branch unpushed at freeze; no CI run exists for `e6bd465` |
+| CI run and result | BLOCKED — PR #16 (draft, CI-only), run 41726853009: both jobs fail identically on first run and rerun. Root cause is pre-existing and unrelated to the candidate diff: `go.mod` requires private repo `github.com/jenksed/yourmove-career-discovery` (added to this line Oct 30, not present in `main`), and CI runners have no auth for it (`git ls-remote` exit 128). Local full suites (both tags) pass on the exact frozen tree, including inside `prepare.sh`. Fix requires owner decision (CI token vs vendor vs public dep) + refreeze + rebuild. |
 | macOS / machine | macOS 26.5.2, Apple M1 Pro (arm64) |
 | Chrome versions | Stable 156.0.8078.80 (`/Applications/Browsers/`); Canary 159.0.8140.0; no Firefox app; Safari 26.5 |
 | Playwright cache | Pre-existing `~/Library/Caches/ms-playwright` (chromium-1200…1248, firefox-1509, webkit-2248); bridge deps installed via `scripts/setup-playwright-bridge.sh`; firefox binary downloaded via `npx playwright@1.58.2 install firefox` for qualification only |
@@ -73,7 +73,7 @@ Engine qualification (`YOURMOVE_QUALIFY_BROWSER=1`, `qualification` tag, product
 
 | Gate | Draft | Evidence / exclusion |
 | --- | --- | --- |
-| Frozen candidate | PASS (pending CI) | `e6bd465`, build 2, ZIP SHAs above, ad-hoc signature verified; CI has no run for this SHA yet |
+| Frozen candidate | BLOCKED (CI) | `e6bd465`, build 2, ZIP SHAs verified, ad-hoc signature verified; GitHub CI cannot fetch the private `yourmove-career-discovery` module — pre-existing branch-line condition, fix + refreeze required |
 | Data integrity | PASS | kill -9 recovery identical; migration test; export bytes; upgrade N/A (first release) |
 | Applicant authority/privacy | RESTRICTED | Qualified fixture journeys only; live ATS untested; no auto-submit asserted; manual fallbacks documented; synthetic data throughout |
 | Core workflow | RESTRICTED | Chromium+Firefox fixture transfers pass; parked Discovery/Studio excluded; workspace null-questions crash found and fixed in this candidate |
