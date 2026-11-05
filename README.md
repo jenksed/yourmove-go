@@ -15,7 +15,7 @@ opportunities, résumés, answers, cover letters, and records of what you person
 <p align="center">
   <a href="https://github.com/jenksed/yourmove-go/releases/download/v0.1.0/YourMove-0.1.0-macOS-arm64.dmg"><strong>Download for Mac</strong></a> ·
   <a href="https://www.yourmove.run/docs/availability/">Installation guide</a> ·
-  <a href="#a-guided-pass-through-one-application">See how it works</a>
+  <a href="#one-workspace-for-the-whole-application">See how it works</a>
 </p>
 
 <p align="center"><sub>macOS Technical Alpha v0.1.0 · Apple Silicon · Unnotarized testers build</sub></p>
@@ -62,7 +62,7 @@ A guided pass through one application:
 
 **Requires:** Apple Silicon Mac, macOS 26+. Chrome/Chromium only matters for assisted form filling.
 
-1. Download [**YourMove-0.1.0-macOS-arm64.dmg**](https://github.com/jenksed/yourmove-go/releases/download/v0.1.0/YourMove-0.1.0-macOS-arm64.dmg) ([checksum `d84ef968…124f4bee`](https://github.com/jenksed/yourmove-go/releases/tag/v0.1.0)).
+1. Download [**YourMove-0.1.0-macOS-arm64.dmg**](https://github.com/jenksed/yourmove-go/releases/download/v0.1.0/YourMove-0.1.0-macOS-arm64.dmg) ([checksum `d84ef968…124f4bee`](https://github.com/jenksed/yourmove-go/releases/download/v0.1.0/YourMove-0.1.0-macOS-arm64.dmg.sha256)).
 2. Open the DMG, drag YourMove into Applications.
 3. Open it. macOS will warn that the app is unverified — this alpha is ad-hoc signed, not notarized. Choose **Done** (not Move to Trash).
 4. Open **System Settings → Privacy & Security** and choose **Open Anyway** for YourMove — a per-app approval, not a settings change — then open the app again.

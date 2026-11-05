@@ -32,6 +32,10 @@ if [ -e "$OUTDIR" ]; then
 	echo "Output directory already exists (refusing to overwrite): $OUTDIR" >&2
 	exit 1
 fi
+if [ -d "/Volumes/$VOLUME_NAME" ]; then
+	echo "A volume named $VOLUME_NAME is already mounted; unmount it first so Finder automation cannot touch the wrong disk." >&2
+	exit 1
+fi
 
 echo "Verifying published ZIP..."
 actual="$(shasum -a 256 "$ZIP" | awk '{print $1}')"
@@ -42,7 +46,13 @@ fi
 echo "ZIP checksum OK."
 
 WORK="$(mktemp -d /tmp/yourmove-dmg.XXXXXX)"
-cleanup() { rm -rf "$WORK"; }
+DEVICE=""
+cleanup() {
+	if [ -n "$DEVICE" ]; then
+		hdiutil detach "$DEVICE" 2>/dev/null || true
+	fi
+	rm -rf "$WORK"
+}
 trap cleanup EXIT
 
 STAGE="$WORK/stage"
@@ -94,41 +104,51 @@ hdiutil create -srcfolder "$STAGE" -volname "$VOLUME_NAME" -fs HFS+ \
 	-format UDRW -size "$FS_SIZE" -ov "$RW_DMG" >/dev/null
 
 echo "Mounting for Finder layout..."
-ATTACH_OUT="$(hdiutil attach -readwrite -noverify -noautoopen "$RW_DMG")"
-MOUNT="$(echo "$ATTACH_OUT" | awk '/\/Volumes\// {print $NF}')"
+mkdir -p "$WORK/mnt"
+# Fixed mountpoint: hdiutil would otherwise mount a second copy at
+# "/Volumes/YourMove 1", and whitespace-splitting that path breaks parsing.
+ATTACH_OUT="$(hdiutil attach -readwrite -noverify -noautoopen -mountpoint "$WORK/mnt" "$RW_DMG")"
+MOUNT="$WORK/mnt"
 DEVICE="$(echo "$ATTACH_OUT" | awk '/\/dev\/disk/ {print $1}' | head -1)"
-test -n "$MOUNT" || { echo "mount failed" >&2; exit 1; }
+test -n "$DEVICE" || { echo "mount failed" >&2; exit 1; }
 
 BG_ALIAS="$MOUNT/.background/dmg-background.png"
+# Item references use display names (extensions stay hidden via SetFile -a E
+# above); Finder resolves them and the positions below are verified on
+# macOS 26-seeded windows.
 osascript <<EOF
 tell application "Finder"
-	tell disk "$VOLUME_NAME"
-		open
-		set current view of container window to icon view
-		set toolbar visible of container window to false
-		set statusbar visible of container window to false
-		set sidebar width of container window to 0
-		set the bounds of container window to {100, 100, $((100 + WINDOW_W)), $((140 + WINDOW_H))}
-		set opts to the icon view options of container window
-		set arrangement of opts to not arranged
-		set icon size of opts to 96
-		set text size of opts to 12
-		set background picture of opts to POSIX file "$BG_ALIAS"
-		set position of item "YourMove.app" of container window to {150, 195}
-		set position of item "Applications" of container window to {510, 195}
-		set position of item "Open Privacy & Security" of container window to {150, 285}
-		set position of item "Installation Guide" of container window to {510, 285}
-		close
-		open
-		update without registering applications
-		delay 2
-		close
-	end tell
+	-- Address our own mount by path, never by volume name: another disk
+	-- with the same name must not receive this layout.
+	set theFolder to folder (POSIX file "$MOUNT" as alias)
+	open theFolder
+	set win to Finder window 1
+	set current view of win to icon view
+	set toolbar visible of win to false
+	set statusbar visible of win to false
+	set sidebar width of win to 0
+	set the bounds of win to {100, 100, $((100 + WINDOW_W)), $((140 + WINDOW_H))}
+	set opts to the icon view options of win
+	set arrangement of opts to not arranged
+	set icon size of opts to 96
+	set text size of opts to 12
+	set background picture of opts to POSIX file "$BG_ALIAS"
+	set position of item "YourMove.app" of win to {150, 195}
+	set position of item "Applications" of win to {510, 195}
+	set position of item "Open Privacy & Security" of win to {150, 285}
+	set position of item "Installation Guide" of win to {510, 285}
+	close win
+	delay 1
+	open theFolder
+	update theFolder without registering applications
+	delay 2
+	close Finder window 1
 end tell
 EOF
 
 echo "Detaching..."
 hdiutil detach "$DEVICE" >/dev/null
+DEVICE=""
 sync
 
 mkdir -p "$OUTDIR"
