@@ -1,5 +1,7 @@
 # YourMove macOS candidate acceptance record — v0.1.0 build 2 (controlled alpha)
 
+> SUPERSEDED by `ACCEPTANCE-v01-build3-048d0a3.md` (CI fix + rebuild). Retained as history.
+
 Candidate-specific evidence for source SHA `e6bd465`. All applicant/job data below is synthetic (isolated `YOURMOVE_DATA_DIR` workspaces). No private resumes, employer values, credentials, or cookies were used or committed.
 
 ## Exact artifact and environment
