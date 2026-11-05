@@ -25,6 +25,8 @@ func summarizeHandoff(s browserRunState) HandoffPresentation {
 		return HandoffPresentation{Title: "Resume check needs a retry", Detail: "Nothing was selected or uploaded during this failed preflight. Wait for the form to settle, then retry the check.", Recovery: true}
 	}
 	switch s.ResumeStatus {
+	case "present":
+		return HandoffPresentation{Title: "Attachment already present", Detail: "The existing employer attachment was left unchanged. Check it before submitting.", Recovery: true}
 	case "selected":
 		return HandoffPresentation{Title: "Resume selected — verify with the employer", Detail: "YourMove selected the approved file. Confirm the employer displays or accepts the attachment; finish and submit the form yourself.", Recovery: false}
 	case "attention":

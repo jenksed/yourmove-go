@@ -1,13 +1,15 @@
 package browser
 
 import (
-	"github.com/jenksed/yourmove-go/internal/application/schema"
 	"fmt"
+	"github.com/jenksed/yourmove-go/internal/application/schema"
+	"strings"
 )
 
 // ContactValues is the displayed, approved snapshot carried by a handoff.
 // Inspection IDs and employer-provided labels are never transfer authority.
 type ContactValues struct {
+	Attempted map[string]bool
 	Revision  int64
 	FirstName string
 	LastName  string
@@ -18,7 +20,10 @@ type ContactValues struct {
 func (v ContactValues) Value(key string) string {
 	switch key {
 	case "name":
-		return v.FirstName + " " + v.LastName
+		if strings.TrimSpace(v.FirstName) == "" || strings.TrimSpace(v.LastName) == "" {
+			return ""
+		}
+		return strings.TrimSpace(v.FirstName + " " + v.LastName)
 	case "first_name":
 		return v.FirstName
 	case "last_name":

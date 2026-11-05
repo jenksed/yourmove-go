@@ -1,27 +1,25 @@
 ---
 name: feature-slice
-description: Implement an authorized YourMove Go applicant-facing behavior end to end through its existing Wails/Go UI, HTTP handlers, SQLite, or browser integration. Use for cross-layer workflows, including the new React Opportunities slice, not isolated styling or documentation edits.
+description: Implement a bounded, applicant-visible YourMove Go workflow spanning UI, Go decisions, and state or integrations. Use for real cross-layer capability work, not documentation, isolated styling, or standalone refactoring.
 ---
 
 # Feature slice — YourMove Go
 
-Deliver one meaningful applicant outcome through the real application, not a set of unconnected scaffolding tasks.
+Own **one complete applicant outcome**, rather than separate frontend, backend, and test scaffolding milestones. The global authorization and safety rules are in `AGENTS.md`.
 
-## Find and bound the path
+## Locate the real path
 
-1. Confirm the current owner-authorized task, `main`-based branch/worktree, clean/owned changes, user action and out-of-scope work. Consult `AGENTS.md` and `docs/CODEBASE_GUIDE.md`; read the relevant `docs/BACKLOG.md` entry if planning from the backlog.
-2. Follow the existing feature from view (`templates/` and `static/` for legacy UI) to `internal/app/app_http.go` route and handler, application decision, `internal/storage/` or browser adapter, and visible result. Inspect actual source before choosing a new interface.
-3. Describe one normal path and one material failure or recovery case. Implement the smallest slice that establishes the new behavior. Avoid broad Go package moves and generalized UI/API frameworks.
+1. State the exact applicant action and visible successful result; name one plausible refusal/recovery case.
+2. Trace the existing screen/action to its registration in `internal/app/app_http.go`, owning Go handler/decision, and relevant SQLite/file or integration effect. Use the matching section of `docs/CODEBASE_GUIDE.md` **only if ownership is unclear**.
+3. Identify the minimum source files and current behavior to preserve. Distinguish a missing user capability from a nice-to-have structural cleanup.
 
-## Respect responsibility
+## Implement and demonstrate
 
-- Wails supplies a native host; it is not the authority for business decisions.
-- React, where introduced, handles interaction, unsaved form state, accessibility and loading/error presentation. It cannot decide what is committed, transferable, or submitted.
-- Existing Go handlers and workflow operations own validation, decisions and saved state. When adding a UI seam, prefer reuse of existing behavior; keep HTTP protection and Wails compatibility intact.
-- SQLite and managed document files preserve IDs, relationships and historical records. Browser operations remain separately authorized, with unknown results reported as unknown.
+- Implement the real UI → Go → saved/result path before generalizing types, packages, tests or infrastructure.
+- Keep Go authoritative; use the existing writer/effect boundary and avoid introducing another policy or persistence owner.
+- Show committed state or truthful failure in the interface; don't count an optimistic screen update as completion.
+- Test the relevant successful action and one material negative case using synthetic data. Add only focused regression tests needed to protect the change.
 
-## Prove the outcome
+Load `frontend-migration` for a React replacement, `durable-state-integrity` when a write/storage contract changes, `employer-continuation` plus `browser-workflow-testing` for employer transfer, and `native-qualification` when planning or claiming a native result. Follow the specific skill instead of duplicating its procedure here.
 
-Use a synthetic workspace, existing focused Go tests, and a real action through Wails early enough to discover integration faults. For frontend replacement, also load `frontend-migration`. For changed persistent behavior, load `durable-state-integrity`. For any native completion claim, load `native-qualification`. For employer-side effects, load `browser-workflow-testing` and (if implementing transfer) `employer-continuation`.
-
-A pass in `go test ./...`, `go test -tags desktop ./...` or a browser/Chromium probe supports but does not replace the actual native applicant action. Report what changed, the exact evidence, the first observed failure, and what remains unverified. Stop after the authorized capability; do not self-accept, merge, or grow into a general rewrite.
+End with observed user behavior, changed code, evidence, unresolved limitations, and any optional cleanup left for later.

@@ -104,6 +104,7 @@ func initJobsSchema(db *sql.DB) error {
 		{"source_note", `ALTER TABLE jobs ADD COLUMN source_note TEXT NOT NULL DEFAULT ''`},
 		{"source_checked_at", `ALTER TABLE jobs ADD COLUMN source_checked_at TEXT NOT NULL DEFAULT ''`},
 		{"selected_resume_id", `ALTER TABLE jobs ADD COLUMN selected_resume_id INTEGER REFERENCES resumes(id)`},
+		{"selected_cover_letter_id", `ALTER TABLE jobs ADD COLUMN selected_cover_letter_id INTEGER`},
 	} {
 		if !columns[column.name] {
 			if _, err := db.Exec(column.ddl); err != nil {
@@ -233,6 +234,41 @@ func initJobsSchema(db *sql.DB) error {
 			return fmt.Errorf("migrate cover letter provider schema: %w", err)
 		}
 	}
+	var hasEvidenceRefs bool
+	if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM pragma_table_info('cover_letters') WHERE name='evidence_refs')`).Scan(&hasEvidenceRefs); err != nil {
+		return fmt.Errorf("inspect cover letter evidence schema: %w", err)
+	}
+	if !hasEvidenceRefs {
+		if _, err := db.Exec(`ALTER TABLE cover_letters ADD COLUMN evidence_refs TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("migrate cover letter evidence schema: %w", err)
+		}
+	}
+	// Older drafts require source resume IDs. A manually written letter has no
+	// generation sources, so retain old rows while allowing NULL source IDs.
+	var sourceRequired int
+	if err := db.QueryRow(`SELECT "notnull" FROM pragma_table_info('cover_letters') WHERE name='master_resume_id'`).Scan(&sourceRequired); err != nil {
+		return fmt.Errorf("inspect letter source constraints: %w", err)
+	}
+	if sourceRequired != 0 {
+		tx, err := db.Begin()
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		for _, statement := range []string{
+			`CREATE TABLE cover_letters_new (id INTEGER PRIMARY KEY, job_id INTEGER NOT NULL REFERENCES jobs(id), body TEXT NOT NULL, model TEXT NOT NULL, provider TEXT NOT NULL DEFAULT 'ollama', master_resume_id INTEGER REFERENCES resumes(id), master_sha256 TEXT NOT NULL, role_resume_id INTEGER REFERENCES resumes(id), role_sha256 TEXT NOT NULL, job_description_sha256 TEXT NOT NULL, created_at TEXT NOT NULL, edited_at TEXT NOT NULL DEFAULT '', evidence_refs TEXT NOT NULL DEFAULT '')`,
+			`INSERT INTO cover_letters_new SELECT id,job_id,body,model,provider,master_resume_id,master_sha256,role_resume_id,role_sha256,job_description_sha256,created_at,edited_at,evidence_refs FROM cover_letters`,
+			`DROP TABLE cover_letters`,
+			`ALTER TABLE cover_letters_new RENAME TO cover_letters`,
+		} {
+			if _, err := tx.Exec(statement); err != nil {
+				return fmt.Errorf("migrate letter sources: %w", err)
+			}
+		}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit letter source migration: %w", err)
+		}
+	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS cover_letters_by_job ON cover_letters(job_id,id DESC)`); err != nil {
 		return fmt.Errorf("index cover letters: %w", err)
 	}
@@ -339,6 +375,67 @@ func initJobsSchema(db *sql.DB) error {
 		`CREATE UNIQUE INDEX IF NOT EXISTS career_evidence_library_source_once
 		 ON career_evidence(source_library_entry_id,source_library_created_at) WHERE source_library_entry_id>0`,
 		`CREATE INDEX IF NOT EXISTS career_evidence_updated ON career_evidence(updated_at DESC,id DESC)`,
+		// Career discovery interview sessions are quarantined working state:
+		// an opaque id, a loose resume reference plus excerpt hash, serialized
+		// engine state, and a nullable link to a promoted draft. There are
+		// deliberately no foreign keys in either direction; promotion writes
+		// through the existing career_evidence owner only.
+		`CREATE TABLE IF NOT EXISTS career_discovery_sessions (
+		 id TEXT PRIMARY KEY,
+		 resume_id INTEGER NOT NULL DEFAULT 0,
+		 resume_sha256 TEXT NOT NULL DEFAULT '',
+		 resume_excerpt_hash TEXT NOT NULL DEFAULT '',
+		 state_json TEXT NOT NULL DEFAULT '',
+		 status TEXT NOT NULL DEFAULT 'leads' CHECK(status IN ('leads','interview','promoted')),
+		 provider TEXT NOT NULL DEFAULT '',
+		 model TEXT NOT NULL DEFAULT '',
+		 failure_code TEXT NOT NULL DEFAULT '',
+		 failure_detail TEXT NOT NULL DEFAULT '',
+		 promoted_evidence_id INTEGER NULL,
+		 revision INTEGER NOT NULL DEFAULT 1,
+		 created_at TEXT NOT NULL,
+		 updated_at TEXT NOT NULL,
+		 expires_at TEXT NOT NULL DEFAULT '')`,
+		`CREATE INDEX IF NOT EXISTS career_discovery_sessions_updated ON career_discovery_sessions(updated_at DESC,id DESC)`,
+		// YM-003B Career Studio persisted selections: one saved role analysis
+		// per opportunity-derived role key, one singleton synthesis snapshot,
+		// and applicant challenges keyed to the synthesis they judged. Derived
+		// views are never persisted; staleness is recomputed from current
+		// evidence revisions and job rows on every read.
+		`CREATE TABLE IF NOT EXISTS career_role_analyses (
+		 role_key TEXT PRIMARY KEY,
+		 job_id INTEGER NOT NULL DEFAULT 0,
+		 role_hash TEXT NOT NULL DEFAULT '',
+		 evidence_hash TEXT NOT NULL DEFAULT '',
+		 analysis TEXT NOT NULL DEFAULT '',
+		 notice TEXT NOT NULL DEFAULT '',
+		 provider TEXT NOT NULL DEFAULT '',
+		 model TEXT NOT NULL DEFAULT '',
+		 created_at TEXT NOT NULL DEFAULT '',
+		 updated_at TEXT NOT NULL DEFAULT '')`,
+		`CREATE TABLE IF NOT EXISTS career_connection_synthesis (
+		 id INTEGER PRIMARY KEY CHECK(id=1),
+		 evidence_hash TEXT NOT NULL DEFAULT '',
+		 synthesis TEXT NOT NULL DEFAULT '',
+		 notice TEXT NOT NULL DEFAULT '',
+		 provider TEXT NOT NULL DEFAULT '',
+		 model TEXT NOT NULL DEFAULT '',
+		 created_at TEXT NOT NULL DEFAULT '',
+		 updated_at TEXT NOT NULL DEFAULT '')`,
+		`CREATE TABLE IF NOT EXISTS career_connection_challenges (
+		 synthesis_hash TEXT NOT NULL,
+		 connection_id TEXT NOT NULL,
+		 state TEXT NOT NULL DEFAULT '',
+		 note TEXT NOT NULL DEFAULT '',
+		 updated_at TEXT NOT NULL DEFAULT '',
+		 PRIMARY KEY(synthesis_hash, connection_id))`,
+		// AI-answer provenance pins the validated evidence basis behind one
+		// generated answer for staleness flags only. It never rewrites a
+		// saved answer; missing rows mean provenance was not recorded.
+		`CREATE TABLE IF NOT EXISTS ai_answer_provenance (
+		 job_id INTEGER NOT NULL, destination TEXT NOT NULL DEFAULT '', question_key TEXT NOT NULL DEFAULT '',
+		 evidence_id INTEGER NOT NULL, evidence_rev INTEGER NOT NULL DEFAULT 0, evidence_created TEXT NOT NULL DEFAULT '',
+		 answer_hash TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS application_steps (
 		 inspection_id INTEGER NOT NULL REFERENCES application_inspections(id), ordinal INTEGER NOT NULL,
 		 step_key TEXT NOT NULL, label TEXT NOT NULL, state TEXT NOT NULL, action TEXT NOT NULL,
@@ -372,6 +469,34 @@ func initJobsSchema(db *sql.DB) error {
 		if _, err := db.Exec(`ALTER TABLE candidate_profile ADD COLUMN pronouns TEXT NOT NULL DEFAULT ''`); err != nil {
 			return fmt.Errorf("migrate candidate pronouns: %w", err)
 		}
+	}
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS job_posting_sources (
+		job_id INTEGER PRIMARY KEY REFERENCES jobs(id),
+		latest_success_at TEXT NOT NULL CHECK(length(latest_success_at) BETWEEN 1 AND 80),
+		availability TEXT NOT NULL CHECK(availability IN ('available','unavailable')),
+		unavailable_reason TEXT NOT NULL DEFAULT '',
+		source_json BLOB,
+		source_content_sha256 TEXT,
+		description_confirmed INTEGER NOT NULL CHECK(description_confirmed IN (0,1)),
+		salary_confirmed INTEGER NOT NULL CHECK(salary_confirmed IN (0,1)),
+		CHECK (
+			(availability='available' AND unavailable_reason='' AND source_json IS NOT NULL
+			 AND source_content_sha256 IS NOT NULL AND length(source_content_sha256)=64
+			 AND length(CAST(source_json AS BLOB)) BETWEEN 1 AND 1048576)
+			OR
+			(availability='unavailable' AND unavailable_reason IN ('absent','too_large','invalid','unsupported')
+			 AND source_json IS NULL AND source_content_sha256 IS NULL)
+		)
+ 	)`); err != nil {
+		return fmt.Errorf("create job posting sources table: %w", err)
+	}
+	// Local operator preferences. Applicant records are never keyed off this
+	// table; unknown keys are preserved and a missing key means the default.
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS settings (
+		key TEXT PRIMARY KEY,
+		value TEXT NOT NULL DEFAULT ''
+	)`); err != nil {
+		return fmt.Errorf("create settings table: %w", err)
 	}
 	return nil
 }

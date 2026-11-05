@@ -30,7 +30,7 @@ func main() {
 
 	application, err := app.New(app.Config{
 		DB: db, ResumeDir: resumeDir, TemplateFiles: templateFiles,
-		StaticFiles: staticFiles, CoverLetterInstructions: coverLetterInstructions, ApplicationAnswerInstructions: applicationAnswerInstructions,
+		StaticFiles: staticFiles, FrontendDist: frontendDist, CoverLetterInstructions: coverLetterInstructions, ApplicationAnswerInstructions: applicationAnswerInstructions,
 	})
 	if err != nil {
 		log.Fatal(err)

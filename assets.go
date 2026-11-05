@@ -8,6 +8,9 @@ var staticFiles embed.FS
 //go:embed templates
 var templateFiles embed.FS
 
+//go:embed frontend/dist
+var frontendDist embed.FS
+
 // All providers receive this one version-controlled source through app.Config.
 //
 //go:embed prompts/cover_letter.md

@@ -8,12 +8,12 @@ import (
 // NextAction is an advisory navigation cue, never an application status or an
 // assertion that a resume was uploaded or an employer accepted a submission.
 type NextAction struct {
-	JobID   int64
-	Title   string
-	Company string
-	Label   string
-	Reason  string
-	Href    string
+	JobID   int64  `json:"jobId"`
+	Title   string `json:"title"`
+	Company string `json:"company"`
+	Label   string `json:"label"`
+	Reason  string `json:"reason"`
+	Href    string `json:"href"`
 }
 
 func (j Job) ActionLabel() string {

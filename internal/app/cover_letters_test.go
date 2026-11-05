@@ -256,7 +256,7 @@ func TestCoverProviderMigrationPreservesOldDrafts(t *testing.T) {
 	}
 	defer db.Close()
 	draft, err := (newTestApp(t, db, "")).latestCoverLetter(1)
-	if err != nil || draft.Provider != "ollama" || draft.Model != "legacy-model" || draft.Body != "Previous draft text" {
+	if err != nil || draft.Provider != "ollama" || draft.Model != "legacy-model" || draft.Body != "Previous draft text" || draft.ID != 1 || draft.MasterResumeID != 2 || draft.RoleResumeID != 3 || draft.MasterSHA256 != "master-hash" || draft.RoleSHA256 != "role-hash" {
 		t.Fatalf("migration lost legacy draft: %+v %v", draft, err)
 	}
 }

@@ -14,6 +14,16 @@ cp release/macos/Info.plist "$release_output/YourMove.app/Contents/Info.plist"
 mkdir -p "$release_output/YourMove.app/Contents/Resources"
 cp release/macos/YourMove.icns "$release_output/YourMove.app/Contents/Resources/YourMove.icns"
 /usr/bin/plutil -lint "$release_output/YourMove.app/Contents/Info.plist"
+# Build the embedded Opportunities frontend reproducibly before embedding.
+# The Go executable serves frontend/dist; never rely on a Vite dev server.
+if [ -f "$release_repo/frontend/package.json" ]; then
+  if ! command -v pnpm >/dev/null 2>&1; then
+    echo 'pnpm is required to build the embedded frontend (see frontend/README.md).' >&2
+    exit 1
+  fi
+  (cd "$release_repo/frontend" && pnpm install --frozen-lockfile && pnpm run build)
+  (cd "$release_repo/frontend" && pnpm list react react-dom)
+fi
 # The initial qualification matrix is intentionally the OS and architecture
 # actually tested. Lowering this floor requires a separate compatibility run.
 export GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 MACOSX_DEPLOYMENT_TARGET=26.0

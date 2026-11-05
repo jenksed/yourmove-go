@@ -452,6 +452,85 @@
   }
 })();
 
+// Cover-letter evidence: optional reviewed-experience selection for the
+// generation form, plus a staleness banner when supporting evidence changed
+// after a draft was written. The Go handler revalidates every selection;
+// failures leave the legacy form untouched.
+(() => {
+  'use strict';
+  const form = document.querySelector('form[action$="/cover-letter/generate"]');
+  if (form && !form.querySelector('[data-letter-evidence]')) {
+    const inputs = form.querySelector('.letter-inputs');
+    const consent = form.querySelector('.letter-consent span');
+    if (inputs) {
+      fetch('/api/career/evidence', {headers: {Accept: 'application/json'}}).then(response => {
+        if (!response.ok) throw new Error();
+        return response.json();
+      }).then(value => {
+        const reviewed = (value.evidence || []).filter(entry => entry.status === 'reviewed');
+        if (reviewed.length === 0) return;
+        const field = document.createElement('fieldset');
+        field.className = 'field field-full';
+        field.dataset.letterEvidence = '';
+        const legend = document.createElement('legend');
+        legend.textContent = 'Reviewed Career Evidence (optional, up to two)';
+        field.append(legend);
+        const originalConsent = consent ? consent.textContent : '';
+        const refresh = () => {
+          const checked = [...field.querySelectorAll('input[name="career_evidence"]:checked')];
+          field.querySelectorAll('input[name="career_evidence"]:not(:checked)').forEach(input => {
+            input.disabled = checked.length >= 2;
+          });
+          if (consent) {
+            consent.textContent = checked.length === 0 ? originalConsent :
+              `${originalConsent} Plus ${checked.length} selected Career Evidence record(s) as grounded factual material.`;
+          }
+        };
+        reviewed.slice(0, 30).forEach(entry => {
+          const label = document.createElement('label');
+          label.className = 'confirm-row';
+          const input = document.createElement('input');
+          input.type = 'checkbox';
+          input.name = 'career_evidence';
+          input.value = `${entry.id}:${entry.revision}:${entry.created_at}`;
+          const text = document.createElement('span');
+          text.textContent = `${entry.title || `Record #${entry.id}`} · revision ${entry.revision}`;
+          label.append(input, text);
+          field.append(label);
+        });
+        field.addEventListener('change', refresh);
+        inputs.append(field);
+      }).catch(() => {});
+    }
+  }
+  const saveForm = document.querySelector('form[action$="/cover-letter/save"]');
+  const draftID = saveForm?.querySelector('input[name="draft_id"]')?.value;
+  const jobMatch = location.pathname.match(/^\/jobs\/(\d+)/);
+  const anchor = document.querySelector('.writer-meta');
+  if (saveForm && draftID && jobMatch && anchor && !document.querySelector('[data-letter-stale]')) {
+    fetch('/api/career/activation', {headers: {Accept: 'application/json'}}).then(response => {
+      if (!response.ok) throw new Error();
+      return response.json();
+    }).then(value => {
+      const stale = [];
+      (value.evidence || []).forEach(entry => {
+        (entry.letters || []).forEach(use => {
+          if (String(use.job_id) === jobMatch[1] && String(use.draft_id) === draftID && use.stale) {
+            stale.push(entry.title || `Record #${entry.id}`);
+          }
+        });
+      });
+      if (stale.length === 0) return;
+      const banner = document.createElement('p');
+      banner.dataset.letterStale = '';
+      banner.className = 'letter-notice';
+      banner.setAttribute('role', 'status');
+      banner.textContent = `Supporting evidence changed since this draft was written (${stale.join('; ')}). The saved text is unchanged; generate another version to use the current records.`;
+      anchor.after(banner);
+    }).catch(() => {});
+  }
+})();
+
 // Question workbench: visibility and navigation over the authoritative Go forms.
 (() => {
   const workbenches = [...document.querySelectorAll('[data-question-workbench]')];
@@ -911,7 +990,10 @@
       body: fields instanceof URLSearchParams ? fields : new URLSearchParams(fields), signal
     });
     const value = await response.json();
-    if (!response.ok) throw new Error(value.message || 'This drafting request could not complete. Review sources again.');
+    if (!response.ok) {
+      const suffix = typeof value.failure_stage === 'string' && value.failure_stage ? ` [${value.failure_stage}]` : '';
+      throw new Error((value.message || 'This drafting request could not complete. Review sources again.') + suffix);
+    }
     return value;
   };
   const sourceReference = source => {
@@ -984,12 +1066,55 @@
         status('Preview recovery storage is unavailable. Keep this page open or copy the preview before leaving.');
       }
     };
+    const renderTrace = value => {
+      root.querySelector('[data-answer-ai-trace]')?.remove();
+      const trace = value && value.trace;
+      if (!trace || !Array.isArray(trace.claims) || trace.claims.length === 0) return;
+      const box = document.createElement('details');
+      box.dataset.answerAiTrace = '';
+      box.open = true;
+      const summary = document.createElement('summary');
+      summary.textContent = `Evidence trace · ${trace.claims.length} claim(s) · quotes are verbatim, not proof`;
+      box.append(summary);
+      const list = document.createElement('ol');
+      trace.claims.forEach(claim => {
+        const item = document.createElement('li');
+        const text = document.createElement('p');
+        text.textContent = String(claim.claim || '');
+        const binding = document.createElement('p');
+        binding.className = 'small-muted';
+        binding.textContent = `Evidence #${claim.evidence_id} · revision ${claim.evidence_revision} · ${claim.response_id} `;
+        const link = document.createElement('a');
+        link.href = `/career-evidence/${encodeURIComponent(String(claim.evidence_id))}`;
+        link.textContent = 'Open record';
+        binding.append(link);
+        const quote = document.createElement('p');
+        quote.className = 'small-muted';
+        quote.textContent = `“${claim.quote || ''}”`;
+        item.append(text, binding, quote);
+        list.append(item);
+      });
+      box.append(list);
+      if (Array.isArray(trace.unresolved) && trace.unresolved.length > 0) {
+        const heading = document.createElement('p');
+        heading.textContent = 'Left unresolved (not established by the evidence):';
+        const pending = document.createElement('ul');
+        trace.unresolved.forEach(item => {
+          const li = document.createElement('li');
+          li.textContent = String(item);
+          pending.append(li);
+        });
+        box.append(heading, pending);
+      }
+      find('reference').after(box);
+    };
     const showPreview = (value, recovering = false) => {
       preview = value;
       find('preview').hidden = false;
       find('text').value = value.answer;
       find('question').textContent = value.question;
       find('reference').textContent = value.references || 'Recovered preview; server review required before use.';
+      renderTrace(value);
       find('adopt').disabled = !matches() || String(value.revision) !== root.dataset.revision || value.question_key !== root.dataset.key || Date.parse(value.expires_at) <= Date.now() || value.adoptable === false;
       find('another').open = false;
       root.open = true;
@@ -1124,7 +1249,7 @@
     });
     find('discard').addEventListener('click', () => {
       if (preview?.ticket) api(root, 'cancel', {ticket: preview.ticket}).catch(() => {});
-      preview = null; find('text').value = ''; find('preview-payload').textContent = ''; find('preview-sources').hidden = true; find('preview').hidden = true; find('another').open = true; persist(); status('Preview discarded. Your editor is unchanged.');
+      preview = null; find('text').value = ''; find('preview-payload').textContent = ''; find('preview-sources').hidden = true; root.querySelector('[data-answer-ai-trace]')?.remove(); find('preview').hidden = true; find('another').open = true; persist(); status('Preview discarded. Your editor is unchanged.');
     });
     try {
       const stored = sessionStorage.getItem(key);

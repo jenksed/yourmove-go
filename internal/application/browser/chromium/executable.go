@@ -58,6 +58,10 @@ func executable() (string, error) {
 	return "", errors.New("Chrome/Chromium not found. Install Google Chrome or Playwright Chromium, or set YOURMOVE_CHROMIUM to the browser executable")
 }
 
+// ResolveExecutable reports the browser binary the production session
+// launches, so UI availability claims match the real launch path.
+func ResolveExecutable() (string, error) { return executable() }
+
 func isExecutableFile(path string) bool {
 	if path == "" {
 		return false

@@ -24,6 +24,10 @@ type coverBackend struct {
 	Model    string
 	URL      string
 	APIKey   string
+
+	jsonOutput      bool
+	letterBudget    bool
+	discoveryBudget bool
 }
 
 var (
@@ -86,6 +90,46 @@ func (r Runner) GenerateNarrative(ctx context.Context, prompt, instructions stri
 		prompt += "\n\n" + instructions
 	}
 	return runProviderProfile(ctx, r.backend, prompt, instructions, nil, true)
+}
+
+// GenerateNarrativeJSON requests JSON object output from an OpenAI-compatible
+// endpoint for narrow workflows whose callers validate structured references.
+func (r Runner) GenerateNarrativeJSON(ctx context.Context, prompt, instructions string) (string, error) {
+	if r.backend.Provider == "compatible" {
+		r.backend.jsonOutput = true
+	}
+	return r.GenerateNarrative(ctx, prompt, instructions)
+}
+
+// GenerateDiscovery performs one bounded Career Discovery inference request.
+// Discovery turns carry strict JSON contracts plus verbatim source quotations,
+// and proposal-bearing turns exhaust smaller budgets. The compatible provider
+// therefore uses the discovery output profile that succeeds live: a larger
+// output budget with low reasoning effort and a JSON object contract. Other
+// providers keep their existing narrative behavior; reasoning content is never
+// treated as the candidate-facing answer and validation stays strict.
+func (r Runner) GenerateDiscovery(ctx context.Context, prompt, instructions string) (string, error) {
+	if coverSubscription(r.provider) {
+		return runSubscriptionProfile(ctx, r.provider, r.backend.Model, prompt+"\n\n"+instructions, true)
+	}
+	if r.backend.Provider == "compatible" {
+		r.backend.discoveryBudget = true
+	}
+	if r.provider == "ollama" {
+		prompt += "\n\n" + instructions
+	}
+	return runProviderProfile(ctx, r.backend, prompt, instructions, nil, true)
+}
+
+// GenerateLetter performs one bounded cover-letter request. Letters carry
+// large source prompts, so the compatible provider uses a larger output
+// budget with low reasoning effort but no JSON contract: the letter validator
+// rejects structured envelopes.
+func (r Runner) GenerateLetter(ctx context.Context, prompt, instructions string) (string, error) {
+	if r.backend.Provider == "compatible" {
+		r.backend.letterBudget = true
+	}
+	return r.Generate(ctx, prompt, instructions)
 }
 
 // ExecutionLocality describes the configured transport, never inference guarantees.
@@ -248,6 +292,32 @@ func runProviderProfile(ctx context.Context, backend coverBackend, prompt, instr
 		default:
 			fields["max_tokens"] = 1024
 		}
+	}
+	if narrative && backend.discoveryBudget && backend.Provider == "compatible" {
+		// Career Discovery leads and interview turns require strict JSON with
+		// verbatim citations. Proposal-bearing turns exhaust smaller budgets
+		// live, so discovery uses the larger output profile with low reasoning
+		// effort and a JSON object contract. Reasoning content stays separate
+		// and is never treated as the answer; strict validation is unchanged.
+		fields := request.(map[string]any)
+		fields["max_tokens"] = 3072
+		fields["reasoning_effort"] = "low"
+		fields["response_format"] = map[string]string{"type": "json_object"}
+	} else if narrative && backend.jsonOutput && backend.Provider == "compatible" {
+		// Structured answer traces carry the answer plus verbatim claims, so
+		// they use a larger output budget with low reasoning effort and a
+		// JSON object contract.
+		fields := request.(map[string]any)
+		fields["max_tokens"] = 2048
+		fields["reasoning_effort"] = "low"
+		fields["response_format"] = map[string]string{"type": "json_object"}
+	} else if backend.letterBudget && backend.Provider == "compatible" {
+		// Evidence-backed cover letters carry large source prompts, so they
+		// use the larger output budget with low reasoning effort and no JSON
+		// contract.
+		fields := request.(map[string]any)
+		fields["max_tokens"] = 2048
+		fields["reasoning_effort"] = "low"
 	}
 	data, err := json.Marshal(request)
 	if err != nil {

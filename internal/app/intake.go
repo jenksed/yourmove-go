@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+
+	"github.com/jenksed/yourmove-go/internal/platforms"
 )
 
 const maxBatchJobs = 50
@@ -63,18 +65,21 @@ func loadURLIndex(q jobURLQuerier) (map[string]int64, error) {
 	return index, rows.Err()
 }
 
-func (a *App) hasJobURL(rawURL string) (bool, error) {
-	index, err := loadURLIndex(a.db)
-	if err != nil {
-		return false, err
-	}
-	_, exists := index[rawURL]
-	return exists, nil
-}
-
 // storeJobIfNew serializes writes from both intake paths. A transaction keeps
 // duplicate detection and the insert together without mutating old records.
 func (a *App) storeJobIfNew(job Job) (id int64, added bool, err error) {
+	return a.storeJobIfNewWithPostingSource(job, platforms.PostingSourceResult{}, "", false, false)
+}
+
+// storeJobIfNewWithPostingSource commits the new canonical job and its latest
+// successful provider observation together. A duplicate never replaces either.
+func (a *App) storeJobIfNewWithPostingSource(
+	job Job,
+	source platforms.PostingSourceResult,
+	latestSuccessAt string,
+	descriptionConfirmed bool,
+	salaryConfirmed bool,
+) (id int64, added bool, err error) {
 	a.intakeMu.Lock()
 	defer a.intakeMu.Unlock()
 	tx, err := a.db.Begin()
@@ -97,6 +102,12 @@ func (a *App) storeJobIfNew(job Job) (id int64, added bool, err error) {
 	if err != nil {
 		return 0, false, err
 	}
+	if latestSuccessAt != "" {
+		source = usablePostingSource(source, job.URL, job.Description)
+		if err := saveJobPostingSource(tx, id, job.URL, job.Description, latestSuccessAt, source, descriptionConfirmed, salaryConfirmed); err != nil {
+			return 0, false, fmt.Errorf("save posting source during intake: %w", err)
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return 0, false, fmt.Errorf("commit job: %w", err)
 	}
@@ -104,18 +115,18 @@ func (a *App) storeJobIfNew(job Job) (id int64, added bool, err error) {
 }
 
 type BatchItem struct {
-	Line   int
-	URL    string
-	Status string // added, duplicate, invalid
-	Detail string
-	JobID  int64
+	Line   int    `json:"line"`
+	URL    string `json:"url"`
+	Status string `json:"status"` // added, duplicate, invalid
+	Detail string `json:"detail"`
+	JobID  int64  `json:"jobId"`
 }
 
 type BatchResult struct {
-	Items      []BatchItem
-	Added      int
-	Duplicates int
-	Invalid    int
+	Items      []BatchItem `json:"items"`
+	Added      int         `json:"added"`
+	Duplicates int         `json:"duplicates"`
+	Invalid    int         `json:"invalid"`
 }
 
 // importJobBatch persists all valid new URLs in a single transaction. Invalid

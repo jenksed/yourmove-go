@@ -1,0 +1,117 @@
+/* Quiet Ink career discovery compositions for the React slice.
+   Shell, tokens, and universal controls live in shared/quiet-ink.css;
+   form controls (.field) live in features/opportunities/opportunities.css. */
+
+.career-notice { margin-bottom: 16px; }
+.career-notice p { margin: 0; }
+.career-section-heading { margin-bottom: 14px; }
+.career-section-heading h2 { margin: 0 0 4px; }
+.career-block { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--color-border); }
+.career-block h3 { margin: 0 0 4px; }
+.career-block h4 { margin: 14px 0 6px; font-size: 13px; }
+.career-block .form-actions { margin-top: 12px; }
+.career-block .field,
+.career-transcript,
+.career-proposal { max-width: 780px; min-width: 0; }
+.career-transcript p,
+.career-proposal dd { overflow-wrap: anywhere; }
+.career-start-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.career-start-grid .field-full { grid-column: 1 / -1; }
+
+.career-details { margin-top: 12px; }
+.career-details > summary { cursor: pointer; font-size: 13px; font-weight: 700; color: var(--color-primary); }
+.career-pre {
+  margin: 8px 0 0;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  background: var(--color-surface-muted);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.career-leads { display: grid; gap: 8px; margin-top: 10px; }
+.career-lead {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  cursor: pointer;
+}
+.career-lead input { margin-top: 3px; }
+.career-lead span span { display: block; }
+.career-lead-why { color: var(--color-muted); font-size: 12px; margin-top: 2px; }
+
+.career-checks { display: grid; gap: 8px; margin-top: 12px; font-size: 13px; }
+.career-question { font-size: 15px; font-weight: 650; }
+.career-source-id { font-weight: 750; font-size: 12px; }
+
+.career-transcript { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 12px; }
+.career-transcript-question { font-weight: 650; margin: 0 0 2px; }
+.career-transcript p { margin: 0; }
+.career-proposal { margin: 8px 0 0; display: grid; gap: 6px; }
+.career-proposal dt { font-size: 12px; font-weight: 750; color: var(--color-muted); }
+.career-proposal dd { margin: 0 0 6px; }
+.career-citations, .career-unresolved { margin: 6px 0 0; padding-left: 20px; display: grid; gap: 6px; }
+.career-promoted { margin: 0 0 12px; }
+
+.career-session-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.career-session-list li {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 4px;
+  border-bottom: 1px solid var(--color-border);
+}
+.career-session-list li:last-child { border-bottom: 0; }
+.career-session-list li > div { min-width: 0; overflow-wrap: anywhere; }
+.career-session-list li.is-active strong { color: var(--color-primary); }
+.career-session-meta { display: block; color: var(--color-muted); font-size: 12px; margin-top: 2px; }
+
+@media (max-width: 480px) {
+  .career-start-grid { grid-template-columns: 1fr; }
+  .career-session-list li { flex-wrap: wrap; }
+}
+
+/* YM-003B Career Studio compositions. */
+
+.studio-library-bar { display: flex; gap: 16px; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; margin-bottom: 8px; }
+.studio-library-bar .form-actions { margin: 0; }
+.studio-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.studio-mini-heading { font-size: 14px; margin: 0 0 8px; }
+.studio-source-heading { font-size: 13px; margin: 12px 0 4px; }
+
+.studio-stale {
+  padding: 10px 12px;
+  border-inline-start: 3px solid var(--color-attention);
+  border-radius: 0 6px 6px 0;
+  background: var(--color-attention-soft);
+  color: var(--color-text);
+}
+
+.studio-cards { display: grid; gap: 12px; margin-top: 10px; }
+.studio-card { padding: 14px; border: 1px solid var(--color-border); border-radius: 7px; }
+.studio-card h4 { margin: 0 0 6px; font-size: 14px; }
+.studio-card h5 { margin: 12px 0 4px; font-size: 12px; color: var(--color-muted); }
+.studio-card p { margin: 4px 0; font-size: 13px; line-height: 1.55; }
+.studio-card ul { margin: 4px 0; padding-left: 20px; font-size: 13px; display: grid; gap: 4px; }
+.studio-card .form-actions { margin-top: 12px; }
+
+.studio-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  vertical-align: 1px;
+}
+.studio-badge-hit { background: var(--color-success-soft); border-color: var(--color-success); color: var(--color-success); }
+.studio-badge-stale { background: var(--color-attention-soft); border-color: var(--color-attention); color: var(--color-attention); }

@@ -27,9 +27,9 @@ import (
 
 // These errors distinguish a closed application tab from temporary navigation
 // (such as an employer login page in the managed browser).
-var ErrNoMatchingTab = errors.New("saved application is not the current browser page")
-var ErrNoPageTargets = errors.New("the managed browser has no open pages")
-var ErrBrowserUnavailable = errors.New("the managed browser is no longer reachable")
+var ErrNoMatchingTab = browser.ErrNoMatchingTab
+var ErrNoPageTargets = browser.ErrNoPageTargets
+var ErrBrowserUnavailable = browser.ErrBrowserUnavailable
 
 type Session struct {
 	mu         sync.Mutex
@@ -280,6 +280,29 @@ func selectTargetOwned(port int, targets []target, owns func(string) bool) (targ
 	return target{}, ErrNoMatchingTab
 }
 
+// Focus returns the existing owned application tab to the foreground.
+func (s *Session) Focus(ctx context.Context) error {
+	c, cancel := context.WithTimeout(ctx, 12*time.Second)
+	defer cancel()
+	if err := s.lockContext(c); err != nil {
+		return err
+	}
+	defer s.mu.Unlock()
+	if s.closed {
+		return errors.New("browser session closed")
+	}
+	t, err := s.target(c)
+	if err != nil {
+		return err
+	}
+	ws, err := dialCDP(c, t.WebSocketURL)
+	if err != nil {
+		return err
+	}
+	defer ws.Close(websocket.StatusNormalClosure, "")
+	return cdpCall(c, ws, 1, "Page.bringToFront", nil, nil)
+}
+
 func (s *Session) Observe(ctx context.Context) (browser.Observation, error) {
 	c, cancel := context.WithTimeout(ctx, 12*time.Second)
 	defer cancel()
@@ -386,3 +409,6 @@ func (s *Session) lockContext(ctx context.Context) error {
 	}
 	return nil
 }
+
+// Engine reports the managed browser type for session status.
+func (s *Session) Engine() string { return "chromium" }

@@ -47,7 +47,7 @@ func TestMissingGreenhousePostingIsClosed(t *testing.T) {
 }
 
 func TestMissingAshbyPostingIsClosed(t *testing.T) {
-	_, err := extractAshbyMetadata([]byte(`{"jobs":[{"id":"other","title":"Another open job"}]}`), "removed")
+	_, err := extractAshbyMetadata([]byte(`{"jobs":[{"id":"other","title":"Another open job"}]}`), "fixture", "11111111-1111-4111-8111-111111111111")
 	if !errors.Is(err, ErrClosed) {
 		t.Fatalf("missing posting: %v", err)
 	}

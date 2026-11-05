@@ -22,11 +22,37 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v7
 
+      - name: Authenticate private Go modules
+        run: |
+          if [ -z "${{ secrets.CAREER_DISCOVERY_READ_TOKEN }}" ]; then
+            echo "CAREER_DISCOVERY_READ_TOKEN secret is not set; cannot fetch private Go modules." >&2
+            exit 1
+          fi
+          git config --global url."https://x-access-token:${{ secrets.CAREER_DISCOVERY_READ_TOKEN }}@github.com/".insteadOf "https://github.com/"
+          echo "GOPRIVATE=github.com/jenksed/*" >> "$GITHUB_ENV"
+
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: frontend/.nvmrc
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - name: Build Opportunities frontend
+        run: |
+          cd frontend
+          pnpm install --frozen-lockfile
+          pnpm run build
+          pnpm list react react-dom
 
       - name: Run Go tests
         run: go test -count=1 ./...
@@ -45,11 +71,37 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v7
 
+      - name: Authenticate private Go modules
+        run: |
+          if [ -z "${{ secrets.CAREER_DISCOVERY_READ_TOKEN }}" ]; then
+            echo "CAREER_DISCOVERY_READ_TOKEN secret is not set; cannot fetch private Go modules." >&2
+            exit 1
+          fi
+          git config --global url."https://x-access-token:${{ secrets.CAREER_DISCOVERY_READ_TOKEN }}@github.com/".insteadOf "https://github.com/"
+          echo "GOPRIVATE=github.com/jenksed/*" >> "$GITHUB_ENV"
+
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: frontend/.nvmrc
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - name: Build Opportunities frontend
+        run: |
+          cd frontend
+          pnpm install --frozen-lockfile
+          pnpm run build
+          pnpm list react react-dom
 
       - name: Run desktop tests
         run: go test -count=1 -tags desktop ./...

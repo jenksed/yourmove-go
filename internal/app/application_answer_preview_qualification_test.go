@@ -69,15 +69,14 @@ func TestControlledAshbyPreviewIsReadOnlyAndSessionIsolated(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
 	defer cancel()
-	form := url.Values{"return_to": {"prepare"}}
-	request := httptest.NewRequestWithContext(ctx, http.MethodPost, "http://localhost/jobs/1/answers/preview", strings.NewReader(form.Encode()))
+	request := httptest.NewRequestWithContext(ctx, http.MethodPost, "http://localhost/api/jobs/1/questions/discover", nil)
 	request.Host = "localhost"
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	request.Header.Set("Origin", "wails://localhost")
 	request.Header.Set("X-Wails-Window-Id", "1")
 	response := httptest.NewRecorder()
 	newDesktopMux(a).ServeHTTP(response, request)
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `window.location.replace("/jobs/1#prepare")`) {
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"status":"available"`) {
 		t.Fatalf("desktop preview navigation: %d %s", response.Code, response.Body.String())
 	}
 	if previewCalls.Load() != 1 || getCount.Load() == 0 || mutationCount.Load() != 0 {

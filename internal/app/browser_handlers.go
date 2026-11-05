@@ -155,6 +155,10 @@ func (a *App) startResumeHandoff(w http.ResponseWriter, r *http.Request) {
 
 // resumeHandoffCommand validates the exact submitted material before arming its existing operation.
 func (a *App) resumeHandoffCommand(r *http.Request, id int64) (int, string) {
+	return a.resumeHandoffForAction(r, id, false)
+}
+
+func (a *App) resumeHandoffForAction(r *http.Request, id int64, profileAuthorized bool) (int, string) {
 	returnURL := fmt.Sprintf("/jobs/%d/inspection", id)
 	if r.PostForm.Get("return_to") == "prepare" {
 		returnURL = fmt.Sprintf("/jobs/%d#prepare", id)
@@ -198,7 +202,7 @@ func (a *App) resumeHandoffCommand(r *http.Request, id int64) (int, string) {
 		if profileErr != nil {
 			return 500, "Unable to read candidate information"
 		}
-		if !profile.Approved || r.PostForm.Get("profile_revision") != strconv.FormatInt(profile.Revision, 10) {
+		if (!profileAuthorized && !profile.Approved) || r.PostForm.Get("profile_revision") != strconv.FormatInt(profile.Revision, 10) {
 			return http.StatusConflict, "Candidate information changed or is not approved. Review it again before transferring."
 		}
 		contacts = &browser.ContactValues{Revision: profile.Revision, FirstName: profile.FirstName, LastName: profile.LastName, Email: profile.Email, Phone: profile.Phone}
@@ -220,6 +224,10 @@ func (a *App) resumeHandoffCommand(r *http.Request, id int64) (int, string) {
 		os.RemoveAll(dir)
 		return 500, "Unable to read candidate information"
 	}
+	if profileAuthorized && contacts != nil && profile.Revision != contacts.Revision {
+		os.RemoveAll(dir)
+		return http.StatusConflict, "Candidate Profile changed. Review it before filling."
+	}
 	name := attachmentFilename(profile, job, "Resume", resume.Kind)
 	path := filepath.Join(dir, name)
 	if err := os.WriteFile(path, data, 0600); err != nil {
@@ -229,15 +237,20 @@ func (a *App) resumeHandoffCommand(r *http.Request, id int64) (int, string) {
 	if err := a.browsers.start(r.Context(), id, job.URL); err != nil {
 		os.RemoveAll(dir)
 		a.browsers.reportLaunchFailure(id, err)
-		return http.StatusSeeOther, returnURL
+		return http.StatusServiceUnavailable, "Unable to open the employer browser: " + err.Error()
 	}
-	if err := a.browsers.armResume(id, dir, path, name, contacts); err != nil {
+	var profileCurrent func() bool
+	if contacts != nil && profileAuthorized {
+		revision := contacts.Revision
+		profileCurrent = func() bool { p, err := a.candidateProfile(); return err == nil && p.Revision == revision }
+	}
+	if err := a.browsers.armResume(id, dir, path, name, contacts, resumeHandoffInfo{resumeID: resume.ID, resumeHash: resume.SHA256, contactCurrent: profileCurrent}); err != nil {
 		os.RemoveAll(dir)
 		// Existing browser remains available for manual use. Never leave an
 		// unowned staged document or attempt a second unauthorized upload.
 		log.Printf("resume handoff could not be armed: %v", err)
 		a.browsers.setState(id, "attention", "Resume handoff could not be started. Inspect the employer browser or close the session before selecting a new document.", 0, false)
-		return http.StatusSeeOther, returnURL
+		return http.StatusConflict, "Resume handoff could not be started. Review the employer browser."
 	}
 	a.browsers.watch(id, job.URL, func(o browser.Observation) (int64, error) {
 		result, e := browser.AsResult(job.URL, o)

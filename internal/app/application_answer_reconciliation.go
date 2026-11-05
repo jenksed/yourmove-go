@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +15,22 @@ import (
 	"github.com/jenksed/yourmove-go/internal/application/browser"
 	"github.com/jenksed/yourmove-go/internal/application/schema"
 )
+
+// ashbyFormNamespace matches the volatile per-load form UUID prefix in an
+// Ashby data-field-entry-id. Separate Preview and live browser loads of the
+// same posting rotate this namespace while the trailing question identity
+// stays stable, so exact full-identity matching would orphan every saved
+// preview answer. Stable-suffix matching below restores the mapping; labels,
+// control types, required status, and options are still compared exactly, so
+// wording alone never authorizes a transfer.
+var ashbyFormNamespace = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}_+`)
+
+func ashbyStableFieldSuffix(id string) string {
+	for _, prefix := range []string{"preview:", "browser:"} {
+		id = strings.TrimPrefix(id, prefix)
+	}
+	return ashbyFormNamespace.ReplaceAllString(id, "")
+}
 
 func (a *App) reconcileEarlyPreparation(job Job, public *Inspection, preparation *earlyQuestionPreparation) error {
 	hasDraft := len(preparation.Previous) > 0
@@ -137,19 +154,21 @@ func reconcileEarlyAnswer(job Job, answer earlyApplicationAnswer, public *Inspec
 		if live.Platform != "ashby" || !strings.HasPrefix(answer.SourceQuestionID, "preview:") {
 			return earlyReconciliation{Status: "Manual only", Detail: "No provider-specific identity rule supports mapping this preview field to the live form."}
 		}
-		name = strings.TrimPrefix(answer.SourceQuestionID, "preview:")
+		name = ashbyStableFieldSuffix(answer.SourceQuestionID)
 	default:
 		return earlyReconciliation{Status: "Manual only", Detail: "No provider-specific identity rule supports mapping this question to the live form."}
 	}
 	if name == "" || strings.Contains(name, ":") {
 		return earlyReconciliation{Status: "Manual only", Detail: "This discovered question does not have a qualified field identity."}
 	}
-	liveID := "browser:" + name
 	count := 0
 	var candidate schema.Field
 	labelCount := 0
 	for _, field := range live.Fields {
-		if field.ID == liveID {
+		if !strings.HasPrefix(field.ID, "browser:") {
+			continue
+		}
+		if ashbyStableFieldSuffix(field.ID) == name {
 			count++
 			candidate = field.Field
 		}

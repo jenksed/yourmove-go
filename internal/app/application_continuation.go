@@ -83,7 +83,7 @@ func pendingAnswers(ready, attempted []preparedQuestion, contactsHandled bool) [
 		}
 		seen := false
 		for _, old := range attempted {
-			if old.Key == q.Key && old.Value == q.Value {
+			if (old.Key == q.Key || (old.Field.ID != "" && old.Field.ID == q.Field.ID)) && (old.Value == q.Value || (old.IsEarly && q.IsEarly)) {
 				seen = true
 				break
 			}
@@ -93,6 +93,29 @@ func pendingAnswers(ready, attempted []preparedQuestion, contactsHandled bool) [
 		}
 	}
 	return pending
+}
+
+// A pending early snapshot suppresses only that exact authorized revision.
+// A changed answer may be explicitly authorized while the old one is waiting.
+func excludePendingAuthorizations(ready, pending []preparedQuestion) []preparedQuestion {
+	var result []preparedQuestion
+	for _, q := range ready {
+		duplicate := false
+		for _, old := range pending {
+			if q.IsEarly && old.IsEarly {
+				duplicate = q.Key == old.Key && q.Revision == old.Revision && q.Value == old.Value
+			} else {
+				duplicate = len(pendingAnswers([]preparedQuestion{q}, []preparedQuestion{old}, false)) == 0
+			}
+			if duplicate {
+				break
+			}
+		}
+		if !duplicate {
+			result = append(result, q)
+		}
+	}
+	return result
 }
 
 func summarizeAnswerOutcomes(outcomes []browser.AnswerOutcome) string {
@@ -208,7 +231,7 @@ func summarizePreparation(w jobWorkspace) HandoffPresentation {
 	}
 	if out.Action == "" && (s.LetterStatus == "checking" || s.LetterStatus == "waiting" || s.AnswerStatus == "waiting" || s.AnswerStatus == "checking") {
 		out.Title = "Transferring application material"
-		out.Detail = "The current browser remains open. Each item is checked independently; review its result below."
+		out.Detail = "The current browser remains open. Answers not found on this page remain eligible while waiting for a matching question; complete them manually if needed."
 	}
 	return out
 }
