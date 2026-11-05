@@ -135,8 +135,8 @@ tell application "Finder"
 	set background picture of opts to POSIX file "$BG_ALIAS"
 	set position of item "YourMove.app" of win to {180, 205}
 	set position of item "Applications" of win to {520, 205}
-	set position of item "Open Privacy & Security" of win to {180, 335}
-	set position of item "Installation Guide" of win to {520, 335}
+	set position of item "Open Privacy & Security" of win to {180, 355}
+	set position of item "Installation Guide" of win to {520, 355}
 	close win
 	delay 1
 	open theFolder
