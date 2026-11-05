@@ -17,14 +17,14 @@ Candidate-specific evidence for source SHA `048d0a3`. All applicant/job data bel
 | macOS / machine | macOS 26.5.2, Apple M1 Pro (arm64) |
 | Chrome versions | Stable 156.0.8078.80 (`/Applications/Browsers/`); Canary 159.0.8140.0; no Firefox app; Safari 26.5 |
 | Playwright cache | Pre-existing `~/Library/Caches/ms-playwright` (chromium-1200…1248, firefox-1509, webkit-2248); bridge deps installed via `scripts/setup-playwright-bridge.sh`; firefox binary downloaded via `npx playwright@1.58.2 install firefox` for qualification only |
-| Tested installation path | Local ZIP extraction + signature check (this record); browser-downloaded install on clean account: PENDING owner run |
+| Tested installation path | Local ZIP extraction + signature check; owner reports completing clean installation November 5 (detailed browser-download/quarantine results not supplied) |
 | Distribution audience | Controlled unnotarized technical alpha (no Developer ID identity exists on the build Mac) |
 | Tester and date | Agent-assisted prep, 2026-11-04; owner sign-off pending |
 
 ## Installation and identity
 
 - [x] Verified ZIP checksums (`shasum -a 256 -c SHA256SUMS` via `prepare.sh`), extracted locally: `YourMove.app`, bundle ID `com.yourmove.go`, version 0.1.0 build 3, `arm64` only, ad-hoc signature (`codesign --verify --deep --strict` exit 0, `Signature=adhoc`, no TeamIdentifier).
-- [ ] Exercise an actual **browser-downloaded** ZIP and the normal macOS quarantine path on the clean account — PENDING (owner action, exact steps in "Still required from the owner").
+- [ ] **Owner reported clean installation completed November 5** and chose SHIP RESTRICTED. This record does not independently establish the browser-download/quarantine attribute, exact Gatekeeper message, or approval steps.
 - [x] Confirmed local organization opens without Chrome or an AI connection (server starts; `/jobs` renders with empty workspace).
 - [ ] Normal public installation (Developer ID, notarization, stapling, Gatekeeper) — NOT APPLICABLE: no signing identity exists; the 0.1.0 promise is a controlled alpha only.
 
@@ -83,10 +83,10 @@ Engine qualification (`YOURMOVE_QUALIFY_BROWSER=1`, `qualification` tag, product
 | Recovery | PASS (with noted gaps) | Missing-binary, kill -9, AI-absent verified; native picker cancel NOT VERIFIED |
 
 - Known defects and excluded functionality: Career Discovery/Studio parked behind `careerDiscoveryEnabled`; WebKit not offered as an application browser; Safari surface not verified; native picker cancel not verified; live employer forms untested (manual path advertised); pnpm/action-setup Node 20 deprecation warning in CI (non-blocking).
-- Release decision: PENDING owner SHIP RESTRICTED / HOLD in `release/decisions/v0.1.0.md`.
-- Decision record reference: PENDING.
+- Release decision: **SHIP RESTRICTED**, owner-approved November 5, 2026, in `release/decisions/v0.1.0.md`.
+- Decision record reference: `release/decisions/v0.1.0.md` (recorded approval, not publication).
 
-## Still required from the owner (exact steps)
+## Owner follow-up and publication boundary (November 5, 2026)
 
-1. On the clean account: download the build 3 binary ZIP (`YourMove-0.1.0-macOS-arm64-unnotarized.zip`, SHA-256 `d8d4baf3…2ad1`) through a browser (do not copy it), confirm the quarantine attribute (`xattr -p com.apple.quarantine <file>`), extract via Finder, open, and record the exact Gatekeeper warning and first-launch behavior. Then: import a synthetic PDF, save an opportunity, assign the resume, cancel one native import, quit, relaunch, and confirm everything persists. Paste the outputs back for the record.
-2. Optional: enable Safari remote automation and run `python3 /tmp/safari_matrix.py` (server on :3000, `safaridriver -p 4723`) to close the Safari gap; otherwise it ships as a documented exclusion.
+1. Owner reports clean installation completed and has approved the restricted release; exact Gatekeeper prompt and any follow-on native acceptance outcomes were not supplied. The release instructions must continue to state unnotarized behavior without assuming a specific warning is universal.
+2. Safari automation, native picker cancel, and live ATS behavior remain unverified and excluded from any broad compatibility claim. Before publishing, provide complete corresponding source for the private discovery module and confirm public artifact checksums.
