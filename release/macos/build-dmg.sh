@@ -17,8 +17,8 @@ set -eu
 EXPECTED_ZIP_SHA="d8d4baf30f65b233f2671459925d17d4b0f94a77e29521e42a54ccc90fdf2ad1"
 VOLUME_NAME="YourMove"
 DMG_NAME="YourMove-0.1.0-macOS-arm64.dmg"
-WINDOW_W=660
-WINDOW_H=528
+WINDOW_W=700
+WINDOW_H=600
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 ZIP="${1:-$HOME/Projects/yourmove-builds/mac-candidate-20261104-201712-32006/YourMove-0.1.0-macOS-arm64-unnotarized.zip}"
@@ -133,16 +133,17 @@ tell application "Finder"
 	set icon size of opts to 96
 	set text size of opts to 12
 	set background picture of opts to POSIX file "$BG_ALIAS"
-	set position of item "YourMove.app" of win to {150, 195}
-	set position of item "Applications" of win to {510, 195}
-	set position of item "Open Privacy & Security" of win to {150, 285}
-	set position of item "Installation Guide" of win to {510, 285}
+	set position of item "YourMove.app" of win to {180, 205}
+	set position of item "Applications" of win to {520, 205}
+	set position of item "Open Privacy & Security" of win to {180, 335}
+	set position of item "Installation Guide" of win to {520, 335}
 	close win
 	delay 1
 	open theFolder
+	set win to Finder window 1
 	update theFolder without registering applications
 	delay 2
-	close Finder window 1
+	close win
 end tell
 EOF
 
