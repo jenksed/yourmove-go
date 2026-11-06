@@ -33,6 +33,10 @@ type App struct {
 	earlyDiscoveryMu          sync.Mutex
 	browsers                  sessionHost
 	coverLetterGenerate       func(context.Context, string) (string, error) // test override; production uses local Ollama
+	updates                   updateState
+	updateCheck               func(context.Context) (UpdateCheckResult, error)
+	updateInstall             func(context.Context) error
+	updateRestart             func(context.Context) error
 }
 
 func newMux(app *App) http.Handler {
@@ -51,6 +55,10 @@ func newMux(app *App) http.Handler {
 	mux.HandleFunc("POST /api/opportunities/{id}/open", app.opportunityOpenAPI)
 	mux.HandleFunc("GET /utilities", app.utilitiesPage)
 	mux.HandleFunc("POST /utilities/browser", app.saveApplicationBrowser)
+	mux.HandleFunc("POST /utilities/updates/check", app.updateCheckHandler)
+	mux.HandleFunc("POST /utilities/updates/install", app.updateInstallHandler)
+	mux.HandleFunc("POST /utilities/updates/restart", app.updateRestartHandler)
+	mux.HandleFunc("GET /api/updates/status", app.updateStatusAPI)
 	mux.HandleFunc("GET /ai", app.aiConnectionsPage)
 	mux.HandleFunc("GET /candidate", app.candidatePage)
 	mux.HandleFunc("GET /requirements", app.requirementsPage)

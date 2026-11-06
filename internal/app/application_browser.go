@@ -80,6 +80,12 @@ type utilitiesPageData struct {
 	BrowserCurrent string
 	BrowserEngines []playwright.EngineInfo
 	Notice         string
+	AppVersion     string
+	AppBuild       string
+	UpdateEnabled  bool
+	UpdatePhase    string
+	UpdatePending  *UpdateCheckResult
+	UpdateError    string
 }
 
 func (a *App) renderUtilities(w http.ResponseWriter, notice string) {
@@ -113,7 +119,13 @@ func (a *App) renderUtilities(w http.ResponseWriter, notice string) {
 			supported = append(supported, info)
 		}
 	}
-	data := utilitiesPageData{BrowserCurrent: current, BrowserEngines: supported, Notice: notice}
+	data := utilitiesPageData{BrowserCurrent: current, BrowserEngines: supported, Notice: notice,
+		AppVersion: CurrentAppVersion(), AppBuild: CurrentAppBuild()}
+	phase, pending, updateErr, _, enabled := a.updateSnapshot()
+	data.UpdateEnabled = enabled
+	data.UpdatePhase = phase
+	data.UpdatePending = pending
+	data.UpdateError = updateErr
 	if err := a.resources.utilitiesTemplate.Execute(w, data); err != nil {
 		log.Printf("render utilities: %v", err)
 	}

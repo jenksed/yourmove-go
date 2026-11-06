@@ -13,5 +13,24 @@
     <div><h2 id="utility-browser-heading">Application browser</h2><p>Choose the browser YourMove opens for employer applications. WebKit is not offered: the application session cannot launch it yet.</p>{{if .Notice}}<p class="utility-notice" role="status">{{.Notice}}</p>{{end}}</div>
     <form method="POST" action="/utilities/browser" class="field utility-browser-field"><label for="application-browser">Browser selection</label><select id="application-browser" name="browser">{{range .BrowserEngines}}<option value="{{.Name}}" {{if eq .Name $.BrowserCurrent}}selected{{end}} {{if not .Available}}disabled{{end}}>{{.Label}}{{if not .Available}} — unavailable{{end}}</option>{{end}}</select>{{range .BrowserEngines}}{{if not .Available}}<small>{{.Label}}: {{.Reason}}.</small>{{end}}{{end}}<button class="button button-secondary" type="submit">Save browser</button></form>
   </section>
+  <section class="utility-browser" aria-labelledby="utility-updates-heading">
+    <div><h2 id="utility-updates-heading">Software updates</h2><p>Installed version {{.AppVersion}} (build {{.AppBuild}}). YourMove checks only after you ask, never replaces itself without approval, and never touches applications or documents to update.</p>
+    {{if not .UpdateEnabled}}<p class="utility-notice">Automatic updates are not available in this mode. Download a newer DMG manually when the owner announces one.</p>{{else}}
+      {{if .UpdateError}}<p class="utility-notice" role="status">{{.UpdateError}}</p>{{end}}
+      {{if eq .UpdatePhase "available"}}{{with .UpdatePending}}<p><strong>Version {{.LatestVersion}} is available</strong>{{if .Name}} — {{.Name}}{{end}}.</p>{{if .Notes}}<details><summary>Release notes</summary><p>{{.Notes}}</p></details>{{end}}
+        <form method="POST" action="/utilities/updates/install"><button class="button button-primary" type="submit">Install version {{.LatestVersion}}</button></form>
+        <form method="POST" action="/utilities/updates/check"><button class="button button-secondary" type="submit">Check again</button></form>{{end}}
+      {{else if eq .UpdatePhase "ready"}}<p><strong>Update staged.</strong> Restart to finish installing.</p>
+        <form method="POST" action="/utilities/updates/restart"><button class="button button-primary" type="submit">Restart now</button></form>
+      {{else if eq .UpdatePhase "installing"}}<p>Installing update… keep this window open. Restart will be offered when staging finishes.</p>
+        <form method="POST" action="/utilities/updates/check"><button class="button button-secondary" type="submit">Refresh status</button></form>
+      {{else if eq .UpdatePhase "checking"}}<p>Checking for updates…</p>
+      {{else if eq .UpdatePhase "up-to-date"}}<p>You are up to date.</p>
+        <form method="POST" action="/utilities/updates/check"><button class="button button-secondary" type="submit">Check for updates</button></form>
+      {{else}}<p>No update check has run yet. Checking never blocks your workspace and works offline gracefully.</p>
+        <form method="POST" action="/utilities/updates/check"><button class="button button-secondary" type="submit">Check for updates</button></form>
+      {{end}}
+    {{end}}</div>
+  </section>
 </div>
 {{template "shell-close" .}}</body></html>
