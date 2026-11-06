@@ -211,6 +211,82 @@ func TestS2AnswerOriginPersistPreserveAndConflict(t *testing.T) {
 	}
 }
 
+func TestS2ReconciliationCarriesEarlyOrigin(t *testing.T) {
+	a, _ := testWorkspace(t)
+	job, publicResult := earlyGreenhouseFixture(t, a)
+	if _, err := a.saveInspection(job.ID, publicResult); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.saveInspection(job.ID, schema.Result{Platform: "greenhouse", Source: "browser", Completeness: "rendered_partial", ApplicationURL: job.URL, Fields: []schema.Field{
+		{ID: "browser:story", Label: "Describe a time you improved a system", Kind: "textarea", Required: true, Group: "rendered form"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	profile, _ := a.candidateProfile()
+	preparedLive, err := a.prepareQuestions(job, profile)
+	if err != nil || len(preparedLive.Questions) != 1 {
+		t.Fatalf("live preparation: %+v %v", preparedLive.Questions, err)
+	}
+	liveKey := preparedLive.Questions[0].Key
+	if rec := postWritingJSON(t, a, http.MethodPost, "/api/jobs/1/answers",
+		`{"question_key":"`+liveKey+`","revision":0,"destination":"`+earlyGreenhousePosting+`","answer":"Live baseline before accepting the early draft."}`); rec.Code != http.StatusOK {
+		t.Fatalf("live save: %d %s", rec.Code, rec.Body.String())
+	}
+	promoteReq := httptest.NewRequest(http.MethodPost, "http://localhost/jobs/1/answers/library", strings.NewReader(url.Values{"question_key": {liveKey}, "revision": {"1"}}.Encode()))
+	promoteReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	promoteReq.Header.Set("Accept", "application/json")
+	promoteRec := httptest.NewRecorder()
+	newMux(a).ServeHTTP(promoteRec, promoteReq)
+	if promoteRec.Code != http.StatusOK {
+		t.Fatalf("promote: %d %s", promoteRec.Code, promoteRec.Body.String())
+	}
+	var promoted struct {
+		EntryID int64 `json:"entryId"`
+	}
+	if err := json.Unmarshal(promoteRec.Body.Bytes(), &promoted); err != nil || promoted.EntryID == 0 {
+		t.Fatalf("promotion id: %s %v", promoteRec.Body.String(), err)
+	}
+	q := earlyQuestionByID(t, a, job, "application:story", "")
+	earlyAnswer := "I reviewed the alert history and documented the incident response."
+	earlySave := postWritingJSON(t, a, http.MethodPost, "/api/jobs/1/answers",
+		`{"question_key":"`+q.Key+`","revision":0,"destination":"`+earlyGreenhousePosting+`","answer":`+jsonString(earlyAnswer)+`,"early":true,"discovery_source":"public_api","discovery_fingerprint":"`+q.DiscoveryFingerprint+`","source_question_id":"application:story","origin_entry_id":`+strconv.FormatInt(promoted.EntryID, 10)+`,"origin_revision":1}`)
+	if earlySave.Code != http.StatusOK {
+		t.Fatalf("early save with origin: %d %s", earlySave.Code, earlySave.Body.String())
+	}
+	preparation, err := a.prepareEarlyQuestions(job, httptest.NewRequest("GET", "http://localhost/jobs/1?early_question="+q.Key, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var prepared earlyApplicationQuestion
+	for _, candidate := range preparation.Questions {
+		if candidate.SourceQuestionID == "application:story" {
+			prepared = candidate
+		}
+	}
+	if !prepared.Reconciliation.CanAccept {
+		t.Fatalf("no reconciliation candidate: %+v", prepared.Reconciliation)
+	}
+	accept := postApp(newMux(a), "/jobs/1/answers/early-accept", url.Values{
+		"early_answer_id":             {strconv.FormatInt(prepared.EarlyAnswerID, 10)},
+		"early_revision":              {strconv.FormatInt(prepared.Revision, 10)},
+		"destination":                 {job.URL},
+		"live_inspection_fingerprint": {prepared.Reconciliation.LiveInspectionFingerprint},
+		"live_question_key":           {prepared.Reconciliation.LiveQuestionKey},
+		"live_answer_revision":        {strconv.FormatInt(prepared.Reconciliation.LiveAnswerRevision, 10)},
+	}, "", "")
+	if accept.Code != http.StatusSeeOther {
+		t.Fatalf("accept: %d %s", accept.Code, accept.Body.String())
+	}
+	var liveOrigin string
+	if err := a.db.QueryRow(`SELECT COALESCE(reuse_source_json,'') FROM application_answers WHERE job_id=1`).Scan(&liveOrigin); err != nil {
+		t.Fatal(err)
+	}
+	var carried answerReuseOrigin
+	if err := json.Unmarshal([]byte(liveOrigin), &carried); err != nil || carried.LibraryEntryID != promoted.EntryID || carried.DestinationRev != 2 {
+		t.Fatalf("live answer did not carry rebuilt early origin: %q %v", liveOrigin, err)
+	}
+}
+
 func TestS2LetterHistoryIncludesSelectedBeyond30(t *testing.T) {
 	a, _ := testWorkspace(t)
 	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com", Title: "Selection"}); err != nil {

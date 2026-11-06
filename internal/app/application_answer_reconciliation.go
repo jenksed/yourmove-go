@@ -388,6 +388,28 @@ func (a *App) acceptEarlyApplicationAnswer(w http.ResponseWriter, r *http.Reques
 		}
 		return
 	}
+	// Carry durable starting-source provenance from the accepted early draft
+	// to the new live answer. The snapshot stays display-only; it confers no
+	// exact-reuse approval and never authorizes transfer or Fill.
+	var earlyOrigin string
+	if err := tx.QueryRow(`SELECT COALESCE(reuse_source_json,'') FROM early_application_answers WHERE id=?`, answerID).Scan(&earlyOrigin); err == nil && strings.TrimSpace(earlyOrigin) != "" {
+		carried := earlyOrigin
+		var parsed answerReuseOrigin
+		if err := json.Unmarshal([]byte(earlyOrigin), &parsed); err == nil && parsed.LibraryEntryID > 0 {
+			if entry, entryErr := a.answerLibraryBySourceID(tx, parsed.LibraryEntryID); entryErr == nil && entry.Revision == parsed.LibraryRevision {
+				if rebuilt, rebuildErr := buildAnswerReuseOrigin(entry, liveQuestion.Revision+1); rebuildErr == nil {
+					carried = rebuilt
+				}
+			}
+		}
+		if validAnswerReuseOriginPayload(carried) {
+			if _, err := tx.Exec(`UPDATE application_answers SET reuse_source_json=? WHERE job_id=? AND destination=? AND provider=? AND question_key=?`,
+				carried, id, job.URL, browser.PostingPlatform(job.URL), current.LiveQuestionKey); err != nil {
+				fail("Unable to save the live application answer.", http.StatusInternalServerError)
+				return
+			}
+		}
+	}
 	now := time.Now().UTC().Format("2006-01-02T15:04:05.000000000Z07:00")
 	updated, err := tx.Exec(`UPDATE early_application_answers SET reconciliation_status='accepted',live_inspection_fingerprint=?,live_question_key=?,reconciled_at=?,updated_at=? WHERE id=? AND revision=?`, live.Fingerprint, current.LiveQuestionKey, now, now, answerID, revision)
 	if err != nil {
