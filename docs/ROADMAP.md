@@ -30,6 +30,19 @@ Improve reuse of validated answers, saved evidence, resume choices, and continua
 
 Additional ATS coverage or another platform enters scope only if it directly serves this outcome **and passes its own qualification gates**. A larger audience is conditional on actual beta results.
 
+## v0.2.0 — Apple Silicon macOS automatic updates (U1)
+
+**Additional v0.2.0 user outcome:** An existing updater-enabled YourMove app discovers a newer version without blocking normal work, presents version and release notes, and only after applicant approval downloads, authenticates, stages, installs and restarts into the approved build. Local SQLite, résumés, answers, letters, Career Evidence, settings, selections and history remain intact.
+
+- **Scope:** Apple Silicon macOS only. Windows/Ubuntu native support and cross-platform qualification remain in their existing S4–S6 slices; their in-app auto-update flows are excluded.
+- **Framework:** Reuse the Wails v3.1.0 updater on the accepted S4 host and its staging/replacement/restart machinery. Do not build a custom swap engine.
+- **Distribution:** GitHub Releases provides a signed/notarized single-root YourMove.app ZIP in addition to the manual DMG. A key-pinned, signed Wails update manifest authenticates the archive; a GitHub-hosted SHA256SUMS file alone does not establish producer-authenticated updates. Do not update a production manifest or publish without release-owner approval.
+- **Installation:** Existing v0.1.0 users have no updater and require one manual upgrade to the first updater-enabled build. A bundled app launched directly from the DMG or an unwritable system location must receive an explicit manual-install fallback, not an unsafe permission bypass.
+- **Acceptance:** A genuine installed updater-enabled build to newer build upgrade using an isolated synthetic workspace. Verify app identity, signatures, version changes, retained database/document bytes and associations, failure recovery, and a working manual DMG fallback. Normal release gates still apply.
+- **Dependencies:** S4's Wails host/pin must be integrated before Go updater wiring; S2's writing reuse is independent. S6 owns frozen signing/notarization, GitHub artifact publication, upgrade qualification and final release decision. Updater-specific packaging preparation may run independently in its own worktree.
+
+Implementation boundary and staging notes: [macOS updater contract](planning/v0.2-macos-updater-contract.md) and `release/macos/package-update.sh`. Keep this outcome coordinated with the six-slice v0.2 engineering plan; it does not displace repeat-application work or native platform delivery.
+
 ## Operating rhythm
 
 | Checkpoint | Decision |
