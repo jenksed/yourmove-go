@@ -166,16 +166,16 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	run(`Array.from(document.querySelectorAll('summary')).find(x=>x.textContent.includes('Write a letter')).click()`)
 	run(`(()=>{const e=document.querySelector('#manual-letter');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,'This other synthetic letter must not be transferred to the employer.');e.dispatchEvent(new Event('input',{bubbles:true}))})()`)
 	click("Save new letter")
-	wait(`document.querySelector('#letter-draft')?.options.length===3`)
-	run(`(()=>{const e=document.querySelector('#letter-draft');e.value='1';e.dispatchEvent(new Event('change',{bubbles:true}))})()`)
-	wait(`document.querySelector('#letter-body')?.value.includes('synthetic support role')`)
+	wait(`document.querySelector('#letter-history')?.options.length===3 && document.querySelector('#letter-history')?.value==='2'`)
+	run(`(()=>{const e=document.querySelector('#letter-history');e.value='1';e.dispatchEvent(new Event('change',{bubbles:true}))})()`)
+	wait(`document.querySelector('#letter-history')?.value==='1' && document.querySelector('#letter-body')?.value.includes('synthetic support role')`)
 	click("Questions")
-	wait(`Array.from(document.querySelectorAll('.writing-question')).some(x=>x.textContent.includes('Why this team?'))`)
+	wait(`Array.from(document.querySelectorAll('[aria-label="Question navigation"] select option')).some(x=>x.textContent.includes('Why this team?'))`)
 	t.Logf("Early Ashby question appeared without an applicant browser after %s", time.Since(discoveryStarted).Round(time.Millisecond))
 	if launches.Load() != 0 || previews.Load() != 1 {
 		t.Fatalf("unexpected browser launches: managed=%d preview=%d", launches.Load(), previews.Load())
 	}
-	run(`Array.from(document.querySelectorAll('.writing-question')).find(x=>x.textContent.includes('Why this team?')).click()`)
+	run(`(()=>{const e=document.querySelector('[aria-label="Question navigation"] select');e.value=Array.from(e.options).find(x=>x.textContent.includes('Why this team?')).value;e.dispatchEvent(new Event('change',{bubbles:true}))})()`)
 	run(`(()=>{const e=document.querySelector('#writing-answer');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,'Prepared before opening');e.dispatchEvent(new Event('input',{bubbles:true}))})()`)
 	click("Save answer locally")
 	wait(`document.body.innerText.includes('Saved locally. It has not been filled')`)
@@ -258,7 +258,7 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	}
 	wait(`Array.from(document.querySelectorAll('.continuation-item label')).find(x=>x.textContent.includes('Cover letter:'))?.querySelector('input')?.disabled===false`)
 	run(`Array.from(document.querySelectorAll('.continuation-item label')).find(x=>x.textContent.includes('Cover letter:')).querySelector('input').click()`)
-	run(`Array.from(document.querySelectorAll('#employer button')).filter(x=>x.classList.contains('button-primary')).at(-1).click()`)
+	click("Fill selected information")
 	deadline = time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) && a.browsers.state(1).LetterStatus != "complete" {
 		time.Sleep(100 * time.Millisecond)
@@ -303,8 +303,8 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 		t.Fatalf("recheck changed employer form: %v %v", counts, err)
 	}
 	click("Questions")
-	wait(`Array.from(document.querySelectorAll('.writing-question')).some(x=>x.textContent.includes('Delayed question'))`)
-	run(`Array.from(document.querySelectorAll('.writing-question')).find(x=>x.textContent.includes('Delayed question')).click()`)
+	wait(`Array.from(document.querySelectorAll('[aria-label="Question navigation"] select option')).some(x=>x.textContent.includes('Delayed question'))`)
+	run(`(()=>{const e=document.querySelector('[aria-label="Question navigation"] select');e.value=Array.from(e.options).find(x=>x.textContent.includes('Delayed question')).value;e.dispatchEvent(new Event('change',{bubbles:true}))})()`)
 	const answer = "I enjoy helping customers solve challenging support problems."
 	run(fmt.Sprintf(`(()=>{const e=document.querySelector('#writing-answer');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,%q);e.dispatchEvent(new Event('input',{bubbles:true}))})()`, answer))
 	click("Save answer locally")
@@ -312,7 +312,7 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	click("Apply")
 	wait(`document.querySelector('.continuation-item')?.parentElement?.innerText.includes('saved answer')`)
 	wait(`Array.from(document.querySelectorAll('.continuation-item label')).find(x=>x.textContent.includes('saved answer'))?.querySelector('input')?.checked`)
-	run(`Array.from(document.querySelectorAll('#employer button')).filter(x=>x.classList.contains('button-primary')).at(-1).click()`)
+	click("Fill selected information")
 	deadline = time.Now().Add(15 * time.Second)
 	var employerValues []string
 	for time.Now().Before(deadline) {
@@ -454,10 +454,10 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	ui = runtimeUI
 	wait(`document.body.innerText.includes('Synthetic React journey')`)
 	click("Documents")
-	wait(`document.body.innerText.includes('journey-resume.pdf') && document.querySelector('input[name=workspace-resume]:checked')?.parentElement.innerText.includes('journey-resume.pdf') && document.querySelector('#letter-body')?.value.includes('synthetic support role')`)
+	wait(`document.body.innerText.includes('journey-resume.pdf') && document.querySelector('input[name=workspace-resume]:checked')?.parentElement.innerText.includes('journey-resume.pdf') && document.querySelector('#letter-history')?.value==='1' && document.querySelector('#letter-body')?.value.includes('synthetic support role')`)
 	click("Questions")
 	wait(`document.body.innerText.includes('Delayed question')`)
-	run(`Array.from(document.querySelectorAll('.writing-question')).find(x=>x.textContent.includes('Delayed question')).click()`)
+	run(`(()=>{const e=document.querySelector('[aria-label="Question navigation"] select');e.value=Array.from(e.options).find(x=>x.textContent.includes('Delayed question')).value;e.dispatchEvent(new Event('change',{bubbles:true}))})()`)
 	wait(`document.querySelector('#writing-answer')?.value === "I enjoy helping customers solve challenging support problems."`)
 	click("Apply")
 	wait(`document.body.innerText.includes('saved materials remain') || document.body.innerText.includes('disconnected')`)
