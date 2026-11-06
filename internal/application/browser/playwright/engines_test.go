@@ -39,6 +39,33 @@ func TestAvailableEnginesSeesCurrentFirefoxLayout(t *testing.T) {
 	}
 }
 
+func TestEngineInstalledSeesWindowsLayouts(t *testing.T) {
+	root := t.TempDir()
+	winChromium := filepath.Join(root, "chromium-1181", "chrome-win64", "chrome.exe")
+	if err := os.MkdirAll(filepath.Dir(winChromium), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(winChromium, []byte("browser"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	winFirefox := filepath.Join(root, "firefox-1509", "firefox", "firefox.exe")
+	if err := os.MkdirAll(filepath.Dir(winFirefox), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(winFirefox, []byte("browser"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PLAYWRIGHT_BROWSERS_PATH", root)
+	// Existence-only check: Windows .exe files carry no execute bits, so
+	// plain 0644 fixtures must satisfy discovery on any host.
+	if !engineInstalled(EngineChromium) {
+		t.Fatal("windows chromium layout not recognized")
+	}
+	if !engineInstalled(EngineFirefox) {
+		t.Fatal("windows firefox layout not recognized")
+	}
+}
+
 func TestAvailableEnginesExplainsMissingEngines(t *testing.T) {
 	if ok, _ := BridgeReady(); !ok {
 		t.Skip("playwright bridge dependencies are not installed")

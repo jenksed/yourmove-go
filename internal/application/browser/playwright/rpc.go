@@ -64,7 +64,7 @@ func nodeExecutable() (string, error) {
 		if !filepath.IsAbs(chosen) {
 			return "", errors.New("YOURMOVE_NODE must be an absolute executable path")
 		}
-		if !isExecutableFile(chosen) {
+		if !browser.IsExecutableFile(chosen) {
 			return "", fmt.Errorf("YOURMOVE_NODE is not an executable file: %s", chosen)
 		}
 		return chosen, nil
@@ -83,17 +83,22 @@ func nodeExecutable() (string, error) {
 			filepath.Join(dir, "..", "Resources", "nodejs", "bin", "node"),
 		}, candidates...)
 	}
+	// Windows Node installs as node.exe: the extensionless candidates above
+	// never match, and the default install directory is outside PATH.
+	if runtime.GOOS == "windows" {
+		if exe, err := os.Executable(); err == nil {
+			candidates = append([]string{filepath.Join(filepath.Dir(exe), "node.exe")}, candidates...)
+		}
+		if programFiles := os.Getenv("ProgramFiles"); programFiles != "" && filepath.IsAbs(programFiles) {
+			candidates = append(candidates, filepath.Join(programFiles, "nodejs", "node.exe"))
+		}
+	}
 	for _, candidate := range candidates {
-		if isExecutableFile(candidate) {
+		if browser.IsExecutableFile(candidate) {
 			return candidate, nil
 		}
 	}
 	return "", errors.New("Node.js is required for managed Firefox/WebKit/Chromium sessions; install Node.js 20+ or set YOURMOVE_NODE")
-}
-
-func isExecutableFile(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0111 != 0
 }
 
 // bridgeEnv passes the Playwright browser cache through and blocks surprise
