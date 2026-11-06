@@ -178,8 +178,11 @@ export function WritingSection({
       try {
         const next = await fetchQuestions(jobId);
         if (!cancelled && request === requestRef.current) setSnapshot((previous) => {
+          // Retain a vanished selection only while unsaved edits need protection.
+          // A clean disappearance (retired triage, context flip) is left to the
+          // repair effect below so Next/Previous keep working on a live identity.
           const selected = previous && previous.questions.find((q) => questionId(q) === selectedIdRef.current);
-          if (selected && !next.questions.some((q) => questionId(q) === selectedIdRef.current)) {
+          if (selected && dirtyRef.current && !next.questions.some((q) => questionId(q) === selectedIdRef.current)) {
             next.questions = [...next.questions, selected];
           }
           return next;
@@ -237,6 +240,20 @@ export function WritingSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?.value, selected?.revision]);
 
+  // An inventory change (profile approval retiring a contact question,
+  // live/early context flip) can leave selectedId pointing at a question that
+  // is gone or is no longer an answer task. Repair to the first open answer
+  // task — but never while unsaved edits exist; those stay on the retained
+  // draft under the dirty guard.
+  useEffect(() => {
+    if (loading || selectedId === "" || dirtyRef.current) return;
+    const resolved = allQuestions.find((q) => questionId(q) === selectedId);
+    if (resolved && triageOf(resolved) === "answer") return;
+    const tasks = allQuestions.filter((q) => triageOf(q) === "answer");
+    const firstOpen = tasks.find((q) => q.value === "") ?? tasks[0];
+    if (firstOpen) setSelectedId(questionId(firstOpen));
+  }, [loading, selectedId, allQuestions]);
+
   useEffect(() => {
     if (!dirty) return;
     const guard = (event: BeforeUnloadEvent) => {
@@ -245,6 +262,16 @@ export function WritingSection({
     window.addEventListener("beforeunload", guard);
     return () => window.removeEventListener("beforeunload", guard);
   }, [dirty]);
+
+  const discardEdits = useCallback(() => {
+    if (!selected) return;
+    setDraft(selected.value);
+    dirtyRef.current = false;
+    setDirty(false);
+    setSaveError("");
+    setPendingOrigin(null);
+    setReplaceCandidate(null);
+  }, [selected]);
 
   const pickQuestion = useCallback(
     (next: WritingQuestion) => {
@@ -562,14 +589,29 @@ export function WritingSection({
                 ))}
               </select>
             </label>
-            <button
-              className="button button-secondary"
-              type="button"
-              disabled={selectedIndex < 0 || selectedIndex >= answerTasks.length - 1 || dirty}
-              onClick={() => { if (selectedIndex >= 0 && selectedIndex < answerTasks.length - 1) pickQuestion(answerTasks[selectedIndex + 1]); }}
-            >
-              Next →
-            </button>
+          <button
+            className="button button-secondary"
+            type="button"
+            disabled={selectedIndex < 0 || selectedIndex >= answerTasks.length - 1 || dirty}
+            onClick={() => { if (selectedIndex >= 0 && selectedIndex < answerTasks.length - 1) pickQuestion(answerTasks[selectedIndex + 1]); }}
+          >
+            Next →
+          </button>
+          {dirty && selected && (
+            <div className="question-dirty-note">
+              <p className="small-muted" role="note">
+                Unsaved edits on this question — save or discard them to move to another question.
+              </p>
+              <div className="form-actions">
+                <button className="button button-secondary" type="button" disabled={saving || !canSave} onClick={() => void handleSave()}>
+                  {saving ? "Saving…" : "Save answer locally"}
+                </button>
+                <button className="button button-secondary" type="button" onClick={discardEdits}>
+                  Discard edits
+                </button>
+              </div>
+            </div>
+          )}
           </div>
 
           <div className="writing-desk">
@@ -646,7 +688,7 @@ export function WritingSection({
                     </p>
                   )}
                   <div className="form-actions">
-                    {dirty && <button className="button button-secondary" type="button" onClick={() => { setDraft(selected.value); setDirty(false); setSaveError(""); setPendingOrigin(null); setReplaceCandidate(null); }}>Discard edits</button>}
+                    {dirty && <button className="button button-secondary" type="button" onClick={discardEdits}>Discard edits</button>}
                     <button
                       className="button button-primary"
                       type="button"
