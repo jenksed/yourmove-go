@@ -29,6 +29,12 @@ import (
 // This uses the production Vite build and Go handlers, with only the employer
 // origin mapped to a local controlled Ashby form by the existing fixture adapter.
 func TestReactJourneyDocumentTransfer(t *testing.T) {
+	for _, occupied := range []bool{true, false} {
+		t.Run(fmt.Sprintf("occupied=%t", occupied), func(t *testing.T) { qualifyReactJourneyDocumentTransfer(t, occupied) })
+	}
+}
+
+func qualifyReactJourneyDocumentTransfer(t *testing.T, occupied bool) {
 	if os.Getenv("YOURMOVE_QUALIFY_BROWSER") != "1" {
 		t.Skip("opt-in controlled browser")
 	}
@@ -55,11 +61,17 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 		t.Fatal(err)
 	}
 	fixture := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `<!doctype html><form class="ashby-application-form">
+		html := `<!doctype html><form class="ashby-application-form">
 <section data-field-entry-id="resume"><div class="ashby-application-form-question-title">Resume</div><input type="file" name="resume" accept=".pdf"></section>
 <section data-field-entry-id="cover"><div class="ashby-application-form-question-title">Cover Letter</div><input type="file" name="cover" accept=".pdf"></section>
 <label>Why this team?<textarea name="motivation"></textarea></label><label>Tell us more<textarea name="other"></textarea></label><label>LinkedIn<input name="linkedin"></label><label>Manual field<input name="manual" value="Already entered"></label><label>Phone<input type="tel" name="phone" value="Manual phone"></label><button type="submit">Submit</button></form>
-<script>window.answerChanges=0;document.querySelector("[name=motivation]").addEventListener("input",()=>answerChanges++);window.resumeChanges=0;window.coverChanges=0;window.submits=0;window.contactChanges={first_name:0,last_name:0,email:0};document.querySelector('form').addEventListener('input',e=>{if(e.target.name in contactChanges)contactChanges[e.target.name]++});document.querySelector('[name=resume]').onchange=()=>{resumeChanges++;const old=document.querySelector('[name=motivation]');old.parentElement.remove();setTimeout(()=>{document.querySelector('form').insertAdjacentHTML('beforeend','<label>Why this team?<textarea name="motivation"></textarea></label>');document.querySelector('[name=motivation]').addEventListener('input',()=>answerChanges++)},1800);document.querySelector('form').insertAdjacentHTML('beforeend','<label>First name<input name="first_name"></label>');setTimeout(()=>{document.querySelector('form').insertAdjacentHTML('beforeend','<label>Last name<input name="last_name"></label><label>Email<input type="email" name="email"></label>')},1200)};document.querySelector('[name=cover]').onchange=()=>coverChanges++;const existing=new DataTransfer();existing.items.add(new File(['existing employer file'],'existing.pdf',{type:'application/pdf'}));document.querySelector('[name=cover]').files=existing.files;document.querySelector('[name=cover]').dispatchEvent(new Event('change',{bubbles:true}));document.querySelector('form').onsubmit=e=>{e.preventDefault();submits++}</script>`)
+<script>window.answerChanges=0;document.querySelector("[name=motivation]").addEventListener("input",()=>answerChanges++);window.resumeChanges=0;window.coverChanges=0;window.submits=0;window.contactChanges={first_name:0,last_name:0,email:0};document.querySelector('form').addEventListener('input',e=>{if(e.target.name in contactChanges)contactChanges[e.target.name]++});document.querySelector('[name=resume]').onchange=()=>{resumeChanges++;const old=document.querySelector('[name=motivation]');old.parentElement.remove();setTimeout(()=>{document.querySelector('form').insertAdjacentHTML('beforeend','<label>Why this team?<textarea name="motivation"></textarea></label>');document.querySelector('[name=motivation]').addEventListener('input',()=>answerChanges++)},1800);document.querySelector('form').insertAdjacentHTML('beforeend','<label>First name<input name="first_name"></label>');setTimeout(()=>{document.querySelector('form').insertAdjacentHTML('beforeend','<label>Last name<input name="last_name"></label><label>Email<input type="email" name="email"></label>')},1200)};document.querySelector('[name=cover]').onchange=()=>coverChanges++;const existing=new DataTransfer();existing.items.add(new File(['existing employer file'],'existing.pdf',{type:'application/pdf'}));document.querySelector('[name=cover]').files=existing.files;document.querySelector('[name=cover]').dispatchEvent(new Event('change',{bubbles:true}));document.querySelector('form').onsubmit=e=>{e.preventDefault();submits++}</script>`
+		if !occupied {
+			start := strings.Index(html, "const existing=new DataTransfer();")
+			end := strings.Index(html, "document.querySelector('form').onsubmit")
+			html = html[:start] + html[end:]
+		}
+		fmt.Fprint(w, html)
 	}))
 	defer fixture.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
@@ -213,7 +225,7 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	deadline = time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
 		s := a.browsers.state(1)
-		if s.ResumeStatus == "selected" && s.LetterStatus == "review" {
+		if s.ResumeStatus == "selected" && s.LetterStatus == map[bool]string{true: "review", false: "complete"}[occupied] {
 			break
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -245,24 +257,30 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 		t.Fatalf("contact writes repeated: %v %v", contactChanges, err)
 	}
 
-	var existing string
-	if err := employerEval(`document.querySelector('[name=cover]').files[0]?.name`, &existing); err != nil || existing != "existing.pdf" {
-		t.Fatalf("existing attachment changed: %q %v", existing, err)
+	if occupied {
+		var existing string
+		if err := employerEval(`document.querySelector('[name=cover]').files[0]?.name`, &existing); err != nil || existing != "existing.pdf" {
+			t.Fatalf("existing attachment changed: %q %v", existing, err)
+		}
+		wait(`document.querySelector('.continuation-outcomes')?.innerText.includes('Cover letter')`)
+		// The applicant explicitly clears the existing file in the employer form,
+		// then authorizes the selected saved letter again with one Fill.
+		if err := employerEval(`(()=>{const e=document.querySelector('[name=cover]');e.value='';e.dispatchEvent(new Event('change',{bubbles:true}))})()`, nil); err != nil {
+			t.Fatal(err)
+		}
+		wait(`document.querySelector('.continuation-outcomes')?.innerText.includes('Cover letter') && document.querySelector('.continuation-outcomes')?.innerText.includes('Review in the employer browser')`)
+		wait(`Array.from(document.querySelectorAll('#employer button')).some(x=>x.textContent.trim()==='Fill Application' && !x.disabled)`)
+		click("Fill Application")
 	}
-	wait(`document.querySelector('.continuation-outcomes')?.innerText.includes('Cover letter')`)
-	// The applicant explicitly clears the existing file in the employer form,
-	// then authorizes the selected saved letter again with one Fill.
-	if err := employerEval(`(()=>{const e=document.querySelector('[name=cover]');e.value='';e.dispatchEvent(new Event('change',{bubbles:true}))})()`, nil); err != nil {
-		t.Fatal(err)
-	}
-	wait(`document.querySelector('.continuation-outcomes')?.innerText.includes('Cover letter') && document.querySelector('.continuation-outcomes')?.innerText.includes('Review in the employer browser')`)
-	wait(`Array.from(document.querySelectorAll('#employer button')).some(x=>x.textContent.trim()==='Fill Application' && !x.disabled)`)
-	click("Fill Application")
 	deadline = time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) && a.browsers.state(1).LetterStatus != "complete" {
 		time.Sleep(100 * time.Millisecond)
 	}
-	t.Log("Existing employer cover attachment preserved; explicit manual removal and reauthorization allowed the saved letter to attach.")
+	if occupied {
+		t.Log("Existing employer cover attachment preserved; explicit manual removal and reauthorization allowed the saved letter to attach.")
+	} else {
+		t.Log("Clean form received all materials after one Fill.")
+	}
 	state := a.browsers.state(1)
 	t.Logf("transfer state: resume=%s letter=%s", state.ResumeStatus, state.LetterStatus)
 	var observed struct {
@@ -297,8 +315,12 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	run(`Array.from(document.querySelectorAll('#employer summary')).find(x=>x.textContent.includes('Browser troubleshooting')).click()`)
 	click("Recheck form")
 	time.Sleep(500 * time.Millisecond)
+	expectedCoverChanges := 1
+	if occupied {
+		expectedCoverChanges = 3
+	}
 	var counts []int
-	if err := employerEval(`[resumeChanges,coverChanges,submits]`, &counts); err != nil || fmt.Sprint(counts) != "[1 3 0]" {
+	if err := employerEval(`[resumeChanges,coverChanges,submits]`, &counts); err != nil || fmt.Sprint(counts) != fmt.Sprintf("[1 %d 0]", expectedCoverChanges) {
 		t.Fatalf("recheck changed employer form: %v %v", counts, err)
 	}
 	click("Questions")
@@ -349,10 +371,10 @@ answerReady:
 		t.Fatalf("early answer replayed after later actions: %d %v", earlyWriteCount, err)
 	}
 	t.Log("Observed question appeared without manual refresh; one saved answer transferred, another remained blank and the manual field was preserved.")
-	if err := employerEval(`[resumeChanges,coverChanges,submits]`, &counts); err != nil || fmt.Sprint(counts) != "[1 3 0]" {
+	if err := employerEval(`[resumeChanges,coverChanges,submits]`, &counts); err != nil || fmt.Sprint(counts) != fmt.Sprintf("[1 %d 0]", expectedCoverChanges) {
 		t.Fatalf("unexpected final employer effects: %v %v", counts, err)
 	}
-	if state.ResumeStatus != "selected" || state.LetterStatus != "complete" || observed.ResumeSize != len(resumeBytes) || observed.LetterSize == 0 || observed.ResumeChanges != 1 || observed.CoverChanges != 3 || observed.Submits != 0 || observed.Manual != "Already entered" {
+	if state.ResumeStatus != "selected" || state.LetterStatus != "complete" || observed.ResumeSize != len(resumeBytes) || observed.LetterSize == 0 || observed.ResumeChanges != 1 || observed.CoverChanges != expectedCoverChanges || observed.Submits != 0 || observed.Manual != "Already entered" {
 		t.Fatalf("transfer not demonstrated: %+v", observed)
 	}
 	if !strings.Contains(observed.ResumeName, "journey") {
@@ -385,7 +407,6 @@ answerReady:
 		t.Fatal(err)
 	}
 	updatedSum := sha256.Sum256(updatedPDF)
-	updatedHex := hex.EncodeToString(updatedSum[:])
 	updatedBodySum := sha256.Sum256([]byte(updatedLetter))
 	updatedBodyHex := hex.EncodeToString(updatedBodySum[:])
 	deadline = time.Now().Add(15 * time.Second)
@@ -473,27 +494,31 @@ backendReady:
 	// safe Fill must preserve it rather than overwrite it with either the old
 	// or the updated saved letter. The applicant then clears it manually and
 	// fills once more; the updated saved letter must attach.
-	var preserved string
-	if err := employerEval(`document.querySelector('[name=cover]').files[0]?.name`, &preserved); err != nil || preserved != "existing.pdf" {
-		t.Fatalf("fresh Fill changed the existing attachment: %q %v", preserved, err)
+	if occupied {
+		var preserved string
+		if err := employerEval(`document.querySelector('[name=cover]').files[0]?.name`, &preserved); err != nil || preserved != "existing.pdf" {
+			t.Fatalf("fresh Fill changed the existing attachment: %q %v", preserved, err)
+		}
+		if err := employerEval(`(()=>{const e=document.querySelector('[name=cover]');e.value='';e.dispatchEvent(new Event('change',{bubbles:true}))})()`, nil); err != nil {
+			t.Fatal(err)
+		}
+		wait(`document.querySelector('.continuation-outcomes')?.innerText.includes('Cover letter') && document.querySelector('.continuation-outcomes')?.innerText.includes('Review in the employer browser')`)
+		wait(`Array.from(document.querySelectorAll('#employer button')).some(x=>x.textContent.trim()==='Fill Application' && !x.disabled)`)
+		click("Fill Application")
 	}
-	if err := employerEval(`(()=>{const e=document.querySelector('[name=cover]');e.value='';e.dispatchEvent(new Event('change',{bubbles:true}))})()`, nil); err != nil {
-		t.Fatal(err)
-	}
-	wait(`document.querySelector('.continuation-outcomes')?.innerText.includes('Cover letter') && document.querySelector('.continuation-outcomes')?.innerText.includes('Review in the employer browser')`)
-	wait(`Array.from(document.querySelectorAll('#employer button')).some(x=>x.textContent.trim()==='Fill Application' && !x.disabled)`)
-	click("Fill Application")
 	deadline = time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) && a.browsers.state(1).LetterStatus != "complete" {
 		time.Sleep(100 * time.Millisecond)
 	}
 	var refilledLetter struct {
-		LetterHash string `json:"letterHash"`
-		Submits    int    `json:"submits"`
+		LetterHash    string `json:"letterHash"`
+		Submits       int    `json:"submits"`
+		ResumeChanges int    `json:"resumeChanges"`
+		CoverChanges  int    `json:"coverChanges"`
 	}
 	deadline = time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
-		err = employerEval(`(async()=>({letterHash:Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",await document.querySelector("[name=cover]").files[0].arrayBuffer()))).map(x=>x.toString(16).padStart(2,"0")).join(""),submits}))()`, &refilledLetter)
+		err = employerEval(`(async()=>({letterHash:Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",await document.querySelector("[name=cover]").files[0].arrayBuffer()))).map(x=>x.toString(16).padStart(2,"0")).join(""),submits,resumeChanges,coverChanges}))()`, &refilledLetter)
 		if err == nil && refilledLetter.LetterHash == hex.EncodeToString(updatedSum[:]) {
 			break
 		}
@@ -502,10 +527,11 @@ backendReady:
 	if refilledLetter.LetterHash != hex.EncodeToString(updatedSum[:]) {
 		t.Fatalf("fresh Fill did not use the updated saved letter: %+v", refilledLetter)
 	}
-	if refilledLetter.Submits != 0 {
+	if refilledLetter.Submits != 0 || refilledLetter.ResumeChanges != 1 || refilledLetter.CoverChanges != expectedCoverChanges {
 		t.Fatalf("fresh Fill submitted: %+v", refilledLetter)
 	}
-	t.Logf("Close, edit, re-Fill used updated answer and letter: answer=%q letterHash=%.12s", updatedAnswer, refilledLetter.LetterHash)
+	t.Logf("Close, edit, re-Fill used updated answer and letter: answer=%q letterHash=%s", updatedAnswer, refilledLetter.LetterHash)
+	t.Logf("Fresh session operations: %+v", refilledLetter)
 
 	// Leaving an unsubmitted job requires an explicit decision before browser-only work is closed.
 	wait(`document.querySelector('#submission')?.innerText.includes('Next synthetic opportunity')`)

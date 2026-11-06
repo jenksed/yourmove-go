@@ -25,3 +25,12 @@ const CoverLetterOperation = `(function(origin,base,body){
  resolveResult({selected:true,verified:ok,detail:ok?'Saved cover-letter text filled and observed. Review in Chromium.':'Letter entry was attempted but could not be verified. Review it manually; it will not be replayed.'});
  },350));
  })`
+
+// CoverLetterTextSurvey counts plausible destinations without writing.
+const CoverLetterTextSurvey = `(()=>{ const hits=[...document.querySelectorAll('textarea,input[type=text]')].filter(e=>{
+ const group=e.closest('[data-field-entry-id]');
+ const labels=[group?.querySelector('.ashby-application-form-question-title')?.textContent,...[...(e.labels||[])].map(l=>l.textContent),e.getAttribute('aria-label')].filter(x=>x?.trim());
+ return e.closest('form,.ashby-application-form-container')&&!e.closest('[inert],[aria-hidden=true],.awli-application-row,.awli-button-container')&&e.getClientRects().length&&getComputedStyle(e).visibility!=='hidden'&&labels.length&&labels.every(x=>/^cover[\s_-]*letter\s*(?:\((?:optional|required)\))?\s*\*?$/i.test(x.trim()));
+ });
+ return hits.length;
+})()`

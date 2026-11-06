@@ -115,3 +115,54 @@ func TestHostedPlatformForms(t *testing.T) {
 		})
 	}
 }
+
+func TestAutomaticLetterAmbiguity(t *testing.T) {
+	if os.Getenv("YOURMOVE_QUALIFY_BROWSER") != "1" {
+		t.Skip("opt-in local Chromium qualification")
+	}
+	fixture := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, `<form><label>Cover Letter<input type="file" name="cover" accept=".pdf"></label><label>Cover Letter<textarea name="letter"></textarea></label><button>Submit</button></form><script>window.writes=0;window.submits=0;document.querySelector('form').onchange=()=>writes++;document.querySelector('form').onsubmit=e=>{e.preventDefault();submits++}</script>`)
+	}))
+	defer fixture.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	s, err := LaunchFixture(ctx, fixture.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	for {
+		observed, err := s.Observe(ctx)
+		if err == nil && observed.Forms == 1 {
+			break
+		}
+		if ctx.Err() != nil {
+			t.Fatalf("fixture did not load: %v", err)
+		}
+		time.Sleep(30 * time.Millisecond)
+	}
+	path := filepath.Join(t.TempDir(), "letter.pdf")
+	data := []byte("%PDF-fixture")
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.AttachCoverLetterAuto(ctx, path, fmt.Sprintf("%x", sha256.Sum256(data)))
+	if !errors.Is(err, ErrAmbiguousCoverInput) {
+		t.Fatalf("competing controls not refused: %v", err)
+	}
+	target, err := s.target(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ws, err := dialCDP(ctx, target.WebSocketURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ws.CloseNow()
+	var values []any
+	if err := evaluateRead(ctx, ws, 1, `[document.querySelector('[name=cover]').files.length,document.querySelector('[name=letter]').value,writes,submits]`, &values); err != nil || fmt.Sprint(values) != "[0  0 0]" {
+		t.Fatalf("ambiguous form mutated: %v %v", values, err)
+	}
+	t.Logf("Ambiguous file/text form: files, text, writes, submits = %v", values)
+}

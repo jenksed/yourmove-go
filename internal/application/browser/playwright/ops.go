@@ -265,7 +265,7 @@ func (s *Session) FillCoverLetter(ctx context.Context, body string) (browser.Att
 	return result, nil
 }
 
-func (s *Session) attachDocument(ctx context.Context, path string, cover bool, digest string) (browser.AttachmentResult, error) {
+func (s *Session) attachDocument(ctx context.Context, path string, cover bool, digest string, automatic ...bool) (browser.AttachmentResult, error) {
 	c, cancel := context.WithTimeout(ctx, 12*time.Second)
 	defer cancel()
 	if err := s.lockContext(c); err != nil {
@@ -282,6 +282,17 @@ func (s *Session) attachDocument(ctx context.Context, path string, cover bool, d
 	var inputs []browser.FileInput
 	if err := s.evaluate(c, survey, nil, &inputs); err != nil {
 		return browser.AttachmentResult{}, &browser.PreflightError{Cause: err}
+	}
+	if len(automatic) > 0 && automatic[0] {
+		var textTargets int
+		if err := s.evaluate(c, asFunction(browser.CoverLetterTextSurvey), nil, &textTargets); err != nil {
+			return browser.AttachmentResult{}, err
+		}
+		if textTargets > 0 {
+			if _, fileErr := browser.ChooseDocumentInput(inputs, filepath.Ext(path), true); !errors.Is(fileErr, browser.ErrNoCoverInput) {
+				return browser.AttachmentResult{}, browser.ErrAmbiguousCoverInput
+			}
+		}
 	}
 	idx, err := browser.ChooseDocumentInput(inputs, filepath.Ext(path), cover)
 	if err != nil {
@@ -301,6 +312,17 @@ func (s *Session) attachDocument(ctx context.Context, path string, cover bool, d
 	}
 	if err := s.evaluate(c, "()=>({href:location.href})", nil, &href); err != nil || !s.owns(href.Href) {
 		return browser.AttachmentResult{}, errors.New("application changed before document selection; review the destination")
+	}
+	if len(automatic) > 0 && automatic[0] {
+		var textTargets int
+		if err := s.evaluate(c, asFunction(browser.CoverLetterTextSurvey), nil, &textTargets); err != nil {
+			return browser.AttachmentResult{}, err
+		}
+		if textTargets > 0 {
+			if _, fileErr := browser.ChooseDocumentInput(inputs, filepath.Ext(path), true); !errors.Is(fileErr, browser.ErrNoCoverInput) {
+				return browser.AttachmentResult{}, browser.ErrAmbiguousCoverInput
+			}
+		}
 	}
 	data, err := os.ReadFile(path)
 	if err != nil || len(data) == 0 {
@@ -346,4 +368,9 @@ func coverVerify(idx int, cover bool) string {
 		return fmt.Sprintf(`(async()=>{const e=document.querySelectorAll('input[type="file"]')[%d];const f=e?.files?.[0];if(!f)return {};const hash=await crypto.subtle.digest('SHA-256',await f.arrayBuffer());return {url:location.href,name:f.name,size:f.size,digest:[...new Uint8Array(hash)].map(x=>x.toString(16).padStart(2,'0')).join('')}})()`, idx)
 	}
 	return fmt.Sprintf(`(()=>{const f=document.querySelectorAll('input[type="file"]')[%d]?.files?.[0];return {url:location.href,name:f?.name||"",size:f?.size||0}})()`, idx)
+}
+
+// AttachCoverLetterAuto refuses competing text destinations before file selection.
+func (s *Session) AttachCoverLetterAuto(ctx context.Context, path, digest string) (browser.AttachmentResult, error) {
+	return s.attachDocument(ctx, path, true, digest, true)
 }

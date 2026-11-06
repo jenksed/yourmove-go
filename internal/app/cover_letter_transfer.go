@@ -157,7 +157,13 @@ func (h *sessionHost) tryCoverLetter(ctx context.Context, jobID int64) {
 	} else if !ok {
 		err = errors.New("this browser cannot transfer cover letters")
 	} else if up.mode == "auto" {
-		result, err = filler.AttachCoverLetter(ctx, up.path, up.digest)
+		if automatic, supported := s.(interface {
+			AttachCoverLetterAuto(context.Context, string, string) (chromium.AttachmentResult, error)
+		}); supported {
+			result, err = automatic.AttachCoverLetterAuto(ctx, up.path, up.digest)
+		} else {
+			err = errors.New("automatic letter destination cannot be checked")
+		}
 		if errors.Is(err, chromium.ErrNoCoverInput) {
 			result, err = filler.FillCoverLetter(ctx, up.body)
 		}

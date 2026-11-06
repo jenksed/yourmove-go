@@ -278,3 +278,7 @@ func TestCoverLetterDestinationCanChangeOnlyBeforeSelection(t *testing.T) {
 		}
 	}
 }
+
+func (f *fakeLetterBrowser) AttachCoverLetterAuto(ctx context.Context, path, digest string) (chromium.AttachmentResult, error) {
+	return f.AttachCoverLetter(ctx, path, digest)
+}
