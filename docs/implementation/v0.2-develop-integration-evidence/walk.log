@@ -1,0 +1,8 @@
+5:08AM INF Build Info: Wails=v3.1.0 Compiler=go1.27.3 -compiler=gc -tags=desktop -trimpath=true CGO_ENABLED=1 GOARCH=arm64 GOOS=darwin GOARM64=v8.0 -buildmode=exe
+5:08AM INF Platform Info: ID=25F84 Name=MacOS Version=26.5.2 Branding=MacOS 26.5.2
+5:08AM INF AssetServer Info: middleware=true handler=true
+2026/11/06 05:08:57 automatic updates enabled: manifest configured, current 0.1.0 (channel stable, headless UI)
+2026/11/06 05:08:57 YourMove Wails compatibility run starting at /jobs (version 0.1.0 build 3)
+2026/11/06 05:09:27 background update check: version 0.2.0 available (current 0.1.0)
+2026/11/06 05:09:27 update available: current 0.1.0 latest 0.2.0
+5:28AM INF Quitting application...
