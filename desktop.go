@@ -65,6 +65,7 @@ func main() {
 		Assets: application.AssetOptions{Handler: handler},
 	})
 	configureUpdater(a, desktop)
+	startUpdateTestAuto(a, desktop)
 	desktop.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:     "YourMove",
 		Width:     1100,
@@ -185,10 +186,49 @@ func loadUpdatePublicKey() []byte {
 	return nil
 }
 
+// startUpdateTestAuto drives the real Wails updater path for the controlled
+// dev fixture only. It requires explicit YOURMOVE_UPDATE_TEST_AUTO=1 and
+// performs the same Check, DownloadAndInstall, and Restart calls the
+// Utilities buttons make. Production never sets this variable.
+func startUpdateTestAuto(a *app.App, desktop *application.App) {
+	if os.Getenv("YOURMOVE_UPDATE_TEST_AUTO") != "1" {
+		return
+	}
+	go func() {
+		time.Sleep(5 * time.Second)
+		log.Printf("update test auto: explicit fixture trigger, checking for update")
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		rel, err := desktop.Updater.Check(ctx)
+		cancel()
+		if err != nil {
+			log.Printf("update test auto: check failed: %v", err)
+			return
+		}
+		if rel == nil {
+			log.Printf("update test auto: no update available")
+			return
+		}
+		log.Printf("update test auto: found version %s, installing (explicit fixture approval)", rel.Version)
+		ctx2, cancel2 := context.WithTimeout(context.Background(), 10*time.Minute)
+		if err := desktop.Updater.DownloadAndInstall(ctx2); err != nil {
+			cancel2()
+			log.Printf("update test auto: install failed: %v", err)
+			return
+		}
+		cancel2()
+		log.Printf("update test auto: staged ready, restarting into new version")
+		ctx3, cancel3 := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel3()
+		if err := desktop.Updater.Restart(ctx3); err != nil {
+			log.Printf("update test auto: restart failed: %v", err)
+			return
+		}
+	}()
+}
+
 // startUpdateBackground performs one delayed nonblocking check after startup,
 // then polls daily. It never opens a window and never downloads.
-func startUpdateBackground(a *app.App) {
-	delay := 30 * time.Second
+func startUpdateBackground(a *app.App) {	delay := 30 * time.Second
 	if os.Getenv("YOURMOVE_UPDATE_BG_FAST") == "1" {
 		delay = 3 * time.Second
 	}
