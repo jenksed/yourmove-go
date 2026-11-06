@@ -1,0 +1,9 @@
+127.0.0.1 - - [05/Nov/2026 23:22:16] "GET /updates/stable.json HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 23:23:07] "GET /updates/stable.json?arch=arm64&channel=stable&platform=darwin&version=0.1.0 HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 23:54:02] "GET /artifacts/YourMove-0.2.0-darwin-arm64-update-dev.zip HTTP/1.1" 200 -
+127.0.0.1 - - [06/Nov/2026 00:18:17] "GET /updates/stable.json?arch=arm64&channel=stable&platform=darwin&version=0.2.0 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Nov/2026 00:24:42] "GET /updates/stable.json?arch=arm64&channel=stable&platform=darwin&version=0.2.0 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Nov/2026 00:28:06] "GET /updates/stable.json?arch=arm64&channel=stable&platform=darwin&version=0.1.0 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Nov/2026 00:28:06] "GET /artifacts/YourMove-0.2.0-darwin-arm64-update-dev.zip HTTP/1.1" 200 -
+127.0.0.1 - - [06/Nov/2026 00:28:21] "GET /updates/stable.json?arch=arm64&channel=stable&platform=darwin&version=0.1.0 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Nov/2026 00:28:21] "GET /artifacts/YourMove-0.2.0-darwin-arm64-update-dev.zip HTTP/1.1" 200 -

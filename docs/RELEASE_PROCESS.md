@@ -82,6 +82,26 @@ After the applicable gates pass and a human owner records SHIP or SHIP RESTRICTE
 
 No prepare/distribute script or CI job publishes on its own.
 
+## 6A. v0.2.0 automatic macOS updates (Apple Silicon only)
+
+An updater-enabled YourMove installation may offer **user-approved** in-app updates, subject to the same signed-artifact, upgrade, recovery and owner-decision gates as any other release. Existing v0.1.0 DMGs have no updater and require one manual DMG installation of an updater-enabled build.
+
+The updater consumes a **separate signed/notarized application ZIP**, not the first-installation DMG. After the versioned candidate has passed Developer ID signing, Apple notarization, stapling and Gatekeeper verification, package it locally:
+
+```sh
+bash release/macos/package-update.sh \
+  /absolute/path/to/signed-candidate/YourMove.app \
+  /absolute/new/updater-output
+```
+
+This script checks the Developer ID identity, app bundle ID, version/build, arm64 architecture, notarization ticket and Gatekeeper; creates a single-top-level-app ZIP compatible with the Wails updater; extracts and re-verifies it; and writes a SHA-256 file. It does **not** sign, notarize, install or publish. The existing `release/macos/distribute.sh` still has hardcoded v0.1.0 filenames and must be made version-aware as part of S6 before a v0.2 candidate is produced.
+
+**Cryptographic release authentication:** The Wails v3.1.0 GitHub Releases provider fetches SHA256SUMS but not detached signatures. For v0.2 use the framework's signed update-manifest provider with an app-pinned public key, naming the immutable GitHub Release ZIP URL and exact digest. Create/sign/verify it with the pinned Wails CLI and an owner-controlled private signing key. A matching checksum alone is not the equivalent of developer-key authentication. Treat signature failure as a hard rejection. Never commit private keys or publish/update the production signed manifest without owner approval.
+
+Before offering updater support, demonstrate an installed updater-enabled candidate A updating to B on a synthetic workspace, including accurate notice/approval, actual verified replacement and restart, retained SQLite/document bytes and associations, cancellation/failure handling, and manual DMG fallback for read-only locations or failures. The updater stages next to the installed app and therefore needs a writable installation location. Do not silently seek elevated privileges or claim normal /Applications writability without testing.
+
+The dedicated scope, dependency boundary and acceptance contract are in [the v0.2 macOS updater plan](planning/v0.2-macos-updater-contract.md). This work complements S1–S6 and does not displace the repeat-application objective or Windows/Ubuntu qualification.
+
 ## 7. Post-release / next version
 
 Collect privacy-safe, voluntary tester feedback. Prioritize data integrity and blocked application paths over new feature breadth. Before any upgrade release, test retention of the existing workspace, resume associations, saved answers, letters, and completed application history. Record the release decision and evidence separately for each distributed artifact.

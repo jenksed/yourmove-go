@@ -20,7 +20,17 @@ import (
 // composition through build tags and contribute no separate behavior, so
 // macOS and Windows launch identical application state over the same
 // SQLite workspace.
+//
+// The macOS updater hooks below are per-OS no-ops outside darwin
+// (see desktop_updater.go and desktop_updater_windows.go); no Windows
+// updater behavior is introduced here.
 func runDesktop() {
+	// Updater helper mode must not open the applicant workspace. The Wails
+	// application constructor performs the staged swap and relaunches.
+	if os.Getenv("WAILS_UPDATER_HELPER") == "1" {
+		application.New(application.Options{Name: "YourMove"})
+		return
+	}
 	dbPath, resumeDir, err := storage.ApplicationStorage()
 	if err != nil {
 		log.Fatal(err)
@@ -58,6 +68,10 @@ func runDesktop() {
 		Name:   "YourMove",
 		Assets: application.AssetOptions{Handler: handler},
 	})
+	// macOS only: wire the pinned updater lifecycle without blocking startup.
+	// Explicit applicant action is required for download, install, restart.
+	configureDesktopUpdater(a, desktop)
+	startDesktopUpdateTasks(a, desktop)
 	desktop.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:     "YourMove",
 		Width:     1100,
@@ -66,7 +80,7 @@ func runDesktop() {
 		MinHeight: 550,
 		URL:       start,
 	})
-	log.Printf("YourMove Wails compatibility run starting at %s", start)
+	log.Printf("YourMove Wails compatibility run starting at %s (version %s build %s)", start, app.CurrentAppVersion(), app.CurrentAppBuild())
 	if err := desktop.Run(); err != nil {
 		log.Fatal(err)
 	}
