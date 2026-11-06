@@ -620,7 +620,7 @@ export function WorkspacePage(): React.JSX.Element {
                   {applied ? (
                     <div className="field">
                       <label>Stage</label>
-                      <input value="Applied" disabled />
+                      <input value={snapshot.job.submissionCount > 0 ? "Applied (confirmed)" : "Applied"} disabled />
                       <input type="hidden" defaultValue="applied" />
                     </div>
                   ) : (
