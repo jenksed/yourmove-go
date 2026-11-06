@@ -1,0 +1,10 @@
+jobs.db sha256: 30c7cf4464f4b9bc661ab36331aae3bd5fce8f4ce849f0421c527a42efec51e3 (IDENTICAL to before)
+jobs: 2 (1 Support Engineer @ExampleCo, 2 Support Lead @ExampleCo)
+job associations: job1->resume1, job2->resume2
+resumes: 2 (same hashes/sizes, files match)
+cover_letters: 1 (job 1, same body)
+submissions: 1 (job 1, resume 1, token test-token-001)
+career_evidence: 1 ("Calm incident fix")
+settings: application_browser=chromium
+application_answers: 2 (same content)
+Same physical workspace /tmp/ym-gui2/workspace used by A then B (env inherited via helper).

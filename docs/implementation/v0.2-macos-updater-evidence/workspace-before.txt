@@ -1,0 +1,10 @@
+jobs: 2 (1 Support Engineer @ExampleCo, 2 Support Lead @ExampleCo)
+job associations: job1->resume1, job2->resume2
+resumes: 2 (resume-v1.pdf 81187341253660d8 size 50; resume-v2.pdf 8bd398be5ace23a0 size 60)
+resume files match sha256 names on disk
+cover_letters: 1 (job 1, "Dear hiring team, synthetic preservation...")
+submissions: 1 (job 1, resume 1, token test-token-001)
+career_evidence: 1 ("Calm incident fix")
+settings: application_browser=chromium
+application_answers: 2 (job1 q1, job2 q1)
+jobs.db sha256: 30c7cf4464f4b9bc661ab36331aae3bd5fce8f4ce849f0421c527a42efec51e3
