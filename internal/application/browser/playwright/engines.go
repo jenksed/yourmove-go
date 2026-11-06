@@ -3,6 +3,7 @@ package playwright
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/jenksed/yourmove-go/internal/application/browser"
@@ -53,10 +54,18 @@ func browserRoots() []string {
 	if err != nil {
 		return roots
 	}
-	return append(roots,
+	roots = append(roots,
 		filepath.Join(home, "Library", "Caches", "ms-playwright"),
 		filepath.Join(home, ".cache", "ms-playwright"),
 	)
+	// Playwright's default Windows cache lives under LOCALAPPDATA, not under
+	// either Unix-style cache directory above.
+	if runtime.GOOS == "windows" {
+		if localAppData := os.Getenv("LOCALAPPDATA"); localAppData != "" && filepath.IsAbs(localAppData) {
+			roots = append(roots, filepath.Join(localAppData, "ms-playwright"))
+		}
+	}
+	return roots
 }
 
 func engineInstalled(engine string) bool {
@@ -70,10 +79,14 @@ func engineInstalled(engine string) bool {
 			patterns = []string{
 				"chromium-*/chrome-mac*/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
 				"chromium-*/chrome-mac*/Chromium.app/Contents/MacOS/Chromium",
+				"chromium-*/chrome-win64/chrome.exe",
+				"chromium-*/chrome-win/chrome.exe",
+				"chromium-*/chrome-linux/chrome",
 			}
 		case EngineFirefox:
 			patterns = []string{
 				"firefox-*/firefox/firefox",
+				"firefox-*/firefox/firefox.exe",
 				"firefox-*/firefox/Nightly.app/Contents/MacOS/firefox",
 				// Current Playwright layouts place the binary directly at
 				// firefox-<build>/firefox instead of nesting it one level deeper.

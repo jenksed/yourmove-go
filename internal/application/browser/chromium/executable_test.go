@@ -54,6 +54,35 @@ func TestPlaywrightMacCacheDiscovery(t *testing.T) {
 	}
 }
 
+func TestPlaywrightWindowsCacheDiscovery(t *testing.T) {
+	cache := filepath.Join(t.TempDir(), "ms-playwright")
+	expected := filepath.Join(cache, "chromium-1181", "chrome-win64", "chrome.exe")
+	if err := os.MkdirAll(filepath.Dir(expected), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(expected, []byte("browser"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	// The headless shell must never satisfy interactive-browser discovery,
+	// on the Windows layout as on the macOS layout.
+	headless := filepath.Join(cache, "chromium_headless_shell-1181", "chrome-win", "headless_shell.exe")
+	if err := os.MkdirAll(filepath.Dir(headless), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(headless, []byte("shell"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if got := cachedPlaywrightChromium(cache); got != expected {
+		t.Fatalf("got %q, want %q", got, expected)
+	}
+	if err := os.Chmod(expected, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if got := cachedPlaywrightChromium(cache); got != "" {
+		t.Fatalf("accepted non-executable candidate %q", got)
+	}
+}
+
 func TestPlaywrightCacheIgnoresRelativeRoot(t *testing.T) {
 	if got := cachedPlaywrightChromium("chromium-cache"); got != "" {
 		t.Fatalf("accepted relative browser cache: %q", got)

@@ -6,6 +6,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+
+	"github.com/jenksed/yourmove-go/internal/application/browser"
 )
 
 // executable finds a Chrome DevTools-compatible visible browser. Prefer an
@@ -16,25 +19,38 @@ func executable() (string, error) {
 		if !filepath.IsAbs(chosen) {
 			return "", errors.New("YOURMOVE_CHROMIUM must be an absolute executable path")
 		}
-		if !isExecutableFile(chosen) {
+		if !browser.IsExecutableFile(chosen) {
 			return "", fmt.Errorf("YOURMOVE_CHROMIUM is not an executable file: %s", chosen)
 		}
 		return chosen, nil
 	}
-	for _, name := range []string{"google-chrome", "google-chrome-stable", "chromium", "chromium-browser"} {
+	for _, name := range []string{"google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome", "chrome.exe"} {
 		if path, err := exec.LookPath(name); err == nil {
 			return path, nil
 		}
 	}
 	home, _ := os.UserHomeDir()
-	for _, path := range []string{
+	paths := []string{
 		"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
 		"/Applications/Chromium.app/Contents/MacOS/Chromium",
 		"/Applications/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
 		filepath.Join(home, "Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
 		filepath.Join(home, "Applications/Chromium.app/Contents/MacOS/Chromium"),
-	} {
-		if isExecutableFile(path) {
+	}
+	// Windows installs outside PATH and outside the macOS .app layouts.
+	// LOCALAPPDATA covers per-user installs; ProgramFiles covers machine
+	// installs. Env-dependent entries are added only when set so a missing
+	// variable can never produce a relative path.
+	if runtime.GOOS == "windows" {
+		for _, base := range []string{os.Getenv("ProgramFiles"), os.Getenv("ProgramFiles(x86)"), os.Getenv("LOCALAPPDATA")} {
+			if base == "" || !filepath.IsAbs(base) {
+				continue
+			}
+			paths = append(paths, filepath.Join(base, "Google", "Chrome", "Application", "chrome.exe"))
+		}
+	}
+	for _, path := range paths {
+		if browser.IsExecutableFile(path) {
 			return path, nil
 		}
 	}
@@ -50,6 +66,13 @@ func executable() (string, error) {
 			filepath.Join(home, ".cache", "ms-playwright"),
 		)
 	}
+	// Playwright's default Windows cache lives under LOCALAPPDATA, not under
+	// either Unix-style cache directory above.
+	if runtime.GOOS == "windows" {
+		if localAppData := os.Getenv("LOCALAPPDATA"); localAppData != "" && filepath.IsAbs(localAppData) {
+			caches = append(caches, filepath.Join(localAppData, "ms-playwright"))
+		}
+	}
 	for _, cache := range caches {
 		if found := cachedPlaywrightChromium(cache); found != "" {
 			return found, nil
@@ -61,14 +84,6 @@ func executable() (string, error) {
 // ResolveExecutable reports the browser binary the production session
 // launches, so UI availability claims match the real launch path.
 func ResolveExecutable() (string, error) { return executable() }
-
-func isExecutableFile(path string) bool {
-	if path == "" {
-		return false
-	}
-	info, err := os.Stat(path)
-	return err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0111 != 0
-}
 
 // Only match full, interactive browser executables. In particular, do not pick
 // chromium_headless_shell, which cannot show an application for human review.
@@ -82,10 +97,13 @@ func cachedPlaywrightChromium(cache string) string {
 		"chrome-mac/Chromium.app/Contents/MacOS/Chromium",
 		"chrome-mac-arm64/Chromium.app/Contents/MacOS/Chromium",
 		"chrome-mac-x64/Chromium.app/Contents/MacOS/Chromium",
+		"chrome-win64/chrome.exe",
+		"chrome-win/chrome.exe",
+		"chrome-linux/chrome",
 	} {
 		matches, _ := filepath.Glob(filepath.Join(cache, "chromium-*", suffix))
 		for i := len(matches) - 1; i >= 0; i-- {
-			if isExecutableFile(matches[i]) {
+			if browser.IsExecutableFile(matches[i]) {
 				return matches[i]
 			}
 		}
