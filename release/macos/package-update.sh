@@ -84,7 +84,16 @@ if [[ "$mode" == "production" ]]; then
 else
   archive="$output/YourMove-$version-darwin-arm64-update-dev.zip"
 fi
-/usr/bin/ditto -c -k --keepParent "$app" "$archive"
+# Use --norsrc so the ZIP contains only regular bundle files. Ditto's default
+# AppleDouble (._) entries become regular files under Go/Python extraction
+# (which Wails uses), breaking codesign with "sealed resource missing".
+# --norsrc bundles still verify with ditto and with Go extraction.
+/usr/bin/ditto -c -k --keepParent --norsrc "$app" "$archive"
+# Reject AppleDouble/resource-fork entries that would break Wails Go extraction.
+if /usr/bin/zipinfo -1 "$archive" | /usr/bin/grep -E '(^|/)(\._|__MACOSX/)' >/dev/null; then
+  echo "Update ZIP contains AppleDouble (__MACOSX/._) entries; Wails Go extraction would break codesign." >&2
+  exit 1
+fi
 
 unpacked="$(mktemp -d /tmp/yourmove-updater-archive-XXXXXX)"
 trap 'rm -rf "$unpacked"' EXIT
@@ -97,6 +106,12 @@ extracted="$unpacked/YourMove.app"
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$extracted/Contents/Info.plist")" == "$bundle_id" ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$extracted/Contents/Info.plist")" == "$version" ]]
 /usr/bin/codesign --verify --deep --strict --verbose=2 "$extracted"
+# Verify Wails Go-extraction compatibility: Python zipfile mimics Go's
+# archive/zip (no xattr restoration). The bundle must still verify.
+goextracted="$(mktemp -d /tmp/yourmove-updater-goextract-XXXXXX)"
+/usr/bin/python3 -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "$archive" "$goextracted"
+trap 'rm -rf "$unpacked" "$goextracted"' EXIT
+/usr/bin/codesign --verify --deep --strict --verbose=2 "$goextracted/YourMove.app"
 if [[ "$mode" == "production" ]]; then
   /usr/bin/xcrun stapler validate "$extracted"
   /usr/sbin/spctl --assess --type execute --verbose=4 "$extracted"
