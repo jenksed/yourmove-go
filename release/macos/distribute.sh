@@ -10,7 +10,10 @@ release_candidate="$1"
 release_app="$release_candidate/YourMove.app"
 test -f "$release_candidate/source-manifest.json" && test -f "$release_app/Contents/MacOS/YourMove"
 (cd "$release_candidate" && shasum -a 256 -c SHA256SUMS.local)
-test ! -e "$release_candidate/notary-submit.zip" && test ! -e "$release_candidate/YourMove-0.1.0-macos-arm64.zip"
+version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$release_app/Contents/Info.plist")"
+[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid app version: $version" >&2; exit 1; }
+final_zip="$release_candidate/YourMove-$version-macos-arm64.zip"
+test ! -e "$release_candidate/notary-submit.zip" && test ! -e "$final_zip"
 /usr/bin/codesign --force --options runtime --timestamp --sign "$YOURMOVE_SIGN_IDENTITY" "$release_app"
 /usr/bin/codesign --verify --deep --strict --verbose=2 "$release_app"
 /usr/bin/codesign -dv --verbose=4 "$release_app" 2> "$release_candidate/signing.txt"
@@ -20,6 +23,6 @@ python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["status"] == "A
 xcrun stapler staple "$release_app"
 xcrun stapler validate "$release_app"
 /usr/sbin/spctl --assess --type execute --verbose=4 "$release_app" 2> "$release_candidate/gatekeeper.txt"
-/usr/bin/ditto -c -k --keepParent "$release_app" "$release_candidate/YourMove-0.1.0-macos-arm64.zip"
-(cd "$release_candidate" && shasum -a 256 source-manifest.json YourMove.app/Contents/Info.plist YourMove.app/Contents/MacOS/YourMove YourMove-0.1.0-macos-arm64.zip > SHA256SUMS.release)
+/usr/bin/ditto -c -k --keepParent "$release_app" "$final_zip"
+(cd "$release_candidate" && shasum -a 256 source-manifest.json YourMove.app/Contents/Info.plist YourMove.app/Contents/MacOS/YourMove "$(basename "$final_zip")" > SHA256SUMS.release)
 echo 'Signed and notarized artifact prepared locally. Clean-machine acceptance is still required; nothing was published.'
