@@ -145,6 +145,14 @@ export function WritingSection({
       const next = await fetchQuestions(jobId);
       if (request !== requestRef.current) return;
       setSnapshot(next);
+      // Select the first question needing an answer so the desk never opens
+      // on a blank selector. Mirrors the legacy workbench's first-unanswered
+      // default; an explicit selection is never overridden here.
+      if (selectedIdRef.current === "") {
+        const tasks = (next.questions ?? []).filter((q) => (q.triageCategory !== "" ? q.triageCategory : q.editable ? "answer" : "review") === "answer");
+        const firstOpen = tasks.find((q) => q.value === "") ?? tasks[0];
+        if (firstOpen) setSelectedId(`${firstOpen.isEarly ? "early" : "live"}:${firstOpen.key}`);
+      }
       setAssistance(null);
       setAssistOpen(false);
       setTicket(null);
@@ -544,10 +552,8 @@ export function WritingSection({
             <label className="question-selector">
               <span className="small-muted">Question {selectedIndex + 1} of {answerTasks.length}</span>
               <select value={selectedId} onChange={(event) => {
-                const next = answerTasks.find((q) => questionId(q) === selectedId || questionId(q) === event.target.value);
                 const target = answerTasks.find((q) => questionId(q) === event.target.value);
                 if (target) pickQuestion(target);
-                void next;
               }}>
                 {answerTasks.map((q) => (
                   <option key={questionId(q)} value={questionId(q)}>

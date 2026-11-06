@@ -81,6 +81,10 @@ func answerLibraryEligible(f schema.Field, unique bool) bool {
 		"why are you", "walk us through", "discuss", "explain", "elaborate", "challenge",
 		"incident", "project", "situation", "time when", "accomplishment", "achievement",
 		"proud of", "motivat", "strength", "improvement", "experience with", "experience in",
+		// Evidence-backed 2026-11-06 (real Ashby posting): genuine narrative
+		// prompts missed by the list above. Each stays clear of the generic
+		// "What is your experience?" negative case in TestAnswerLibraryEligibilityIsConservative.
+		"improv", "excit", "what problem",
 	} {
 		if strings.Contains(label, marker) {
 			return true

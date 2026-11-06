@@ -225,6 +225,8 @@ var earlyNarrativeMarkers = []string{
 	"why are you", "walk us through", "discuss", "explain", "elaborate", "challenge",
 	"incident", "project", "situation", "time when", "accomplishment", "achievement",
 	"proud of", "motivat", "strength", "improvement", "experience with", "experience in",
+	// Same evidence-backed additions as answerLibraryEligible (2026-11-06).
+	"improv", "excit", "what problem",
 }
 
 func earlyQuestionWritable(field schema.Field, unique bool) (bool, string) {
