@@ -44,6 +44,11 @@ type AnswerLibraryEntry struct {
 	SourceInspectionFingerprint string
 	SourceFieldID               string
 	SourceFieldKind             string
+	SourceKind                  string
+	EarlyDiscoverySource        string
+	EarlyFingerprint            string
+	EarlySourceQuestionID       string
+	EarlyAnswerRevision         int64
 	CreatedAt                   string
 	UpdatedAt                   string
 	Revision                    int64
@@ -174,17 +179,17 @@ func (a *App) promoteApplicationAnswer(jobID int64, key string, expectedRevision
 		SourceJobTitle: job.Title, SourceHost: job.Host, SourceJobID: job.ID,
 		SourceDestination: job.URL, SourceProvider: provider, SourceQuestionKey: key,
 		SourceRevision: revision, SourceInspectionID: inspectionID, SourceInspectionFingerprint: inspectionFingerprint,
-		SourceFieldID: field.ID, SourceFieldKind: field.Kind,
+		SourceFieldID: field.ID, SourceFieldKind: field.Kind, SourceKind: "live",
 		CreatedAt: now, UpdatedAt: now, Revision: 1,
 	}
 	result, err := tx.Exec(`INSERT INTO answer_library(original_question,answer,source_employer,source_job_title,source_host,
 	 source_job_id,source_destination,source_provider,source_question_key,source_revision,source_inspection_id,
-	 source_inspection_fingerprint,source_field_id,source_field_kind,question_terms,answer_terms,search_index_version,created_at,updated_at,revision)
-	 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)
+	 source_inspection_fingerprint,source_field_id,source_field_kind,source_kind,question_terms,answer_terms,search_index_version,created_at,updated_at,revision)
+	 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?,1)
 	 ON CONFLICT(source_job_id,source_destination,source_provider,source_question_key,source_revision) DO NOTHING`,
 		entry.OriginalQuestion, entry.Answer, entry.SourceEmployer, entry.SourceJobTitle, entry.SourceHost,
 		entry.SourceJobID, entry.SourceDestination, entry.SourceProvider, entry.SourceQuestionKey,
-		entry.SourceRevision, entry.SourceInspectionID, entry.SourceInspectionFingerprint, entry.SourceFieldID, entry.SourceFieldKind,
+		entry.SourceRevision, entry.SourceInspectionID, entry.SourceInspectionFingerprint, entry.SourceFieldID, entry.SourceFieldKind, entry.SourceKind,
 		answerLibraryIndexTerms(entry.OriginalQuestion), answerLibraryIndexTerms(entry.Answer), answerLibrarySearchIndexVersion,
 		entry.CreatedAt, entry.UpdatedAt)
 	if err != nil {
@@ -293,26 +298,34 @@ func verifiedAnswerLibraryField(tx *sql.Tx, job Job, provider, key string) (sche
 	return field, id, fingerprint, nil
 }
 
+func scanAnswerLibraryEntry(scanner interface {
+	Scan(...any) error
+}, entry *AnswerLibraryEntry) error {
+	return scanner.Scan(
+		&entry.ID, &entry.OriginalQuestion, &entry.Answer, &entry.SourceEmployer, &entry.SourceJobTitle,
+		&entry.SourceHost, &entry.SourceJobID, &entry.SourceDestination, &entry.SourceProvider,
+		&entry.SourceQuestionKey, &entry.SourceRevision, &entry.SourceInspectionID, &entry.SourceInspectionFingerprint, &entry.SourceFieldID,
+		&entry.SourceFieldKind, &entry.SourceKind, &entry.EarlyDiscoverySource, &entry.EarlyFingerprint,
+		&entry.EarlySourceQuestionID, &entry.EarlyAnswerRevision, &entry.CreatedAt, &entry.UpdatedAt, &entry.Revision)
+}
+
+const answerLibrarySelectColumns = `id,original_question,answer,source_employer,source_job_title,source_host,
+	 source_job_id,source_destination,source_provider,source_question_key,source_revision,source_inspection_id,
+	 source_inspection_fingerprint,source_field_id,source_field_kind,source_kind,early_discovery_source,
+	 early_fingerprint,early_source_question_id,early_answer_revision,created_at,updated_at,revision`
+
 func answerLibraryEntryBySource(queryer interface {
 	QueryRow(string, ...any) *sql.Row
 }, jobID int64, destination, provider, key string, sourceRevision int64) (AnswerLibraryEntry, error) {
 	var entry AnswerLibraryEntry
-	err := queryer.QueryRow(`SELECT id,original_question,answer,source_employer,source_job_title,source_host,
-	 source_job_id,source_destination,source_provider,source_question_key,source_revision,source_inspection_id,
-	 source_inspection_fingerprint,source_field_id,source_field_kind,created_at,updated_at,revision FROM answer_library
-	 WHERE source_job_id=? AND source_destination=? AND source_provider=? AND source_question_key=? AND source_revision=?`,
-		jobID, destination, provider, key, sourceRevision).Scan(
-		&entry.ID, &entry.OriginalQuestion, &entry.Answer, &entry.SourceEmployer, &entry.SourceJobTitle,
-		&entry.SourceHost, &entry.SourceJobID, &entry.SourceDestination, &entry.SourceProvider,
-		&entry.SourceQuestionKey, &entry.SourceRevision, &entry.SourceInspectionID, &entry.SourceInspectionFingerprint, &entry.SourceFieldID,
-		&entry.SourceFieldKind, &entry.CreatedAt, &entry.UpdatedAt, &entry.Revision)
+	err := scanAnswerLibraryEntry(queryer.QueryRow(`SELECT `+answerLibrarySelectColumns+` FROM answer_library
+	 WHERE source_job_id=? AND source_destination=? AND source_provider=? AND source_question_key=? AND source_revision=? AND source_kind='live'`,
+		jobID, destination, provider, key, sourceRevision), &entry)
 	return entry, err
 }
 
 func (a *App) answerLibraryEntries() ([]AnswerLibraryEntry, error) {
-	rows, err := a.db.Query(`SELECT id,original_question,answer,source_employer,source_job_title,source_host,
-	 source_job_id,source_destination,source_provider,source_question_key,source_revision,source_inspection_id,
-	 source_inspection_fingerprint,source_field_id,source_field_kind,created_at,updated_at,revision FROM answer_library ORDER BY updated_at DESC,id DESC`)
+	rows, err := a.db.Query(`SELECT ` + answerLibrarySelectColumns + ` FROM answer_library ORDER BY updated_at DESC,id DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -320,11 +333,11 @@ func (a *App) answerLibraryEntries() ([]AnswerLibraryEntry, error) {
 	var entries []AnswerLibraryEntry
 	for rows.Next() {
 		var entry AnswerLibraryEntry
-		if err := rows.Scan(&entry.ID, &entry.OriginalQuestion, &entry.Answer, &entry.SourceEmployer,
-			&entry.SourceJobTitle, &entry.SourceHost, &entry.SourceJobID, &entry.SourceDestination,
-			&entry.SourceProvider, &entry.SourceQuestionKey, &entry.SourceRevision, &entry.SourceInspectionID,
-			&entry.SourceInspectionFingerprint, &entry.SourceFieldID, &entry.SourceFieldKind, &entry.CreatedAt, &entry.UpdatedAt, &entry.Revision); err != nil {
+		if err := scanAnswerLibraryEntry(rows, &entry); err != nil {
 			return nil, err
+		}
+		if entry.SourceKind == "" {
+			entry.SourceKind = "live"
 		}
 		entries = append(entries, entry)
 	}
@@ -335,14 +348,124 @@ func (a *App) answerLibraryBySourceID(queryer interface {
 	QueryRow(string, ...any) *sql.Row
 }, id int64) (AnswerLibraryEntry, error) {
 	var entry AnswerLibraryEntry
-	err := queryer.QueryRow(`SELECT id,original_question,answer,source_employer,source_job_title,source_host,
-	 source_job_id,source_destination,source_provider,source_question_key,source_revision,source_inspection_id,
-	 source_inspection_fingerprint,source_field_id,source_field_kind,created_at,updated_at,revision FROM answer_library WHERE id=?`, id).Scan(
-		&entry.ID, &entry.OriginalQuestion, &entry.Answer, &entry.SourceEmployer, &entry.SourceJobTitle,
-		&entry.SourceHost, &entry.SourceJobID, &entry.SourceDestination, &entry.SourceProvider,
-		&entry.SourceQuestionKey, &entry.SourceRevision, &entry.SourceInspectionID, &entry.SourceInspectionFingerprint, &entry.SourceFieldID,
-		&entry.SourceFieldKind, &entry.CreatedAt, &entry.UpdatedAt, &entry.Revision)
+	err := scanAnswerLibraryEntry(queryer.QueryRow(`SELECT `+answerLibrarySelectColumns+` FROM answer_library WHERE id=?`, id), &entry)
+	if err == nil && entry.SourceKind == "" {
+		entry.SourceKind = "live"
+	}
 	return entry, err
+}
+
+// promoteEarlyApplicationAnswer curates a saved early narrative as a phrasing
+// example only. It never inserts application_answers, never marks
+// reconciliation accepted, never approves exact memory, and never authorizes
+// Fill. The library entry uses source_kind='early' with a documented absent
+// browser inspection (inspection ID 0) and a distinct deduplication namespace
+// so live and early identities cannot collide.
+func (a *App) promoteEarlyApplicationAnswer(jobID int64, key string, expectedRevision int64) (AnswerLibraryEntry, bool, error) {
+	if jobID <= 0 || !questionReturnKey.MatchString(key) || expectedRevision < 1 {
+		return AnswerLibraryEntry{}, false, ErrAnswerLibrarySource
+	}
+	job, err := a.jobByID(jobID)
+	if err != nil {
+		return AnswerLibraryEntry{}, false, ErrAnswerLibrarySource
+	}
+	if job.Stage == StageApplied || job.Stage == StageClosed || job.SubmissionCount > 0 {
+		return AnswerLibraryEntry{}, false, ErrAnswerLibrarySource
+	}
+	early, err := a.prepareEarlyQuestions(job, nil)
+	if err != nil {
+		return AnswerLibraryEntry{}, false, err
+	}
+	var match *earlyApplicationQuestion
+	for i := range early.Questions {
+		if early.Questions[i].Key == key && early.Questions[i].Revision == expectedRevision {
+			candidate := early.Questions[i]
+			match = &candidate
+			break
+		}
+	}
+	if match == nil {
+		return AnswerLibraryEntry{}, false, ErrAnswerLibraryStale
+	}
+	if !match.Editable || match.TriageCategory != "answer" || !earlyPotentialNarrative(match.Field) {
+		return AnswerLibraryEntry{}, false, ErrAnswerLibraryIneligible
+	}
+	if strings.TrimSpace(match.Value) == "" || !validAnswerLibraryText(match.Value) {
+		return AnswerLibraryEntry{}, false, ErrAnswerLibraryIneligible
+	}
+	if match.DiscoverySource == "" || match.DiscoveryFingerprint == "" || match.SourceQuestionID == "" {
+		return AnswerLibraryEntry{}, false, ErrAnswerLibrarySource
+	}
+	tx, err := a.db.Begin()
+	if err != nil {
+		return AnswerLibraryEntry{}, false, err
+	}
+	defer tx.Rollback()
+	// Revalidate the saved early revision transactionally: the question row
+	// must still hold the expected answer.
+	var savedAnswer string
+	var savedRevision int64
+	err = tx.QueryRow(`SELECT answer,revision FROM early_application_answers
+	 WHERE job_id=? AND destination=? AND discovery_source=? AND discovery_fingerprint=? AND source_question_id=?`,
+		job.ID, job.URL, match.DiscoverySource, match.DiscoveryFingerprint, match.SourceQuestionID).Scan(&savedAnswer, &savedRevision)
+	if errors.Is(err, sql.ErrNoRows) {
+		return AnswerLibraryEntry{}, false, ErrAnswerLibrarySource
+	}
+	if err != nil {
+		return AnswerLibraryEntry{}, false, err
+	}
+	if savedRevision != expectedRevision || savedAnswer != match.Value {
+		return AnswerLibraryEntry{}, false, ErrAnswerLibraryStale
+	}
+	now := answerLibraryTimestamp()
+	// Early deduplication uses a distinct namespace so live and early source
+	// revisions cannot collide: provider is prefixed and inspection is absent.
+	entry := AnswerLibraryEntry{
+		OriginalQuestion: match.Field.Label, Answer: savedAnswer, SourceEmployer: job.Company,
+		SourceJobTitle: job.Title, SourceHost: job.Host, SourceJobID: job.ID,
+		SourceDestination: job.URL, SourceProvider: "early:" + match.DiscoverySource, SourceQuestionKey: key,
+		SourceRevision: savedRevision, SourceInspectionID: 0, SourceInspectionFingerprint: match.DiscoveryFingerprint,
+		SourceFieldID: match.SourceQuestionID, SourceFieldKind: match.Field.Kind, SourceKind: "early",
+		EarlyDiscoverySource: match.DiscoverySource, EarlyFingerprint: match.DiscoveryFingerprint,
+		EarlySourceQuestionID: match.SourceQuestionID, EarlyAnswerRevision: savedRevision,
+		CreatedAt: now, UpdatedAt: now, Revision: 1,
+	}
+	result, err := tx.Exec(`INSERT INTO answer_library(original_question,answer,source_employer,source_job_title,source_host,
+	 source_job_id,source_destination,source_provider,source_question_key,source_revision,source_inspection_id,
+	 source_inspection_fingerprint,source_field_id,source_field_kind,source_kind,early_discovery_source,early_fingerprint,early_source_question_id,early_answer_revision,question_terms,answer_terms,search_index_version,created_at,updated_at,revision)
+	 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?,1)
+	 ON CONFLICT(source_job_id,source_destination,source_provider,source_question_key,source_revision) DO NOTHING`,
+		entry.OriginalQuestion, entry.Answer, entry.SourceEmployer, entry.SourceJobTitle, entry.SourceHost,
+		entry.SourceJobID, entry.SourceDestination, entry.SourceProvider, entry.SourceQuestionKey,
+		entry.SourceRevision, entry.SourceInspectionID, entry.SourceInspectionFingerprint, entry.SourceFieldID, entry.SourceFieldKind, entry.SourceKind,
+		entry.EarlyDiscoverySource, entry.EarlyFingerprint, entry.EarlySourceQuestionID, entry.EarlyAnswerRevision,
+		answerLibraryIndexTerms(entry.OriginalQuestion), answerLibraryIndexTerms(entry.Answer), answerLibrarySearchIndexVersion,
+		entry.CreatedAt, entry.UpdatedAt)
+	if err != nil {
+		return AnswerLibraryEntry{}, false, err
+	}
+	inserted, err := result.RowsAffected()
+	if err != nil {
+		return AnswerLibraryEntry{}, false, err
+	}
+	created := inserted == 1
+	if created {
+		entry.ID, err = result.LastInsertId()
+		if err != nil {
+			return AnswerLibraryEntry{}, false, err
+		}
+	} else {
+		err = scanAnswerLibraryEntry(tx.QueryRow(`SELECT `+answerLibrarySelectColumns+` FROM answer_library
+		 WHERE source_job_id=? AND source_destination=? AND source_provider=? AND source_question_key=? AND source_revision=?`,
+			job.ID, job.URL, entry.SourceProvider, key, savedRevision), &entry)
+		if err != nil {
+			return AnswerLibraryEntry{}, false, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return AnswerLibraryEntry{}, false, err
+	}
+	return entry, created, nil
 }
 
 func (a *App) updateAnswerLibrary(id, expectedRevision int64, answer string) error {

@@ -115,14 +115,23 @@ func (a *App) answerLibraryEntryContentHandler(w http.ResponseWriter, r *http.Re
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "private, no-store")
+	kind := entry.SourceKind
+	if kind == "" {
+		kind = "live"
+	}
 	_ = json.NewEncoder(w).Encode(struct {
-		Revision         int64  `json:"revision"`
-		OriginalQuestion string `json:"original_question"`
-		Answer           string `json:"answer"`
-		SourceEmployer   string `json:"source_employer"`
-		SourceJobTitle   string `json:"source_job_title"`
-		SourceHost       string `json:"source_host"`
-	}{entry.Revision, entry.OriginalQuestion, entry.Answer, entry.SourceEmployer, entry.SourceJobTitle, entry.SourceHost})
+		Revision              int64  `json:"revision"`
+		OriginalQuestion      string `json:"original_question"`
+		Answer                string `json:"answer"`
+		SourceEmployer        string `json:"source_employer"`
+		SourceJobTitle        string `json:"source_job_title"`
+		SourceHost            string `json:"source_host"`
+		SourceKind            string `json:"source_kind"`
+		EarlyDiscoverySource  string `json:"early_discovery_source"`
+		EarlySourceQuestionID string `json:"early_source_question_id"`
+		CreatedAt             string `json:"created_at"`
+		UpdatedAt             string `json:"updated_at"`
+	}{entry.Revision, entry.OriginalQuestion, entry.Answer, entry.SourceEmployer, entry.SourceJobTitle, entry.SourceHost, kind, entry.EarlyDiscoverySource, entry.EarlySourceQuestionID, entry.CreatedAt, entry.UpdatedAt})
 }
 
 func (a *App) answerLibraryStartingPointHandler(w http.ResponseWriter, r *http.Request) {
@@ -244,7 +253,7 @@ func (a *App) promoteApplicationAnswerHandler(w http.ResponseWriter, r *http.Req
 		http.Error(w, "Review the saved answer revision before adding it to the Answer Library", http.StatusBadRequest)
 		return
 	}
-	_, created, err := a.promoteApplicationAnswer(id, keyValues[0], revision)
+	entry, created, err := a.promoteApplicationAnswer(id, keyValues[0], revision)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrAnswerLibraryStale):
@@ -258,11 +267,197 @@ func (a *App) promoteApplicationAnswerHandler(w http.ResponseWriter, r *http.Req
 		}
 		return
 	}
+	if strings.Contains(r.Header.Get("Accept"), "application/json") {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Cache-Control", "private, no-store")
+		_ = json.NewEncoder(w).Encode(struct {
+			Saved    bool  `json:"saved"`
+			Existing bool  `json:"existing"`
+			EntryID  int64 `json:"entryId"`
+			Revision int64 `json:"revision"`
+		}{true, !created, entry.ID, entry.Revision})
+		return
+	}
 	notice := "saved"
 	if !created {
 		notice = "existing"
 	}
 	http.Redirect(w, r, "/answer-library?notice="+notice, http.StatusSeeOther)
+}
+
+func (a *App) promoteEarlyApplicationAnswerHandler(w http.ResponseWriter, r *http.Request) {
+	id, err := parseJobID(r)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if !parseLocalForm(w, r, 4<<10) {
+		return
+	}
+	keyValues, revisionValues := r.PostForm["question_key"], r.PostForm["revision"]
+	if len(keyValues) != 1 || len(revisionValues) != 1 || !questionReturnKey.MatchString(keyValues[0]) {
+		http.Error(w, "Review the saved early answer before adding it to the Answer Library", http.StatusBadRequest)
+		return
+	}
+	revision, err := strconv.ParseInt(revisionValues[0], 10, 64)
+	if err != nil || revision < 1 {
+		http.Error(w, "Review the saved early answer revision before adding it to the Answer Library", http.StatusBadRequest)
+		return
+	}
+	entry, created, err := a.promoteEarlyApplicationAnswer(id, keyValues[0], revision)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrAnswerLibraryStale):
+			http.Error(w, "This saved early answer changed. Review its current revision before adding it to the Answer Library.", http.StatusConflict)
+		case errors.Is(err, ErrAnswerLibraryIneligible):
+			http.Error(w, "This early question is unsupported for the Answer Library. Only eligible saved narratives can be curated.", http.StatusUnprocessableEntity)
+		case errors.Is(err, ErrAnswerLibrarySource):
+			http.Error(w, "The saved early answer could not be verified. Review the current discovered question and saved answer.", http.StatusConflict)
+		default:
+			http.Error(w, "Unable to save this early example to the Answer Library", http.StatusInternalServerError)
+		}
+		return
+	}
+	if strings.Contains(r.Header.Get("Accept"), "application/json") {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Cache-Control", "private, no-store")
+		_ = json.NewEncoder(w).Encode(struct {
+			Saved    bool  `json:"saved"`
+			Existing bool  `json:"existing"`
+			EntryID  int64 `json:"entryId"`
+			Revision int64 `json:"revision"`
+		}{true, !created, entry.ID, entry.Revision})
+		return
+	}
+	notice := "saved"
+	if !created {
+		notice = "existing"
+	}
+	http.Redirect(w, r, "/answer-library?notice="+notice, http.StatusSeeOther)
+}
+
+type answerLibraryBrowseJSON struct {
+	ID             int64  `json:"id"`
+	Revision       int64  `json:"revision"`
+	Question       string `json:"question"`
+	Employer       string `json:"employer"`
+	JobTitle       string `json:"jobTitle"`
+	Host           string `json:"host"`
+	Excerpt        string `json:"excerpt"`
+	SourceKind     string `json:"sourceKind"`
+	UpdatedAt      string `json:"updatedAt"`
+}
+
+// GET /api/answer-library browses retained curated examples with bounded
+// paging, independent of ranked top-3/latest-5,000 limits. With ?query= it
+// delegates to the existing ranker and explicitly labels bounded results.
+func (a *App) answerLibraryBrowseAPI(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	query := strings.TrimSpace(r.URL.Query().Get("query"))
+	limit := 20
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed >= 1 && parsed <= 50 {
+			limit = parsed
+		} else if err == nil {
+			http.Error(w, "Browse limit must be between 1 and 50", http.StatusBadRequest)
+			return
+		}
+	}
+	cursor := int64(0)
+	if raw := strings.TrimSpace(r.URL.Query().Get("cursor")); raw != "" {
+		parsed, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || parsed < 0 {
+			http.Error(w, "Invalid browse cursor", http.StatusBadRequest)
+			return
+		}
+		cursor = parsed
+	}
+	var libraryTotal int64
+	if err := a.db.QueryRow(`SELECT COUNT(*) FROM answer_library`).Scan(&libraryTotal); err != nil {
+		http.Error(w, "Unable to browse saved writing", http.StatusInternalServerError)
+		return
+	}
+	if query != "" {
+		if len(query) > 1000 || !utf8.ValidString(query) || strings.ContainsRune(query, 0) {
+			http.Error(w, "Search text is invalid or too long", http.StatusBadRequest)
+			return
+		}
+		results, err := a.searchAnswerLibrary(query, limit)
+		if err != nil {
+			http.Error(w, "Unable to search saved writing", http.StatusInternalServerError)
+			return
+		}
+		entries := make([]answerLibraryBrowseJSON, 0, len(results))
+		for _, item := range results {
+			kind := "live"
+			updated := ""
+			_ = a.db.QueryRow(`SELECT COALESCE(source_kind,'live'),updated_at FROM answer_library WHERE id=?`, item.EntryID).Scan(&kind, &updated)
+			if kind == "" {
+				kind = "live"
+			}
+			entries = append(entries, answerLibraryBrowseJSON{
+				ID: item.EntryID, Revision: item.Revision, Question: item.OriginalQuestion,
+				Employer: item.SourceEmployer, JobTitle: item.SourceJobTitle, Host: item.SourceHost,
+				Excerpt: item.Excerpt, SourceKind: kind, UpdatedAt: updated,
+			})
+		}
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Cache-Control", "private, no-store")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"entries": entries, "nextCursor": 0, "hasMore": false,
+			"libraryEmpty": libraryTotal == 0, "query": query,
+			"bounded": true, "bound": answerLibrarySearchPageLimit,
+		})
+		return
+	}
+	rows, err := a.db.Query(`SELECT `+answerLibrarySelectColumns+` FROM answer_library WHERE (?=0 OR id<?)
+	 ORDER BY id DESC LIMIT ?`, cursor, cursor, limit+1)
+	if err != nil {
+		http.Error(w, "Unable to browse saved writing", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+	var entries []answerLibraryBrowseJSON
+	var lastID int64
+	for rows.Next() {
+		var entry AnswerLibraryEntry
+		if err := scanAnswerLibraryEntry(rows, &entry); err != nil {
+			rows.Close()
+			http.Error(w, "Unable to browse saved writing", http.StatusInternalServerError)
+			return
+		}
+		kind := entry.SourceKind
+		if kind == "" {
+			kind = "live"
+		}
+		entries = append(entries, answerLibraryBrowseJSON{
+			ID: entry.ID, Revision: entry.Revision, Question: entry.OriginalQuestion,
+			Employer: entry.SourceEmployer, JobTitle: entry.SourceJobTitle, Host: entry.SourceHost,
+			Excerpt: answerLibraryExcerpt(entry.Answer), SourceKind: kind, UpdatedAt: entry.UpdatedAt,
+		})
+		lastID = entry.ID
+	}
+	if err := rows.Err(); err != nil {
+		http.Error(w, "Unable to browse saved writing", http.StatusInternalServerError)
+		return
+	}
+	hasMore := len(entries) > limit
+	if hasMore {
+		entries = entries[:limit]
+		lastID = entries[len(entries)-1].ID
+	}
+	if entries == nil {
+		entries = []answerLibraryBrowseJSON{}
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "private, no-store")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"entries": entries, "nextCursor": lastID, "hasMore": hasMore,
+		"libraryEmpty": libraryTotal == 0, "query": "", "bounded": false,
+	})
 }
 
 func (a *App) editAnswerLibraryHandler(w http.ResponseWriter, r *http.Request) {

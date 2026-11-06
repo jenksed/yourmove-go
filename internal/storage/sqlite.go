@@ -449,6 +449,11 @@ func initJobsSchema(db *sql.DB) error {
 		{"question_terms", `ALTER TABLE answer_library ADD COLUMN question_terms TEXT NOT NULL DEFAULT ''`},
 		{"answer_terms", `ALTER TABLE answer_library ADD COLUMN answer_terms TEXT NOT NULL DEFAULT ''`},
 		{"search_index_version", `ALTER TABLE answer_library ADD COLUMN search_index_version INTEGER NOT NULL DEFAULT 0`},
+		{"source_kind", `ALTER TABLE answer_library ADD COLUMN source_kind TEXT NOT NULL DEFAULT 'live'`},
+		{"early_discovery_source", `ALTER TABLE answer_library ADD COLUMN early_discovery_source TEXT NOT NULL DEFAULT ''`},
+		{"early_fingerprint", `ALTER TABLE answer_library ADD COLUMN early_fingerprint TEXT NOT NULL DEFAULT ''`},
+		{"early_source_question_id", `ALTER TABLE answer_library ADD COLUMN early_source_question_id TEXT NOT NULL DEFAULT ''`},
+		{"early_answer_revision", `ALTER TABLE answer_library ADD COLUMN early_answer_revision INTEGER NOT NULL DEFAULT 0`},
 	} {
 		var exists bool
 		if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM pragma_table_info('answer_library') WHERE name=?)`, column.name).Scan(&exists); err != nil {
@@ -457,6 +462,25 @@ func initJobsSchema(db *sql.DB) error {
 		if !exists {
 			if _, err := db.Exec(column.ddl); err != nil {
 				return fmt.Errorf("add Answer Library %s: %w", column.name, err)
+			}
+		}
+	}
+	// S2 starting-source provenance: nullable/default-empty origin metadata.
+	// Existing rows remain "origin not recorded". No foreign keys.
+	for _, migration := range []struct {
+		table, name, ddl string
+	}{
+		{"application_answers", "reuse_source_json", `ALTER TABLE application_answers ADD COLUMN reuse_source_json TEXT NOT NULL DEFAULT ''`},
+		{"early_application_answers", "reuse_source_json", `ALTER TABLE early_application_answers ADD COLUMN reuse_source_json TEXT NOT NULL DEFAULT ''`},
+		{"cover_letters", "reuse_source_json", `ALTER TABLE cover_letters ADD COLUMN reuse_source_json TEXT NOT NULL DEFAULT ''`},
+	} {
+		var exists bool
+		if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM pragma_table_info('`+migration.table+`') WHERE name=?)`, migration.name).Scan(&exists); err != nil {
+			return fmt.Errorf("inspect %s %s: %w", migration.table, migration.name, err)
+		}
+		if !exists {
+			if _, err := db.Exec(migration.ddl); err != nil {
+				return fmt.Errorf("add %s %s: %w", migration.table, migration.name, err)
 			}
 		}
 	}

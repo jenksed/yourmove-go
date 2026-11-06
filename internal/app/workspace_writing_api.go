@@ -29,6 +29,7 @@
 package app
 
 import (
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -40,6 +41,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/jenksed/yourmove-go/internal/application/browser"
 	"github.com/jenksed/yourmove-go/internal/application/schema"
 	coverprovider "github.com/jenksed/yourmove-go/internal/coverletter/provider"
 )
@@ -86,6 +88,14 @@ type writingQuestionJSON struct {
 	ManualReason       string                          `json:"manualReason"`
 	ReusableKey        string                          `json:"reusableKey"`
 	ReusableRevision   int64                           `json:"reusableRevision"`
+	ReusableEligible   bool                            `json:"reusableEligible"`
+	ReusableAnswer     string                          `json:"reusableAnswer"`
+	ReusableAvailable  bool                            `json:"reusableAvailable"`
+	OriginEntryID      int64                           `json:"originEntryId"`
+	OriginRevision     int64                           `json:"originRevision"`
+	OriginQuestion     string                          `json:"originQuestion"`
+	OriginEmployer     string                          `json:"originEmployer"`
+	OriginRecorded     bool                            `json:"originRecorded"`
 	LibrarySuggestions []writingLibrarySuggestionJSON  `json:"librarySuggestions"`
 	EvidenceSuggestion []writingEvidenceSuggestionJSON `json:"evidenceSuggestions"`
 	// Reconciliation is early-only presentation data; acceptance stays server-owned.
@@ -151,6 +161,9 @@ func toWritingQuestion(q preparedQuestion) writingQuestionJSON {
 		ManualReason:       manualReason,
 		ReusableKey:        q.ReusableKey,
 		ReusableRevision:   q.ReusableRevision,
+		ReusableEligible:   q.ReusableKey != "",
+		ReusableAnswer:     q.ReusableAnswer,
+		ReusableAvailable:  q.ReusableAvailable,
 		LibrarySuggestions: toWritingLibrarySuggestions(q.LibrarySuggestions),
 		EvidenceSuggestion: toWritingEvidenceSuggestions(q.CareerEvidenceSuggestions),
 	}
@@ -412,12 +425,16 @@ func toWritingEarlyQuestion(q earlyApplicationQuestion) writingQuestionJSON {
 		Value:              q.Value,
 		Revision:           q.Revision,
 		Editable:           q.Editable,
+		LibraryEligible:    q.Revision > 0 && q.Editable && earlyPotentialNarrative(q.Field),
+		HelpEligible:       q.HelpEligible(),
 		IsEarly:            true,
 		DiscoverySource:    q.DiscoverySource,
 		DiscoveryPrint:     q.DiscoveryFingerprint,
 		SourceQuestionID:   q.SourceQuestionID,
 		TriageCategory:     q.TriageCategory,
 		ManualReason:       q.ManualReason,
+		ReusableEligible:   false,
+		ReusableAvailable:  false,
 		LibrarySuggestions: toWritingLibrarySuggestions(q.LibrarySuggestions),
 		EvidenceSuggestion: toWritingEvidenceSuggestions(q.CareerEvidence),
 		ReconciliationStatus: q.Reconciliation.Status,
@@ -546,6 +563,75 @@ func (a *App) buildWritingQuestions(jobID int64) (map[string]any, error) {
 	// coherent list. The live and early arrays above keep the full
 	// discovered data; only this projection decides what the applicant sees.
 	unified, unidentified := unifyQuestionInventories(liveWorkbench, earlyWorkbench, snapshot.Anchor == "#application-questions")
+	// Attach durable starting-source provenance without rereading source
+	// bodies. Stored origin is display-only; it never confers authority.
+	func() {
+		liveOrigins := make(map[string]answerReuseOrigin)
+		if provider := browser.PostingPlatform(job.URL); provider != "" {
+			if rows, err := a.db.Query(`SELECT question_key,reuse_source_json FROM application_answers WHERE job_id=? AND destination=? AND provider=?`, job.ID, job.URL, provider); err == nil {
+				func() {
+					defer rows.Close()
+					for rows.Next() {
+						var key, raw string
+						if err := rows.Scan(&key, &raw); err != nil || strings.TrimSpace(raw) == "" {
+							continue
+						}
+						var origin answerReuseOrigin
+						if err := json.Unmarshal([]byte(raw), &origin); err == nil && origin.LibraryEntryID > 0 {
+							liveOrigins[key] = origin
+						}
+					}
+				}()
+			}
+		}
+		type earlyIdentity struct {
+			source, fingerprint, question string
+		}
+		earlyOrigins := make(map[earlyIdentity]answerReuseOrigin)
+		if rows, err := a.db.Query(`SELECT discovery_source,discovery_fingerprint,source_question_id,reuse_source_json FROM early_application_answers WHERE job_id=? AND destination=?`, job.ID, job.URL); err == nil {
+			func() {
+				defer rows.Close()
+				for rows.Next() {
+					var source, fingerprint, questionID, raw string
+					if err := rows.Scan(&source, &fingerprint, &questionID, &raw); err != nil || strings.TrimSpace(raw) == "" {
+						continue
+					}
+					var origin answerReuseOrigin
+					if err := json.Unmarshal([]byte(raw), &origin); err == nil && origin.LibraryEntryID > 0 {
+						earlyOrigins[earlyIdentity{source, fingerprint, questionID}] = origin
+					}
+				}
+			}()
+		}
+		apply := func(list []writingQuestionJSON) {
+			for i := range list {
+				if list[i].IsEarly {
+					origin, ok := earlyOrigins[earlyIdentity{list[i].DiscoverySource, list[i].DiscoveryPrint, list[i].SourceQuestionID}]
+					if !ok {
+						continue
+					}
+					list[i].OriginEntryID = origin.LibraryEntryID
+					list[i].OriginRevision = origin.LibraryRevision
+					list[i].OriginQuestion = origin.SourceQuestion
+					list[i].OriginEmployer = origin.SourceEmployer
+					list[i].OriginRecorded = true
+					continue
+				}
+				origin, ok := liveOrigins[list[i].Key]
+				if !ok {
+					continue
+				}
+				list[i].OriginEntryID = origin.LibraryEntryID
+				list[i].OriginRevision = origin.LibraryRevision
+				list[i].OriginQuestion = origin.SourceQuestion
+				list[i].OriginEmployer = origin.SourceEmployer
+				list[i].OriginRecorded = true
+			}
+		}
+		apply(liveJSON)
+		apply(earlyJSON)
+		apply(unified)
+	}()
 
 	previous := make([]writingPreviousJSON, 0, len(live.Previous)+len(early.Previous))
 	for _, p := range live.Previous {
@@ -633,6 +719,49 @@ type writingSaveInput struct {
 	DiscoverySource     string `json:"discovery_source"`
 	DiscoveryPrint      string `json:"discovery_fingerprint"`
 	SourceQuestionID    string `json:"source_question_id"`
+	OriginEntryID       int64  `json:"origin_entry_id"`
+	OriginRevision      int64  `json:"origin_revision"`
+	OriginClear         bool   `json:"origin_clear"`
+}
+
+// answerReuseOrigin is durable starting-source provenance for a manually
+// adapted answer. It records a starting point, never endorsement or proof the
+// edited text still matches the source.
+type answerReuseOrigin struct {
+	LibraryEntryID    int64  `json:"library_entry_id"`
+	LibraryRevision   int64  `json:"library_revision"`
+	SourceQuestion    string `json:"source_question"`
+	SourceEmployer    string `json:"source_employer"`
+	SourceJobTitle    string `json:"source_job_title"`
+	SourceDestination string `json:"source_destination"`
+	SourceHash        string `json:"source_hash"`
+	DestinationRev    int64  `json:"destination_revision"`
+}
+
+func buildAnswerReuseOrigin(entry AnswerLibraryEntry, destinationRevision int64) (string, error) {
+	origin := answerReuseOrigin{
+		LibraryEntryID: entry.ID, LibraryRevision: entry.Revision,
+		SourceQuestion: entry.OriginalQuestion, SourceEmployer: entry.SourceEmployer,
+		SourceJobTitle: entry.SourceJobTitle, SourceDestination: entry.SourceDestination,
+		SourceHash: fmt.Sprintf("%x", sha256.Sum256([]byte(entry.Answer))),
+		DestinationRev: destinationRevision,
+	}
+	data, err := json.Marshal(origin)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func validAnswerReuseOriginPayload(raw string) bool {
+	if strings.TrimSpace(raw) == "" {
+		return true
+	}
+	var origin answerReuseOrigin
+	if err := json.Unmarshal([]byte(raw), &origin); err != nil {
+		return false
+	}
+	return origin.LibraryEntryID > 0 && origin.LibraryRevision > 0 && origin.SourceHash != ""
 }
 
 // POST /api/jobs/{id}/answers saves one applicant answer. Live saves share
@@ -714,6 +843,41 @@ func (a *App) writingSaveAPI(w http.ResponseWriter, r *http.Request) {
 		writeResumeError(w, http.StatusConflict, "The reusable original changed. Review it before replacing it.")
 		return
 	}
+	var originJSON string
+	var originRequested bool
+	if input.OriginEntryID > 0 || input.OriginClear {
+		originRequested = true
+	}
+	if input.OriginEntryID > 0 {
+		if input.OriginRevision < 1 {
+			writeResumeError(w, http.StatusBadRequest, "Review the selected source before saving with provenance.")
+			return
+		}
+		entry, err := a.answerLibraryBySourceID(a.db, input.OriginEntryID)
+		if errors.Is(err, sql.ErrNoRows) {
+			writeResumeError(w, http.StatusConflict, "The selected source changed or was deleted. Review the updated example or save as independent writing.")
+			return
+		}
+		if err != nil {
+			writeResumeError(w, http.StatusInternalServerError, "Unable to verify the selected source")
+			return
+		}
+		if entry.Revision != input.OriginRevision {
+			writeResumeError(w, http.StatusConflict, "The selected source changed. Review the updated example or save as independent writing.")
+			return
+		}
+		if !answerLibraryEligible(question.Field, true) {
+			writeResumeError(w, http.StatusConflict, "The current question changed. Review it before saving with this source.")
+			return
+		}
+		originJSON, err = buildAnswerReuseOrigin(entry, question.Revision+1)
+		if err != nil {
+			writeResumeError(w, http.StatusInternalServerError, "Unable to save the answer")
+			return
+		}
+	} else if input.OriginClear {
+		originJSON = ""
+	}
 	tx, err := a.db.Begin()
 	if err != nil {
 		writeResumeError(w, http.StatusInternalServerError, "Unable to save the answer")
@@ -732,6 +896,17 @@ func (a *App) writingSaveAPI(w http.ResponseWriter, r *http.Request) {
 			writeResumeError(w, http.StatusInternalServerError, "Unable to save the answer")
 		}
 		return
+	}
+	if originRequested {
+		if !validAnswerReuseOriginPayload(originJSON) {
+			writeResumeError(w, http.StatusInternalServerError, "Unable to save the answer")
+			return
+		}
+		if _, err := tx.Exec(`UPDATE application_answers SET reuse_source_json=? WHERE job_id=? AND destination=? AND provider=? AND question_key=?`,
+			originJSON, job.ID, job.URL, browser.PostingPlatform(job.URL), input.QuestionKey); err != nil {
+			writeResumeError(w, http.StatusInternalServerError, "Unable to save the answer")
+			return
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		writeResumeError(w, http.StatusInternalServerError, "Unable to save the answer")
@@ -775,6 +950,36 @@ func (a *App) writingSaveEarly(w http.ResponseWriter, job Job, input writingSave
 			return
 		}
 	}
+	var earlyOriginJSON string
+	earlyOriginRequested := input.OriginEntryID > 0 || input.OriginClear
+	if input.OriginEntryID > 0 {
+		if input.OriginRevision < 1 {
+			writeResumeError(w, http.StatusBadRequest, "Review the selected source before saving with provenance.")
+			return
+		}
+		entry, err := a.answerLibraryBySourceID(a.db, input.OriginEntryID)
+		if errors.Is(err, sql.ErrNoRows) {
+			writeResumeError(w, http.StatusConflict, "The selected source changed or was deleted. Review the updated example or save as independent writing.")
+			return
+		}
+		if err != nil {
+			writeResumeError(w, http.StatusInternalServerError, "Unable to verify the selected source")
+			return
+		}
+		if entry.Revision != input.OriginRevision {
+			writeResumeError(w, http.StatusConflict, "The selected source changed. Review the updated example or save as independent writing.")
+			return
+		}
+		if !earlyPotentialNarrative(question.Field) {
+			writeResumeError(w, http.StatusConflict, "The current discovered question changed. Review it before saving with this source.")
+			return
+		}
+		earlyOriginJSON, err = buildAnswerReuseOrigin(entry, question.Revision+1)
+		if err != nil {
+			writeResumeError(w, http.StatusInternalServerError, "Unable to save this early answer.")
+			return
+		}
+	}
 	now := answerLibraryTimestamp()
 	result, err := a.db.Exec(`INSERT INTO early_application_answers(job_id,destination,discovery_source,source_question_id,question_label,field_snapshot_json,discovery_fingerprint,answer,revision,reconciliation_status,created_at,updated_at)
 		VALUES(?,?,?,?,?,?,?,?,1,'unreconciled',?,?)
@@ -790,6 +995,17 @@ func (a *App) writingSaveEarly(w http.ResponseWriter, job Job, input writingSave
 	if err != nil || changed != 1 {
 		writeResumeError(w, http.StatusConflict, "This early answer changed in another window. Review it before continuing.")
 		return
+	}
+	if earlyOriginRequested {
+		if !validAnswerReuseOriginPayload(earlyOriginJSON) {
+			writeResumeError(w, http.StatusInternalServerError, "Unable to save this early answer.")
+			return
+		}
+		if _, err := a.db.Exec(`UPDATE early_application_answers SET reuse_source_json=? WHERE job_id=? AND destination=? AND discovery_source=? AND discovery_fingerprint=? AND source_question_id=?`,
+			earlyOriginJSON, job.ID, job.URL, input.DiscoverySource, input.DiscoveryPrint, input.SourceQuestionID); err != nil {
+			writeResumeError(w, http.StatusInternalServerError, "Unable to save this early answer.")
+			return
+		}
 	}
 	writeResumeJSON(w, http.StatusOK, map[string]any{"saved": true, "key": input.QuestionKey, "revision": question.Revision + 1, "early": true})
 }
@@ -930,6 +1146,7 @@ func (a *App) writingAssistAPI(w http.ResponseWriter, r *http.Request) {
 
 type writingLetterJSON struct {
 	ID           int64  `json:"id"`
+	JobID        int64  `json:"jobId"`
 	Provider     string `json:"provider"`
 	Model        string `json:"model"`
 	Body         string `json:"body"`
@@ -938,6 +1155,20 @@ type writingLetterJSON struct {
 	EvidenceRefs []letterEvidenceRef `json:"evidenceRefs"`
 	EvidenceStale bool               `json:"evidenceStale"`
 	ContentHash  string               `json:"contentHash"`
+	MasterResumeID int64 `json:"masterResumeId"`
+	MasterSHA string `json:"masterSha"`
+	MasterName string `json:"masterName"`
+	MasterVersion int `json:"masterVersion"`
+	RoleResumeID int64 `json:"roleResumeId"`
+	RoleSHA string `json:"roleSha"`
+	RoleName string `json:"roleName"`
+	RoleVersion int `json:"roleVersion"`
+	ManualSource bool `json:"manualSource"`
+	OriginRecorded bool `json:"originRecorded"`
+	OriginSourceLetterID int64 `json:"originSourceLetterId"`
+	OriginSourceJobID int64 `json:"originSourceJobId"`
+	OriginEmployer string `json:"originEmployer"`
+	OriginJobTitle string `json:"originJobTitle"`
 }
 
 func (a *App) toWritingLetter(d CoverLetter) writingLetterJSON {
@@ -945,11 +1176,38 @@ func (a *App) toWritingLetter(d CoverLetter) writingLetterJSON {
 	if refs == nil {
 		refs = []letterEvidenceRef{}
 	}
-	return writingLetterJSON{
-		ID: d.ID, Provider: d.Provider, Model: d.Model, Body: d.Body,
+	out := writingLetterJSON{
+		ID: d.ID, JobID: d.JobID, Provider: d.Provider, Model: d.Model, Body: d.Body,
 		CreatedAt: d.CreatedAt, EditedAt: d.EditedAt,
 		EvidenceRefs: refs, EvidenceStale: stale, ContentHash: d.ContentHash(),
+		MasterResumeID: d.MasterResumeID, MasterSHA: d.MasterSHA256,
+		RoleResumeID: d.RoleResumeID, RoleSHA: d.RoleSHA256,
+		ManualSource: d.Provider == "manual",
 	}
+	if d.MasterResumeID > 0 {
+		if resume, err := a.resumeByID(d.MasterResumeID); err == nil {
+			out.MasterName = resume.Name
+			out.MasterVersion = resume.Version
+		}
+	}
+	if d.RoleResumeID > 0 {
+		if resume, err := a.resumeByID(d.RoleResumeID); err == nil {
+			out.RoleName = resume.Name
+			out.RoleVersion = resume.Version
+		}
+	}
+	var raw string
+	if err := a.db.QueryRow(`SELECT COALESCE(reuse_source_json,'') FROM cover_letters WHERE id=?`, d.ID).Scan(&raw); err == nil && strings.TrimSpace(raw) != "" {
+		var origin letterReuseOrigin
+		if err := json.Unmarshal([]byte(raw), &origin); err == nil && origin.SourceLetterID > 0 {
+			out.OriginRecorded = true
+			out.OriginSourceLetterID = origin.SourceLetterID
+			out.OriginSourceJobID = origin.SourceJobID
+			out.OriginEmployer = origin.SourceEmployer
+			out.OriginJobTitle = origin.SourceJobTitle
+		}
+	}
+	return out
 }
 
 type writingLetterSourceJSON struct {
@@ -1099,7 +1357,11 @@ func (a *App) writingLetterAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 type writingLetterSaveInput struct {
-	Body string `json:"body"`
+	Body         string `json:"body"`
+	BodyHash     string `json:"expected_hash"`
+	PriorLetter  int64  `json:"prior_letter_id"`
+	PriorJob     int64  `json:"prior_job_id"`
+	PriorHash    string `json:"prior_body_hash"`
 }
 
 // POST /api/jobs/{id}/letters/{draft} edits an existing draft in place.
@@ -1119,12 +1381,24 @@ func (a *App) writingLetterSaveAPI(w http.ResponseWriter, r *http.Request) {
 		writeResumeError(w, http.StatusNotFound, "Unknown draft")
 		return
 	}
+	job, err := a.jobByID(jobID)
+	if err != nil {
+		writeResumeError(w, http.StatusNotFound, "Unknown job")
+		return
+	}
+	if job.Stage == StageApplied || job.Stage == StageClosed || job.SubmissionCount > 0 {
+		writeResumeError(w, http.StatusConflict, "This application is no longer active. Drafts are read-only.")
+		return
+	}
 	var input writingLetterSaveInput
 	if !decodeResumeJSON(w, r, 3*maxLetterBytes+4096, &input) {
 		return
 	}
-	if err := a.saveCoverLetterBody(jobID, draftID, input.Body); errors.Is(err, sql.ErrNoRows) {
+	if err := a.saveCoverLetterBodyChecked(jobID, draftID, input.Body, strings.TrimSpace(input.BodyHash)); errors.Is(err, sql.ErrNoRows) {
 		writeResumeError(w, http.StatusNotFound, "This saved draft is unavailable for this job. Your submitted text has not been saved.")
+		return
+	} else if err != nil && err.Error() == "concurrent edit" {
+		writeResumeError(w, http.StatusConflict, "This draft changed in another window. Review the current text before saving.")
 		return
 	} else if err != nil {
 		writeResumeError(w, http.StatusUnprocessableEntity, "The letter could not be saved. Use 30–12000 bytes of valid text and try again.")
@@ -1171,10 +1445,40 @@ func (a *App) writingLetterManualAPI(w http.ResponseWriter, r *http.Request) {
 		writeResumeError(w, http.StatusUnprocessableEntity, "Use 30–12000 bytes of valid text and try again.")
 		return
 	}
+	var originJSON string
+	if input.PriorLetter > 0 {
+		priorJobID := input.PriorJob
+		if priorJobID <= 0 {
+			priorJobID = jobID
+		}
+		source, err := a.coverLetterByID(priorJobID, input.PriorLetter)
+		if errors.Is(err, sql.ErrNoRows) {
+			writeResumeError(w, http.StatusConflict, "The selected prior letter changed or was deleted. Review the catalog or save as independent writing.")
+			return
+		}
+		if err != nil {
+			writeResumeError(w, http.StatusInternalServerError, "Unable to verify the selected prior letter")
+			return
+		}
+		if input.PriorHash != "" && source.ContentHash() != input.PriorHash {
+			writeResumeError(w, http.StatusConflict, "The selected prior letter changed. Review the updated text or save as independent writing.")
+			return
+		}
+		sourceJob, err := a.jobByID(source.JobID)
+		if err != nil {
+			writeResumeError(w, http.StatusConflict, "The selected prior letter changed or was deleted. Review the catalog or save as independent writing.")
+			return
+		}
+		originJSON, err = a.buildLetterReuseOrigin(source, sourceJob)
+		if err != nil || !validLetterReuseOriginPayload(originJSON) {
+			writeResumeError(w, http.StatusInternalServerError, "Unable to save the letter.")
+			return
+		}
+	}
 	tx, err := a.db.Begin()
 	if err != nil { writeResumeError(w, http.StatusInternalServerError, "Unable to save the letter."); return }
 	defer tx.Rollback()
-	result, err := tx.Exec(`INSERT INTO cover_letters(job_id,body,provider,model,master_resume_id,master_sha256,role_resume_id,role_sha256,job_description_sha256,created_at) VALUES(?,?,'manual','',NULL,'',NULL,'','',?)`, jobID, input.Body, time.Now().UTC().Format(time.RFC3339))
+	result, err := tx.Exec(`INSERT INTO cover_letters(job_id,body,provider,model,master_resume_id,master_sha256,role_resume_id,role_sha256,job_description_sha256,created_at,reuse_source_json) VALUES(?,?,'manual','',NULL,'',NULL,'','',?,?)`, jobID, input.Body, time.Now().UTC().Format(time.RFC3339), originJSON)
 	if err != nil { log.Printf("save manual letter: %v", err); writeResumeError(w, http.StatusInternalServerError, "Unable to save the letter."); return }
 	id, err := result.LastInsertId()
 	if err == nil {
@@ -1341,4 +1645,233 @@ func (a *App) writingLetterGenerateAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeResumeJSON(w, http.StatusOK, map[string]any{"generated": true, "draftId": draftID})
+}
+
+type coverLetterCatalogItem struct {
+	ID          int64  `json:"id"`
+	JobID       int64  `json:"jobId"`
+	Employer    string `json:"employer"`
+	JobTitle    string `json:"jobTitle"`
+	Provider    string `json:"provider"`
+	Model       string `json:"model"`
+	CreatedAt   string `json:"createdAt"`
+	EditedAt    string `json:"editedAt"`
+	Preview     string `json:"preview"`
+	MasterName  string `json:"masterName"`
+	MasterVer   int    `json:"masterVersion"`
+	RoleName    string `json:"roleName"`
+	RoleVersion int    `json:"roleVersion"`
+	Manual      bool   `json:"manual"`
+	Current     bool   `json:"current,omitempty"`
+}
+
+func coverLetterPreview(body string) string {
+	runes := []rune(strings.TrimSpace(body))
+	if len(runes) <= 320 {
+		return string(runes)
+	}
+	return strings.TrimSpace(string(runes[:320])) + "…"
+}
+
+func (a *App) coverLetterHistoryAPI(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	jobID, err := parseJobID(r)
+	if err != nil {
+		writeResumeError(w, http.StatusNotFound, "Unknown job")
+		return
+	}
+	limit := 20
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed >= 1 && parsed <= 50 {
+			limit = parsed
+		} else {
+			writeResumeError(w, http.StatusBadRequest, "Browse limit must be between 1 and 50")
+			return
+		}
+	}
+	cursor := int64(0)
+	if raw := strings.TrimSpace(r.URL.Query().Get("cursor")); raw != "" {
+		parsed, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || parsed < 0 {
+			writeResumeError(w, http.StatusBadRequest, "Invalid browse cursor")
+			return
+		}
+		cursor = parsed
+	}
+	summaries, hasMore, err := a.listCoverLettersPage(jobID, cursor, limit)
+	if err != nil {
+		writeResumeError(w, http.StatusInternalServerError, "Unable to browse saved letters")
+		return
+	}
+	selected, _ := a.selectedCoverLetter(jobID)
+	items := make([]coverLetterCatalogItem, 0, len(summaries))
+	var lastID int64
+	for _, s := range summaries {
+		draft, err := a.coverLetterByID(jobID, s.ID)
+		if err != nil {
+			continue
+		}
+		item := a.toCatalogItem(draft, selected.ID == draft.ID)
+		items = append(items, item)
+		lastID = s.ID
+	}
+	if items == nil {
+		items = []coverLetterCatalogItem{}
+	}
+	writeResumeJSON(w, http.StatusOK, map[string]any{
+		"entries": items, "nextCursor": lastID, "hasMore": hasMore, "selectedId": selected.ID,
+	})
+}
+
+func (a *App) toCatalogItem(draft CoverLetter, current bool) coverLetterCatalogItem {
+	job, _ := a.jobByID(draft.JobID)
+	item := coverLetterCatalogItem{
+		ID: draft.ID, JobID: draft.JobID, Provider: draft.Provider, Model: draft.Model,
+		CreatedAt: draft.CreatedAt, EditedAt: draft.EditedAt,
+		Preview: coverLetterPreview(draft.Body), Manual: draft.Provider == "manual", Current: current,
+	}
+	if job.ID > 0 {
+		item.Employer = job.Company
+		if item.Employer == "" {
+			item.Employer = job.Host
+		}
+		item.JobTitle = job.Title
+	}
+	if draft.MasterResumeID > 0 {
+		if resume, err := a.resumeByID(draft.MasterResumeID); err == nil {
+			item.MasterName = resume.Name
+			item.MasterVer = resume.Version
+		}
+	}
+	if draft.RoleResumeID > 0 {
+		if resume, err := a.resumeByID(draft.RoleResumeID); err == nil {
+			item.RoleName = resume.Name
+			item.RoleVersion = resume.Version
+		}
+	}
+	return item
+}
+
+// GET /api/cover-letters browses retained letters across opportunities with
+// bounded descending-ID paging and optional employer/role search.
+func (a *App) coverLetterCatalogAPI(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	limit := 20
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed >= 1 && parsed <= 50 {
+			limit = parsed
+		} else {
+			writeResumeError(w, http.StatusBadRequest, "Browse limit must be between 1 and 50")
+			return
+		}
+	}
+	cursor := int64(0)
+	if raw := strings.TrimSpace(r.URL.Query().Get("cursor")); raw != "" {
+		parsed, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || parsed < 0 {
+			writeResumeError(w, http.StatusBadRequest, "Invalid browse cursor")
+			return
+		}
+		cursor = parsed
+	}
+	query := strings.TrimSpace(r.URL.Query().Get("query"))
+	if len(query) > 200 {
+		writeResumeError(w, http.StatusBadRequest, "Search text is too long")
+		return
+	}
+	excludeJob := int64(0)
+	if raw := strings.TrimSpace(r.URL.Query().Get("exclude_job")); raw != "" {
+		if parsed, err := strconv.ParseInt(raw, 10, 64); err == nil && parsed > 0 {
+			excludeJob = parsed
+		}
+	}
+	var rows *sql.Rows
+	var err error
+	if query == "" {
+		rows, err = a.db.Query(`SELECT id,job_id FROM cover_letters WHERE (?=0 OR id<?) AND (?=0 OR job_id<>?) ORDER BY id DESC LIMIT ?`, cursor, cursor, excludeJob, excludeJob, limit+1)
+	} else {
+		like := "%" + query + "%"
+		rows, err = a.db.Query(`SELECT c.id,c.job_id FROM cover_letters c JOIN jobs j ON j.id=c.job_id
+		 WHERE (?=0 OR c.id<?) AND (?=0 OR c.job_id<>?) AND (j.company LIKE ? OR j.title LIKE ? OR j.host LIKE ?)
+		 ORDER BY c.id DESC LIMIT ?`, cursor, cursor, excludeJob, excludeJob, like, like, like, limit+1)
+	}
+	if err != nil {
+		writeResumeError(w, http.StatusInternalServerError, "Unable to browse saved letters")
+		return
+	}
+	defer rows.Close()
+	type ref struct{ id, jobID int64 }
+	var refs []ref
+	for rows.Next() {
+		var item ref
+		if err := rows.Scan(&item.id, &item.jobID); err != nil {
+			writeResumeError(w, http.StatusInternalServerError, "Unable to browse saved letters")
+			return
+		}
+		refs = append(refs, item)
+	}
+	if err := rows.Err(); err != nil {
+		writeResumeError(w, http.StatusInternalServerError, "Unable to browse saved letters")
+		return
+	}
+	hasMore := len(refs) > limit
+	if hasMore {
+		refs = refs[:limit]
+	}
+	items := make([]coverLetterCatalogItem, 0, len(refs))
+	var lastID int64
+	var total int64
+	_ = a.db.QueryRow(`SELECT COUNT(*) FROM cover_letters`).Scan(&total)
+	for _, item := range refs {
+		draft, err := a.coverLetterByID(item.jobID, item.id)
+		if err != nil {
+			continue
+		}
+		items = append(items, a.toCatalogItem(draft, false))
+		lastID = item.id
+	}
+	if items == nil {
+		items = []coverLetterCatalogItem{}
+	}
+	writeResumeJSON(w, http.StatusOK, map[string]any{
+		"entries": items, "nextCursor": lastID, "hasMore": hasMore,
+		"libraryEmpty": total == 0, "query": query, "bounded": true,
+	})
+}
+
+// GET /api/cover-letters/{id} reads one retained letter with source job and
+// pinned résumé metadata. Read-only: it never changes selection.
+func (a *App) coverLetterCatalogDetailAPI(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	raw := r.PathValue("id")
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || id <= 0 {
+		writeResumeError(w, http.StatusNotFound, "Unknown letter")
+		return
+	}
+	var jobID int64
+	if err := a.db.QueryRow(`SELECT job_id FROM cover_letters WHERE id=?`, id).Scan(&jobID); err != nil {
+		writeResumeError(w, http.StatusNotFound, "Unknown letter")
+		return
+	}
+	draft, err := a.coverLetterByID(jobID, id)
+	if err != nil {
+		writeResumeError(w, http.StatusNotFound, "Unknown letter")
+		return
+	}
+	detail := a.toWritingLetter(draft)
+	job, _ := a.jobByID(jobID)
+	writeResumeJSON(w, http.StatusOK, map[string]any{
+		"letter": detail,
+		"job": map[string]any{"id": job.ID, "employer": job.Company, "host": job.Host, "title": job.Title},
+	})
 }
