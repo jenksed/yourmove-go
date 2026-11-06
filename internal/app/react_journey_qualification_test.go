@@ -154,7 +154,7 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	}
 	wait(`document.body.innerText.includes('Synthetic React journey')`)
 	discoveryStarted := time.Now()
-	click("2. Documents")
+	click("Documents")
 	wait(`!!document.querySelector('input[name=workspace-resume]:not(:checked)')`)
 	run(`Array.from(document.querySelectorAll('input[name=workspace-resume]')).find(x=>!x.checked).click()`)
 	wait(`document.body.innerText.includes('Selection saved')`)
@@ -169,7 +169,7 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	wait(`document.querySelector('#letter-draft')?.options.length===3`)
 	run(`(()=>{const e=document.querySelector('#letter-draft');e.value='1';e.dispatchEvent(new Event('change',{bubbles:true}))})()`)
 	wait(`document.querySelector('#letter-body')?.value.includes('synthetic support role')`)
-	click("3. Questions")
+	click("Questions")
 	wait(`Array.from(document.querySelectorAll('.writing-question')).some(x=>x.textContent.includes('Why this team?'))`)
 	t.Logf("Early Ashby question appeared without an applicant browser after %s", time.Since(discoveryStarted).Round(time.Millisecond))
 	if launches.Load() != 0 || previews.Load() != 1 {
@@ -180,7 +180,7 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	click("Save answer locally")
 	wait(`document.body.innerText.includes('Saved locally. It has not been filled')`)
 
-	click("4. Apply")
+	click("Apply")
 	wait(`document.body.innerText.includes('journey-resume.pdf')&&document.body.innerText.includes('Cover letter:')`)
 	if launches.Load() != 0 {
 		t.Fatal("employer browser launched before applicant action")
@@ -302,14 +302,14 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	if err := employerEval(`[resumeChanges,coverChanges,submits]`, &counts); err != nil || fmt.Sprint(counts) != "[1 3 0]" {
 		t.Fatalf("recheck changed employer form: %v %v", counts, err)
 	}
-	click("3. Questions")
+	click("Questions")
 	wait(`Array.from(document.querySelectorAll('.writing-question')).some(x=>x.textContent.includes('Delayed question'))`)
 	run(`Array.from(document.querySelectorAll('.writing-question')).find(x=>x.textContent.includes('Delayed question')).click()`)
 	const answer = "I enjoy helping customers solve challenging support problems."
 	run(fmt.Sprintf(`(()=>{const e=document.querySelector('#writing-answer');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,%q);e.dispatchEvent(new Event('input',{bubbles:true}))})()`, answer))
 	click("Save answer locally")
 	wait(`document.body.innerText.includes('Saved locally.')`)
-	click("4. Apply")
+	click("Apply")
 	wait(`document.querySelector('.continuation-item')?.parentElement?.innerText.includes('saved answer')`)
 	wait(`Array.from(document.querySelectorAll('.continuation-item label')).find(x=>x.textContent.includes('saved answer'))?.querySelector('input')?.checked`)
 	run(`Array.from(document.querySelectorAll('#employer button')).filter(x=>x.classList.contains('button-primary')).at(-1).click()`)
@@ -453,13 +453,13 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	page = baseURL + "/jobs/1"
 	ui = runtimeUI
 	wait(`document.body.innerText.includes('Synthetic React journey')`)
-	click("2. Documents")
+	click("Documents")
 	wait(`document.body.innerText.includes('journey-resume.pdf') && document.querySelector('input[name=workspace-resume]:checked')?.parentElement.innerText.includes('journey-resume.pdf') && document.querySelector('#letter-body')?.value.includes('synthetic support role')`)
-	click("3. Questions")
+	click("Questions")
 	wait(`document.body.innerText.includes('Delayed question')`)
 	run(`Array.from(document.querySelectorAll('.writing-question')).find(x=>x.textContent.includes('Delayed question')).click()`)
 	wait(`document.querySelector('#writing-answer')?.value === "I enjoy helping customers solve challenging support problems."`)
-	click("4. Apply")
+	click("Apply")
 	wait(`document.body.innerText.includes('saved materials remain') || document.body.innerText.includes('disconnected')`)
 	click("Submission history")
 	click("I submitted this application")

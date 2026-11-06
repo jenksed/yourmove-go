@@ -186,3 +186,142 @@ func TestServeJobWorkspaceRouting(t *testing.T) {
 	}
 	var _ = sql.ErrNoRows
 }
+
+func TestWorkspaceNextActionPrecedence(t *testing.T) {
+	baseJob := Job{ID: 1, URL: "https://example.com/role", Stage: StageReview, SelectedResumeID: 7}
+	validReadiness := applicationReadiness{QuestionsAvailable: true, NeedsAnswerCount: 0, PreparedCount: 2}
+	quietBrowser := browserRunState{}
+	quietPrep := HandoffPresentation{}
+	cases := []struct {
+		name       string
+		job        Job
+		state      browserRunState
+		valid      bool
+		readiness  applicationReadiness
+		prep       HandoffPresentation
+		activity   string
+		label      string
+	}{
+		{
+			name: "recorded history outranks closed stage",
+			job: func() Job { j := baseJob; j.Stage = StageClosed; j.SubmissionCount = 2; return j }(),
+			state: quietBrowser, valid: true, readiness: validReadiness, prep: quietPrep,
+			activity: "applied", label: "View submission history",
+		},
+		{
+			name: "applied without history",
+			job: func() Job { j := baseJob; j.Stage = StageApplied; return j }(),
+			state: quietBrowser, valid: true, readiness: validReadiness, prep: quietPrep,
+			activity: "applied", label: "Review application status",
+		},
+		{
+			name: "closed without history",
+			job: func() Job { j := baseJob; j.Stage = StageClosed; return j }(),
+			state: quietBrowser, valid: true, readiness: validReadiness, prep: quietPrep,
+			activity: "job", label: "Review opportunity",
+		},
+		{
+			name: "active browser before preparation",
+			job: baseJob,
+			state: browserRunState{Active: true}, valid: false,
+			readiness: applicationReadiness{QuestionsAvailable: true, NeedsAnswerCount: 3},
+			prep: quietPrep,
+			activity: "apply", label: "Review application status",
+		},
+		{
+			name: "recovery before preparation",
+			job: baseJob,
+			state: quietBrowser, valid: false,
+			readiness: applicationReadiness{QuestionsAvailable: true, NeedsAnswerCount: 3},
+			prep: HandoffPresentation{Recovery: true},
+			activity: "apply", label: "Review application status",
+		},
+		{
+			name: "opening browser before preparation",
+			job: baseJob,
+			state: browserRunState{Phase: "opening"}, valid: false,
+			readiness: applicationReadiness{},
+			prep: quietPrep,
+			activity: "apply", label: "Review application status",
+		},
+		{
+			name: "interrupted browser before preparation",
+			job: baseJob,
+			state: browserRunState{Phase: "interrupted"}, valid: true,
+			readiness: validReadiness,
+			prep: quietPrep,
+			activity: "apply", label: "Review application status",
+		},
+		{
+			name: "missing resume",
+			job: func() Job { j := baseJob; j.SelectedResumeID = 0; return j }(),
+			state: quietBrowser, valid: false, readiness: validReadiness, prep: quietPrep,
+			activity: "documents", label: "Choose a résumé",
+		},
+		{
+			name: "invalid selected resume",
+			job: baseJob,
+			state: quietBrowser, valid: false, readiness: validReadiness, prep: quietPrep,
+			activity: "documents", label: "Review selected résumé",
+		},
+		{
+			name: "unanswered questions",
+			job: baseJob,
+			state: quietBrowser, valid: true,
+			readiness: applicationReadiness{QuestionsAvailable: true, NeedsAnswerCount: 2, PreparedCount: 1},
+			prep: quietPrep,
+			activity: "questions", label: "Review available questions",
+		},
+		{
+			name: "unknown inventory falls through to options",
+			job: baseJob,
+			state: quietBrowser, valid: true,
+			readiness: applicationReadiness{QuestionsAvailable: false},
+			prep: quietPrep,
+			activity: "apply", label: "Review application options",
+		},
+		{
+			name: "partial without unanswered falls through",
+			job: baseJob,
+			state: quietBrowser, valid: true,
+			readiness: applicationReadiness{QuestionsAvailable: true, NeedsAnswerCount: 0, PreparedCount: 1, QuestionPartial: true},
+			prep: quietPrep,
+			activity: "apply", label: "Review application options",
+		},
+		{
+			name: "complete zero falls through",
+			job: baseJob,
+			state: quietBrowser, valid: true,
+			readiness: applicationReadiness{QuestionsAvailable: true, NeedsAnswerCount: 0, PreparedCount: 0},
+			prep: quietPrep,
+			activity: "apply", label: "Review application options",
+		},
+	}
+	for _, tc := range cases {
+		if got := chooseWorkspaceNextAction(tc.job, tc.state, tc.valid, tc.readiness, tc.prep); got.Activity != tc.activity || got.Label != tc.label {
+			t.Fatalf("%s: got %+v want %s/%s", tc.name, got, tc.activity, tc.label)
+		}
+	}
+}
+
+func TestWorkspaceSnapshotCarriesNextAction(t *testing.T) {
+	a, _ := testWorkspace(t)
+	if err := a.saveJob(Job{URL: "https://example.com/role/5", Host: "example.com", Title: "Next"}); err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	newMux(a).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "http://localhost/api/jobs/1/workspace", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("workspace status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var snapshot struct {
+		NextAction workspaceNextActionJSON `json:"nextAction"`
+		Job        workspaceJobJSON        `json:"job"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.NextAction.Activity != "documents" || snapshot.NextAction.Label == "" {
+		t.Fatalf("missing next action for resume-less job: %+v", snapshot.NextAction)
+	}
+}
