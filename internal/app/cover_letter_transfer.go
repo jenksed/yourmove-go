@@ -70,7 +70,7 @@ func (a *App) coverLetterCommand(r *http.Request, id int64) (int, string) {
 		return 409, "The saved letter or destination changed. Review it again before transfer."
 	}
 	mode := r.PostForm.Get("mode")
-	if mode != "file" && mode != "text" {
+	if mode != "file" && mode != "text" && mode != "auto" {
 		return 422, "Choose a cover-letter destination"
 	}
 	up := &coverLetterTransfer{draftID: draft.ID, destination: job.URL, body: draft.Body, mode: mode, status: "waiting", message: "Waiting for the intended cover-letter control in the current employer browser."}
@@ -86,7 +86,7 @@ func (a *App) coverLetterCommand(r *http.Request, id int64) (int, string) {
 		}
 		return true
 	}
-	if mode == "file" {
+	if mode == "file" || mode == "auto" {
 		profile, err := a.candidateProfile()
 		if err != nil {
 			return 500, "Unable to read candidate information"
@@ -156,6 +156,11 @@ func (h *sessionHost) tryCoverLetter(ctx context.Context, jobID int64) {
 		err = errors.New("saved letter or destination changed after approval")
 	} else if !ok {
 		err = errors.New("this browser cannot transfer cover letters")
+	} else if up.mode == "auto" {
+		result, err = filler.AttachCoverLetter(ctx, up.path, up.digest)
+		if errors.Is(err, chromium.ErrNoCoverInput) {
+			result, err = filler.FillCoverLetter(ctx, up.body)
+		}
 	} else if up.mode == "text" {
 		result, err = filler.FillCoverLetter(ctx, up.body)
 	} else {

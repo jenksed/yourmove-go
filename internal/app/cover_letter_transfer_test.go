@@ -216,6 +216,39 @@ func TestPendingCoverLetterChangeRevokesTransfer(t *testing.T) {
 	}
 }
 
+func TestCoverLetterAutoPrefersFileFallsBackToText(t *testing.T) {
+	a, _ := testWorkspace(t)
+	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com"}); err != nil {
+		t.Fatal(err)
+	}
+	body := "Dear Hiring Team, I bring verified support experience to this role and welcome the opportunity to contribute."
+	if _, err := a.db.Exec(`INSERT INTO cover_letters(job_id,body,provider,model,master_resume_id,master_sha256,role_resume_id,role_sha256,job_description_sha256,created_at) VALUES(1,?,'fixture','test',1,'master',1,'role','job','now')`, body); err != nil {
+		t.Fatal(err)
+	}
+	draft, err := a.latestCoverLetter(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeLetterBrowser{fakeBrowser: &fakeBrowser{url: testAshbyPosting + "/application"}}
+	a.browsers.factory = func(context.Context, string) (readOnlySession, error) { return f, nil }
+	if err := a.browsers.start(context.Background(), 1, testAshbyPosting); err != nil {
+		t.Fatal(err)
+	}
+	defer a.browsers.closeAll()
+	a.browsers.cancels = map[int64]context.CancelFunc{1: func() {}}
+	a.browsers.handoffs = map[int64]*resumeHandoff{1: {status: "selected", name: "existing.pdf"}}
+	values := url.Values{"draft_id": {fmt.Sprint(draft.ID)}, "body_hash": {draft.ContentHash()}, "destination": {testAshbyPosting}, "confirm": {"yes"}, "mode": {"auto"}}
+	if rec := postApp(newMux(a), "/jobs/1/cover-letter/transfer", values, "", ""); rec.Code != 303 {
+		t.Fatalf("auto letter: %d %s", rec.Code, rec.Body.String())
+	}
+	a.browsers.tryCoverLetter(context.Background(), 1)
+	f.letterMu.Lock()
+	defer f.letterMu.Unlock()
+	if f.calls != 1 || !bytes.HasPrefix(f.gotFile, []byte("%PDF-")) {
+		t.Fatalf("auto did not use the file path first: calls=%d", f.calls)
+	}
+}
+
 func TestCoverLetterDestinationCanChangeOnlyBeforeSelection(t *testing.T) {
 	h := &sessionHost{}
 	h.factory = func(context.Context, string) (readOnlySession, error) {

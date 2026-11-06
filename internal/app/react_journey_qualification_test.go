@@ -186,8 +186,7 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 		t.Fatal("employer browser launched before applicant action")
 	}
 	wait(`document.querySelector('.pending-answer-scope')?.innerText.includes('Prepared before opening')`)
-	wait(`Array.from(document.querySelectorAll('.continuation-item label')).find(x=>x.textContent.includes('saved answer'))?.querySelector('input')?.checked`)
-	click("Fill selected information")
+	click("Fill Application")
 	wait(`document.querySelector('.continuation-outcomes')?.innerText.includes('Résumé')`)
 	if launches.Load() != 1 {
 		t.Fatalf("original Fill launched %d browsers", launches.Load())
@@ -252,13 +251,13 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	}
 	wait(`document.querySelector('.continuation-outcomes')?.innerText.includes('Cover letter')`)
 	// The applicant explicitly clears the existing file in the employer form,
-	// then authorizes the selected saved letter again.
+	// then authorizes the selected saved letter again with one Fill.
 	if err := employerEval(`(()=>{const e=document.querySelector('[name=cover]');e.value='';e.dispatchEvent(new Event('change',{bubbles:true}))})()`, nil); err != nil {
 		t.Fatal(err)
 	}
-	wait(`Array.from(document.querySelectorAll('.continuation-item label')).find(x=>x.textContent.includes('Cover letter:'))?.querySelector('input')?.disabled===false`)
-	run(`Array.from(document.querySelectorAll('.continuation-item label')).find(x=>x.textContent.includes('Cover letter:')).querySelector('input').click()`)
-	click("Fill selected information")
+	wait(`document.querySelector('.continuation-outcomes')?.innerText.includes('Cover letter') && document.querySelector('.continuation-outcomes')?.innerText.includes('Review in the employer browser')`)
+	wait(`Array.from(document.querySelectorAll('#employer button')).some(x=>x.textContent.trim()==='Fill Application' && !x.disabled)`)
+	click("Fill Application")
 	deadline = time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) && a.browsers.state(1).LetterStatus != "complete" {
 		time.Sleep(100 * time.Millisecond)
@@ -309,10 +308,27 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	run(fmt.Sprintf(`(()=>{const e=document.querySelector('#writing-answer');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,%q);e.dispatchEvent(new Event('input',{bubbles:true}))})()`, answer))
 	click("Save answer locally")
 	wait(`document.body.innerText.includes('Saved locally.')`)
+	deadline = time.Now().Add(15 * time.Second)
+answerReady:
+	for {
+		if payload, scopeErr := a.buildContinuation(1); scopeErr == nil {
+			if pend, ok := payload["pendingAnswers"].([]continuationAnswerJSON); ok {
+				for _, q := range pend {
+					if q.Value == answer {
+						break answerReady
+					}
+				}
+			}
+		}
+		if !time.Now().Before(deadline) {
+			t.Fatal("saved delayed answer not visible to continuation scope")
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 	click("Apply")
 	wait(`document.querySelector('.continuation-item')?.parentElement?.innerText.includes('saved answer')`)
-	wait(`Array.from(document.querySelectorAll('.continuation-item label')).find(x=>x.textContent.includes('saved answer'))?.querySelector('input')?.checked`)
-	click("Fill selected information")
+	wait(`Array.from(document.querySelectorAll('#employer button')).some(x=>x.textContent.trim()==='Fill Application' && !x.disabled)`)
+	click("Fill Application")
 	deadline = time.Now().Add(15 * time.Second)
 	var employerValues []string
 	for time.Now().Before(deadline) {
@@ -343,13 +359,73 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 		t.Fatalf("unexpected resume name %q", observed.ResumeName)
 	}
 
-	// A separate explicit Fill action must also open a closed session itself.
+	// Close, improve saved materials, and Fill again. The fresh session must
+	// receive the updated answer and the updated selected letter.
 	run(`window.confirm=()=>true`)
 	click("Close browser")
 	wait(`Array.from(document.querySelectorAll('#employer button')).some(x=>x.textContent.trim()==='View Application' && !x.disabled)`)
-	wait(`Array.from(document.querySelectorAll('#employer button')).some(x=>x.textContent.trim()==='Fill selected information' && !x.disabled)`)
+	wait(`Array.from(document.querySelectorAll('#employer button')).some(x=>x.textContent.trim()==='Fill Application' && !x.disabled)`)
+	click("Questions")
+	wait(`Array.from(document.querySelectorAll('[aria-label="Question navigation"] select option')).some(x=>x.textContent.includes('Delayed question'))`)
+	run(`(()=>{const e=document.querySelector('[aria-label="Question navigation"] select');e.value=Array.from(e.options).find(x=>x.textContent.includes('Delayed question')).value;e.dispatchEvent(new Event('change',{bubbles:true}))})()`)
+	const updatedAnswer = "I enjoy helping customers solve challenging support problems with clear follow-up."
+	run(fmt.Sprintf(`(()=>{const e=document.querySelector('#writing-answer');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,%q);e.dispatchEvent(new Event('input',{bubbles:true}))})()`, updatedAnswer))
+	click("Save answer locally")
+	wait(`document.body.innerText.includes('Saved locally.')`)
+	click("Documents")
+	wait(`document.querySelector('#letter-body')?.value.includes('synthetic support role')`)
+	const updatedLetter = "Dear Hiring Team, I am interested in this updated synthetic support role and would welcome the opportunity to contribute with careful follow-up."
+	run(fmt.Sprintf(`(()=>{const e=document.querySelector('#letter-body');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,%q);e.dispatchEvent(new Event('input',{bubbles:true}))})()`, updatedLetter))
+	click("Save draft edits")
+	wait(`document.body.innerText.includes('Draft saved exactly as edited.')`)
+	// Gate the fresh Fill on the Go-owned scope, not on static text: the
+	// Apply snapshot must carry the updated letter hash and answer.
+	updatedPDF, err := coverLetterPDF(updatedLetter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updatedSum := sha256.Sum256(updatedPDF)
+	updatedHex := hex.EncodeToString(updatedSum[:])
+	updatedBodySum := sha256.Sum256([]byte(updatedLetter))
+	updatedBodyHex := hex.EncodeToString(updatedBodySum[:])
+	deadline = time.Now().Add(15 * time.Second)
+	diagLetter, diagPending := "", ""
+backendReady:
+	for {
+		payload, scopeErr := a.buildContinuation(1)
+		if scopeErr == nil {
+			if lj, ok := payload["letter"].(*continuationLetterJSON); ok && lj != nil {
+				diagLetter = lj.ContentHash
+				if lj.ContentHash == updatedBodyHex {
+					if pend, ok := payload["pendingAnswers"].([]continuationAnswerJSON); ok {
+						vals := make([]string, 0, len(pend))
+						for _, q := range pend {
+							vals = append(vals, q.Label+"="+q.Value)
+						}
+						diagPending = strings.Join(vals, "|")
+						for _, q := range pend {
+							if q.Value == updatedAnswer {
+								break backendReady
+							}
+						}
+					}
+				}
+			} else {
+				diagLetter = fmt.Sprintf("unexpected letter type %T", payload["letter"])
+			}
+		} else {
+			diagLetter = "scope error: " + scopeErr.Error()
+		}
+		if !time.Now().Before(deadline) {
+			t.Fatalf("saved edits not visible to continuation scope: letter=%s want=%.12s pending=[%s]", diagLetter, updatedBodyHex, diagPending)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	click("Apply")
+	wait(`document.body.innerText.includes('journey-resume.pdf')`)
+	wait(`Array.from(document.querySelectorAll('#employer button')).some(x=>x.textContent.trim()==='Fill Application' && !x.disabled)`)
 	employerPage = base + "/application"
-	click("Fill selected information")
+	click("Fill Application")
 	wait(`document.body.innerText.includes('Return to Application')`)
 	if launches.Load() != 2 {
 		t.Fatalf("direct Fill did not launch one new browser: %d", launches.Load())
@@ -362,6 +438,74 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 		t.Fatalf("direct Fill did not attach resume: %+v", a.browsers.state(1))
 	}
 	t.Log("An explicit Fill click opened a fresh session and selected the résumé without a separate View action.")
+	deadline = time.Now().Add(20 * time.Second)
+	var refilled []string
+	for time.Now().Before(deadline) {
+		err = employerEval(`[document.querySelector('[name=motivation]')?.value||'',document.querySelector('[name=other]')?.value||'',document.querySelector('[name=manual]')?.value||'']`, &refilled)
+		if err == nil && fmt.Sprint(refilled) == fmt.Sprint([]string{"Prepared before opening", "", "Already entered"}) {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if fmt.Sprint(refilled) != fmt.Sprint([]string{"Prepared before opening", "", "Already entered"}) {
+		t.Fatalf("fresh Fill did not reuse the saved early answer: %q", refilled)
+	}
+	// The updated delayed answer has no matching control in the fresh form
+	// until the employer reveals it. Inject it as before and verify the
+	// latest saved value fills, not the pre-edit one.
+	if err := employerEval(`(()=>{history.pushState({},'',location.pathname+'/step2');document.querySelector('form').insertAdjacentHTML('beforeend','<label>Delayed question<textarea name="delayed"></textarea></label>');return true})()`, nil); err != nil {
+		t.Fatal(err)
+	}
+	employerPage = base + "/application/step2"
+	deadline = time.Now().Add(20 * time.Second)
+	refilled = nil
+	for time.Now().Before(deadline) {
+		err = employerEval(`[document.querySelector('[name=delayed]').value||'',document.querySelector('[name=other]').value||'',document.querySelector('[name=manual]').value||'']`, &refilled)
+		if err == nil && fmt.Sprint(refilled) == fmt.Sprint([]string{updatedAnswer, "", "Already entered"}) {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if fmt.Sprint(refilled) != fmt.Sprint([]string{updatedAnswer, "", "Already entered"}) {
+		t.Fatalf("fresh Fill did not use the updated saved answer: %q", refilled)
+	}
+	// The fresh form starts with the fixture's pre-existing cover file, so a
+	// safe Fill must preserve it rather than overwrite it with either the old
+	// or the updated saved letter. The applicant then clears it manually and
+	// fills once more; the updated saved letter must attach.
+	var preserved string
+	if err := employerEval(`document.querySelector('[name=cover]').files[0]?.name`, &preserved); err != nil || preserved != "existing.pdf" {
+		t.Fatalf("fresh Fill changed the existing attachment: %q %v", preserved, err)
+	}
+	if err := employerEval(`(()=>{const e=document.querySelector('[name=cover]');e.value='';e.dispatchEvent(new Event('change',{bubbles:true}))})()`, nil); err != nil {
+		t.Fatal(err)
+	}
+	wait(`document.querySelector('.continuation-outcomes')?.innerText.includes('Cover letter') && document.querySelector('.continuation-outcomes')?.innerText.includes('Review in the employer browser')`)
+	wait(`Array.from(document.querySelectorAll('#employer button')).some(x=>x.textContent.trim()==='Fill Application' && !x.disabled)`)
+	click("Fill Application")
+	deadline = time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) && a.browsers.state(1).LetterStatus != "complete" {
+		time.Sleep(100 * time.Millisecond)
+	}
+	var refilledLetter struct {
+		LetterHash string `json:"letterHash"`
+		Submits    int    `json:"submits"`
+	}
+	deadline = time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		err = employerEval(`(async()=>({letterHash:Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",await document.querySelector("[name=cover]").files[0].arrayBuffer()))).map(x=>x.toString(16).padStart(2,"0")).join(""),submits}))()`, &refilledLetter)
+		if err == nil && refilledLetter.LetterHash == hex.EncodeToString(updatedSum[:]) {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if refilledLetter.LetterHash != hex.EncodeToString(updatedSum[:]) {
+		t.Fatalf("fresh Fill did not use the updated saved letter: %+v", refilledLetter)
+	}
+	if refilledLetter.Submits != 0 {
+		t.Fatalf("fresh Fill submitted: %+v", refilledLetter)
+	}
+	t.Logf("Close, edit, re-Fill used updated answer and letter: answer=%q letterHash=%.12s", updatedAnswer, refilledLetter.LetterHash)
 
 	// Leaving an unsubmitted job requires an explicit decision before browser-only work is closed.
 	wait(`document.querySelector('#submission')?.innerText.includes('Next synthetic opportunity')`)
@@ -458,9 +602,9 @@ func TestReactJourneyDocumentTransfer(t *testing.T) {
 	click("Questions")
 	wait(`document.body.innerText.includes('Delayed question')`)
 	run(`(()=>{const e=document.querySelector('[aria-label="Question navigation"] select');e.value=Array.from(e.options).find(x=>x.textContent.includes('Delayed question')).value;e.dispatchEvent(new Event('change',{bubbles:true}))})()`)
-	wait(`document.querySelector('#writing-answer')?.value === "I enjoy helping customers solve challenging support problems."`)
+	wait(fmt.Sprintf(`document.querySelector('#writing-answer')?.value === %q`, updatedAnswer))
 	click("Apply")
-	wait(`document.body.innerText.includes('saved materials remain') || document.body.innerText.includes('disconnected')`)
+	wait(`document.body.innerText.includes('Browser closed') || document.body.innerText.includes('saved materials are unchanged') || document.body.innerText.includes('disconnected')`)
 	click("Submission history")
 	click("I submitted this application")
 	wait(`document.body.innerText.includes('Submission recorded locally.')`)
