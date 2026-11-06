@@ -251,7 +251,7 @@ export function PreviousWriting({
               {browseError} Your editor is unchanged.
             </p>
           )}
-          {browseResult && browseResult.libraryEmpty && <p className="small-muted">The Answer Library is empty. Save a copy from a question you have already answered.</p>}
+          {browseResult && browseResult.libraryEmpty && <p className="small-muted">The Answer Library is empty. Save an answer on a narrative question, then choose “Save a copy to Answer Library” to reuse it here.</p>}
           {browseResult && !browseResult.libraryEmpty && browseResult.entries.length === 0 && (
             <p className="small-muted">
               {browseResult.query !== "" ? `No ranked matches for “${browseResult.query}”. Try different wording or browse the full list.` : "No saved answers yet."}

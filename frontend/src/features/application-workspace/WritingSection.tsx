@@ -708,11 +708,17 @@ export function WritingSection({
                     </div>
                   )}
                   {dirty && <p className="small-muted">Unsaved edits — they stay on this screen until you save.</p>}
-                  {selected.libraryEligible && snapshot.editingAllowed && !readOnly && selected.revision > 0 && (
+                  {selected.helpEligible && snapshot.editingAllowed && !readOnly && (
                     <div className="library-promote" aria-label="Save to Answer Library">
-                      <button className="button button-secondary" type="button" disabled={promoteBusy} onClick={() => void handlePromote()}>
-                        {promoteBusy ? "Saving…" : "Save a copy to Answer Library"}
-                      </button>
+                      {selected.libraryEligible && selected.revision > 0 ? (
+                        <button className="button button-secondary" type="button" disabled={promoteBusy} onClick={() => void handlePromote()}>
+                          {promoteBusy ? "Saving…" : "Save a copy to Answer Library"}
+                        </button>
+                      ) : (
+                        <p className="small-muted">
+                          This is a reusable kind of question. Save an answer here, then you can save a copy to your Answer Library for future applications.
+                        </p>
+                      )}
                       {promoteError !== "" && <p className="job-form-error" role="alert">{promoteError}</p>}
                       {promoteNotice !== "" && <p className="form-notice" role="status">{promoteNotice}</p>}
                     </div>
