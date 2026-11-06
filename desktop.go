@@ -80,12 +80,23 @@ func main() {
 	}
 }
 
+// Build-time pinned update trust root and channel (set via ldflags for
+// release candidates; empty in normal dev runs). Env vars provide the
+// controlled dev fixture channel without touching production pins.
+var (
+	updaterManifestURLEmbedded string
+	updaterPublicKeyEmbedded   string
+)
+
 // configureUpdater wires the Wails updater lifecycle without blocking startup.
 // Headless (WindowNone): discovery and progress surface through the Utilities
 // page and Wails events, never an unexpected modal. Explicit applicant action
 // is required for download, install, and restart.
 func configureUpdater(a *app.App, desktop *application.App) {
-	manifestURL := strings.TrimSpace(os.Getenv("YOURMOVE_UPDATE_MANIFEST_URL"))
+	manifestURL := strings.TrimSpace(updaterManifestURLEmbedded)
+	if manifestURL == "" {
+		manifestURL = strings.TrimSpace(os.Getenv("YOURMOVE_UPDATE_MANIFEST_URL"))
+	}
 	if manifestURL == "" {
 		a.SetUpdateController(app.UpdateController{})
 		log.Printf("automatic updates disabled: YOURMOVE_UPDATE_MANIFEST_URL is not set (manual DMG remains available)")
@@ -151,6 +162,10 @@ func configureUpdater(a *app.App, desktop *application.App) {
 }
 
 func loadUpdatePublicKey() []byte {
+	if trimmed := strings.TrimSpace(updaterPublicKeyEmbedded); trimmed != "" {
+		trimmed = strings.ReplaceAll(trimmed, `\n`, "\n")
+		return []byte(trimmed)
+	}
 	if path := strings.TrimSpace(os.Getenv("YOURMOVE_UPDATE_PUBLIC_KEY_FILE")); path != "" {
 		data, err := os.ReadFile(path)
 		if err != nil {

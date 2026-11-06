@@ -4,7 +4,10 @@ package app
 // application. It must stay coherent with release/macos/Info.plist
 // (CFBundleShortVersionString / CFBundleVersion) and is the CurrentVersion
 // handed to the Wails updater. Do not scatter hardcoded versions elsewhere.
-const (
+//
+// Vars (not consts) so release candidates can pin an exact version via:
+//   go build -ldflags "-X github.com/jenksed/yourmove-go/internal/app.AppVersion=0.2.0 -X github.com/jenksed/yourmove-go/internal/app.AppBuild=4"
+var (
 	AppVersion = "0.1.0"
 	AppBuild   = "3"
 )
