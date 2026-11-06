@@ -16,6 +16,10 @@ import {
   type ResumeOption,
   type ResumesResponse,
 } from "./api";
+import {
+  fetchOpportunities,
+  type OpportunityJob,
+} from "../opportunities/api";
 
 function statusLabel(resume: ResumeItem): string {
   if (resume.archived) return `Archived · Version ${resume.version}`;
@@ -33,7 +37,7 @@ const legacyNotices: Record<string, string> = {
   master: "Remove the master designation or upload a new master revision before deleting this document.",
   archived: "Resume archived. Existing job assignments and submission history are unchanged.",
   restored: "Resume restored. Assign it to a role family or designate it as master if needed.",
-  revised: "New revision saved. Existing job assignments still point to the original document until you update them.",
+  revised: "New revision saved. Existing job assignments still point to the previous document until you update them.",
   duplicate: "That file is already in your document library. A revision must contain different document bytes.",
   failed: "YourMove could not complete that document change. The current library remains available.",
 };
@@ -49,13 +53,23 @@ export function ResumesPage(): React.JSX.Element {
   const [query, setQuery] = useState<string>("");
   const [showArchived, setShowArchived] = useState<boolean>(true);
 
-  const [jobIdText, setJobIdText] = useState<string>("");
+  // Searchable association state. Destination selection never writes;
+  // only an explicit resume radio POSTs an assignment.
+  const [assocOpen, setAssocOpen] = useState<boolean>(false);
+  const [oppSearch, setOppSearch] = useState<string>("");
+  const [oppList, setOppList] = useState<OpportunityJob[] | null>(null);
+  const [oppLoading, setOppLoading] = useState<boolean>(false);
+  const [oppError, setOppError] = useState<string>("");
+  const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
   const [jobOptions, setJobOptions] = useState<ResumeOption[]>([]);
   const [jobTitle, setJobTitle] = useState<string>("");
+  const [jobCompany, setJobCompany] = useState<string>("");
   const [jobSelected, setJobSelected] = useState<number>(0);
   const [jobError, setJobError] = useState<string>("");
-  const [loadedJobId, setLoadedJobId] = useState<number | null>(null);
   const [jobLoading, setJobLoading] = useState<boolean>(false);
+  const [assignBusy, setAssignBusy] = useState<boolean>(false);
+  const [assignNotice, setAssignNotice] = useState<string>("");
+  const [assignError, setAssignError] = useState<string>("");
 
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
   const [deletePhrase, setDeletePhrase] = useState<string>("");
@@ -135,42 +149,127 @@ export function ResumesPage(): React.JSX.Element {
     [runMutation],
   );
 
-  const handleLoadJob = useCallback(async () => {
-    setJobError("");
-    setLoadedJobId(null);
-    setJobOptions([]);
-    setJobTitle("");
-    const jobId = Number.parseInt(jobIdText, 10);
-    if (!/^\d+$/.test(jobIdText.trim()) || !Number.isSafeInteger(jobId) || jobId <= 0) {
-      setJobError("Enter a numeric job ID from your opportunities list.");
-      return;
+  const loadOpportunities = useCallback(async () => {
+    setOppLoading(true);
+    setOppError("");
+    try {
+      const next = await fetchOpportunities();
+      setOppList(next.jobs);
+    } catch (error) {
+      setOppList(null);
+      setOppError(error instanceof Error ? error.message : "Unable to load opportunities");
+    } finally {
+      setOppLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    if (assocOpen) void loadOpportunities();
+  }, [assocOpen, loadOpportunities]);
+
+  const filteredOpportunities = useMemo(() => {
+    if (!oppList) return [];
+    const needle = oppSearch.trim().toLocaleLowerCase();
+    if (needle === "") return oppList;
+    return oppList.filter((job) =>
+      `${job.displayTitle} ${job.title} ${job.company} ${job.companyOrHost} ${job.host} ${job.url}`.toLocaleLowerCase().includes(needle),
+    );
+  }, [oppList, oppSearch]);
+
+  const selectedJob = useMemo(
+    () => oppList?.find((job) => job.id === selectedJobId) ?? null,
+    [oppList, selectedJobId],
+  );
+
+  // The selected destination stays visible even when the search text
+  // filters its row out of the results.
+  const visibleOpportunities = useMemo(() => {
+    if (selectedJob && !filteredOpportunities.some((job) => job.id === selectedJob.id)) {
+      return [selectedJob, ...filteredOpportunities];
+    }
+    return filteredOpportunities;
+  }, [filteredOpportunities, selectedJob]);
+
+  const handleSelectJob = useCallback(
+    async (jobId: number) => {
+      if (jobLoading || assignBusy) return;
+      setSelectedJobId(jobId);
+      setJobOptions([]);
+      setJobSelected(0);
+      setJobTitle("");
+      setJobCompany("");
+      setJobError("");
+      setAssignNotice("");
+      setAssignError("");
+      setJobLoading(true);
+      try {
+        const result = await fetchResumeOptions(jobId);
+        setJobOptions(result.options);
+        setJobTitle(result.job.title !== "" ? result.job.title : `Job ${result.job.id}`);
+        setJobCompany(result.job.company);
+        setJobSelected(result.selectedResumeId);
+      } catch (error) {
+        setJobError(error instanceof Error ? error.message : "Unable to load document choices");
+      } finally {
+        setJobLoading(false);
+      }
+    },
+    [jobLoading, assignBusy],
+  );
+
+  const handleRetryJobOptions = useCallback(async () => {
+    if (selectedJobId === null || jobLoading || assignBusy) return;
+    setJobError("");
     setJobLoading(true);
     try {
-      const result = await fetchResumeOptions(jobId);
+      const result = await fetchResumeOptions(selectedJobId);
       setJobOptions(result.options);
       setJobTitle(result.job.title !== "" ? result.job.title : `Job ${result.job.id}`);
+      setJobCompany(result.job.company);
       setJobSelected(result.selectedResumeId);
-      setLoadedJobId(jobId);
     } catch (error) {
-      setJobError(error instanceof Error ? error.message : "Unable to load job options");
+      setJobError(error instanceof Error ? error.message : "Unable to load document choices");
     } finally {
       setJobLoading(false);
     }
-  }, [jobIdText]);
+  }, [selectedJobId, jobLoading, assignBusy]);
 
+  // An explicit resume radio is the save action. The write result and a
+  // later options refresh are reported separately: a committed write
+  // followed by a failed read stays a saved selection, never a failure.
   const handleAssign = useCallback(
-    (resumeId: number) => {
-      const jobId = loadedJobId;
-      if (jobId === null) return;
-      void runMutation("Assignment", async () => {
+    async (resumeId: number) => {
+      const jobId = selectedJobId;
+      if (jobId === null || jobLoading || assignBusy) return;
+      setAssignBusy(true);
+      setAssignError("");
+      setAssignNotice("");
+      const destination = jobTitle !== "" ? `${jobTitle}${jobCompany !== "" ? ` — ${jobCompany}` : ""}` : `Job ${jobId}`;
+      try {
         await assignJobResume(jobId, resumeId);
-        const result = await fetchResumeOptions(jobId);
-        setJobOptions(result.options);
-        setJobSelected(result.selectedResumeId);
-      }, "Selection saved for that job.");
+        setJobSelected(resumeId);
+        const chosen = jobOptions.find((option) => option.id === resumeId);
+        const chosenLabel =
+          resumeId === 0 ? "No resume selected" : chosen ? `${chosen.name} · Version ${chosen.version}` : `Resume ${resumeId}`;
+        setAssignNotice(`Selection saved: ${chosenLabel} for ${destination}.`);
+        try {
+          const result = await fetchResumeOptions(jobId);
+          setJobOptions(result.options);
+          setJobSelected(result.selectedResumeId);
+        } catch {
+          setAssignError("Selection saved; document choices could not refresh.");
+        }
+      } catch (error) {
+        setAssignError(
+          error instanceof Error
+            ? `${error.message} Could not confirm the change. Reload choices to check the saved selection.`
+            : "Could not confirm the change. Reload choices to check the saved selection.",
+        );
+      } finally {
+        setAssignBusy(false);
+      }
     },
-    [loadedJobId, runMutation],
+    [selectedJobId, jobLoading, assignBusy, jobTitle, jobCompany, jobOptions],
   );
 
   const handleDelete = useCallback(
@@ -200,12 +299,12 @@ export function ResumesPage(): React.JSX.Element {
             <div>
               <h1>Documents</h1>
               <p className="page-description">
-                Your exact resume versions, stored locally. Select a document explicitly from each job's Prepare activity.
+                Keep your résumé versions and choose which one each opportunity uses.
               </p>
             </div>
             <div className="heading-actions">
-              <a className="button button-secondary" href="/families">
-                Manage role families →
+              <a className="text-link" href="/families">
+                Manage role families
               </a>
               <span className="summary-count">
                 {data ? `${data.total} ${data.total === 1 ? "resume" : "resumes"}` : "…"}
@@ -234,16 +333,223 @@ export function ResumesPage(): React.JSX.Element {
           )}
 
           {data && (
-            <div className="docs-layout">
-              <div className="docs-main">
+            <>
+              <section className="panel docs-import-toolbar" aria-label="Import a resume">
+                <div className="docs-import-text">
+                  <h2>Import a resume</h2>
+                  <p className="section-subtitle">PDF or DOCX, up to 10 MiB. Stored locally.</p>
+                </div>
+                {data.desktop ? (
+                  <button
+                    className="button button-primary"
+                    type="button"
+                    disabled={busy}
+                    onClick={() =>
+                      void runMutation("Native import", () => importResumeNative(), (result) => {
+                        const imported = result as { duplicate: boolean };
+                        return imported.duplicate
+                          ? "That file is already in your document library. Existing bytes and document identity were kept."
+                          : "Resume imported from the native picker.";
+                      })
+                    }
+                  >
+                    Choose PDF or DOCX <span aria-hidden="true">↗</span>
+                  </button>
+                ) : (
+                  <label className="field docs-import-file">
+                    <span>Select a file</span>
+                    <input
+                      type="file"
+                      accept=".pdf,.docx"
+                      disabled={busy}
+                      onChange={(event) => {
+                        handleImportFile(event.target.files?.[0]);
+                        event.target.value = "";
+                      }}
+                    />
+                  </label>
+                )}
+              </section>
+
+              <details
+                className="panel docs-assoc"
+                open={assocOpen}
+                onToggle={(event) => setAssocOpen(event.currentTarget.open)}
+              >
+                <summary>
+                  <span>
+                    <strong>Associate a résumé with an opportunity</strong>
+                  </span>
+                  <span className="summary-chevron" aria-hidden="true">
+                    ⌄
+                  </span>
+                </summary>
+                <div className="docs-assoc-body">
+                  <div className="docs-assoc-grid">
+                    <div className="docs-assoc-destination">
+                      <h3>Choose an opportunity</h3>
+                      <div className="field">
+                        <label htmlFor="assoc-opportunity-search">Search saved opportunities</label>
+                        <input
+                          id="assoc-opportunity-search"
+                          type="search"
+                          placeholder="Title, company, or posting source"
+                          autoComplete="off"
+                          value={oppSearch}
+                          disabled={oppLoading || jobLoading || assignBusy}
+                          onChange={(event) => setOppSearch(event.target.value)}
+                        />
+                      </div>
+                      {oppLoading && <p role="status">Loading opportunities…</p>}
+                      {oppError !== "" && (
+                        <>
+                          <p className="job-form-error" role="alert">
+                            {oppError}
+                          </p>
+                          <button className="button button-secondary" type="button" onClick={() => void loadOpportunities()}>
+                            Retry
+                          </button>
+                        </>
+                      )}
+                      {!oppLoading && oppError === "" && oppList !== null && (
+                        <>
+                          {oppList.length === 0 ? (
+                            <p className="small-muted">
+                              No saved opportunities. <a href="/jobs#add-opportunity">Save an opportunity</a> to
+                              associate a résumé.
+                            </p>
+                          ) : visibleOpportunities.length === 0 ? (
+                            <p className="small-muted" role="status">
+                              No matching opportunities.
+                            </p>
+                          ) : (
+                            <ul className="assoc-results" aria-label="Saved opportunities">
+                              {visibleOpportunities.map((job) => (
+                                <li key={job.id} className={job.id === selectedJobId ? "assoc-result is-selected" : "assoc-result"}>
+                                  <label>
+                                    <input
+                                      type="radio"
+                                      name="assoc-opportunity"
+                                      checked={job.id === selectedJobId}
+                                      disabled={jobLoading || assignBusy}
+                                      onChange={() => void handleSelectJob(job.id)}
+                                    />
+                                    <span className="assoc-result-text">
+                                      <strong>{job.displayTitle}</strong>
+                                      <small>
+                                        {job.companyOrHost} · {job.stageLabel}
+                                      </small>
+                                      <small className="assoc-result-url">{job.url}</small>
+                                    </span>
+                                  </label>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </>
+                      )}
+                    </div>
+                    <div className="docs-assoc-choice">
+                      {selectedJobId === null ? (
+                        <p className="small-muted" role="status">
+                          Choose an opportunity to see its selected résumé and eligible alternatives.
+                        </p>
+                      ) : (
+                        <>
+                          <h3>
+                            {jobTitle !== "" ? jobTitle : `Job ${selectedJobId}`}
+                            {jobCompany !== "" ? ` — ${jobCompany}` : ""}
+                          </h3>
+                          {jobLoading && <p role="status">Loading document choices…</p>}
+                          {jobError !== "" && (
+                            <>
+                              <p className="job-form-error" role="alert">
+                                {jobError}
+                              </p>
+                              <button
+                                className="button button-secondary"
+                                type="button"
+                                onClick={() => void handleRetryJobOptions()}
+                                disabled={jobLoading || assignBusy}
+                              >
+                                Retry
+                              </button>
+                            </>
+                          )}
+                          {!jobLoading && jobError === "" && (
+                            <>
+                              <p className="section-subtitle">
+                                Selecting a résumé saves it immediately for {jobTitle !== "" ? jobTitle : `Job ${selectedJobId}`}
+                                {jobCompany !== "" ? ` — ${jobCompany}` : ""}.
+                              </p>
+                              {jobOptions.length === 0 && (
+                                <p className="small-muted">No selectable résumés for this opportunity.</p>
+                              )}
+                              <ul className="resume-options">
+                                <li>
+                                  <label className="confirm-row">
+                                    <input
+                                      type="radio"
+                                      name="job-resume"
+                                      checked={jobSelected === 0}
+                                      onChange={() => void handleAssign(0)}
+                                      disabled={assignBusy || jobLoading}
+                                    />
+                                    <span>No resume (clear selection)</span>
+                                  </label>
+                                </li>
+                                {jobOptions.map((option) => (
+                                  <li key={option.id}>
+                                    <label className="confirm-row">
+                                      <input
+                                        type="radio"
+                                        name="job-resume"
+                                        checked={jobSelected === option.id}
+                                        onChange={() => void handleAssign(option.id)}
+                                        disabled={assignBusy || jobLoading}
+                                      />
+                                      <span>
+                                        {option.name} · {option.kind} · Version {option.version}
+                                        {option.roleFamilyName !== "" ? ` · ${option.roleFamilyName}` : ""}
+                                      </span>
+                                    </label>
+                                  </li>
+                                ))}
+                              </ul>
+                              {assignBusy && <p role="status">Saving…</p>}
+                              {assignNotice !== "" && (
+                                <p className="form-notice" role="status">
+                                  {assignNotice} <a href={`/jobs/${selectedJobId}`}>Open workspace</a>
+                                </p>
+                              )}
+                              {assignError !== "" && (
+                                <>
+                                  <p className="job-form-error" role="alert">
+                                    {assignError}
+                                  </p>
+                                  <button
+                                    className="button button-secondary"
+                                    type="button"
+                                    onClick={() => void handleRetryJobOptions()}
+                                    disabled={jobLoading || assignBusy}
+                                  >
+                                    Reload choices
+                                  </button>
+                                </>
+                              )}
+                            </>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </details>
+
               <section className="panel list-panel" aria-labelledby="resumes-list-title">
                 <div className="section-heading">
                   <div>
                     <h2 id="resumes-list-title">Saved documents</h2>
-                    <p className="section-subtitle">
-                      Master resume = career evidence for cover letters, not an employer upload. Deletion is refused for
-                      referenced or master documents; archive them instead.
-                    </p>
                   </div>
                 </div>
                 <div className="list-toolbar docs-toolbar">
@@ -276,7 +582,7 @@ export function ResumesPage(): React.JSX.Element {
                       <div className="resume-info">
                         <h3>{resume.name}</h3>
                         <p>
-                          {resume.kind} · Version {resume.version} · {resume.displaySize} · Imported {resume.importedAt}
+                          {resume.kind} · Version {resume.version} · {resume.displaySize}
                         </p>
                         <p className={resume.archived ? "document-unassigned" : "document-family"}>{statusLabel(resume)}</p>
                       </div>
@@ -291,6 +597,11 @@ export function ResumesPage(): React.JSX.Element {
                           </span>
                         </summary>
                         <div className="document-manage-body">
+                          <p className="small-muted">
+                            Imported {resume.importedAt}. Master resumes provide career evidence for cover letters,
+                            not employer uploads. Deletion is refused for referenced or master documents; archive
+                            them instead.
+                          </p>
                           {!resume.isMaster && !resume.archived && (
                             <form
                               className="document-routing-form"
@@ -462,125 +773,7 @@ export function ResumesPage(): React.JSX.Element {
                   )}
                 </div>
               </section>
-              </div>
-              <aside className="docs-side" aria-label="Document actions">
-                <section className="panel docs-side-panel" aria-labelledby="import-title">
-                  <h2 id="import-title">Import a resume</h2>
-                  <p className="section-subtitle">PDF or DOCX, up to 10 MiB. Stored locally.</p>
-                  {data.desktop ? (
-                    <button
-                      className="button button-primary docs-side-action"
-                      type="button"
-                      disabled={busy}
-                      onClick={() =>
-                        void runMutation("Native import", () => importResumeNative(), (result) => {
-                          const imported = result as { duplicate: boolean };
-                          return imported.duplicate
-                            ? "That file is already in your document library. Existing bytes and document identity were kept."
-                            : "Resume imported from the native picker.";
-                        })
-                      }
-                    >
-                      Choose PDF or DOCX <span aria-hidden="true">↗</span>
-                    </button>
-                  ) : (
-                    <label className="field">
-                      <span>Select a file</span>
-                      <input
-                        type="file"
-                        accept=".pdf,.docx"
-                        disabled={busy}
-                        onChange={(event) => {
-                          handleImportFile(event.target.files?.[0]);
-                          event.target.value = "";
-                        }}
-                      />
-                    </label>
-                  )}
-                </section>
-
-                <section className="panel docs-side-panel" aria-labelledby="assign-title">
-                  <h2 id="assign-title">Assign to a job</h2>
-                  <p className="section-subtitle">
-                    Open an opportunity to choose its résumé in context. <a href="/jobs">Go to opportunities →</a>
-                  </p>
-                  <details className="document-manage job-assignment">
-                    <summary>Assign using a job ID</summary>
-                    <p className="section-subtitle">Master résumés cannot be assigned. An archived version is shown only if already selected.</p>
-                    <form
-                      className="job-form"
-                      onSubmit={(event) => {
-                        event.preventDefault();
-                        void handleLoadJob();
-                      }}
-                    >
-                      <div className="field">
-                        <label htmlFor="assign-job-id">Job ID</label>
-                        <input
-                          id="assign-job-id"
-                          inputMode="numeric"
-                          autoComplete="off"
-                          placeholder="e.g. 12"
-                          value={jobIdText}
-                          disabled={jobLoading || busy}
-                          onChange={(event) => {
-                            setJobIdText(event.target.value);
-                            setLoadedJobId(null);
-                            setJobOptions([]);
-                            setJobError("");
-                          }}
-                        />
-                      </div>
-                      <div className="form-actions">
-                        <button className="button button-secondary" type="submit" disabled={jobLoading || busy}>
-                          {jobLoading ? "Loading…" : "Load selectable documents"}
-                        </button>
-                      </div>
-                    </form>
-                    {jobError !== "" && (
-                      <p className="job-form-error" role="alert">
-                        {jobError}
-                      </p>
-                    )}
-                    {loadedJobId !== null && (
-                      <ul className="resume-options">
-                        <li className="resume-option-head">{jobTitle}</li>
-                        {jobOptions.length === 0 && <li>No selectable résumés for this opportunity.</li>}
-                        <li>
-                          <label className="confirm-row">
-                            <input
-                              type="radio"
-                              name="job-resume"
-                              checked={jobSelected === 0}
-                              onChange={() => handleAssign(0)}
-                              disabled={busy}
-                            />
-                            <span>No resume (clear selection)</span>
-                          </label>
-                        </li>
-                        {jobOptions.map((option) => (
-                          <li key={option.id}>
-                            <label className="confirm-row">
-                              <input
-                                type="radio"
-                                name="job-resume"
-                                checked={jobSelected === option.id}
-                                onChange={() => handleAssign(option.id)}
-                                disabled={busy}
-                              />
-                              <span>
-                                {option.name} · {option.kind} · Version {option.version}
-                                {option.roleFamilyName !== "" ? ` · ${option.roleFamilyName}` : ""}
-                              </span>
-                            </label>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </details>
-                </section>
-              </aside>
-            </div>
+            </>
           )}
         </main>
       </div>

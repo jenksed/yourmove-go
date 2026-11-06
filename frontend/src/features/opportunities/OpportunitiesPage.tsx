@@ -52,7 +52,9 @@ export function OpportunitiesPage(): React.JSX.Element {
   const [query, setQuery] = useState<string>("");
   const [stage, setStage] = useState<StageFilter>("active");
   const [sort, setSort] = useState<SortKey>("priority");
-  const [createOpen, setCreateOpen] = useState<boolean | null>(null);
+  const [createOpen, setCreateOpen] = useState<boolean>(
+    () => typeof window !== "undefined" && window.location.hash === "#add-opportunity",
+  );
 
   const [singleUrl, setSingleUrl] = useState<string>("");
   const [singleTitle, setSingleTitle] = useState<string>("");
@@ -79,7 +81,6 @@ export function OpportunitiesPage(): React.JSX.Element {
     try {
       const next = await fetchOpportunities();
       setData(next);
-      setCreateOpen((previous) => previous ?? (next.total === 0 || window.location.hash === "#add-opportunity"));
       setSelected((previous) => {
         const valid = new Set<number>();
         for (const job of next.jobs) {
@@ -97,6 +98,14 @@ export function OpportunitiesPage(): React.JSX.Element {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  useEffect(() => {
+    const onHashChange = () => {
+      if (window.location.hash === "#add-opportunity") setCreateOpen(true);
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
 
   const visibleJobs = useMemo(() => {
     if (!data) return [];
@@ -234,13 +243,17 @@ export function OpportunitiesPage(): React.JSX.Element {
           <div className="page-heading">
             <div>
               <h1>Opportunities</h1>
-              <p className="page-description">Find your next application, or save a posting to get started.</p>
+              <p className="page-description">Choose an opportunity to continue.</p>
             </div>
             <div className="heading-actions">
-              <a className="button button-secondary" href="/resumes">
+              <a className="text-link" href="/resumes">
                 Document library
               </a>
-              <a className="button button-primary" href="#add-opportunity" onClick={() => setCreateOpen(true)}>
+              <a
+                className={data?.next ? "button button-secondary" : "button button-primary"}
+                href="#add-opportunity"
+                onClick={() => setCreateOpen(true)}
+              >
                 + Add opportunity
               </a>
             </div>
@@ -258,6 +271,7 @@ export function OpportunitiesPage(): React.JSX.Element {
 
           {data && (
             <>
+              {data.total > 0 && (
               <section className="panel opportunity-dashboard" aria-labelledby="opportunity-progress-title">
                 <div className="queue-progress">
                   <h2 className="visually-hidden" id="opportunity-progress-title">
@@ -312,54 +326,50 @@ export function OpportunitiesPage(): React.JSX.Element {
                 <div className="dashboard-next">
                   {data.next ? (
                     <>
-                      <p className="eyebrow">Suggested next opportunity</p>
-                      <h2>{data.next.title}</h2>
-                      <p className="dashboard-next-company">{data.next.company}</p>
-                      <p className="small-muted">{data.next.reason}</p>
+                      <div className="dashboard-next-identity">
+                        <p className="eyebrow">Suggested next opportunity</p>
+                        <h2>{data.next.title}</h2>
+                        <p className="dashboard-next-company">{data.next.company}</p>
+                        <p className="small-muted">{data.next.reason}</p>
+                      </div>
                       <a className="button button-primary" href={data.next.href}>
                         {data.next.label} <span aria-hidden="true">→</span>
                       </a>
                     </>
                   ) : data.applied > 0 ? (
                     <>
-                      <p className="eyebrow">CURRENT QUEUE COMPLETE</p>
-                      <h2>Your applications are recorded.</h2>
-                      <p className="small-muted">
-                        Review your history or save another opportunity to keep going.
-                      </p>
+                      <div className="dashboard-next-identity">
+                        <p className="eyebrow">CURRENT QUEUE COMPLETE</p>
+                        <h2>Your applications are recorded.</h2>
+                        <p className="small-muted">
+                          Review your history or save another opportunity to keep going.
+                        </p>
+                      </div>
                       <a className="button button-secondary" href="/applications">
                         Review applications →
                       </a>
                     </>
-                  ) : (
-                    <>
-                      <p className="eyebrow">YOUR NEXT STEP</p>
-                      <h2>Start with a job you want.</h2>
-                      <a className="button button-primary" href="#add-opportunity" onClick={() => setCreateOpen(true)}>
-                        Save an opportunity →
-                      </a>
-                    </>
-                  )}
+                  ) : null}
                 </div>
               </section>
+              )}
 
               <details
                 className="panel create-panel"
                 id="add-opportunity"
-                open={createOpen ?? false}
+                open={createOpen}
                 onToggle={(event) => setCreateOpen(event.currentTarget.open)}
               >
                 <summary>
-                  <span className="summary-icon">+</span>
-                  <span>
+                  <span className="create-summary-text">
                     <strong>Add an opportunity</strong>
-                    <small>Save a job posting and fetch supported metadata.</small>
                   </span>
                   <span className="summary-chevron" aria-hidden="true">
                     ⌄
                   </span>
                 </summary>
                 <div className="create-body">
+                  <p className="small-muted create-helper">Paste a job posting link to save it locally.</p>
                   <form className="job-form" onSubmit={(event) => void handleSingleSubmit(event)}>
                     <div className="field">
                       <label htmlFor="job_url">Job posting URL</label>
@@ -589,8 +599,8 @@ export function OpportunitiesPage(): React.JSX.Element {
                     })}
                     {visibleJobs.length === 0 && (
                       <div className="empty-state">
-                        <h3>{data.total === 0 ? "No opportunities saved yet" : "No matching opportunities"}</h3>
-                        <p>{data.total === 0 ? "Add a posting above to start your first application." : "Try a different search or stage."}</p>
+                        <h3>{data.total === 0 ? "Save your first opportunity" : "No matching opportunities"}</h3>
+                        <p>{data.total === 0 ? "Add a job posting to begin." : "Try a different search or stage."}</p>
                         {data.total > 0 && <button
                           className="button button-secondary"
                           type="button"

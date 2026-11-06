@@ -3,7 +3,7 @@ import { AppNavigation } from "../../shared/AppNavigation";
 // Reads and writes through Go-owned JSON contracts only. The source URL is
 // displayed, never edited here; resume bytes never enter this client.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   assignWorkspaceResume,
   fetchWorkspace,
@@ -35,12 +35,33 @@ function suggestionText(status: string): string {
   }
 }
 
+type Activity = "job" | "documents" | "questions" | "apply" | "applied";
+
+interface JobBaseline {
+  title: string;
+  company: string;
+  description: string;
+  salary: string;
+  stage: string;
+  priority: string;
+}
+
+const emptyBaseline: JobBaseline = {
+  title: "",
+  company: "",
+  description: "",
+  salary: "",
+  stage: "review",
+  priority: "normal",
+};
+
 export function WorkspacePage(): React.JSX.Element {
   const jobId = workspaceIdFromPath(window.location.pathname);
-  const [activity, setActivity] = useState<"job" | "documents" | "questions" | "apply" | "applied">("job");
+  const [activity, setActivity] = useState<Activity>("job");
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
   const [loadError, setLoadError] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
+  const [summaryError, setSummaryError] = useState<string>("");
 
   const [title, setTitle] = useState<string>("");
   const [company, setCompany] = useState<string>("");
@@ -48,6 +69,7 @@ export function WorkspacePage(): React.JSX.Element {
   const [salary, setSalary] = useState<string>("");
   const [stage, setStage] = useState<string>("review");
   const [priority, setPriority] = useState<string>("normal");
+  const [baseline, setBaseline] = useState<JobBaseline>(emptyBaseline);
   const [detailsError, setDetailsError] = useState<string>("");
   const [detailsNotice, setDetailsNotice] = useState<string>("");
   const [detailsBusy, setDetailsBusy] = useState<boolean>(false);
@@ -57,28 +79,69 @@ export function WorkspacePage(): React.JSX.Element {
   const [resumeNotice, setResumeNotice] = useState<string>("");
   const [refreshBusy, setRefreshBusy] = useState<boolean>(false);
   const [refreshError, setRefreshError] = useState<string>("");
-  const initialHashHandled = useRef(false);
+  const initialNavDone = useRef(false);
   const [materialRevision, setMaterialRevision] = useState<number>(0);
   const [discoveryStatus, setDiscoveryStatus] = useState<string>("");
   const discoveryStarted = useRef(false);
+  // One parent generation guards overlapping workspace GETs (material saves,
+  // discovery, explicit reloads, restored-page refreshes). Obsolete
+  // responses never touch snapshot, drafts, or baseline.
+  const requestRef = useRef(0);
+  const prevActivity = useRef<Activity>("job");
+
+  const refreshSummary = useCallback(async () => {
+    if (jobId === null) return;
+    const request = ++requestRef.current;
+    try {
+      const next = await fetchWorkspace(jobId);
+      if (request !== requestRef.current) return;
+      // Background reads update the snapshot only: drafts and the saved
+      // baseline stay intact, and child editors keep their state.
+      setSnapshot(next);
+      setSummaryError("");
+    } catch {
+      if (request !== requestRef.current) return;
+      setSummaryError("Summary could not refresh; showing last loaded information.");
+    }
+  }, [jobId]);
+
+  const materialSaved = useCallback(() => {
+    setMaterialRevision((value) => value + 1);
+    void refreshSummary();
+  }, [refreshSummary]);
+
   const retryDiscovery = useCallback(() => {
     if (jobId === null) return;
     discoveryStarted.current = true;
     setDiscoveryStatus("checking");
-    void discoverQuestions(jobId).then(setDiscoveryStatus).catch(() => setDiscoveryStatus("failed"));
-  }, [jobId]);
-  const materialSaved = useCallback(() => setMaterialRevision((value) => value + 1), []);
+    void discoverQuestions(jobId)
+      .then((status) => {
+        setDiscoveryStatus(status);
+        // Refresh the parent summary without switching activity so newly
+        // observed inventory appears beside the current editors.
+        void refreshSummary();
+      })
+      .catch(() => setDiscoveryStatus("failed"));
+  }, [jobId, refreshSummary]);
 
-  useEffect(() => {
-    if (jobId === null || !snapshot || discoveryStarted.current || (activity !== "documents" && activity !== "questions")) return;
-    retryDiscovery();
-  }, [activity, jobId, snapshot, retryDiscovery]);
-
-  const detailsDirty = snapshot !== null && (
-    title !== snapshot.job.title || company !== snapshot.job.company ||
-    description !== snapshot.job.description || salary !== snapshot.job.salaryText ||
-    stage !== snapshot.job.stage || priority !== snapshot.job.priority
+  // Explicit activity choice. Only an explicit move to Questions starts the
+  // established discovery operation; automatic navigation (including to
+  // Documents) stays local and never triggers a remote question check.
+  const handleActivitySelect = useCallback(
+    (next: Activity) => {
+      setActivity(next);
+      if (next === "questions" && !discoveryStarted.current) retryDiscovery();
+    },
+    [retryDiscovery],
   );
+
+  const detailsDirty =
+    title !== baseline.title ||
+    company !== baseline.company ||
+    description !== baseline.description ||
+    salary !== baseline.salary ||
+    stage !== baseline.stage ||
+    priority !== baseline.priority;
 
   useEffect(() => {
     if (!detailsDirty) return;
@@ -87,16 +150,18 @@ export function WorkspacePage(): React.JSX.Element {
     return () => window.removeEventListener("beforeunload", guard);
   }, [detailsDirty]);
 
-  const reload = useCallback(async () => {
+  const initialLoad = useCallback(async () => {
     if (jobId === null) {
       setLoadError("Unknown opportunity. Return to Opportunities and open a saved job.");
       setLoading(false);
       return;
     }
+    const request = ++requestRef.current;
     setLoading(true);
     setLoadError("");
     try {
       const next = await fetchWorkspace(jobId);
+      if (request !== requestRef.current) return;
       setSnapshot(next);
       setTitle(next.job.title);
       setCompany(next.job.company);
@@ -104,38 +169,73 @@ export function WorkspacePage(): React.JSX.Element {
       setSalary(next.job.salaryText);
       setStage(next.job.stage);
       setPriority(next.job.priority);
+      setBaseline({
+        title: next.job.title,
+        company: next.job.company,
+        description: next.job.description,
+        salary: next.job.salaryText,
+        stage: next.job.stage,
+        priority: next.job.priority,
+      });
     } catch (error) {
+      if (request !== requestRef.current) return;
       setLoadError(error instanceof Error ? error.message : "Unable to load workspace");
     } finally {
-      setLoading(false);
+      if (request === requestRef.current) setLoading(false);
     }
   }, [jobId]);
 
   useEffect(() => {
-    void reload();
-  }, [reload]);
+    void initialLoad();
+  }, [initialLoad]);
 
+  // Initial navigation: explicit hashes win; otherwise follow the Go
+  // navigation suggestion once. Never re-navigate on later updates.
   useEffect(() => {
-    if (!snapshot || initialHashHandled.current) return;
-    initialHashHandled.current = true;
+    if (!snapshot || initialNavDone.current) return;
+    initialNavDone.current = true;
     const hash = window.location.hash.slice(1);
-    if (["prepare", "workspace-resume-title", "cover-letters"].includes(hash)) setActivity("documents");
-    else if (["writing", "questions"].includes(hash)) setActivity("questions");
-    else if (["employer", "apply"].includes(hash)) setActivity("apply");
+    if (["prepare", "workspace-resume-title", "cover-letters", "documents"].includes(hash)) {
+      setActivity("documents");
+    } else if (["writing", "questions"].includes(hash)) {
+      setActivity("questions");
+      if (!discoveryStarted.current) retryDiscovery();
+    } else if (["employer", "apply"].includes(hash)) setActivity("apply");
     else if (["submission", "history", "applied"].includes(hash)) setActivity("applied");
+    else if (hash === "overview" || hash === "job") setActivity("job");
+    else if (snapshot.nextAction) setActivity(snapshot.nextAction.activity);
     else if (snapshot.job.submissionCount > 0 || snapshot.job.stage === "applied") setActivity("applied");
     else if (snapshot.selectedResumeId > 0) setActivity("questions");
-  }, [snapshot]);
+  }, [snapshot, retryDiscovery]);
+
+  // Restored pages (back/forward after a Documents assignment) refresh the
+  // summary without resetting drafts, baseline, or activity.
+  useEffect(() => {
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) void refreshSummary();
+    };
+    window.addEventListener("pageshow", onPageShow);
+    return () => window.removeEventListener("pageshow", onPageShow);
+  }, [refreshSummary]);
+
+  // Leaving Apply surfaces observed browser/question changes in preparation.
+  // Live browser polling stays inside ContinuationSection.
+  useEffect(() => {
+    const previous = prevActivity.current;
+    prevActivity.current = activity;
+    if (previous === "apply" && activity !== "apply") void refreshSummary();
+  }, [activity, refreshSummary]);
 
   const handleSaveDetails = useCallback(
     async (event: React.FormEvent) => {
       event.preventDefault();
       if (jobId === null) return;
+      requestRef.current++;
       setDetailsError("");
       setDetailsNotice("");
       setDetailsBusy(true);
       try {
-        await saveWorkspaceDetails(jobId, {
+        const result = await saveWorkspaceDetails(jobId, {
           title,
           company,
           description,
@@ -143,9 +243,23 @@ export function WorkspacePage(): React.JSX.Element {
           stage,
           priority,
         });
-        // Derived suggestions and readiness depend on job details, so reload
-        // the complete Go snapshot after the durable write.
-        await reload();
+        // The canonical write response updates both draft and baseline;
+        // the derived summary follows without resetting other editors.
+        setTitle(result.job.title);
+        setCompany(result.job.company);
+        setDescription(result.job.description);
+        setSalary(result.job.salaryText);
+        setStage(result.job.stage);
+        setPriority(result.job.priority);
+        setBaseline({
+          title: result.job.title,
+          company: result.job.company,
+          description: result.job.description,
+          salary: result.job.salaryText,
+          stage: result.job.stage,
+          priority: result.job.priority,
+        });
+        await refreshSummary();
         setDetailsNotice("Saved. Your edits are kept across reloads and restarts.");
       } catch (error) {
         setDetailsError(error instanceof Error ? error.message : "Unable to save changes");
@@ -153,7 +267,7 @@ export function WorkspacePage(): React.JSX.Element {
         setDetailsBusy(false);
       }
     },
-    [jobId, title, company, description, salary, stage, priority, reload],
+    [jobId, title, company, description, salary, stage, priority, refreshSummary],
   );
 
   const handleAssign = useCallback(
@@ -163,27 +277,29 @@ export function WorkspacePage(): React.JSX.Element {
         setResumeError("Save your job edits before changing the selected document.");
         return;
       }
+      requestRef.current++;
       setResumeError("");
       setResumeNotice("");
       setResumeBusy(true);
       try {
         await assignWorkspaceResume(jobId, resumeId);
-        await reload();
-        materialSaved();
         setResumeNotice(
           resumeId === 0 ? "Selection cleared." : "Selection saved for this opportunity.",
         );
+        // Assignment needs only a summary refresh; editor drafts stay intact.
+        await refreshSummary();
+        materialSaved();
       } catch (error) {
         setResumeError(
           error instanceof Error
-            ? `${error.message} Your previous selection is unchanged.`
-            : "Unable to save selection. Your previous selection is unchanged.",
+            ? `${error.message} Could not confirm the change. Reload the workspace to check the saved selection.`
+            : "Unable to save selection. Could not confirm the change. Reload the workspace to check the saved selection.",
         );
       } finally {
         setResumeBusy(false);
       }
     },
-    [jobId, reload, detailsDirty, materialSaved],
+    [jobId, refreshSummary, detailsDirty, materialSaved],
   );
 
   const handleRefresh = useCallback(async () => {
@@ -192,28 +308,100 @@ export function WorkspacePage(): React.JSX.Element {
       setRefreshError("Save your job edits before refreshing the posting.");
       return;
     }
+    requestRef.current++;
     setRefreshError("");
     setRefreshBusy(true);
     try {
-      await refreshWorkspacePosting(jobId);
-      await reload();
+      const result = await refreshWorkspacePosting(jobId);
+      setTitle(result.job.title);
+      setCompany(result.job.company);
+      setDescription(result.job.description);
+      setSalary(result.job.salaryText);
+      setStage(result.job.stage);
+      setPriority(result.job.priority);
+      setBaseline({
+        title: result.job.title,
+        company: result.job.company,
+        description: result.job.description,
+        salary: result.job.salaryText,
+        stage: result.job.stage,
+        priority: result.job.priority,
+      });
+      await refreshSummary();
     } catch (error) {
       setRefreshError(error instanceof Error ? error.message : "Unable to refresh posting");
     } finally {
       setRefreshBusy(false);
     }
-  }, [jobId, reload, detailsDirty]);
+  }, [jobId, refreshSummary, detailsDirty]);
 
   const applied = snapshot !== null && (snapshot.job.submissionCount > 0 || snapshot.job.stage === "applied");
   const completionRecorded = useCallback(() => {
-    if (jobId !== null) {
-      void fetchWorkspace(jobId).then((next) => {
-        setSnapshot(next);
-        setStage(next.job.stage);
-      }).catch(() => setDetailsError("Completion was recorded, but the opportunity summary could not be refreshed. Reopen the workspace to see its current state."));
-    }
+    if (jobId === null) return;
+    requestRef.current++;
+    // Confirmed history updates only the stage draft/baseline; all other
+    // unsaved job edits and child drafts are preserved.
+    setStage("applied");
+    setBaseline((previous) => ({ ...previous, stage: "applied" }));
+    void refreshSummary();
     materialSaved();
-  }, [jobId, materialSaved]);
+  }, [jobId, refreshSummary, materialSaved]);
+
+  const materials = useMemo(() => {
+    if (!snapshot) return null;
+    const { job, readiness } = snapshot;
+    const option = snapshot.resumeOptions.find((row) => row.id === snapshot.selectedResumeId);
+    let resumeText = "No résumé selected";
+    if (snapshot.selectedResumeId !== 0) {
+      if (option) {
+        resumeText = `${option.name} · Version ${option.version}`;
+        if (!option.transferReady && option.transferNote !== "") resumeText += ` — ${option.transferNote}`;
+      } else {
+        resumeText = "Selected résumé unavailable";
+      }
+    }
+    let answersText: string;
+    let answersQualifier = "";
+    if (!readiness.questionsAvailable) {
+      answersText = discoveryStatus === "checking" ? "Checking available questions…" : "Questions not yet established";
+    } else {
+      if (readiness.questionPartial) {
+        answersQualifier = "in the available inventory. Later or conditional questions may not be represented.";
+      }
+      if (!readiness.questionPartial && readiness.needsAnswerCount === 0 && readiness.preparedCount === 0) {
+        answersText = "No supported questions requiring applicant input were identified in this inspection.";
+      } else if (readiness.needsAnswerCount === 0 && readiness.preparedCount > 0) {
+        answersText = `${readiness.preparedCount} answers saved; no unanswered actionable questions in this inspection.`;
+      } else if (readiness.needsAnswerCount > 0) {
+        answersText =
+          readiness.preparedCount > 0
+            ? `${readiness.needsAnswerCount} available questions without saved answers (${readiness.preparedCount} saved). Prepare them here or complete them with the employer.`
+            : `${readiness.needsAnswerCount} available questions without saved answers. Prepare them here or complete them with the employer.`;
+      } else {
+        answersText = "Review available questions.";
+      }
+      if (readiness.manualWorkCount > 0) {
+        answersQualifier += (answersQualifier !== "" ? " " : "") +
+          `${readiness.manualWorkCount} employer-side items need completion or review on the employer site.`;
+      }
+    }
+    const letterText = readiness.coverLetterSaved ? "Saved letter available" : "No saved letter";
+    let attention = "";
+    if (job.submissionCount > 0) attention = "Submission recorded locally.";
+    else if (job.stage === "applied") attention = "Applied — no local submission record.";
+    else if (job.stage === "closed") attention = "This opportunity is closed.";
+    else if (snapshot.selectedResumeId === 0) attention = "No résumé selected. Choose one to continue.";
+    else if (!snapshot.resumeValid) attention = "Selected résumé unavailable. Review the selected document.";
+    else if (!readiness.questionsAvailable) attention = "Questions not yet established.";
+    else if (readiness.needsAnswerCount > 0) attention = `${readiness.needsAnswerCount} available questions without saved answers.`;
+    return { resumeText, answersText, answersQualifier, letterText, attention };
+  }, [snapshot, discoveryStatus]);
+
+  const showSuggested =
+    snapshot !== null &&
+    snapshot.nextAction !== undefined &&
+    snapshot.nextAction.activity !== activity &&
+    activity !== "apply";
 
   return (
     <div className="app-shell">
@@ -226,50 +414,106 @@ export function WorkspacePage(): React.JSX.Element {
           <nav className="breadcrumbs" aria-label="Breadcrumb">
             <a href="/jobs">Opportunities</a>
             <span aria-hidden="true">/</span>
-            <span>{snapshot ? snapshot.job.displayTitle : "Workspace"}</span>
+            <span>Workspace</span>
           </nav>
 
           {loading && <p role="status">Loading application workspace…</p>}
           {loadError !== "" && (
             <section className="panel" aria-label="Loading error">
               <p>{loadError}</p>
-              <button className="button button-secondary" type="button" onClick={() => void reload()}>
+              <button className="button button-secondary" type="button" onClick={() => void initialLoad()}>
                 Retry
               </button>
             </section>
           )}
 
-          {snapshot && (
+          {snapshot && materials && (
             <>
               <div className="page-heading" id="overview">
                 <div>
-                  <p className="eyebrow">APPLICATION WORKSPACE</p>
                   <h1>{snapshot.job.displayTitle}</h1>
                   <p className="page-description">
                     {snapshot.job.companyOrHost} <span className="dot-sep" aria-hidden="true">·</span>{" "}
-                    {snapshot.job.stageLabel} <span className="dot-sep" aria-hidden="true">·</span>{" "}
-                    {snapshot.job.priorityLabel} priority
+                    {snapshot.job.stageLabel}
                   </p>
                 </div>
                 <div className="heading-actions">
-                  <a className="button button-secondary" href="/jobs">
-                    ← All opportunities
-                  </a>
-                  <a className="button button-secondary" href="/resumes">
-                    Documents
+                  <a className="text-link" href="/resumes">
+                    Document library
                   </a>
                 </div>
               </div>
 
-              <div className="workspace-orientation">
-                <div><strong>Your application, at your pace</strong><p>Review the role, prepare your materials, then continue on the employer site. You submit the application yourself.</p></div>
-                <span>{applied ? "Submission recorded" : snapshot.job.stageLabel}</span>
-              </div>
-              {detailsDirty && activity !== "job" && <p className="workspace-unsaved" role="status">Job edits are not saved. <button type="button" onClick={() => setActivity("job")}>Return to job details</button> to save them.</p>}
+              <section className="panel workspace-materials" aria-label="Current materials">
+                <dl className="workspace-materials-grid">
+                  <div>
+                    <dt>Résumé</dt>
+                    <dd>{materials.resumeText}</dd>
+                  </div>
+                  <div>
+                    <dt>Answers</dt>
+                    <dd>
+                      {materials.answersText}
+                      {!snapshot.readiness.questionsAvailable && (
+                        <>
+                          {" "}
+                          <button
+                            className="text-link workspace-inline-action"
+                            type="button"
+                            onClick={() => handleActivitySelect("questions")}
+                          >
+                            Check available questions
+                          </button>
+                        </>
+                      )}
+                      {materials.answersQualifier !== "" && (
+                        <small className="workspace-materials-qualifier"> {materials.answersQualifier}</small>
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Letter</dt>
+                    <dd>{materials.letterText}</dd>
+                  </div>
+                </dl>
+                {(materials.attention !== "" || showSuggested) && (
+                  <div className="workspace-attention-row">
+                    {materials.attention !== "" && (
+                      <p className="workspace-attention" role="status">
+                        {materials.attention}
+                      </p>
+                    )}
+                    {showSuggested && (
+                      <button
+                        className="button button-primary"
+                        type="button"
+                        onClick={() => handleActivitySelect(snapshot.nextAction.activity)}
+                      >
+                        {snapshot.nextAction.label} <span aria-hidden="true">→</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+                {summaryError !== "" && (
+                  <div className="workspace-summary-error">
+                    <p role="alert">{summaryError}</p>
+                    <button className="button button-secondary" type="button" onClick={() => void refreshSummary()}>
+                      Retry
+                    </button>
+                  </div>
+                )}
+              </section>
+              {detailsDirty && activity !== "job" && <p className="workspace-unsaved" role="status">Job edits are not saved. <button type="button" onClick={() => handleActivitySelect("job")}>Return to job details</button> to save them.</p>}
               <nav className="workspace-tabs" aria-label="Application activities">
                 {(["job", "documents", "questions", "apply", "applied"] as const).map((tab) => (
-                  <button key={tab} type="button" aria-current={activity === tab ? "page" : undefined}
-                    onClick={() => setActivity(tab)}>{tab === "job" ? "1. Review job" : tab === "documents" ? "2. Documents" : tab === "questions" ? "3. Questions" : tab === "apply" ? "4. Apply" : "Submission history"}</button>
+                  <button
+                    key={tab}
+                    type="button"
+                    aria-current={activity === tab ? "page" : undefined}
+                    onClick={() => handleActivitySelect(tab)}
+                  >
+                    {tab === "job" ? "Review job" : tab === "documents" ? "Documents" : tab === "questions" ? "Questions" : tab === "apply" ? "Apply" : "Submission history"}
+                  </button>
                 ))}
               </nav>
 
@@ -277,7 +521,6 @@ export function WorkspacePage(): React.JSX.Element {
               <section className="panel" aria-labelledby="opportunity-title">
                 <div className="section-heading">
                   <div>
-                    <p className="eyebrow">THE OPPORTUNITY</p>
                     <h2 id="opportunity-title">Role context</h2>
                   </div>
                 </div>
@@ -319,7 +562,7 @@ export function WorkspacePage(): React.JSX.Element {
                   <button
                     className="button button-secondary"
                     type="button"
-                    disabled={refreshBusy}
+                    disabled={refreshBusy || detailsBusy}
                     onClick={() => void handleRefresh()}
                   >
                     {refreshBusy ? "Refreshing…" : "Refresh from posting ↻"}
@@ -360,6 +603,7 @@ export function WorkspacePage(): React.JSX.Element {
                       id="workspace-title"
                       value={title}
                       maxLength={200}
+                      disabled={detailsBusy}
                       onChange={(event) => setTitle(event.target.value)}
                     />
                   </div>
@@ -369,13 +613,14 @@ export function WorkspacePage(): React.JSX.Element {
                       id="workspace-company"
                       value={company}
                       maxLength={200}
+                      disabled={detailsBusy}
                       onChange={(event) => setCompany(event.target.value)}
                     />
                   </div>
                   {applied ? (
                     <div className="field">
                       <label>Stage</label>
-                      <input value="Applied (confirmed)" disabled />
+                      <input value={snapshot.job.submissionCount > 0 ? "Applied (confirmed)" : "Applied"} disabled />
                       <input type="hidden" defaultValue="applied" />
                     </div>
                   ) : (
@@ -384,6 +629,7 @@ export function WorkspacePage(): React.JSX.Element {
                       <select
                         id="workspace-stage"
                         value={stage}
+                        disabled={detailsBusy}
                         onChange={(event) => setStage(event.target.value)}
                       >
                         <option value="review">Review</option>
@@ -397,6 +643,7 @@ export function WorkspacePage(): React.JSX.Element {
                     <select
                       id="workspace-priority"
                       value={priority}
+                      disabled={detailsBusy}
                       onChange={(event) => setPriority(event.target.value)}
                     >
                       <option value="normal">Normal</option>
@@ -410,6 +657,7 @@ export function WorkspacePage(): React.JSX.Element {
                       id="workspace-salary"
                       value={salary}
                       maxLength={500}
+                      disabled={detailsBusy}
                       onChange={(event) => setSalary(event.target.value)}
                     />
                     <small>Current source: {snapshot.job.salaryOriginLabel}</small>
@@ -420,6 +668,7 @@ export function WorkspacePage(): React.JSX.Element {
                       id="workspace-description"
                       rows={8}
                       value={description}
+                      disabled={detailsBusy}
                       onChange={(event) => setDescription(event.target.value)}
                     />
                   </div>
@@ -445,15 +694,12 @@ export function WorkspacePage(): React.JSX.Element {
                   </div>
                 </form>
               </details>
-
-              <div className="workspace-step-end"><div><strong>Next: prepare your documents</strong><p>Choose a résumé and work on a cover letter before continuing.</p></div><button className="button button-primary" type="button" onClick={() => setActivity("documents")}>Continue to documents →</button></div>
               </div>
 
               <div hidden={activity !== "documents"}>
               <section className="panel" id="prepare" aria-labelledby="workspace-resume-title">
                 <div className="section-heading">
                   <div>
-                    <p className="eyebrow">RESUME</p>
                     <h2 id="workspace-resume-title">Selected document</h2>
                     <p className="section-subtitle">
                       Your choice is saved as soon as you select an option. Suggestions never replace it.
@@ -560,13 +806,16 @@ export function WorkspacePage(): React.JSX.Element {
                   version: option.version, archived: option.archived,
                 }))}
               />}
-              <div className="workspace-step-end"><div><strong>Next: application questions</strong><p>Prepare answers now, or complete them on the employer site.</p></div><button className="button button-primary" type="button" onClick={() => setActivity("questions")}>Continue to questions →</button></div>
               </div>
 
               <div hidden={activity !== "questions"}>
                 <p>Answer any available questions you choose; the rest can be completed on the employer site.</p>
                 {snapshot.job.id > 0 && <WritingSection jobId={snapshot.job.id} destination={snapshot.job.url} onMaterialSaved={materialSaved} readOnly={applied} active={activity === "questions"} discoveryStatus={discoveryStatus} onRetryDiscovery={retryDiscovery} />}
-                <div className="workspace-step-end"><div><strong>Next: continue with the employer</strong><p>Review what to share before opening or filling the application.</p></div><button className="button button-primary" type="button" onClick={() => setActivity("apply")}>Continue to application →</button></div>
+                <div className="workspace-secondary-action">
+                  <button className="button button-secondary" type="button" onClick={() => handleActivitySelect("apply")}>
+                    Review application options →
+                  </button>
+                </div>
               </div>
 
               <div hidden={activity !== "apply"}>

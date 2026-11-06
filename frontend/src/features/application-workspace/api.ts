@@ -86,6 +86,11 @@ export interface WorkspacePreparation {
   external: boolean;
 }
 
+export interface WorkspaceNextAction {
+  activity: "job" | "documents" | "questions" | "apply" | "applied";
+  label: string;
+}
+
 export interface WorkspaceSnapshot {
   job: WorkspaceJob;
   resumeOptions: WorkspaceResumeOption[];
@@ -95,6 +100,7 @@ export interface WorkspaceSnapshot {
   resumeValid: boolean;
   readiness: WorkspaceReadiness;
   preparation: WorkspacePreparation;
+  nextAction: WorkspaceNextAction;
   submissions: { count: number };
   letters: { count: number; saved: boolean };
   masterCount: number;

@@ -154,7 +154,7 @@ func TestReactQuestionsUnifiedList(t *testing.T) {
 	}
 
 	wait(`document.body.innerText.includes('Synthetic Render role')`)
-	click("3. Questions")
+	click("Questions")
 	wait(`Array.from(document.querySelectorAll('.writing-question strong')).some(x=>x.textContent==='Website')`)
 	got := taskLabels()
 	for label, want := range map[string]int{"Website": 1, storyLabel: 1, "Other information": 1} {

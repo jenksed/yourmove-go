@@ -137,6 +137,42 @@ type workspacePrepJSON struct {
 	External bool   `json:"external"`
 }
 
+type workspaceNextActionJSON struct {
+	Activity string `json:"activity"`
+	Label    string `json:"label"`
+}
+
+// chooseWorkspaceNextAction derives one optional navigation suggestion from
+// already loaded facts. It grants no authority, assesses no new requirements,
+// and never substitutes for queue triage or transfer-eligibility decisions.
+// Precedence follows the S1 contract: recorded history outranks stage,
+// browser/recovery state outranks preparation gaps, then resume validity,
+// then observed unanswered questions, otherwise general application options.
+func chooseWorkspaceNextAction(job Job, state browserRunState, resumeValid bool, readiness applicationReadiness, preparation HandoffPresentation) workspaceNextActionJSON {
+	if job.SubmissionCount > 0 {
+		return workspaceNextActionJSON{Activity: "applied", Label: "View submission history"}
+	}
+	if job.Stage == StageApplied {
+		return workspaceNextActionJSON{Activity: "applied", Label: "Review application status"}
+	}
+	if job.Stage == StageClosed {
+		return workspaceNextActionJSON{Activity: "job", Label: "Review opportunity"}
+	}
+	if state.Active || state.Phase == "opening" || preparation.Recovery || state.Phase == "interrupted" || state.Phase == "attention" {
+		return workspaceNextActionJSON{Activity: "apply", Label: "Review application status"}
+	}
+	if job.SelectedResumeID == 0 {
+		return workspaceNextActionJSON{Activity: "documents", Label: "Choose a résumé"}
+	}
+	if !resumeValid {
+		return workspaceNextActionJSON{Activity: "documents", Label: "Review selected résumé"}
+	}
+	if readiness.QuestionsAvailable && readiness.NeedsAnswerCount > 0 {
+		return workspaceNextActionJSON{Activity: "questions", Label: "Review available questions"}
+	}
+	return workspaceNextActionJSON{Activity: "apply", Label: "Review application options"}
+}
+
 // buildWorkspaceSnapshot assembles the read-only snapshot. It never mints a
 // submission-review token and never writes durable state.
 func (a *App) buildWorkspaceSnapshot(jobID int64) (map[string]any, error) {
@@ -208,17 +244,19 @@ func (a *App) buildWorkspaceSnapshot(jobID int64) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	snapshot := chooseApplicationQuestionSnapshot(job, a.browsers.state(job.ID), live, early)
+	browserState := a.browsers.state(job.ID)
+	snapshot := chooseApplicationQuestionSnapshot(job, browserState, live, early)
 	letter, err := a.latestCoverLetter(job.ID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
-	readiness := prepareReadiness(resumeValid, profile, a.browsers.state(job.ID), snapshot, letter)
+	readiness := prepareReadiness(resumeValid, profile, browserState, snapshot, letter)
 	prepWorkspace := jobWorkspace{
-		Job: job, BrowserState: a.browsers.state(job.ID), Handoff: handoff,
+		Job: job, BrowserState: browserState, Handoff: handoff,
 		Questions: live, EarlyQuestions: early, Letter: letter, Profile: profile,
 	}
 	preparation := summarizePreparation(prepWorkspace)
+	nextAction := chooseWorkspaceNextAction(job, browserState, resumeValid, readiness, preparation)
 	submissions, err := a.jobSubmissions(job.ID)
 	if err != nil {
 		return nil, err
@@ -264,6 +302,9 @@ func (a *App) buildWorkspaceSnapshot(jobID int64) (map[string]any, error) {
 			Title: preparation.Title, Detail: preparation.Detail,
 			Recovery: preparation.Recovery, HasScope: preparation.Action != "",
 			External: preparation.OpenExternally,
+		},
+		"nextAction": workspaceNextActionJSON{
+			Activity: nextAction.Activity, Label: nextAction.Label,
 		},
 		"submissions":          map[string]any{"count": len(submissions)},
 		"letters":              map[string]any{"count": len(letters), "saved": letter.ID > 0},
