@@ -240,18 +240,18 @@ export function WritingSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?.value, selected?.revision]);
 
-  // An inventory change (profile approval retiring a contact question,
-  // live/early context flip) can leave selectedId pointing at a question that
-  // is gone or is no longer an answer task. Repair to the first open answer
-  // task — but never while unsaved edits exist; those stay on the retained
-  // draft under the dirty guard.
+  // Single selection rule, evaluated after every inventory change: without
+  // unsaved edits there is always a valid answer-task selection. This covers
+  // initial mount (alongside the fast path in reload), raced initial fetches,
+  // and inventories that retire the selected question (profile approval,
+  // live/early context flip). Drafts under the dirty guard are never touched.
   useEffect(() => {
-    if (loading || selectedId === "" || dirtyRef.current) return;
-    const resolved = allQuestions.find((q) => questionId(q) === selectedId);
+    if (loading || dirtyRef.current) return;
+    const resolved = selectedId === "" ? undefined : allQuestions.find((q) => questionId(q) === selectedId);
     if (resolved && triageOf(resolved) === "answer") return;
     const tasks = allQuestions.filter((q) => triageOf(q) === "answer");
     const firstOpen = tasks.find((q) => q.value === "") ?? tasks[0];
-    if (firstOpen) setSelectedId(questionId(firstOpen));
+    if (firstOpen && questionId(firstOpen) !== selectedId) setSelectedId(questionId(firstOpen));
   }, [loading, selectedId, allQuestions]);
 
   useEffect(() => {
