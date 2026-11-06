@@ -96,11 +96,11 @@ var (
 func configureUpdater(a *app.App, desktop *application.App) {
 	manifestURL := strings.TrimSpace(updaterManifestURLEmbedded)
 	if manifestURL == "" {
-		manifestURL = strings.TrimSpace(os.Getenv("YOURMOVE_UPDATE_MANIFEST_URL"))
+		manifestURL = updaterEnvManifestURL()
 	}
 	if manifestURL == "" {
 		a.SetUpdateController(app.UpdateController{})
-		log.Printf("automatic updates disabled: YOURMOVE_UPDATE_MANIFEST_URL is not set (manual DMG remains available)")
+		log.Printf("automatic updates disabled: no update manifest URL pinned (manual DMG remains available)")
 		return
 	}
 	publicKey := loadUpdatePublicKey()
@@ -167,31 +167,16 @@ func loadUpdatePublicKey() []byte {
 		trimmed = strings.ReplaceAll(trimmed, `\n`, "\n")
 		return []byte(trimmed)
 	}
-	if path := strings.TrimSpace(os.Getenv("YOURMOVE_UPDATE_PUBLIC_KEY_FILE")); path != "" {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			log.Printf("update public key file unreadable: %v", err)
-			return nil
-		}
-		if len(data) == 0 {
-			return nil
-		}
-		return data
-	}
-	if raw := strings.TrimSpace(os.Getenv("YOURMOVE_UPDATE_PUBLIC_KEY")); raw != "" {
-		// Allow escaped newlines from shell-provided PEM blocks.
-		raw = strings.ReplaceAll(raw, `\n`, "\n")
-		return []byte(raw)
-	}
-	return nil
+	return updaterEnvPublicKey()
 }
 
 // startUpdateTestAuto drives the real Wails updater path for the controlled
 // dev fixture only. It requires explicit YOURMOVE_UPDATE_TEST_AUTO=1 and
 // performs the same Check, DownloadAndInstall, and Restart calls the
-// Utilities buttons make. Production never sets this variable.
+// Utilities buttons make. Production builds ignore the variable entirely
+// (see desktop_updater_env_prod.go), so it can never trigger there.
 func startUpdateTestAuto(a *app.App, desktop *application.App) {
-	if os.Getenv("YOURMOVE_UPDATE_TEST_AUTO") != "1" {
+	if !updateTestAutoEnabled() {
 		return
 	}
 	go func() {
@@ -228,8 +213,9 @@ func startUpdateTestAuto(a *app.App, desktop *application.App) {
 
 // startUpdateBackground performs one delayed nonblocking check after startup,
 // then polls daily. It never opens a window and never downloads.
-func startUpdateBackground(a *app.App) {	delay := 30 * time.Second
-	if os.Getenv("YOURMOVE_UPDATE_BG_FAST") == "1" {
+func startUpdateBackground(a *app.App) {
+	delay := 30 * time.Second
+	if updateBGFastEnabled() {
 		delay = 3 * time.Second
 	}
 	go func() {
