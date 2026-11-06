@@ -357,6 +357,8 @@ func TestAnswerLibraryEligibilityIsConservative(t *testing.T) {
 		{"managed narrative", schema.Field{ID: "browser:q", Label: "Describe how you managed a production incident", Kind: "textarea"}, true, true},
 		{"management narrative", schema.Field{ID: "browser:q", Label: "Explain your project management experience", Kind: "textarea"}, true, true},
 		{"engagement narrative", schema.Field{ID: "browser:q", Label: "How did you improve customer engagement", Kind: "textarea"}, true, true},
+		{"improved-process narrative", schema.Field{ID: "browser:q", Label: "What’s an internal process or program you’ve built that truly improved how Customer Support operates? What problem did it solve?", Kind: "textarea"}, true, true},
+		{"excitement narrative", schema.Field{ID: "browser:q", Label: "What excites you about the opportunity to join Ashby at this stage of your career?", Kind: "textarea"}, true, true},
 		{"generic experience", schema.Field{ID: "browser:q", Label: "What is your experience?", Kind: "textarea"}, true, false},
 		{"age", schema.Field{ID: "browser:q", Label: "Describe your age and work history", Kind: "textarea"}, true, false},
 		{"date of birth", schema.Field{ID: "browser:q", Label: "Describe your date of birth and work history", Kind: "textarea"}, true, false},

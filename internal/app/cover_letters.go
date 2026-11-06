@@ -131,7 +131,120 @@ func (a *App) listCoverLetters(jobID int64) ([]CoverLetterSummary, error) {
 		}
 		result = append(result, v)
 	}
-	return result, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	// Always include the effective selected letter even when it falls outside
+	// the latest-30 page, so the selection identity is never misleading.
+	var selected sql.NullInt64
+	if err := a.db.QueryRow(`SELECT selected_cover_letter_id FROM jobs WHERE id=?`, jobID).Scan(&selected); err == nil && selected.Valid {
+		found := false
+		for _, v := range result {
+			if v.ID == selected.Int64 {
+				found = true
+				break
+			}
+		}
+		if !found {
+			var v CoverLetterSummary
+			err := a.db.QueryRow(`SELECT id,provider,model,created_at,edited_at FROM cover_letters WHERE job_id=? AND id=?`, jobID, selected.Int64).Scan(&v.ID, &v.Provider, &v.Model, &v.CreatedAt, &v.EditedAt)
+			if err == nil {
+				result = append(result, v)
+			} else if !errors.Is(err, sql.ErrNoRows) {
+				return nil, err
+			}
+		}
+	}
+	return result, nil
+}
+
+func (a *App) listCoverLettersPage(jobID, cursor int64, limit int) ([]CoverLetterSummary, bool, error) {
+	if limit < 1 || limit > 50 {
+		limit = 20
+	}
+	rows, err := a.db.Query(`SELECT id,provider,model,created_at,edited_at FROM cover_letters WHERE job_id=? AND (?=0 OR id<?) ORDER BY id DESC LIMIT ?`, jobID, cursor, cursor, limit+1)
+	if err != nil {
+		return nil, false, err
+	}
+	defer rows.Close()
+	var result []CoverLetterSummary
+	for rows.Next() {
+		var v CoverLetterSummary
+		if err := rows.Scan(&v.ID, &v.Provider, &v.Model, &v.CreatedAt, &v.EditedAt); err != nil {
+			return nil, false, err
+		}
+		result = append(result, v)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+	hasMore := len(result) > limit
+	if hasMore {
+		result = result[:limit]
+	}
+	return result, hasMore, nil
+}
+
+// letterReuseOrigin is durable starting-source provenance for a manually
+// created letter. Old pinned résumé IDs/hashes belong to the source snapshot,
+// never the new letter's generation columns.
+type letterReuseOrigin struct {
+	SourceLetterID    int64  `json:"source_letter_id"`
+	SourceJobID       int64  `json:"source_job_id"`
+	SourceEmployer    string `json:"source_employer"`
+	SourceJobTitle    string `json:"source_job_title"`
+	SourceHash        string `json:"source_hash"`
+	SourceCreatedAt   string `json:"source_created_at"`
+	SourceProvider    string `json:"source_provider"`
+	SourceMasterID    int64  `json:"source_master_id"`
+	SourceMasterSHA   string `json:"source_master_sha"`
+	SourceMasterName  string `json:"source_master_name"`
+	SourceMasterVer   int    `json:"source_master_version"`
+	SourceRoleID      int64  `json:"source_role_id"`
+	SourceRoleSHA     string `json:"source_role_sha"`
+	SourceRoleName    string `json:"source_role_name"`
+	SourceRoleVersion int    `json:"source_role_version"`
+	ManualSource      bool   `json:"manual_source"`
+}
+
+func (a *App) buildLetterReuseOrigin(source CoverLetter, sourceJob Job) (string, error) {
+	origin := letterReuseOrigin{
+		SourceLetterID: source.ID, SourceJobID: source.JobID,
+		SourceEmployer: sourceJob.Company, SourceJobTitle: sourceJob.Title,
+		SourceHash:      fmt.Sprintf("%x", sha256.Sum256([]byte(source.Body))),
+		SourceCreatedAt: source.CreatedAt, SourceProvider: source.Provider,
+		SourceMasterID: source.MasterResumeID, SourceMasterSHA: source.MasterSHA256,
+		SourceRoleID: source.RoleResumeID, SourceRoleSHA: source.RoleSHA256,
+		ManualSource: source.Provider == "manual",
+	}
+	if source.MasterResumeID > 0 {
+		if resume, err := a.resumeByID(source.MasterResumeID); err == nil {
+			origin.SourceMasterName = resume.Name
+			origin.SourceMasterVer = resume.Version
+		}
+	}
+	if source.RoleResumeID > 0 {
+		if resume, err := a.resumeByID(source.RoleResumeID); err == nil {
+			origin.SourceRoleName = resume.Name
+			origin.SourceRoleVersion = resume.Version
+		}
+	}
+	data, err := json.Marshal(origin)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func validLetterReuseOriginPayload(raw string) bool {
+	if strings.TrimSpace(raw) == "" {
+		return true
+	}
+	var origin letterReuseOrigin
+	if err := json.Unmarshal([]byte(raw), &origin); err != nil {
+		return false
+	}
+	return origin.SourceLetterID > 0 && origin.SourceJobID > 0 && origin.SourceHash != ""
 }
 
 func validLetterBody(body string) bool {
@@ -139,8 +252,22 @@ func validLetterBody(body string) bool {
 }
 
 func (a *App) saveCoverLetterBody(jobID, draftID int64, body string) error {
+	return a.saveCoverLetterBodyChecked(jobID, draftID, body, "")
+}
+
+func (a *App) saveCoverLetterBodyChecked(jobID, draftID int64, body, expectedHash string) error {
 	if !validLetterBody(body) {
 		return errors.New("draft must contain between 30 and 12000 bytes")
+	}
+	if expectedHash != "" {
+		var current string
+		if err := a.db.QueryRow(`SELECT body FROM cover_letters WHERE id=? AND job_id=?`, draftID, jobID).Scan(&current); err != nil {
+			return err
+		}
+		currentHash := fmt.Sprintf("%x", sha256.Sum256([]byte(current)))
+		if currentHash != expectedHash {
+			return errors.New("concurrent edit")
+		}
 	}
 	result, err := a.db.Exec(`UPDATE cover_letters SET body=?,edited_at=? WHERE id=? AND job_id=?`,
 		body, time.Now().UTC().Format(time.RFC3339), draftID, jobID)

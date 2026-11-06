@@ -44,12 +44,63 @@ export interface WritingQuestion {
   manualReason: string;
   reusableKey: string;
   reusableRevision: number;
+  reusableEligible: boolean;
+  reusableAnswer: string;
+  reusableAvailable: boolean;
+  originEntryId: number;
+  originRevision: number;
+  originQuestion: string;
+  originEmployer: string;
+  originRecorded: boolean;
   librarySuggestions: WritingLibrarySuggestion[];
   evidenceSuggestions: WritingEvidenceSuggestion[];
   reconciliationStatus: string;
   reconciliationDetail: string;
   reconciliationAcceptable: boolean;
   reconciled: boolean;
+}
+
+export interface LibraryFullExample {
+  revision: number;
+  original_question: string;
+  answer: string;
+  source_employer: string;
+  source_job_title: string;
+  source_host: string;
+  source_kind: string;
+  early_discovery_source: string;
+  early_source_question_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LibraryBrowseEntry {
+  id: number;
+  revision: number;
+  question: string;
+  employer: string;
+  jobTitle: string;
+  host: string;
+  excerpt: string;
+  sourceKind: string;
+  updatedAt: string;
+}
+
+export interface LibraryBrowseResult {
+  entries: LibraryBrowseEntry[];
+  nextCursor: number;
+  hasMore: boolean;
+  libraryEmpty: boolean;
+  query: string;
+  bounded: boolean;
+  bound?: number;
+}
+
+export interface PromotionResult {
+  saved: boolean;
+  existing: boolean;
+  entryId: number;
+  revision: number;
 }
 
 export interface WritingPrevious {
@@ -171,6 +222,7 @@ export interface LetterEvidenceRef {
 
 export interface LetterDraft {
   id: number;
+  jobId: number;
   provider: string;
   model: string;
   body: string;
@@ -179,6 +231,54 @@ export interface LetterDraft {
   evidenceRefs: LetterEvidenceRef[];
   evidenceStale: boolean;
   contentHash: string;
+  masterResumeId: number;
+  masterSha: string;
+  masterName: string;
+  masterVersion: number;
+  roleResumeId: number;
+  roleSha: string;
+  roleName: string;
+  roleVersion: number;
+  manualSource: boolean;
+  originRecorded: boolean;
+  originSourceLetterId: number;
+  originSourceJobId: number;
+  originEmployer: string;
+  originJobTitle: string;
+}
+
+export interface LetterCatalogEntry {
+  id: number;
+  jobId: number;
+  employer: string;
+  jobTitle: string;
+  provider: string;
+  model: string;
+  createdAt: string;
+  editedAt: string;
+  preview: string;
+  masterName: string;
+  masterVersion: number;
+  roleName: string;
+  roleVersion: number;
+  manual: boolean;
+  current?: boolean;
+}
+
+export interface LetterHistoryResult {
+  entries: LetterCatalogEntry[];
+  nextCursor: number;
+  hasMore: boolean;
+  selectedId: number;
+}
+
+export interface LetterCatalogResult {
+  entries: LetterCatalogEntry[];
+  nextCursor: number;
+  hasMore: boolean;
+  libraryEmpty: boolean;
+  query: string;
+  bounded: boolean;
 }
 
 export interface LetterSource {
@@ -260,6 +360,9 @@ export interface SaveAnswerInput {
   discovery_source: string;
   discovery_fingerprint: string;
   source_question_id: string;
+  origin_entry_id?: number;
+  origin_revision?: number;
+  origin_clear?: boolean;
 }
 
 export async function saveAnswer(
@@ -273,6 +376,91 @@ export async function saveAnswer(
   });
   if (!response.ok) throw new Error(await readError(response));
   return (await response.json()) as { saved: boolean; key: string; revision: number };
+}
+
+export async function fetchLibraryExample(entryId: number): Promise<LibraryFullExample> {
+  const response = await fetch(`/answer-library/${entryId}/content`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error(await readError(response));
+  return (await response.json()) as LibraryFullExample;
+}
+
+export interface StartingPointResult {
+  entry_id: number;
+  library_revision: number;
+  question_key: string;
+  revision: number;
+  answer: string;
+}
+
+export async function fetchStartingPoint(
+  jobId: number,
+  input: {
+    library_entry_id: number;
+    library_revision: number;
+    question_key: string;
+    revision: number;
+    destination: string;
+    early: boolean;
+    discovery_source: string;
+    discovery_fingerprint: string;
+    source_question_id: string;
+  },
+): Promise<StartingPointResult> {
+  const body = new URLSearchParams();
+  body.set("library_entry_id", String(input.library_entry_id));
+  body.set("library_revision", String(input.library_revision));
+  body.set("question_key", input.question_key);
+  body.set("revision", String(input.revision));
+  body.set("destination", input.destination);
+  if (input.early) {
+    body.set("early", "yes");
+    body.set("discovery_source", input.discovery_source);
+    body.set("discovery_fingerprint", input.discovery_fingerprint);
+    body.set("source_question_id", input.source_question_id);
+  }
+  const response = await fetch(`/jobs/${jobId}/answers/starting-point`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+    body: body.toString(),
+  });
+  if (!response.ok) throw new Error(await readError(response));
+  return (await response.json()) as StartingPointResult;
+}
+
+export async function browseLibrary(
+  input: { query?: string; cursor?: number; limit?: number },
+): Promise<LibraryBrowseResult> {
+  const params = new URLSearchParams();
+  if (input.query !== undefined && input.query !== "") params.set("query", input.query);
+  if (input.cursor !== undefined && input.cursor > 0) params.set("cursor", String(input.cursor));
+  if (input.limit !== undefined) params.set("limit", String(input.limit));
+  const suffix = params.toString() !== "" ? `?${params.toString()}` : "";
+  const response = await fetch(`/api/answer-library${suffix}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error(await readError(response));
+  return (await response.json()) as LibraryBrowseResult;
+}
+
+export async function promoteToLibrary(
+  jobId: number,
+  input: { question_key: string; revision: number; early: boolean },
+): Promise<PromotionResult> {
+  const body = new URLSearchParams();
+  body.set("question_key", input.question_key);
+  body.set("revision", String(input.revision));
+  const path = input.early
+    ? `/jobs/${jobId}/answers/early-library`
+    : `/jobs/${jobId}/answers/library`;
+  const response = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+    body: body.toString(),
+  });
+  if (!response.ok) throw new Error(await readError(response));
+  return (await response.json()) as PromotionResult;
 }
 
 export async function fetchAssistance(
@@ -389,11 +577,11 @@ export async function fetchLetterDraft(jobId: number, draftId: number): Promise<
   return (await response.json()) as LetterDraft;
 }
 
-export async function saveLetterDraft(jobId: number, draftId: number, body: string): Promise<void> {
+export async function saveLetterDraft(jobId: number, draftId: number, body: string, expectedHash?: string): Promise<void> {
   const response = await fetch(`/api/jobs/${jobId}/letters/${draftId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify({ body }),
+    body: JSON.stringify(expectedHash ? { body, expected_hash: expectedHash } : { body }),
   });
   if (!response.ok) throw new Error(await readError(response));
 }
@@ -406,14 +594,63 @@ export async function selectLetterDraft(jobId: number, draftId: number): Promise
   if (!response.ok) throw new Error(await readError(response));
 }
 
-export async function createManualLetter(jobId: number, body: string): Promise<{ draftId: number }> {
+export async function createManualLetter(
+  jobId: number,
+  body: string,
+  prior?: { prior_letter_id: number; prior_job_id: number; prior_body_hash: string },
+): Promise<{ draftId: number }> {
   const response = await fetch(`/api/jobs/${jobId}/letters/manual`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify({ body }),
+    body: JSON.stringify(prior ? { body, ...prior } : { body }),
   });
   if (!response.ok) throw new Error(await readError(response));
   return (await response.json()) as { draftId: number };
+}
+
+export async function fetchLetterHistory(jobId: number, cursor?: number, limit?: number): Promise<LetterHistoryResult> {
+  const params = new URLSearchParams();
+  if (cursor !== undefined && cursor > 0) params.set("cursor", String(cursor));
+  if (limit !== undefined) params.set("limit", String(limit));
+  const suffix = params.toString() !== "" ? `?${params.toString()}` : "";
+  const response = await fetch(`/api/jobs/${jobId}/letters/history${suffix}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error(await readError(response));
+  return (await response.json()) as LetterHistoryResult;
+}
+
+export async function browseCoverLetters(input: {
+  query?: string;
+  cursor?: number;
+  limit?: number;
+  exclude_job?: number;
+}): Promise<LetterCatalogResult> {
+  const params = new URLSearchParams();
+  if (input.query !== undefined && input.query !== "") params.set("query", input.query);
+  if (input.cursor !== undefined && input.cursor > 0) params.set("cursor", String(input.cursor));
+  if (input.limit !== undefined) params.set("limit", String(input.limit));
+  if (input.exclude_job !== undefined && input.exclude_job > 0) params.set("exclude_job", String(input.exclude_job));
+  const suffix = params.toString() !== "" ? `?${params.toString()}` : "";
+  const response = await fetch(`/api/cover-letters${suffix}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error(await readError(response));
+  return (await response.json()) as LetterCatalogResult;
+}
+
+export async function fetchCatalogLetter(letterId: number): Promise<{
+  letter: LetterDraft;
+  job: { id: number; employer: string; host: string; title: string };
+}> {
+  const response = await fetch(`/api/cover-letters/${letterId}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error(await readError(response));
+  return (await response.json()) as {
+    letter: LetterDraft;
+    job: { id: number; employer: string; host: string; title: string };
+  };
 }
 
 export interface GenerateLetterInput {

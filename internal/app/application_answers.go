@@ -26,6 +26,8 @@ type preparedQuestion struct {
 	AIDefaultModel            string
 	ReusableRevision          int64
 	ReusableKey               string
+	ReusableAnswer            string
+	ReusableAvailable         bool
 	JobID                     int64
 	Destination               string
 	Field                     schema.Field
@@ -253,7 +255,7 @@ func (a *App) prepareQuestions(job Job, p CandidateProfile) (questionPreparation
 			source = ""
 		}
 		libraryEligible := exists && answer.Revision > 0 && strings.TrimSpace(answer.Value) != "" && validAnswerLibraryText(answer.Value) && answerLibraryEligible(f.Field, counts[f.ID] == 1)
-		out.Questions = append(out.Questions, preparedQuestion{ReusableKey: memoryKey, ReusableRevision: reusable.Revision, JobID: job.ID, Destination: job.URL, Field: f.Field, Key: key, Value: value, Source: source, Revision: answer.Revision, Editable: editable, LibraryEligible: libraryEligible})
+		out.Questions = append(out.Questions, preparedQuestion{ReusableKey: memoryKey, ReusableRevision: reusable.Revision, ReusableAnswer: reusable.Value, ReusableAvailable: reusable.Revision > 0, JobID: job.ID, Destination: job.URL, Field: f.Field, Key: key, Value: value, Source: source, Revision: answer.Revision, Editable: editable, LibraryEligible: libraryEligible})
 		if exists && editable {
 			used[key] = true
 		}

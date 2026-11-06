@@ -1,7 +1,6 @@
-// YM-004B application answers inside the React Application Workspace.
-// Reads the Go-owned question inventory, saves through Go-owned validation,
-// and surfaces existing Career Evidence, saved writing, and grounded AI
-// generation as suggestions. Saved text is never presented as transferred.
+// S2 question desk: one working question, a comfortable editor, and visible
+// previous writing at the point of need. Go stays authoritative for
+// validation, durable saves, and reuse eligibility.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -12,20 +11,19 @@ import {
   fetchAssistance,
   fetchBrief,
   fetchQuestions,
+  promoteToLibrary,
   saveAnswer,
   type AssistanceSnapshot,
   type AiTicket,
   type QuestionsSnapshot,
   type WritingQuestion,
 } from "./writingApi";
+import { PreviousWriting, type PendingSource } from "./PreviousWriting";
 
 function questionId(q: WritingQuestion): string {
   return `${q.isEarly ? "early" : "live"}:${q.key}`;
 }
 
-// triageOf follows the Go-owned triage category. Only "answer" rows are
-// applicant writing tasks; profile, employer, and review rows are concise
-// read-only guidance. Classification never grants transfer authority.
 function triageOf(q: WritingQuestion): string {
   if (q.triageCategory !== "") return q.triageCategory;
   return q.editable ? "answer" : "review";
@@ -104,6 +102,10 @@ export function WritingSection({
   selectedIdRef.current = selectedId;
   const [draft, setDraft] = useState<string>("");
   const [dirty, setDirty] = useState<boolean>(false);
+  const [baselineRevision, setBaselineRevision] = useState<number>(0);
+  const [pendingOrigin, setPendingOrigin] = useState<PendingSource | null>(null);
+  const [pendingSourceLabel, setPendingSourceLabel] = useState<string>("");
+  const [replaceCandidate, setReplaceCandidate] = useState<{ answer: string; origin: PendingSource | null; label: string } | null>(null);
   const requestRef = useRef(0);
   const dirtyRef = useRef(false);
   dirtyRef.current = dirty;
@@ -111,6 +113,9 @@ export function WritingSection({
   const [saveNotice, setSaveNotice] = useState<string>("");
   const [saving, setSaving] = useState<boolean>(false);
   const [reusable, setReusable] = useState<boolean>(false);
+  const [promoteBusy, setPromoteBusy] = useState<boolean>(false);
+  const [promoteError, setPromoteError] = useState<string>("");
+  const [promoteNotice, setPromoteNotice] = useState<string>("");
   const [assistance, setAssistance] = useState<AssistanceSnapshot | null>(null);
   const [assistBusy, setAssistBusy] = useState<boolean>(false);
   const [assistError, setAssistError] = useState<string>("");
@@ -140,6 +145,14 @@ export function WritingSection({
       const next = await fetchQuestions(jobId);
       if (request !== requestRef.current) return;
       setSnapshot(next);
+      // Select the first question needing an answer so the desk never opens
+      // on a blank selector. Mirrors the legacy workbench's first-unanswered
+      // default; an explicit selection is never overridden here.
+      if (selectedIdRef.current === "") {
+        const tasks = (next.questions ?? []).filter((q) => (q.triageCategory !== "" ? q.triageCategory : q.editable ? "answer" : "review") === "answer");
+        const firstOpen = tasks.find((q) => q.value === "") ?? tasks[0];
+        if (firstOpen) setSelectedId(`${firstOpen.isEarly ? "early" : "live"}:${firstOpen.key}`);
+      }
       setAssistance(null);
       setAssistOpen(false);
       setTicket(null);
@@ -154,7 +167,6 @@ export function WritingSection({
     void reload();
   }, [reload]);
 
-  // Refresh the inventory without replacing the selected editor or its draft.
   useEffect(() => {
     if (!active) return;
     let cancelled = false;
@@ -166,8 +178,11 @@ export function WritingSection({
       try {
         const next = await fetchQuestions(jobId);
         if (!cancelled && request === requestRef.current) setSnapshot((previous) => {
+          // Retain a vanished selection only while unsaved edits need protection.
+          // A clean disappearance (retired triage, context flip) is left to the
+          // repair effect below so Next/Previous keep working on a live identity.
           const selected = previous && previous.questions.find((q) => questionId(q) === selectedIdRef.current);
-          if (selected && !next.questions.some((q) => questionId(q) === selectedIdRef.current)) {
+          if (selected && dirtyRef.current && !next.questions.some((q) => questionId(q) === selectedIdRef.current)) {
             next.questions = [...next.questions, selected];
           }
           return next;
@@ -196,8 +211,14 @@ export function WritingSection({
     if (selected) {
       setDraft(selected.value);
       setDirty(false);
+      setBaselineRevision(selected.revision);
+      setPendingOrigin(null);
+      setPendingSourceLabel("");
+      setReplaceCandidate(null);
       setSaveError("");
       setSaveNotice("");
+      setPromoteError("");
+      setPromoteNotice("");
       setReusable(false);
       setAssistance(null);
       setAssistOpen(false);
@@ -211,11 +232,27 @@ export function WritingSection({
     }
   }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // A fresh observation may reconcile the selected answer. Only replace the
-  // editor while it is clean; unsaved applicant text always wins.
   useEffect(() => {
-    if (selected && !dirtyRef.current) setDraft(selected.value);
+    if (selected && !dirtyRef.current) {
+      setDraft(selected.value);
+      setBaselineRevision((previous) => (selected.revision !== previous && selected.value !== draft ? selected.revision : previous));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?.value, selected?.revision]);
+
+  // Single selection rule, evaluated after every inventory change: without
+  // unsaved edits there is always a valid answer-task selection. This covers
+  // initial mount (alongside the fast path in reload), raced initial fetches,
+  // and inventories that retire the selected question (profile approval,
+  // live/early context flip). Drafts under the dirty guard are never touched.
+  useEffect(() => {
+    if (loading || dirtyRef.current) return;
+    const resolved = selectedId === "" ? undefined : allQuestions.find((q) => questionId(q) === selectedId);
+    if (resolved && triageOf(resolved) === "answer") return;
+    const tasks = allQuestions.filter((q) => triageOf(q) === "answer");
+    const firstOpen = tasks.find((q) => q.value === "") ?? tasks[0];
+    if (firstOpen && questionId(firstOpen) !== selectedId) setSelectedId(questionId(firstOpen));
+  }, [loading, selectedId, allQuestions]);
 
   useEffect(() => {
     if (!dirty) return;
@@ -225,6 +262,16 @@ export function WritingSection({
     window.addEventListener("beforeunload", guard);
     return () => window.removeEventListener("beforeunload", guard);
   }, [dirty]);
+
+  const discardEdits = useCallback(() => {
+    if (!selected) return;
+    setDraft(selected.value);
+    dirtyRef.current = false;
+    setDirty(false);
+    setSaveError("");
+    setPendingOrigin(null);
+    setReplaceCandidate(null);
+  }, [selected]);
 
   const pickQuestion = useCallback(
     (next: WritingQuestion) => {
@@ -239,15 +286,47 @@ export function WritingSection({
     [dirty, selectedId],
   );
 
+  const handleUseAsDraft = useCallback(
+    (answer: string, origin: PendingSource | null, label: string) => {
+      if (!selected) return;
+      if (dirty && draft !== answer) {
+        setReplaceCandidate({ answer, origin, label });
+        return;
+      }
+      setDraft(answer);
+      dirtyRef.current = answer !== selected.value;
+      setDirty(dirtyRef.current);
+      setPendingOrigin(origin);
+      setPendingSourceLabel(label);
+      setSaveNotice(origin ? `Started from ${label}. Review employer-specific wording, then save.` : "");
+      setSaveError("");
+    },
+    [selected, dirty, draft],
+  );
+
+  const confirmReplace = useCallback(() => {
+    if (!selected || !replaceCandidate) return;
+    setDraft(replaceCandidate.answer);
+    dirtyRef.current = replaceCandidate.answer !== selected.value;
+    setDirty(dirtyRef.current);
+    setPendingOrigin(replaceCandidate.origin);
+    setPendingSourceLabel(replaceCandidate.label);
+    setSaveNotice(`Started from ${replaceCandidate.label}. Review employer-specific wording, then save.`);
+    setSaveError("");
+    setReplaceCandidate(null);
+  }, [selected, replaceCandidate]);
+
   const handleSave = useCallback(async () => {
     if (!selected || !snapshot?.editingAllowed || readOnly) return;
     setSaveError("");
     setSaveNotice("");
+    setPromoteError("");
+    setPromoteNotice("");
     setSaving(true);
     try {
       const result = await saveAnswer(jobId, {
         question_key: selected.key,
-        revision: selected.revision,
+        revision: baselineRevision,
         destination,
         answer: draft,
         reusable,
@@ -256,8 +335,13 @@ export function WritingSection({
         discovery_source: selected.discoverySource,
         discovery_fingerprint: selected.discoveryFingerprint,
         source_question_id: selected.sourceQuestionId,
+        origin_entry_id: pendingOrigin?.entryId ?? 0,
+        origin_revision: pendingOrigin?.revision ?? 0,
       });
       setDirty(false);
+      setPendingOrigin(null);
+      setReplaceCandidate(null);
+      setBaselineRevision(result.revision);
       setSaveNotice("Saved locally. It has not been filled on the employer website.");
       onMaterialSaved();
       await reload();
@@ -267,7 +351,27 @@ export function WritingSection({
     } finally {
       setSaving(false);
     }
-  }, [selected, snapshot, jobId, destination, draft, reusable, reload, onMaterialSaved, readOnly]);
+  }, [selected, snapshot, jobId, destination, draft, reusable, baselineRevision, pendingOrigin, reload, onMaterialSaved, readOnly]);
+
+  const handlePromote = useCallback(async () => {
+    if (!selected) return;
+    setPromoteError("");
+    setPromoteNotice("");
+    setPromoteBusy(true);
+    try {
+      const result = await promoteToLibrary(jobId, {
+        question_key: selected.key,
+        revision: selected.revision,
+        early: selected.isEarly,
+      });
+      setPromoteNotice(result.existing ? "This saved answer is already in the Answer Library. The existing copy was left unchanged." : "Saved as a separate Answer Library example. The employer-specific answer remains unchanged.");
+      onMaterialSaved();
+    } catch (error) {
+      setPromoteError(error instanceof Error ? error.message : "Unable to save to the Answer Library");
+    } finally {
+      setPromoteBusy(false);
+    }
+  }, [selected, jobId, onMaterialSaved]);
 
   const openAssistance = useCallback(async () => {
     if (!selected) return;
@@ -353,8 +457,6 @@ export function WritingSection({
     setBriefFallback("");
     setBriefBusy(true);
     try {
-      // Reuses the Go-owned plain-text formatter; saved answers, credentials,
-      // and private applicant data never enter the brief.
       const text = await fetchBrief(jobId, briefScope);
       if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
         setBriefFallback(text);
@@ -410,23 +512,23 @@ export function WritingSection({
   const profileItems = allQuestions.filter((q) => triageOf(q) === "profile");
   const employerItems = allQuestions.filter((q) => triageOf(q) === "employer");
   const reviewItems = allQuestions.filter((q) => triageOf(q) === "review");
-  const needsAnswer = answerTasks.filter((q) => q.value === "");
-  const prepared = answerTasks.filter((q) => q.value !== "");
+
+  const selectedIndex = selected ? answerTasks.findIndex((q) => questionId(q) === selectedId) : -1;
+  const staleBaseline = selected !== null && selected.revision !== baselineRevision && dirty;
+  const canSave = selected !== null && (dirty || (reusable && selected.reusableEligible)) && selected.editable && snapshot.editingAllowed && !readOnly;
 
   return (
     <section className="panel" aria-labelledby="writing-title" id="writing">
       <div className="section-heading">
         <div>
-          <p className="eyebrow">APPLICATION ANSWERS</p>
-          <h2 id="writing-title">Answer the employer's questions</h2>
+          <h2 id="writing-title">Questions</h2>
           <p className="section-subtitle">
             {snapshot.available
               ? snapshot.activeContext === "live"
                 ? `${snapshot.source}. Your text saves locally in YourMove; nothing is filled on the employer site from here.`
-                : `${snapshot.source}. These questions have not yet been verified on your live form. Your answers stay in YourMove and need to be matched before filling.`
-              : allQuestions.length > 0
-                ? "These questions came from a previous inspection. Review the current employer form before transferring any answers."
-                : "Questions have not been discovered for this posting yet. Saved writing below is preserved."}
+                : `${snapshot.source}. These questions have not yet been verified on your live form.`
+              : "Questions have not been discovered for this posting yet. Saved writing below is preserved."}
+            {snapshot.partial ? " Partial inspection; later questions may be missing." : ""}
           </p>
         </div>
         <div className="heading-actions">
@@ -438,56 +540,10 @@ export function WritingSection({
 
       {dirty && <p className="small-muted">Save your answer before refreshing the question list.</p>}
 
-      <div className="workspace-source-actions" aria-label="Application brief">
-        <div>
-          <strong>Application brief</strong>
-          <p className="small-muted">
-            Saved job details, the full job description, and available actionable questions as plain text.
-            Saved answers are never included.
-            {snapshot.available
-              ? ` Source: ${snapshot.source}${snapshot.partial ? " (partial inspection; later questions may be missing)" : ""}.`
-              : " Questions have not been discovered yet; the brief still includes the saved job details."}
-          </p>
-        </div>
-        <div className="field">
-          <label htmlFor="brief-scope">Questions to include</label>
-          <select id="brief-scope" value={briefScope} onChange={(event) => setBriefScope(event.target.value)}>
-            <option value="unanswered">Unanswered actionable questions only</option>
-            <option value="all">All actionable questions · wording only</option>
-          </select>
-        </div>
-        <div>
-          <button className="button button-secondary" type="button" disabled={briefBusy} onClick={() => void handleCopyBrief()}>
-            {briefBusy ? "Copying…" : "Copy application brief"}
-          </button>
-        </div>
-        {briefError !== "" && (
-          <p className="job-form-error" role="alert">
-            {briefError}
-          </p>
-        )}
-        {briefNotice !== "" && (
-          <p className="form-notice" role="status">
-            {briefNotice}
-          </p>
-        )}
-        {briefFallback !== "" && (
-          <div className="field field-full">
-            <label htmlFor="brief-fallback">Application brief (select and copy manually)</label>
-            <textarea id="brief-fallback" rows={12} readOnly value={briefFallback} onFocus={(event) => event.target.select()} />
-          </div>
-        )}
-      </div>
-
       {discoveryStatus === "checking" && <p role="status">Checking for application questions…</p>}
       {discoveryStatus === "unsupported" && <p className="writing-notice">This employer does not offer an early question preview. You can continue to Apply; additional questions may appear on the employer form.</p>}
       {discoveryStatus === "failed" && <p className="writing-notice">We could not check questions right now. Your saved work is safe. <button className="button button-secondary" type="button" onClick={onRetryDiscovery}>Retry question check</button> You can also continue to Apply.</p>}
 
-      {snapshot.partial && (
-        <p className="writing-notice" role="note">
-          The latest inspection is partial; later or conditional questions may not be represented.
-        </p>
-      )}
       {(snapshot.returnNotice !== "" || snapshot.earlyNotice !== "") && (
         <p className="writing-notice" role="note">
           {[snapshot.returnNotice, snapshot.earlyNotice].filter((part) => part !== "").join(" ")}
@@ -510,381 +566,317 @@ export function WritingSection({
       )}
 
       {answerTasks.length > 0 && (
-        <div className="writing-layout">
-          <ul className="writing-question-list" aria-label="Application questions">
-            {needsAnswer.map((q) => (
-              <li key={questionId(q)}>
-                <button
-                  type="button"
-                  className={selectedId === questionId(q) ? "writing-question is-selected" : "writing-question"}
-                  onClick={() => pickQuestion(q)}
-                >
-                  <strong>{q.label}</strong>
-                  <small>
-                    {q.isEarly ? "Published definition" : "Live form"} · Needs your answer
-                    {q.required ? " · Required" : ""}
-                  </small>
+        <>
+          <div className="question-navigator" aria-label="Question navigation">
+            <button
+              className="button button-secondary"
+              type="button"
+              disabled={selectedIndex <= 0 || dirty}
+              onClick={() => { if (selectedIndex > 0) pickQuestion(answerTasks[selectedIndex - 1]); }}
+            >
+              ← Previous
+            </button>
+            <label className="question-selector">
+              <span className="small-muted">Question {selectedIndex + 1} of {answerTasks.length}</span>
+              <select value={selectedId} onChange={(event) => {
+                const target = answerTasks.find((q) => questionId(q) === event.target.value);
+                if (target) pickQuestion(target);
+              }}>
+                {answerTasks.map((q) => (
+                  <option key={questionId(q)} value={questionId(q)}>
+                    {q.label.length > 80 ? `${q.label.slice(0, 80)}…` : q.label}{q.value !== "" ? " · prepared" : " · needs answer"}
+                  </option>
+                ))}
+              </select>
+            </label>
+          <button
+            className="button button-secondary"
+            type="button"
+            disabled={selectedIndex < 0 || selectedIndex >= answerTasks.length - 1 || dirty}
+            onClick={() => { if (selectedIndex >= 0 && selectedIndex < answerTasks.length - 1) pickQuestion(answerTasks[selectedIndex + 1]); }}
+          >
+            Next →
+          </button>
+          {dirty && selected && (
+            <div className="question-dirty-note">
+              <p className="small-muted" role="note">
+                Unsaved edits on this question — save or discard them to move to another question.
+              </p>
+              <div className="form-actions">
+                <button className="button button-secondary" type="button" disabled={saving || !canSave} onClick={() => void handleSave()}>
+                  {saving ? "Saving…" : "Save answer locally"}
                 </button>
-              </li>
-            ))}
-            {prepared.map((q) => (
-              <li key={questionId(q)}>
-                <button
-                  type="button"
-                  className={selectedId === questionId(q) ? "writing-question is-selected" : "writing-question"}
-                  onClick={() => pickQuestion(q)}
-                >
-                  <strong>{q.label}</strong>
-                  <small>
-                    {q.isEarly ? "Published definition" : "Live form"} · Prepared locally
-                    {q.reconciled ? " · Reconciled" : ""}
-                  </small>
+                <button className="button button-secondary" type="button" onClick={discardEdits}>
+                  Discard edits
                 </button>
-              </li>
-            ))}
-          </ul>
+              </div>
+            </div>
+          )}
+          </div>
 
-          <div className="writing-editor" aria-live="polite">
-            {selected ? (
-              <>
-                <h3>{selected.label}</h3>
-                <p className="small-muted">
-                  {selected.isEarly ? `Published definition (${selected.discoverySource})` : selected.localStatus}
-                  {selected.revision > 0 ? ` · Saved revision ${selected.revision}` : " · Not saved yet"}
-                  {selected.required ? " · Required by employer" : " · Optional"}
-                </p>
-                {selected.source !== "" && !selected.isEarly && (
-                  <p className="small-muted">Source: {selected.source}</p>
-                )}
-                {selected.isEarly && selected.reconciliationStatus !== "" && (
+          <div className="writing-desk">
+            <div className="writing-editor" aria-live="polite">
+              {selected ? (
+                <>
+                  <h3>{selected.label}</h3>
                   <p className="small-muted">
-                    Reconciliation: {selected.reconciliationStatus}
-                    {selected.reconciliationDetail !== "" ? ` — ${selected.reconciliationDetail}` : ""}
+                    {selected.isEarly ? `Published definition (${selected.discoverySource})` : selected.localStatus}
+                    {selected.revision > 0 ? ` · Saved revision ${selected.revision}` : " · Not saved yet"}
+                    {selected.required ? " · Required by employer" : " · Optional"}
                   </p>
-                )}
-                {!selected.editable && (
-                  <p className="writing-notice" role="note">
-                    {selected.manualReason !== "" ? selected.manualReason : "This question requires manual completion in Chromium."}
-                  </p>
-                )}
-                <QuestionEditor
-                  question={selected}
-                  value={draft}
-                  disabled={!selected.editable || !snapshot.editingAllowed || readOnly}
-                  onChange={(next) => {
-                    setDraft(next);
-                    dirtyRef.current = next !== selected.value;
-                    setDirty(dirtyRef.current);
-                  }}
-                />
-                {selected.libraryEligible && snapshot.editingAllowed && !readOnly && (
-                  <label className="confirm-row">
-                    <input type="checkbox" checked={reusable} onChange={(event) => setReusable(event.target.checked)} />
-                    <span>Offer as reusable phrasing for this employer when saved</span>
-                  </label>
-                )}
-                {saveError !== "" && (
-                  <p className="job-form-error" role="alert">
-                    {saveError}
-                  </p>
-                )}
-                {saveNotice !== "" && (
-                  <p className="form-notice" role="status">
-                    {saveNotice}
-                  </p>
-                )}
-                <div className="form-actions">
-                  {dirty && <button className="button button-secondary" type="button" onClick={() => { setDraft(selected.value); setDirty(false); setSaveError(""); }}>Discard edits</button>}
-                  <button
-                    className="button button-primary"
-                    type="button"
-                    disabled={saving || !dirty || !selected.editable || (!snapshot.editingAllowed || readOnly)}
-                    onClick={() => void handleSave()}
-                  >
-                    {saving ? "Saving…" : "Save answer locally"}
-                  </button>
-                  {selected.helpEligible && snapshot.editingAllowed && !readOnly && (
-                    <button
-                      className="button button-secondary"
-                      type="button"
-                      disabled={assistBusy}
-                      onClick={() => void openAssistance()}
-                    >
-                      {assistBusy ? "Loading…" : "Use existing experience"}
-                    </button>
-                  )}
-                </div>
-                {dirty && <p className="small-muted">Unsaved edits — they stay on this screen until you save.</p>}
-                {assistError !== "" && (
-                  <p className="job-form-error" role="alert">
-                    {assistError}
-                  </p>
-                )}
-
-                {assistOpen && assistance && (
-                  <div className="writing-assist" aria-label="Experience and generation">
-                    <h4>Your relevant experience</h4>
-                    {assistance.libraryEmpty && assistance.evidenceEmpty ? (
-                      <p className="small-muted">
-                        No reviewed Career Evidence or saved writing is available yet. Write directly, or add
-                        experience in Career Evidence first.
-                      </p>
-                    ) : (
-                      <>
-                        {assistance.question.evidenceSuggestions.length > 0 && (
-                          <div>
-                            <h5>Reviewed Career Evidence</h5>
-                            <ul className="writing-suggestions">
-                              {assistance.question.evidenceSuggestions.map((s) => (
-                                <li key={s.identity}>
-                                  <strong>{s.title}</strong>
-                                  <small>
-                                    {s.outcomeState === "recorded" && s.outcome !== ""
-                                      ? `Recorded outcome: ${s.outcome}`
-                                      : "Outcome not established as a result."}{" "}
-                                    Reviewed revision {s.revision}.
-                                  </small>
-                                  {s.actionsExcerpt !== "" && <p>{s.actionsExcerpt}</p>}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                        {assistance.question.librarySuggestions.length > 0 && (
-                          <div>
-                            <h5>Previous writing (phrasing reference only)</h5>
-                            <ul className="writing-suggestions">
-                              {assistance.question.librarySuggestions.map((s) => (
-                                <li key={s.identity}>
-                                  <strong>{s.question}</strong>
-                                  <small>
-                                    {s.employer !== "" ? `${s.employer} · ` : ""}revision {s.revision}
-                                  </small>
-                                  <p>{s.excerpt}</p>
-                                  <button
-                                    className="button button-secondary"
-                                    type="button"
-                                    onClick={() => {
-                                      setDraft(s.excerpt);
-                                      dirtyRef.current = s.excerpt !== selected.value;
-                                      setDirty(dirtyRef.current);
-                                    }}
-                                  >
-                                    Start from this phrasing
-                                  </button>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                      </>
-                    )}
-
-                    <h4>Grounded generation</h4>
+                  {selected.originRecorded && (
                     <p className="small-muted">
-                      Generation uses only the sources you select below, through the Go-owned provider path. The
-                      result is a suggestion until you save it. A failure never changes your saved writing.
+                      Started from {selected.originQuestion !== "" ? `“${selected.originQuestion}”` : "a saved example"}
+                      {selected.originEmployer !== "" ? ` (${selected.originEmployer})` : ""}. Edits since then are yours.
                     </p>
-                    <fieldset className="writing-sources">
-                      <legend>Applicant-reviewed Career Evidence (up to 2)</legend>
-                      {(assistance.sources.Evidence ?? []).map((choice) => (
-                        <label key={choice.Identity} className="confirm-row">
-                          <input
-                            type="checkbox"
-                            checked={aiEvidence.includes(choice.Identity)}
-                            disabled={aiEvidence.length >= 2 && !aiEvidence.includes(choice.Identity)}
-                            onChange={(event) =>
-                              setAiEvidence((prev) =>
-                                event.target.checked ? [...prev, choice.Identity] : prev.filter((id) => id !== choice.Identity),
-                              )
-                            }
-                          />
-                          <span>{choice.Label}</span>
-                        </label>
-                      ))}
-                      {(assistance.sources.Evidence ?? []).length === 0 && (
-                        <p className="small-muted">No reviewed evidence available for selection.</p>
-                      )}
-                    </fieldset>
-                    <fieldset className="writing-sources">
-                      <legend>Previous writing (structure reference only)</legend>
-                      {(assistance.sources.Writing ?? []).map((choice) => (
-                        <label key={choice.Identity} className="confirm-row">
-                          <input
-                            type="radio"
-                            name="ai-writing"
-                            checked={aiWriting === choice.Identity}
-                            onChange={() => setAiWriting(choice.Identity)}
-                          />
-                          <span>{choice.Label}</span>
-                        </label>
-                      ))}
-                      {(assistance.sources.Writing ?? []).length === 0 && (
-                        <p className="small-muted">No saved writing available for selection.</p>
-                      )}
-                      {aiWriting !== "" && (
-                        <button className="button button-secondary" type="button" onClick={() => setAiWriting("")}>
-                          Clear writing selection
-                        </button>
-                      )}
-                    </fieldset>
-                    <fieldset className="writing-sources">
-                      <legend>Résumé context and job requirements</legend>
-                      {assistance.sources.ApplicationResume && (
-                        <label className="confirm-row">
-                          <input type="checkbox" checked={aiAppResume} onChange={(event) => setAiAppResume(event.target.checked)} />
-                          <span>Selected application résumé ({assistance.sources.ApplicationResume.Label})</span>
-                        </label>
-                      )}
-                      {assistance.sources.MasterResume && (
-                        <label className="confirm-row">
-                          <input type="checkbox" checked={aiMasterResume} onChange={(event) => setAiMasterResume(event.target.checked)} />
-                          <span>Master résumé ({assistance.sources.MasterResume.Label})</span>
-                        </label>
-                      )}
-                      <label className="confirm-row">
-                        <input type="checkbox" checked={aiJobContext} onChange={(event) => setAiJobContext(event.target.checked)} />
-                        <span>Include job title, employer, and description as requirements context</span>
-                      </label>
-                    </fieldset>
-                    <div className="field">
-                      <label htmlFor="ai-provider">Provider</label>
-                      <select id="ai-provider" value={aiProvider} onChange={(event) => setAiProvider(event.target.value)}>
-                        {assistance.providers.map((option) => (
-                          <option key={option.ID} value={option.ID}>
-                            {option.Label}
-                          </option>
-                        ))}
-                      </select>
-                      <small>
-                        {(assistance.providers.find((option) => option.ID === aiProvider)?.Help ?? "").toString()}
-                      </small>
+                  )}
+                  {pendingOrigin && (
+                    <p className="small-muted" role="status">
+                      Starting from {pendingSourceLabel}. Review employer-specific wording, then save.
+                    </p>
+                  )}
+                  {staleBaseline && (
+                    <p className="writing-notice" role="note">
+                      The saved answer changed in another window (now revision {selected.revision}). Your edits are kept; saving uses your original revision {baselineRevision} and will ask you to review first.
+                    </p>
+                  )}
+                  {selected.source !== "" && !selected.isEarly && (
+                    <p className="small-muted">Source: {selected.source}</p>
+                  )}
+                  {selected.isEarly && selected.reconciliationStatus !== "" && (
+                    <p className="small-muted">
+                      Reconciliation: {selected.reconciliationStatus}
+                      {selected.reconciliationDetail !== "" ? ` — ${selected.reconciliationDetail}` : ""}
+                    </p>
+                  )}
+                  {!selected.editable && (
+                    <p className="writing-notice" role="note">
+                      {selected.manualReason !== "" ? selected.manualReason : "This question requires manual completion in Chromium."}
+                    </p>
+                  )}
+                  <QuestionEditor
+                    question={selected}
+                    value={draft}
+                    disabled={!selected.editable || !snapshot.editingAllowed || readOnly}
+                    onChange={(next) => {
+                      setDraft(next);
+                      dirtyRef.current = next !== selected.value;
+                      setDirty(dirtyRef.current);
+                    }}
+                  />
+                  {selected.reusableAvailable && (
+                    <div className="exact-reuse" aria-label="Exact reusable answer">
+                      <h4>Exact answer available</h4>
+                      <p className="small-muted">Go approved this exact wording for this employer (memory revision {selected.reusableRevision}). Editing below saves an application-only override.</p>
+                      <p className="writing-answer-preview">{selected.reusableAnswer}</p>
                     </div>
-                    <div className="field">
-                      <label htmlFor="ai-model">Model</label>
-                      <input id="ai-model" value={aiModel} onChange={(event) => setAiModel(event.target.value)} />
-                    </div>
+                  )}
+                  {selected.reusableEligible && snapshot.editingAllowed && !readOnly && (
                     <label className="confirm-row">
-                      <input
-                        type="checkbox"
-                        checked={confirmExternal}
-                        onChange={(event) => setConfirmExternal(event.target.checked)}
-                      />
-                      <span>I authorize transmitting the selected text to the provider for this specific review</span>
+                      <input type="checkbox" checked={reusable} onChange={(event) => setReusable(event.target.checked)} />
+                      <span>Approve exact reuse for this employer when saved</span>
                     </label>
-                    <div className="form-actions">
-                      <button className="button button-secondary" type="button" disabled={aiBusy} onClick={() => void handleReview()}>
-                        {aiBusy ? "Preparing…" : "Review sources"}
-                      </button>
-                    </div>
-                    {ticket && (
-                      <div className="writing-ticket" aria-label="Generation review">
-                        <p className="small-muted">
-                          {ticket.execution ?? "Review the selected sources, then authorize generation."}
-                        </p>
-                        {ticket.notice !== "" && ticket.notice !== undefined && (
-                          <p className="writing-notice" role="note">
-                            {ticket.notice}
-                          </p>
-                        )}
-                        {ticket.state === "reviewed" && (
-                          <button className="button button-primary" type="button" disabled={aiBusy} onClick={() => void handleGenerate()}>
-                            {aiBusy ? "Generating…" : "Authorize and generate"}
-                          </button>
-                        )}
-                        {(ticket.state === "complete" || ticket.state === "insufficient") && ticket.answer && (
-                          <>
-                            <h5>Suggested answer</h5>
-                            <p className="writing-answer-preview">{ticket.answer}</p>
-                            {ticket.trace && ticket.trace.claims.length > 0 && (
-                              <div>
-                                <h5>Source trace</h5>
-                                <ul className="writing-suggestions">
-                                  {ticket.trace.claims.map((claim, index) => (
-                                    <li key={index}>
-                                      <p>“{claim.quote}”</p>
-                                      <small>Supports: {claim.claim}</small>
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-                            {ticket.trace && ticket.trace.unresolved.length > 0 && (
-                              <div>
-                                <h5>Unsupported qualifications</h5>
-                                <ul className="writing-suggestions">
-                                  {ticket.trace.unresolved.map((item, index) => (
-                                    <li key={index}>
-                                      <small>{item}</small>
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-                            {ticket.state === "insufficient" && (
-                              <p className="writing-notice" role="note">
-                                The selected evidence cannot reasonably support an answer. The suggestion was withheld;
-                                your saved writing is unchanged.
-                              </p>
-                            )}
-                            <div className="form-actions">
-                              <button
-                                className="button button-primary"
-                                type="button"
-                                disabled={!ticket.adoptable}
-                                onClick={() => void handleUseSuggestion()}
-                              >
-                                Use suggestion in editor
-                              </button>
-                              <button className="button button-secondary" type="button" onClick={() => void handleCancelTicket()}>
-                                Discard
-                              </button>
-                            </div>
-                            {!ticket.adoptable && (
-                              <p className="small-muted">This preview is stale; copy it for reference or discard it.</p>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    )}
-                    {aiError !== "" && (
-                      <p className="job-form-error" role="alert">
-                        {aiError}
-                      </p>
-                    )}
+                  )}
+                  {saveError !== "" && (
+                    <p className="job-form-error" role="alert">
+                      {saveError}
+                    </p>
+                  )}
+                  {saveNotice !== "" && (
+                    <p className="form-notice" role="status">
+                      {saveNotice}
+                    </p>
+                  )}
+                  <div className="form-actions">
+                    {dirty && <button className="button button-secondary" type="button" onClick={discardEdits}>Discard edits</button>}
+                    <button
+                      className="button button-primary"
+                      type="button"
+                      disabled={saving || !canSave}
+                      onClick={() => void handleSave()}
+                    >
+                      {saving ? "Saving…" : "Save answer locally"}
+                    </button>
                   </div>
-                )}
-              </>
-            ) : (
-              <p className="small-muted">Select a question to review and answer it.</p>
+                  {replaceCandidate && (
+                    <div className="writing-replace" role="alert">
+                      <p><strong>Replace your unsaved edits?</strong> “{replaceCandidate.label}” would replace the current editor text. This stays unsaved until you save.</p>
+                      <div className="form-actions">
+                        <button className="button button-primary" type="button" onClick={confirmReplace}>Replace editor text</button>
+                        <button className="button button-secondary" type="button" onClick={() => setReplaceCandidate(null)}>Keep my draft</button>
+                      </div>
+                    </div>
+                  )}
+                  {dirty && <p className="small-muted">Unsaved edits — they stay on this screen until you save.</p>}
+                  {selected.helpEligible && snapshot.editingAllowed && !readOnly && (
+                    <div className="library-promote" aria-label="Save to Answer Library">
+                      {selected.libraryEligible && selected.revision > 0 ? (
+                        <button className="button button-secondary" type="button" disabled={promoteBusy} onClick={() => void handlePromote()}>
+                          {promoteBusy ? "Saving…" : "Save a copy to Answer Library"}
+                        </button>
+                      ) : (
+                        <p className="small-muted">
+                          This is a reusable kind of question. Save an answer here, then you can save a copy to your Answer Library for future applications.
+                        </p>
+                      )}
+                      {promoteError !== "" && <p className="job-form-error" role="alert">{promoteError}</p>}
+                      {promoteNotice !== "" && <p className="form-notice" role="status">{promoteNotice}</p>}
+                    </div>
+                  )}
+                  {assistError !== "" && (
+                    <p className="job-form-error" role="alert">
+                      {assistError}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="small-muted">Select a question to review and answer it.</p>
+              )}
+            </div>
+
+            {selected && (
+              <aside className="previous-column" aria-label="Previous writing column">
+                <PreviousWriting
+                  jobId={jobId}
+                  destination={destination}
+                  question={selected}
+                  baselineRevision={baselineRevision}
+                  disabled={!selected.editable || !snapshot.editingAllowed || readOnly}
+                  onUseAsDraft={handleUseAsDraft}
+                />
+              </aside>
             )}
           </div>
-        </div>
+
+          <details className="panel detail-editor">
+            <summary><strong>Use existing experience and grounded generation</strong></summary>
+            <div className="editor-content">
+              {selected && selected.helpEligible && snapshot.editingAllowed && !readOnly && (
+                <button className="button button-secondary" type="button" disabled={assistBusy} onClick={() => void openAssistance()}>
+                  {assistBusy ? "Loading…" : "Load experience and generation"}
+                </button>
+              )}
+              {assistOpen && assistance && (
+                <div className="writing-assist" aria-label="Experience and generation">
+                  <h4>Your relevant experience</h4>
+                  {assistance.libraryEmpty && assistance.evidenceEmpty ? (
+                    <p className="small-muted">No reviewed Career Evidence or saved writing is available yet.</p>
+                  ) : (
+                    <>
+                      {assistance.question.evidenceSuggestions.length > 0 && (
+                        <div>
+                          <h5>Reviewed Career Evidence</h5>
+                          <ul className="writing-suggestions">
+                            {assistance.question.evidenceSuggestions.map((s) => (
+                              <li key={s.identity}>
+                                <strong>{s.title}</strong>
+                                <small>{s.outcomeState === "recorded" && s.outcome !== "" ? `Recorded outcome: ${s.outcome}` : "Outcome not established as a result."} Reviewed revision {s.revision}.</small>
+                                {s.actionsExcerpt !== "" && <p>{s.actionsExcerpt}</p>}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </>
+                  )}
+                  <h4>Grounded generation</h4>
+                  <p className="small-muted">Generation uses only the sources you select below. The result is a suggestion until you save it.</p>
+                  <fieldset className="writing-sources">
+                    <legend>Applicant-reviewed Career Evidence (up to 2)</legend>
+                    {(assistance.sources.Evidence ?? []).map((choice) => (
+                      <label key={choice.Identity} className="confirm-row">
+                        <input type="checkbox" checked={aiEvidence.includes(choice.Identity)} disabled={aiEvidence.length >= 2 && !aiEvidence.includes(choice.Identity)} onChange={(event) => setAiEvidence((prev) => event.target.checked ? [...prev, choice.Identity] : prev.filter((id) => id !== choice.Identity))} />
+                        <span>{choice.Label}</span>
+                      </label>
+                    ))}
+                    {(assistance.sources.Evidence ?? []).length === 0 && <p className="small-muted">No reviewed evidence available for selection.</p>}
+                  </fieldset>
+                  <fieldset className="writing-sources">
+                    <legend>Previous writing (structure reference only)</legend>
+                    {(assistance.sources.Writing ?? []).map((choice) => (
+                      <label key={choice.Identity} className="confirm-row">
+                        <input type="radio" name="ai-writing" checked={aiWriting === choice.Identity} onChange={() => setAiWriting(choice.Identity)} />
+                        <span>{choice.Label}</span>
+                      </label>
+                    ))}
+                    {(assistance.sources.Writing ?? []).length === 0 && <p className="small-muted">No saved writing available for selection.</p>}
+                    {aiWriting !== "" && <button className="button button-secondary" type="button" onClick={() => setAiWriting("")}>Clear writing selection</button>}
+                  </fieldset>
+                  <div className="field">
+                    <label htmlFor="ai-provider">Provider</label>
+                    <select id="ai-provider" value={aiProvider} onChange={(event) => setAiProvider(event.target.value)}>
+                      {assistance.providers.map((option) => (
+                        <option key={option.ID} value={option.ID}>{option.Label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="field">
+                    <label htmlFor="ai-model">Model</label>
+                    <input id="ai-model" value={aiModel} onChange={(event) => setAiModel(event.target.value)} />
+                  </div>
+                  <label className="confirm-row">
+                    <input type="checkbox" checked={confirmExternal} onChange={(event) => setConfirmExternal(event.target.checked)} />
+                    <span>I authorize transmitting the selected text to the provider for this specific review</span>
+                  </label>
+                  <div className="form-actions">
+                    <button className="button button-secondary" type="button" disabled={aiBusy} onClick={() => void handleReview()}>Review sources</button>
+                  </div>
+                  {ticket && (
+                    <div className="writing-ticket" aria-label="Generation review">
+                      <p className="small-muted">{ticket.execution ?? "Review the selected sources, then authorize generation."}</p>
+                      {ticket.state === "reviewed" && <button className="button button-primary" type="button" disabled={aiBusy} onClick={() => void handleGenerate()}>Authorize and generate</button>}
+                      {(ticket.state === "complete" || ticket.state === "insufficient") && ticket.answer && (
+                        <>
+                          <h5>Suggested answer</h5>
+                          <p className="writing-answer-preview">{ticket.answer}</p>
+                          <div className="form-actions">
+                            <button className="button button-primary" type="button" disabled={!ticket.adoptable} onClick={() => void handleUseSuggestion()}>Use suggestion in editor</button>
+                            <button className="button button-secondary" type="button" onClick={() => void handleCancelTicket()}>Discard</button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                  {aiError !== "" && <p className="job-form-error" role="alert">{aiError}</p>}
+                </div>
+              )}
+            </div>
+          </details>
+
+          <details className="panel detail-editor">
+            <summary><strong>Application brief</strong><small>Plain-text job details for reference</small></summary>
+            <div className="editor-content">
+              <div className="field">
+                <label htmlFor="brief-scope">Questions to include</label>
+                <select id="brief-scope" value={briefScope} onChange={(event) => setBriefScope(event.target.value)}>
+                  <option value="unanswered">Unanswered actionable questions only</option>
+                  <option value="all">All actionable questions · wording only</option>
+                </select>
+              </div>
+              <button className="button button-secondary" type="button" disabled={briefBusy} onClick={() => void handleCopyBrief()}>{briefBusy ? "Copying…" : "Copy application brief"}</button>
+              {briefError !== "" && <p className="job-form-error" role="alert">{briefError}</p>}
+              {briefNotice !== "" && <p className="form-notice" role="status">{briefNotice}</p>}
+              {briefFallback !== "" && <textarea rows={12} readOnly value={briefFallback} onFocus={(event) => event.target.select()} aria-label="Application brief" />}
+            </div>
+          </details>
+        </>
       )}
 
       {(snapshot.unidentifiedCount > 0) && (
         <p className="writing-notice" role="note">
-          {snapshot.unidentifiedCount === 1
-            ? "One employer control could not be stably identified; inspect it directly in the employer browser."
-            : `${snapshot.unidentifiedCount} employer controls could not be stably identified; inspect them directly in the employer browser.`}
+          {snapshot.unidentifiedCount === 1 ? "One employer control could not be stably identified; inspect it directly in the employer browser." : `${snapshot.unidentifiedCount} employer controls could not be stably identified; inspect them directly in the employer browser.`}
         </p>
       )}
 
       {(profileItems.length > 0 || employerItems.length > 0 || reviewItems.length > 0) && (
         <div className="writing-previous" aria-label="Fields outside the writing tasks">
-          {profileItems.length > 0 && (
-            <p className="small-muted">Candidate Profile fields are handled automatically when authorized.</p>
-          )}
+          {profileItems.length > 0 && <p className="small-muted">Candidate Profile fields are handled automatically when authorized.</p>}
           {employerItems.length > 0 && (
             <div>
               <h3>Complete on the employer site</h3>
-              <p className="small-muted">YourMove never fills these; review the wording and complete them personally.</p>
               <ul className="writing-suggestions">
                 {employerItems.map((q) => (
-                  <li key={questionId(q)}>
-                    <strong>{q.label}</strong>
-                    <small>{q.required ? "Required by employer" : "Optional"}</small>
-                  </li>
+                  <li key={questionId(q)}><strong>{q.label}</strong><small>{q.required ? "Required by employer" : "Optional"}</small></li>
                 ))}
               </ul>
             </div>
@@ -894,13 +886,7 @@ export function WritingSection({
               <h3>Needs manual completion</h3>
               <ul className="writing-suggestions">
                 {reviewItems.map((q) => (
-                  <li key={questionId(q)}>
-                    <strong>{q.label}</strong>
-                    <small>
-                      {q.required ? "Required by employer · " : ""}
-                      {q.manualReason !== "" ? q.manualReason : "This question requires manual completion in Chromium."}
-                    </small>
-                  </li>
+                  <li key={questionId(q)}><strong>{q.label}</strong><small>{q.required ? "Required by employer · " : ""}{q.manualReason !== "" ? q.manualReason : "This question requires manual completion in Chromium."}</small></li>
                 ))}
               </ul>
             </div>

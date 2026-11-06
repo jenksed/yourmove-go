@@ -124,9 +124,10 @@ export function WorkspacePage(): React.JSX.Element {
       .catch(() => setDiscoveryStatus("failed"));
   }, [jobId, refreshSummary]);
 
-  // Explicit activity choice. Only an explicit move to Questions starts the
-  // established discovery operation; automatic navigation (including to
-  // Documents) stays local and never triggers a remote question check.
+  // First arrival at Questions — by explicit tab move or by initial landing
+  // on a workspace that suggests it — starts the established discovery
+  // operation once per page load. All other navigation stays local and never
+  // triggers a remote question check.
   const handleActivitySelect = useCallback(
     (next: Activity) => {
       setActivity(next);
@@ -191,22 +192,26 @@ export function WorkspacePage(): React.JSX.Element {
 
   // Initial navigation: explicit hashes win; otherwise follow the Go
   // navigation suggestion once. Never re-navigate on later updates.
+  // Landing on Questions runs the same once-per-load question check as an
+  // explicit tab move, so opening a workspace never needs a manual refresh
+  // to discover its questions. Other landings stay local.
   useEffect(() => {
     if (!snapshot || initialNavDone.current) return;
     initialNavDone.current = true;
     const hash = window.location.hash.slice(1);
+    let target: Activity = "job";
     if (["prepare", "workspace-resume-title", "cover-letters", "documents"].includes(hash)) {
-      setActivity("documents");
+      target = "documents";
     } else if (["writing", "questions"].includes(hash)) {
-      setActivity("questions");
-      if (!discoveryStarted.current) retryDiscovery();
-    } else if (["employer", "apply"].includes(hash)) setActivity("apply");
-    else if (["submission", "history", "applied"].includes(hash)) setActivity("applied");
-    else if (hash === "overview" || hash === "job") setActivity("job");
-    else if (snapshot.nextAction) setActivity(snapshot.nextAction.activity);
-    else if (snapshot.job.submissionCount > 0 || snapshot.job.stage === "applied") setActivity("applied");
-    else if (snapshot.selectedResumeId > 0) setActivity("questions");
-  }, [snapshot, retryDiscovery]);
+      target = "questions";
+    } else if (["employer", "apply"].includes(hash)) target = "apply";
+    else if (["submission", "history", "applied"].includes(hash)) target = "applied";
+    else if (hash === "overview" || hash === "job") target = "job";
+    else if (snapshot.nextAction) target = snapshot.nextAction.activity;
+    else if (snapshot.job.submissionCount > 0 || snapshot.job.stage === "applied") target = "applied";
+    else if (snapshot.selectedResumeId > 0) target = "questions";
+    handleActivitySelect(target);
+  }, [snapshot, handleActivitySelect]);
 
   // Restored pages (back/forward after a Documents assignment) refresh the
   // summary without resetting drafts, baseline, or activity.
@@ -366,23 +371,24 @@ export function WorkspacePage(): React.JSX.Element {
       answersText = discoveryStatus === "checking" ? "Checking available questions…" : "Questions not yet established";
     } else {
       if (readiness.questionPartial) {
-        answersQualifier = "in the available inventory. Later or conditional questions may not be represented.";
+        answersQualifier = "Partial inspection — later questions may be missing.";
       }
       if (!readiness.questionPartial && readiness.needsAnswerCount === 0 && readiness.preparedCount === 0) {
-        answersText = "No supported questions requiring applicant input were identified in this inspection.";
+        answersText = "No questions needing your input were found in this inspection.";
       } else if (readiness.needsAnswerCount === 0 && readiness.preparedCount > 0) {
-        answersText = `${readiness.preparedCount} answers saved; no unanswered actionable questions in this inspection.`;
+        answersText = `${readiness.preparedCount} of ${readiness.preparedCount} answers saved. Nothing left unanswered.`;
       } else if (readiness.needsAnswerCount > 0) {
+        const total = readiness.needsAnswerCount + readiness.preparedCount;
         answersText =
           readiness.preparedCount > 0
-            ? `${readiness.needsAnswerCount} available questions without saved answers (${readiness.preparedCount} saved). Prepare them here or complete them with the employer.`
-            : `${readiness.needsAnswerCount} available questions without saved answers. Prepare them here or complete them with the employer.`;
+            ? `${readiness.needsAnswerCount} of ${total} questions still need answers (${readiness.preparedCount} saved).`
+            : `${readiness.needsAnswerCount} questions need answers.`;
       } else {
         answersText = "Review available questions.";
       }
       if (readiness.manualWorkCount > 0) {
         answersQualifier += (answersQualifier !== "" ? " " : "") +
-          `${readiness.manualWorkCount} employer-side items need completion or review on the employer site.`;
+          `Plus ${readiness.manualWorkCount} employer-side items to complete on their site.`;
       }
     }
     const letterText = readiness.coverLetterSaved ? "Saved letter available" : "No saved letter";

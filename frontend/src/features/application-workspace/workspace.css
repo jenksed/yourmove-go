@@ -180,6 +180,144 @@
   padding: 0 24px 8px;
 }
 
+/* S2 question desk: one task, editor plus previous writing at the point of need. */
+.question-navigator {
+  display: flex;
+  align-items: end;
+  gap: 12px;
+  padding: 0 24px 12px;
+  flex-wrap: wrap;
+}
+
+.question-selector {
+  display: grid;
+  gap: 4px;
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+.question-selector select {
+  width: 100%;
+}
+
+/* Adjacent explanation when unsaved edits intentionally block navigation. */
+.question-dirty-note {
+  flex-basis: 100%;
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  padding: 10px 12px;
+}
+
+.question-dirty-note p {
+  margin: 0;
+}
+
+.writing-desk {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+  gap: 16px;
+  padding: 0 24px 12px;
+  align-items: start;
+}
+
+.previous-column {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.previous-writing {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.previous-writing h4 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.writing-preview {
+  border-top: 1px solid var(--color-border);
+  padding-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.writing-replace {
+  border: 1px solid var(--color-attention);
+  border-radius: 8px;
+  background: var(--color-surface-muted);
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.exact-reuse {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface-muted);
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.exact-reuse h4 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.library-promote {
+  display: grid;
+  gap: 6px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 10px;
+}
+
+.library-browse {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 10px;
+}
+
+.browse-search-row {
+  display: flex;
+  gap: 8px;
+}
+
+.browse-search-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.browse-toggle {
+  display: flex;
+}
+
+.letter-start-choices {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0 24px 12px;
+}
+
+.prior-letter-picker {
+  margin: 0 24px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+}
+
 .writing-question-list {
   list-style: none;
   margin: 0;
@@ -433,9 +571,16 @@
   white-space: nowrap;
 }
 
-@media (max-width: 860px) {
+@media (max-width: 900px) {
   .writing-layout {
     grid-template-columns: 1fr;
+  }
+  .writing-desk {
+    grid-template-columns: 1fr;
+  }
+  .question-navigator {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 
