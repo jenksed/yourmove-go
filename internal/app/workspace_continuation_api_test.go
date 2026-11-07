@@ -778,3 +778,66 @@ func TestContinueStaleAnswersDoNotBlockLetter(t *testing.T) {
 		t.Fatalf("stale answers not refused: %+v", out.Items)
 	}
 }
+
+// TestContinueRejectsForeignJobReviewHash proves an outdated asynchronous
+// response authorized for job A cannot authorize job B's transfer. Job B's
+// own scope hash succeeds; job A's hash is refused before any browser launch.
+func TestContinueRejectsForeignJobReviewHash(t *testing.T) {
+	a, _ := testWorkspace(t)
+	seedContinuationJob(t, a)
+	const urlB = "https://jobs.ashbyhq.com/render/99999999-9999-4999-8999-999999999999"
+	if err := a.saveJob(Job{URL: urlB, Host: "jobs.ashbyhq.com", Title: "Role B"}); err != nil {
+		t.Fatal(err)
+	}
+	fields := []schema.Field{
+		{ID: "browser:why", Label: "Why this team?", Kind: "textarea"},
+		{ID: "browser:site", Label: "Website", Kind: "text"},
+	}
+	if _, err := a.saveInspection(2, schema.Result{Platform: "ashby", Source: "browser", Completeness: "rendered_partial", ApplicationURL: urlB + "/application", Fields: fields}); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range fields {
+		if _, err := a.db.Exec(`INSERT INTO application_answers(job_id,destination,provider,question_key,label,answer,revision) VALUES(2,?,?,?,?,'Approved B for `+f.ID+`',1)`, urlB, "ashby", questionKey(urlB, "ashby", f), f.Label); err != nil {
+			t.Fatal(err)
+		}
+	}
+	jobA, _ := a.jobByID(1)
+	jobB, _ := a.jobByID(2)
+	profile, _ := a.candidateProfile()
+	prepA, err := a.prepareQuestions(jobA, profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepB, err := a.prepareQuestions(jobB, profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hashA := reactAnswerScopeHash(prepA.ReadyAnswers())
+	hashB := reactAnswerScopeHash(prepB.ReadyAnswers())
+	if hashA == hashB {
+		t.Fatal("job scopes are not isolated")
+	}
+	launches := 0
+	a.browsers.factory = func(context.Context, string) (readOnlySession, error) {
+		launches++
+		return &fakeAnswerBrowser{fakeBrowser: &fakeBrowser{url: urlB + "/application"}, controls: []browser.Control{{ID: "why", Label: "Why this team?", Kind: "textarea"}, {ID: "site", Label: "Website", Kind: "text"}}}, nil
+	}
+	defer a.browsers.closeAll()
+	post := func(hash string) *httptest.ResponseRecorder {
+		body := `{"destination":"` + urlB + `","include_answers":true,"review_hash":"` + hash + `"}`
+		req := httptest.NewRequest(http.MethodPost, "http://localhost/api/jobs/2/continue", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		newMux(a).ServeHTTP(rec, req)
+		return rec
+	}
+	if rec := post(hashA); rec.Code != http.StatusConflict || launches != 0 {
+		t.Fatalf("foreign scope authorized or launched: status=%d launches=%d body=%s", rec.Code, launches, rec.Body.String())
+	}
+	if rec := post(hashB); rec.Code != http.StatusOK || launches != 1 {
+		t.Fatalf("own scope refused: status=%d launches=%d body=%s", rec.Code, launches, rec.Body.String())
+	}
+	if stored, _ := a.jobByID(2); stored.Stage == StageApplied || stored.SubmissionCount != 0 {
+		t.Fatalf("transfer recorded a submission: %+v", stored)
+	}
+}

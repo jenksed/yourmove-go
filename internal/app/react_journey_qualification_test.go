@@ -64,7 +64,7 @@ func qualifyReactJourneyDocumentTransfer(t *testing.T, occupied bool) {
 		html := `<!doctype html><form class="ashby-application-form">
 <section data-field-entry-id="resume"><div class="ashby-application-form-question-title">Resume</div><input type="file" name="resume" accept=".pdf"></section>
 <section data-field-entry-id="cover"><div class="ashby-application-form-question-title">Cover Letter</div><input type="file" name="cover" accept=".pdf"></section>
-<label>Why this team?<textarea name="motivation"></textarea></label><label>Tell us more<textarea name="other"></textarea></label><label>LinkedIn<input name="linkedin"></label><label>Manual field<input name="manual" value="Already entered"></label><label>Phone<input type="tel" name="phone" value="Manual phone"></label><button type="submit">Submit</button></form>
+<label>Why this team?<textarea name="motivation"></textarea></label><label>Tell us more<textarea name="other"></textarea></label><label>Tell us about a challenging collaboration you navigated<textarea name="collaboration"></textarea></label><label>LinkedIn<input name="linkedin"></label><label>Manual field<input name="manual" value="Already entered"></label><label>Phone<input type="tel" name="phone" value="Manual phone"></label><button type="submit">Submit</button></form>
 <script>window.answerChanges=0;document.querySelector("[name=motivation]").addEventListener("input",()=>answerChanges++);window.resumeChanges=0;window.coverChanges=0;window.submits=0;window.contactChanges={first_name:0,last_name:0,email:0};document.querySelector('form').addEventListener('input',e=>{if(e.target.name in contactChanges)contactChanges[e.target.name]++});document.querySelector('[name=resume]').onchange=()=>{resumeChanges++;const old=document.querySelector('[name=motivation]');old.parentElement.remove();setTimeout(()=>{document.querySelector('form').insertAdjacentHTML('beforeend','<label>Why this team?<textarea name="motivation"></textarea></label>');document.querySelector('[name=motivation]').addEventListener('input',()=>answerChanges++)},1800);document.querySelector('form').insertAdjacentHTML('beforeend','<label>First name<input name="first_name"></label>');setTimeout(()=>{document.querySelector('form').insertAdjacentHTML('beforeend','<label>Last name<input name="last_name"></label><label>Email<input type="email" name="email"></label>')},1200)};document.querySelector('[name=cover]').onchange=()=>coverChanges++;const existing=new DataTransfer();existing.items.add(new File(['existing employer file'],'existing.pdf',{type:'application/pdf'}));document.querySelector('[name=cover]').files=existing.files;document.querySelector('[name=cover]').dispatchEvent(new Event('change',{bubbles:true}));document.querySelector('form').onsubmit=e=>{e.preventDefault();submits++}</script>`
 		if !occupied {
 			start := strings.Index(html, "const existing=new DataTransfer();")
@@ -86,7 +86,7 @@ func qualifyReactJourneyDocumentTransfer(t *testing.T, occupied bool) {
 	var employer *chromium.Session
 	var firefox *playwright.Session
 	var launches atomic.Int32
-	a.browsers.factory = func(c context.Context, _ string) (readOnlySession, error) {
+	a.browsers.factory = func(c context.Context, dest string) (readOnlySession, error) {
 		launches.Add(1)
 		if os.Getenv("YOURMOVE_QUAL_ENGINE") == "firefox" {
 			var launchErr error
@@ -94,14 +94,14 @@ func qualifyReactJourneyDocumentTransfer(t *testing.T, occupied bool) {
 			if launchErr != nil {
 				return nil, launchErr
 			}
-			return &reactFirefoxFixture{Session: firefox, fixture: base, saved: testAshbyPosting}, nil
+			return &reactFirefoxFixture{Session: firefox, fixture: base, saved: dest}, nil
 		}
 		var launchErr error
 		employer, launchErr = chromium.LaunchFixture(c, base)
 		if launchErr != nil {
 			return nil, launchErr
 		}
-		return &contactFixtureSession{Session: employer, fixture: base, saved: testAshbyPosting}, nil
+		return &contactFixtureSession{Session: employer, fixture: base, saved: dest}, nil
 	}
 	defer a.browsers.closeAll()
 	router := http.NewServeMux()
@@ -163,6 +163,36 @@ func qualifyReactJourneyDocumentTransfer(t *testing.T, occupied bool) {
 	click := func(label string) {
 		t.Helper()
 		run(fmt.Sprintf(`Array.from(document.querySelectorAll('button')).find(x=>x.textContent.trim()===%q && x.offsetParent!==null).click()`, label))
+	}
+	// selectQuestion retries the navigation-select handoff across a React
+	// re-render: a select replaced between query and dispatch throws a
+	// transient illegal-invocation instead of applying the choice.
+	selectQuestion := func(fragment string) {
+		t.Helper()
+		expression := fmt.Sprintf(`(()=>{const e=document.querySelector('[aria-label="Question navigation"] select');e.value=Array.from(e.options).find(x=>x.textContent.includes(%q)).value;e.dispatchEvent(new Event('change',{bubbles:true}))})()`, fragment)
+		var err error
+		for i := 0; i < 5; i++ {
+			if err = eval(ui, page, expression, nil); err == nil {
+				return
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+		t.Fatal(err)
+	}
+	// setTextarea retries the native editor write across a React re-render
+	// and only returns once the visible editor actually holds the text: a
+	// momentarily unmounted editor would otherwise throw or drop the draft.
+	setTextarea := func(selector, fragment, text string) {
+		t.Helper()
+		expression := fmt.Sprintf(`(()=>{const e=document.querySelector(%q);Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,%q);e.dispatchEvent(new Event('input',{bubbles:true}));return (document.querySelector(%q)?.value||'').includes(%q)})()`, selector, text, selector, fragment)
+		for i := 0; i < 8; i++ {
+			var ok bool
+			if err := eval(ui, page, expression, &ok); err == nil && ok {
+				return
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+		t.Fatal("editor did not accept the prepared text")
 	}
 	wait(`document.body.innerText.includes('Synthetic React journey')`)
 	discoveryStarted := time.Now()
@@ -533,6 +563,21 @@ backendReady:
 	t.Logf("Close, edit, re-Fill used updated answer and letter: answer=%q letterHash=%s", updatedAnswer, refilledLetter.LetterHash)
 	t.Logf("Fresh session operations: %+v", refilledLetter)
 
+	// Curate one reviewed narrative answer for the next application while
+	// job A's reviewed work is still visible.
+	click("Questions")
+	wait(`Array.from(document.querySelectorAll('[aria-label="Question navigation"] select option')).some(x=>x.textContent.includes('challenging collaboration'))`)
+	selectQuestion("challenging collaboration")
+	const collabA = "I navigated a challenging collaboration by aligning support and engineering on a shared incident timeline for customers."
+	setTextarea("#writing-answer", "shared incident timeline", collabA)
+	click("Save answer locally")
+	wait(`document.body.innerText.includes('Saved locally.')`)
+	wait(`Array.from(document.querySelectorAll('button')).some(x=>x.textContent.trim()==='Save a copy to Answer Library' && x.offsetParent!==null)`)
+	click("Save a copy to Answer Library")
+	wait(`document.body.innerText.includes('Saved as a separate Answer Library example')`)
+	t.Log("Job A curated a reusable narrative answer without leaving its workspace.")
+	click("Apply")
+
 	// Leaving an unsubmitted job requires an explicit decision before browser-only work is closed.
 	wait(`document.querySelector('#submission')?.innerText.includes('Next synthetic opportunity')`)
 	run(`window.confirm=()=>false`)
@@ -550,6 +595,225 @@ backendReady:
 		t.Fatalf("unsubmitted navigation changed state: %+v %v", job, err)
 	}
 	t.Log("Cancelled navigation kept the browser; confirmed navigation closed it and preserved the unsubmitted job.")
+
+	// Job B begins without a submission record for A, without job-A browser
+	// state, and without another open application browser.
+	if st := a.browsers.state(2); st.Active || st.ResumeStatus != "" || st.ContactStatus != "" || st.LetterStatus != "" || st.AnswerStatus != "" {
+		t.Fatalf("job B starts with leaked browser state: %+v", st)
+	}
+	if other := a.browsers.otherApplication(2); other != 0 {
+		t.Fatalf("job B sees another application browser: %d", other)
+	}
+	if opened, err := a.jobByID(2); err != nil || opened.Stage == StageApplied || opened.SubmissionCount != 0 {
+		t.Fatalf("job B starts submitted: %+v %v", opened, err)
+	}
+	if launches.Load() != 2 {
+		t.Fatalf("opening job B launched a browser: %d", launches.Load())
+	}
+	// Mirror job A's preparation baseline so job B's scope carries the same
+	// profile-backed LinkedIn question from the start.
+	job2, err := a.jobByID(2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.saveInspection(2, schema.Result{Platform: "ashby", Source: "browser", Completeness: "rendered_partial", ApplicationURL: job2.URL + "/application", Fields: []schema.Field{{ID: "browser:linkedin", Label: "LinkedIn", Kind: "text"}}}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Prepare job B with the same résumé and job A's reviewed reusable
+	// material, adapted and saved explicitly for B.
+	click("Documents")
+	wait(`!!document.querySelector('input[name=workspace-resume]:not(:checked)')`)
+	run(`Array.from(document.querySelectorAll('input[name=workspace-resume]')).find(x=>!x.checked).click()`)
+	wait(`document.body.innerText.includes('Selection saved')`)
+	click("Questions")
+	wait(`Array.from(document.querySelectorAll('[aria-label="Question navigation"] select option')).some(x=>x.textContent.includes('challenging collaboration'))`)
+	selectQuestion("challenging collaboration")
+	click("Browse all")
+	wait(`document.body.innerText.includes('shared incident timeline')`)
+	click("Preview full text")
+	wait(`document.querySelector('.writing-preview')?.innerText.includes('shared incident timeline')`)
+	click("Use as starting draft")
+	wait(`document.body.innerText.includes('Starting from')`)
+	const collabB = "I navigated a challenging collaboration at the second employer by aligning support and engineering on a shared incident timeline with weekly updates."
+	setTextarea("#writing-answer", "weekly updates", collabB)
+	click("Save answer locally")
+	wait(`document.body.innerText.includes('Saved locally.')`)
+	t.Log("Job B reused job A's reviewed answer through an explicit starting draft, adapted it, and saved it for B.")
+
+	// Start job B's cover letter from job A's prior letter, edit and save it
+	// as a new letter with its own identity, and leave it selected for B.
+	click("Documents")
+	wait(`document.body.innerText.includes('Use prior letter')`)
+	click("Use prior letter")
+	wait(`document.querySelector('.prior-letter-picker')?.innerText.includes('must not be transferred')`)
+	run(`Array.from(document.querySelectorAll('.prior-letter-picker .writing-suggestions li')).find(li=>li.innerText.includes('synthetic support role'))?.querySelector('button')?.click()`)
+	wait(`document.querySelector('.prior-letter-picker .writing-preview')?.innerText.includes('synthetic support role')`)
+	click("Use as starting draft")
+	wait(`!!document.querySelector('#prior-new-body')`)
+	const letterB = "Dear Hiring Team, I am applying for this second synthetic support role with the same careful follow-up I brought to the first. I would welcome the opportunity to contribute."
+	setTextarea("#prior-new-body", "second synthetic support role", letterB)
+	click("Save new letter for this opportunity")
+	wait(`document.body.innerText.includes('New letter saved for this opportunity with a new identity.')`)
+	t.Log("Job B started its cover letter from a prior letter and saved it as a new letter for B.")
+
+	// Job A's saved originals are unchanged and the reusable copy is intact.
+	var priorLetterID int64
+	if err := a.db.QueryRow(`SELECT id FROM cover_letters WHERE job_id=1 AND body LIKE '%synthetic support role%'`).Scan(&priorLetterID); err != nil || priorLetterID == 0 {
+		t.Fatalf("job A original letter changed: %v", err)
+	}
+	var libraryEntryID int64
+	if err := a.db.QueryRow(`SELECT id FROM answer_library WHERE answer=?`, collabA).Scan(&libraryEntryID); err != nil {
+		t.Fatalf("reusable library answer changed: %v", err)
+	}
+	var priorLetterBody string
+	if err := a.db.QueryRow(`SELECT body FROM cover_letters WHERE id=?`, priorLetterID).Scan(&priorLetterBody); err != nil || priorLetterBody != updatedLetter {
+		t.Fatalf("job A original letter changed: %q %v", priorLetterBody, err)
+	}
+	checkPresent := func(want string) {
+		t.Helper()
+		var n1, n2 int
+		_ = a.db.QueryRow(`SELECT COUNT(*) FROM application_answers WHERE job_id=1 AND answer=?`, want).Scan(&n1)
+		_ = a.db.QueryRow(`SELECT COUNT(*) FROM early_application_answers WHERE job_id=1 AND answer=?`, want).Scan(&n2)
+		if n1+n2 == 0 {
+			t.Fatalf("job A saved answer missing: %q", want)
+		}
+	}
+	checkPresent("Prepared before opening")
+	checkPresent(updatedAnswer)
+	checkPresent(collabA)
+	for _, table := range []string{"application_answers", "early_application_answers", "cover_letters"} {
+		column := "answer"
+		if table == "cover_letters" {
+			column = "body"
+		}
+		for _, unwanted := range []string{collabB, letterB} {
+			var n int
+			if err := a.db.QueryRow(`SELECT COUNT(*) FROM `+table+` WHERE job_id=1 AND `+column+`=?`, unwanted).Scan(&n); err != nil || n != 0 {
+				t.Fatalf("job B material leaked into job A %s: %v", table, err)
+			}
+		}
+	}
+	var letter2Body string
+	if err := a.db.QueryRow(`SELECT body FROM cover_letters WHERE job_id=1 AND id!=?`, priorLetterID).Scan(&letter2Body); err != nil || !strings.Contains(letter2Body, "must not be transferred") {
+		t.Fatalf("job A unselected letter changed: %q %v", letter2Body, err)
+	}
+	var storedB, originB string
+	for _, table := range []string{"application_answers", "early_application_answers"} {
+		var answer, origin string
+		if err := a.db.QueryRow(`SELECT answer,COALESCE(reuse_source_json,'') FROM `+table+` WHERE job_id=2 AND answer=?`, collabB).Scan(&answer, &origin); err == nil {
+			storedB, originB = answer, origin
+			break
+		}
+	}
+	if storedB != collabB || !strings.Contains(originB, fmt.Sprint(libraryEntryID)) {
+		t.Fatalf("job B adapted answer missing or unlinked: %q origin=%q", storedB, originB)
+	}
+	var storedLetterB, letterOriginB string
+	if err := a.db.QueryRow(`SELECT body,COALESCE(reuse_source_json,'') FROM cover_letters WHERE job_id=2`).Scan(&storedLetterB, &letterOriginB); err != nil || storedLetterB != letterB {
+		t.Fatalf("job B letter not saved: %q %v", storedLetterB, err)
+	}
+	if !strings.Contains(letterOriginB, fmt.Sprint(priorLetterID)) {
+		t.Fatalf("job B letter lost its prior-letter origin: %q", letterOriginB)
+	}
+	if scopeB, scopeErr := a.buildContinuation(2); scopeErr != nil {
+		t.Fatalf("job B scope: %v", scopeErr)
+	} else if lj, ok := scopeB["letter"].(*continuationLetterJSON); !ok || lj == nil || lj.ContentHash != fmt.Sprintf("%x", sha256.Sum256([]byte(letterB))) {
+		t.Fatalf("job B scope does not carry the new letter: %+v", scopeB["letter"])
+	}
+
+	// Fill job B once and verify the employer form receives B's selected
+	// résumé, eligible answers, and selected letter — and nothing else.
+	click("Apply")
+	wait(`document.body.innerText.includes('journey-resume.pdf')`)
+	wait(`document.querySelector('.pending-answer-scope')?.innerText.includes('weekly updates')`)
+	wait(`document.body.innerText.includes('Selected saved letter')`)
+	wait(`Array.from(document.querySelectorAll('#employer button')).some(x=>x.textContent.trim()==='Fill Application' && !x.disabled)`)
+	employerPage = base + "/application"
+	click("Fill Application")
+	wait(`document.querySelector('.continuation-outcomes')?.innerText.includes('Résumé')`)
+	if launches.Load() != 3 {
+		t.Fatalf("job B Fill launched %d browsers", launches.Load())
+	}
+	deadline = time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		s := a.browsers.state(2)
+		if s.ResumeStatus == "selected" && s.LetterStatus == map[bool]string{true: "review", false: "complete"}[occupied] {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if occupied {
+		var existingB string
+		if err := employerEval(`document.querySelector('[name=cover]').files[0]?.name`, &existingB); err != nil || existingB != "existing.pdf" {
+			t.Fatalf("job B Fill overwrote the existing attachment: %q %v", existingB, err)
+		}
+		if err := employerEval(`(()=>{const e=document.querySelector('[name=cover]');e.value='';e.dispatchEvent(new Event('change',{bubbles:true}))})()`, nil); err != nil {
+			t.Fatal(err)
+		}
+		wait(`document.querySelector('.continuation-outcomes')?.innerText.includes('Cover letter') && document.querySelector('.continuation-outcomes')?.innerText.includes('Review in the employer browser')`)
+		wait(`Array.from(document.querySelectorAll('#employer button')).some(x=>x.textContent.trim()==='Fill Application' && !x.disabled)`)
+		click("Fill Application")
+	}
+	deadline = time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) && a.browsers.state(2).LetterStatus != "complete" {
+		time.Sleep(100 * time.Millisecond)
+	}
+	deadline = time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		var contactB []string
+		if err := employerEval(`[document.querySelector('[name=first_name]')?.value||'',document.querySelector('[name=last_name]')?.value||'',document.querySelector('[name=email]')?.value||'',document.querySelector('[name=linkedin]').value]`, &contactB); err == nil && fmt.Sprint(contactB) == "[Casey Fixture casey@example.test https://example.test/casey]" {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	var observedB struct {
+		Motivation string `json:"motivation"`
+		Other      string `json:"other"`
+		Collab     string `json:"collab"`
+		Manual     string `json:"manual"`
+		LetterHash string `json:"letterHash"`
+		ResumeHash string `json:"resumeHash"`
+		Submits    int    `json:"submits"`
+		LinkedIn   string `json:"linkedIn"`
+		FirstName  string `json:"firstName"`
+		LastName   string `json:"lastName"`
+		Email      string `json:"email"`
+		Phone      string `json:"phone"`
+	}
+	err = employerEval(`(async()=>({motivation:document.querySelector('[name=motivation]')?.value||'',other:document.querySelector('[name=other]')?.value||'',collab:document.querySelector('[name=collaboration]')?.value||'',manual:document.querySelector('[name=manual]').value,linkedIn:document.querySelector('[name=linkedin]').value,firstName:document.querySelector('[name=first_name]')?.value||'',lastName:document.querySelector('[name=last_name]')?.value||'',email:document.querySelector('[name=email]')?.value||'',phone:document.querySelector('[name=phone]')?.value||'',letterHash:Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",await document.querySelector("[name=cover]").files[0].arrayBuffer()))).map(x=>x.toString(16).padStart(2,"0")).join(""),resumeHash:Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",await document.querySelector("[name=resume]").files[0].arrayBuffer()))).map(x=>x.toString(16).padStart(2,"0")).join(""),submits}))()`, &observedB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("job B employer form: %+v", observedB)
+	t.Logf("job B browser state: %+v", a.browsers.state(2))
+	letterBPDF, err := coverLetterPDF(letterB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	letterBSum := sha256.Sum256(letterBPDF)
+	if observedB.Collab != collabB || observedB.Motivation != "" || observedB.Other != "" || observedB.Manual != "Already entered" {
+		t.Fatalf("job B answers leaked or missed: %+v", observedB)
+	}
+	if observedB.LetterHash != hex.EncodeToString(letterBSum[:]) {
+		t.Fatalf("job B letter differs from the selected new draft: %+v", observedB)
+	}
+	if observedB.ResumeHash != hex.EncodeToString(sum[:]) {
+		t.Fatal("job B resume bytes differ")
+	}
+	if observedB.LinkedIn != "https://example.test/casey" || observedB.FirstName != "Casey" || observedB.LastName != "Fixture" || observedB.Email != "casey@example.test" || observedB.Phone != "Manual phone" {
+		t.Fatalf("job B contacts wrong: %+v", observedB)
+	}
+	if observedB.Submits != 0 {
+		t.Fatalf("job B submitted to the employer: %+v", observedB)
+	}
+	if done, err := a.jobByID(2); err != nil || done.Stage == StageApplied || done.SubmissionCount != 0 {
+		t.Fatalf("job B Fill recorded a submission: %+v %v", done, err)
+	}
+	if st := a.browsers.state(1); st.Active {
+		t.Fatalf("job B Fill reopened job A: %+v", st)
+	}
+	t.Log("Job B received its own selected résumé, adapted answer, and new letter; job A's originals and the unselected material stayed out of the employer form.")
 
 	// Stop the fixture host and its sole SQLite writer, then run the same
 	// ordinary executable twice against that exact synthetic workspace.
