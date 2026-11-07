@@ -316,6 +316,11 @@ func TestLiveContactStructure(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Logf("Read-only contact structure: %+v", structure)
+			var plan any
+			if err := evaluateRead(ctx, ws, 2, contactResolver+`(location.origin, location.pathname.replace(/\/application\/?$/, '')).plan()`, &plan); err != nil {
+				t.Fatal(err)
+			}
+			t.Logf("Read-only contact plan: %+v", plan)
 			return
 		}
 		select {
@@ -325,4 +330,24 @@ func TestLiveContactStructure(t *testing.T) {
 		}
 	}
 	t.Fatal("live application controls were not observed")
+}
+
+// TestLiveQuestionPreview observes public controls without candidate data.
+func TestLiveQuestionPreview(t *testing.T) {
+	raw := os.Getenv("YOURMOVE_LIVE_OBSERVE_URL")
+	if raw == "" {
+		t.Skip("explicit live read-only URL required")
+	}
+	started := time.Now()
+	result, err := Preview(context.Background(), raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("preview elapsed=%s fields=%d completeness=%s", time.Since(started), len(result.Fields), result.Completeness)
+	for _, field := range result.Fields {
+		t.Logf("question kind=%s label=%s", field.Kind, field.Label)
+	}
+	if len(result.Fields) == 0 {
+		t.Fatal("preview returned no fields")
+	}
 }

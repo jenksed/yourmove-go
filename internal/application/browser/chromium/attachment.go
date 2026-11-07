@@ -92,7 +92,7 @@ func (s *Session) AttachCoverLetter(ctx context.Context, path, digest string) (A
 	return s.attachDocument(ctx, path, true, digest)
 }
 
-func (s *Session) attachDocument(ctx context.Context, path string, cover bool, digest string) (AttachmentResult, error) {
+func (s *Session) attachDocument(ctx context.Context, path string, cover bool, digest string, automatic ...bool) (AttachmentResult, error) {
 	c, cancel := context.WithTimeout(ctx, 12*time.Second)
 	defer cancel()
 	if err := s.lockContext(c); err != nil {
@@ -117,6 +117,17 @@ func (s *Session) attachDocument(ctx context.Context, path string, cover bool, d
 	var inputs []fileInput
 	if err := evaluateRead(c, ws, 1, fileInputSurvey, &inputs); err != nil {
 		return AttachmentResult{}, &PreflightError{Cause: err}
+	}
+	if len(automatic) > 0 && automatic[0] {
+		var textTargets int
+		if err := evaluateRead(c, ws, 20, browser.CoverLetterTextSurvey, &textTargets); err != nil {
+			return AttachmentResult{}, err
+		}
+		if textTargets > 0 {
+			if _, fileErr := browser.ChooseDocumentInput(inputs, filepath.Ext(path), true); !errors.Is(fileErr, browser.ErrNoCoverInput) {
+				return AttachmentResult{}, ErrAmbiguousCoverInput
+			}
+		}
 	}
 	idx, err := chooseDocumentInput(inputs, filepath.Ext(path), cover)
 	if err != nil {
@@ -175,6 +186,17 @@ func (s *Session) attachDocument(ctx context.Context, path string, cover bool, d
 	if err := evaluateRead(c, ws, 8, "location.href", &currentURL); err != nil || !owns(currentURL) {
 		return AttachmentResult{}, errors.New("application changed before document selection; review the destination")
 	}
+	if len(automatic) > 0 && automatic[0] {
+		var textTargets int
+		if err := evaluateRead(c, ws, 20, browser.CoverLetterTextSurvey, &textTargets); err != nil {
+			return AttachmentResult{}, err
+		}
+		if textTargets > 0 {
+			if _, fileErr := browser.ChooseDocumentInput(inputs, filepath.Ext(path), true); !errors.Is(fileErr, browser.ErrNoCoverInput) {
+				return AttachmentResult{}, ErrAmbiguousCoverInput
+			}
+		}
+	}
 	data, err := os.ReadFile(path)
 	if err != nil || len(data) == 0 {
 		return AttachmentResult{}, errors.New("prepared document is unavailable")
@@ -204,4 +226,9 @@ func (s *Session) attachDocument(ctx context.Context, path string, cover bool, d
 		out.Detail = "Exact named file present in employer input; employer upload acceptance still unverified"
 	}
 	return out, nil
+}
+
+// AttachCoverLetterAuto refuses competing text destinations before file selection.
+func (s *Session) AttachCoverLetterAuto(ctx context.Context, path, digest string) (AttachmentResult, error) {
+	return s.attachDocument(ctx, path, true, digest, true)
 }

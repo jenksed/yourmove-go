@@ -32,7 +32,16 @@ func (a *App) updateCandidate(w http.ResponseWriter, r *http.Request) {
 	}
 	p := CandidateProfile{FirstName: r.PostForm.Get("first_name"), LastName: r.PostForm.Get("last_name"), Email: r.PostForm.Get("email"), Phone: r.PostForm.Get("phone"), City: r.PostForm.Get("city"), Region: r.PostForm.Get("region"), Country: r.PostForm.Get("country"), LinkedIn: r.PostForm.Get("linkedin"), GitHub: r.PostForm.Get("github"), Portfolio: r.PostForm.Get("portfolio"), Pronouns: r.PostForm.Get("pronouns"), Approved: r.PostForm.Get("approve") == "yes"}
 	if err := a.saveCandidateProfile(p); err != nil {
-		http.Error(w, "Profile was not saved: "+err.Error(), 400)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		w.WriteHeader(http.StatusBadRequest)
+		// Preserve the rejected submission so the applicant can correct and
+		// retry without losing entered values. Nothing is persisted here.
+		_ = a.resources.candidateTemplate.ExecuteTemplate(w, "candidate-save-error", struct {
+			Profile        CandidateProfile
+			Error          string
+			ApproveChecked bool
+		}{Profile: p, Error: "Profile was not saved: " + err.Error(), ApproveChecked: r.PostForm.Get("approve") == "yes"})
 		return
 	}
 	http.Redirect(w, r, "/candidate", http.StatusSeeOther)

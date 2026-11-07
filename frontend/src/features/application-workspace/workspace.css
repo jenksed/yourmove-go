@@ -90,44 +90,108 @@
   overflow-wrap: anywhere;
 }
 
-.workspace-suggestion {
-  margin: 0 24px 16px;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: var(--color-surface-muted);
-  padding: 16px;
+.resume-current {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 16px;
+  margin: 0 24px 12px;
 }
 
-.workspace-suggestion h3 {
-  margin: 6px 0;
+.resume-current-text p {
+  margin: 0 0 4px;
+  overflow-wrap: anywhere;
 }
 
-.workspace-suggestion-note {
-  padding: 0 24px;
+.resume-current .button {
+  flex-shrink: 0;
 }
 
-.workspace-options {
-  list-style: none;
-  margin: 8px 0 0;
-  padding: 0 24px 8px;
-  display: grid;
-  gap: 10px;
-}
-
-.transfer-ready {
-  color: var(--color-success);
-}
-
-.transfer-blocked {
-  color: var(--color-attention);
-}
-
-.transfer-note {
+.resume-family {
   color: var(--color-muted);
+}
+
+.resume-suggestion {
+  margin: 0 24px 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.resume-chooser {
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 0;
+  width: min(560px, calc(100vw - 48px));
+  max-height: min(640px, calc(100vh - 96px));
+  color: inherit;
+  background: var(--color-surface);
+}
+
+.resume-chooser::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.resume-chooser-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px 0;
+}
+
+.resume-chooser-head h3 {
+  margin: 0;
+}
+
+.resume-chooser-tools {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 12px 20px 0;
+}
+
+.resume-chooser .job-form-error {
+  margin: 12px 20px 0;
+}
+
+.resume-chooser-list {
+  margin: 12px 20px 20px;
+  max-height: 300px;
+  overflow-y: auto;
+  display: grid;
+  gap: 4px;
+}
+
+.chooser-group {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.chooser-group legend {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-muted);
+  padding: 8px 0 2px;
+}
+
+.chooser-row {
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+
+.chooser-row:has(input:checked) {
+  background: var(--color-surface-muted);
+}
+
+.chooser-row-text {
+  overflow-wrap: anywhere;
 }
 
 .readiness-grid {
@@ -585,9 +649,13 @@
 }
 
 @media (max-width: 760px) {
-  .workspace-suggestion {
+  .resume-current {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .resume-chooser-tools {
+    grid-template-columns: 1fr;
   }
 
   .readiness-grid {

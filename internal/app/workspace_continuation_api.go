@@ -489,8 +489,10 @@ func (a *App) continuationContinueAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// React's Fill action carries the displayed profile revision and résumé
-	// identity even for subsequent material. Revalidate both before any effect.
-	if input.ProfileRevision != "" {
+	// identity for material that depends on them. Revalidate both before any
+	// résumé or contact effect. Letter and answer work keeps its own
+	// per-item identity checks so a missing résumé never blocks them.
+	if (input.IncludeResume || input.TransferContacts) && input.ProfileRevision != "" {
 		profile, profileErr := a.candidateProfile()
 		if profileErr != nil || input.ProfileRevision != strconv.FormatInt(profile.Revision, 10) {
 			writeResumeError(w, http.StatusConflict, "Candidate Profile changed. Review it before filling.")
@@ -511,6 +513,7 @@ func (a *App) continuationContinueAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var authorizedAnswers *applicationAnswerTransfer
+	answersRefused := ""
 	if input.IncludeAnswers {
 		payload, scopeErr := a.buildContinuation(jobID)
 		if scopeErr != nil {
@@ -519,10 +522,29 @@ func (a *App) continuationContinueAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		scope := payload["answerScopeInternal"].([]preparedQuestion)
 		if len(scope) == 0 || input.ReviewHash != reactAnswerScopeHash(scope) {
-			writeResumeError(w, http.StatusConflict, "Saved answers changed. Review them before filling.")
+			if !input.IncludeResume && !input.IncludeLetter && !input.TransferContacts {
+				writeResumeError(w, http.StatusConflict, "Saved answers changed. Review them before filling.")
+				return
+			}
+			answersRefused = "Saved answers changed. Review them before filling."
+		} else {
+			authorizedAnswers = a.reactAnswerTransfer(job, scope, input.ProfileRevision)
+		}
+	}
+	// Letter and answer work may start its own authorized session. Viewing,
+	// saving, or loading scope never starts a browser.
+	if (input.IncludeLetter || (input.IncludeAnswers && authorizedAnswers != nil)) && !a.browsers.state(jobID).Active {
+		if err := a.browsers.start(r.Context(), jobID, job.URL); err != nil {
+			writeResumeError(w, http.StatusServiceUnavailable, "Unable to open the employer browser: "+err.Error())
 			return
 		}
-		authorizedAnswers = a.reactAnswerTransfer(job, scope, input.ProfileRevision)
+		a.browsers.watch(jobID, job.URL, func(o browser.Observation) (int64, error) {
+			result, e := browser.AsResult(job.URL, o)
+			if e != nil {
+				return 0, e
+			}
+			return a.saveInspection(jobID, result)
+		})
 	}
 	form := continueForm(input)
 	cmd := &http.Request{Method: http.MethodPost, PostForm: form}
@@ -554,12 +576,16 @@ func (a *App) continuationContinueAPI(w http.ResponseWriter, r *http.Request) {
 		results = append(results, continueItemResult{Item: "contacts", OK: status == http.StatusSeeOther, Status: status, Detail: detail})
 	}
 	run("letter", input.IncludeLetter, a.coverLetterCommand)
-	run("answers", input.IncludeAnswers, func(r *http.Request, id int64) (int, string) {
-		if err := a.browsers.armAnswers(id, job.URL, authorizedAnswers); err != nil {
-			return http.StatusConflict, err.Error()
-		}
-		return http.StatusSeeOther, "Answer filling started"
-	})
+	if answersRefused != "" {
+		results = append(results, continueItemResult{Item: "answers", OK: false, Status: http.StatusConflict, Detail: answersRefused})
+	} else {
+		run("answers", input.IncludeAnswers && authorizedAnswers != nil, func(r *http.Request, id int64) (int, string) {
+			if err := a.browsers.armAnswers(id, job.URL, authorizedAnswers); err != nil {
+				return http.StatusConflict, err.Error()
+			}
+			return http.StatusSeeOther, "Answer filling started"
+		})
+	}
 	writeResumeJSON(w, http.StatusOK, map[string]any{
 		"items": results, "browser": a.browsers.state(jobID),
 	})

@@ -667,7 +667,177 @@ func TestContinuationRejectsChangedEarlyAnswerBeforeBrowserLaunch(t *testing.T) 
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusConflict || launches != 0 {
-		t.Fatalf("stale scope status=%d launches=%d body=%s", rec.Code, launches, rec.Body.String())
+	if launches != 0 {
+		t.Fatalf("stale scope launched=%d body=%s", launches, rec.Body.String())
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("stale scope status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Items []continueItemResult `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	byItem := map[string]continueItemResult{}
+	for _, item := range out.Items {
+		byItem[item.Item] = item
+	}
+	if got, ok := byItem["answers"]; !ok || got.OK || got.Status != http.StatusConflict {
+		t.Fatalf("stale answers not refused per item: %+v", out.Items)
+	}
+}
+
+func TestContinueLetterAndAnswersWithoutResume(t *testing.T) {
+	a, _ := testWorkspace(t)
+	seedContinuationJob(t, a)
+	body := "Dear Hiring Team, I bring verified support experience to this role and welcome the opportunity to contribute."
+	if _, err := a.db.Exec(`INSERT INTO cover_letters(job_id,body,provider,model,master_resume_id,master_sha256,role_resume_id,role_sha256,job_description_sha256,created_at) VALUES(1,?,'fixture','test',1,'master',1,'role','job','now')`, body); err != nil {
+		t.Fatal(err)
+	}
+	draft, err := a.latestCoverLetter(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &continuationBrowser{fakeLetterBrowser: &fakeLetterBrowser{fakeBrowser: &fakeBrowser{url: testAshbyPosting + "/application"}}}
+	a.browsers.factory = func(context.Context, string) (readOnlySession, error) { return f, nil }
+	scope := continuationScope(t, a, 1)
+	prep := scope["preparation"].(map[string]any)
+	payload, _ := json.Marshal(map[string]any{
+		"destination":    testAshbyPosting,
+		"include_letter": true, "draft_id": itoa(draft.ID), "body_hash": draft.ContentHash(), "mode": "auto",
+		"include_answers": true, "review_hash": prep["answerReviewHash"],
+	})
+	req := httptest.NewRequest(http.MethodPost, "http://localhost/api/jobs/1/continue", strings.NewReader(string(payload)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	newMux(a).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("letter/answer-only status=%d %s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Items []continueItemResult `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	byItem := map[string]continueItemResult{}
+	for _, item := range out.Items {
+		byItem[item.Item] = item
+	}
+	if got, ok := byItem["letter"]; !ok || !got.OK {
+		t.Fatalf("letter not armed without resume: %+v", out.Items)
+	}
+	if got, ok := byItem["answers"]; !ok || !got.OK {
+		t.Fatalf("answers not armed without resume: %+v", out.Items)
+	}
+	if !a.browsers.state(1).Active {
+		t.Fatal("letter/answer Fill did not open its own session")
+	}
+}
+
+func TestContinueStaleAnswersDoNotBlockLetter(t *testing.T) {
+	a, _ := testWorkspace(t)
+	seedContinuationJob(t, a)
+	body := "Dear Hiring Team, I bring verified support experience to this role and welcome the opportunity to contribute."
+	if _, err := a.db.Exec(`INSERT INTO cover_letters(job_id,body,provider,model,master_resume_id,master_sha256,role_resume_id,role_sha256,job_description_sha256,created_at) VALUES(1,?,'fixture','test',1,'master',1,'role','job','now')`, body); err != nil {
+		t.Fatal(err)
+	}
+	draft, err := a.latestCoverLetter(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &continuationBrowser{fakeLetterBrowser: &fakeLetterBrowser{fakeBrowser: &fakeBrowser{url: testAshbyPosting + "/application"}}}
+	a.browsers.factory = func(context.Context, string) (readOnlySession, error) { return f, nil }
+	payload, _ := json.Marshal(map[string]any{
+		"destination":    testAshbyPosting,
+		"include_letter": true, "draft_id": itoa(draft.ID), "body_hash": draft.ContentHash(), "mode": "auto",
+		"include_answers": true, "review_hash": "stale",
+	})
+	req := httptest.NewRequest(http.MethodPost, "http://localhost/api/jobs/1/continue", strings.NewReader(string(payload)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	newMux(a).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("mixed scope status=%d %s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Items []continueItemResult `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	byItem := map[string]continueItemResult{}
+	for _, item := range out.Items {
+		byItem[item.Item] = item
+	}
+	if got, ok := byItem["letter"]; !ok || !got.OK {
+		t.Fatalf("valid letter blocked by stale answers: %+v", out.Items)
+	}
+	if got, ok := byItem["answers"]; !ok || got.OK {
+		t.Fatalf("stale answers not refused: %+v", out.Items)
+	}
+}
+
+// TestContinueRejectsForeignJobReviewHash proves an outdated asynchronous
+// response authorized for job A cannot authorize job B's transfer. Job B's
+// own scope hash succeeds; job A's hash is refused before any browser launch.
+func TestContinueRejectsForeignJobReviewHash(t *testing.T) {
+	a, _ := testWorkspace(t)
+	seedContinuationJob(t, a)
+	const urlB = "https://jobs.ashbyhq.com/render/99999999-9999-4999-8999-999999999999"
+	if err := a.saveJob(Job{URL: urlB, Host: "jobs.ashbyhq.com", Title: "Role B"}); err != nil {
+		t.Fatal(err)
+	}
+	fields := []schema.Field{
+		{ID: "browser:why", Label: "Why this team?", Kind: "textarea"},
+		{ID: "browser:site", Label: "Website", Kind: "text"},
+	}
+	if _, err := a.saveInspection(2, schema.Result{Platform: "ashby", Source: "browser", Completeness: "rendered_partial", ApplicationURL: urlB + "/application", Fields: fields}); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range fields {
+		if _, err := a.db.Exec(`INSERT INTO application_answers(job_id,destination,provider,question_key,label,answer,revision) VALUES(2,?,?,?,?,'Approved B for `+f.ID+`',1)`, urlB, "ashby", questionKey(urlB, "ashby", f), f.Label); err != nil {
+			t.Fatal(err)
+		}
+	}
+	jobA, _ := a.jobByID(1)
+	jobB, _ := a.jobByID(2)
+	profile, _ := a.candidateProfile()
+	prepA, err := a.prepareQuestions(jobA, profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepB, err := a.prepareQuestions(jobB, profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hashA := reactAnswerScopeHash(prepA.ReadyAnswers())
+	hashB := reactAnswerScopeHash(prepB.ReadyAnswers())
+	if hashA == hashB {
+		t.Fatal("job scopes are not isolated")
+	}
+	launches := 0
+	a.browsers.factory = func(context.Context, string) (readOnlySession, error) {
+		launches++
+		return &fakeAnswerBrowser{fakeBrowser: &fakeBrowser{url: urlB + "/application"}, controls: []browser.Control{{ID: "why", Label: "Why this team?", Kind: "textarea"}, {ID: "site", Label: "Website", Kind: "text"}}}, nil
+	}
+	defer a.browsers.closeAll()
+	post := func(hash string) *httptest.ResponseRecorder {
+		body := `{"destination":"` + urlB + `","include_answers":true,"review_hash":"` + hash + `"}`
+		req := httptest.NewRequest(http.MethodPost, "http://localhost/api/jobs/2/continue", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		newMux(a).ServeHTTP(rec, req)
+		return rec
+	}
+	if rec := post(hashA); rec.Code != http.StatusConflict || launches != 0 {
+		t.Fatalf("foreign scope authorized or launched: status=%d launches=%d body=%s", rec.Code, launches, rec.Body.String())
+	}
+	if rec := post(hashB); rec.Code != http.StatusOK || launches != 1 {
+		t.Fatalf("own scope refused: status=%d launches=%d body=%s", rec.Code, launches, rec.Body.String())
+	}
+	if stored, _ := a.jobByID(2); stored.Stage == StageApplied || stored.SubmissionCount != 0 {
+		t.Fatalf("transfer recorded a submission: %+v", stored)
 	}
 }
