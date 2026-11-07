@@ -42,8 +42,10 @@ func (a *App) transferCoverLetter(w http.ResponseWriter, r *http.Request) {
 	writeTransferResult(w, r, status, detail)
 }
 
-// coverLetterCommand validates the exact submitted material before arming its existing operation.
-func (a *App) coverLetterCommand(r *http.Request, id int64) (int, string) {
+// validateCoverLetterRequest checks the exact submitted letter material
+// without arming anything or starting a browser. Status 0 means the
+// request may proceed to arming.
+func (a *App) validateCoverLetterRequest(r *http.Request, id int64) (int, string) {
 	job, err := a.jobByID(id)
 	if err != nil {
 		return http.StatusNotFound, "Opportunity or material unavailable"
@@ -73,6 +75,25 @@ func (a *App) coverLetterCommand(r *http.Request, id int64) (int, string) {
 	if mode != "file" && mode != "text" && mode != "auto" {
 		return 422, "Choose a cover-letter destination"
 	}
+	return 0, ""
+}
+
+// coverLetterCommand validates the exact submitted material before arming its existing operation.
+func (a *App) coverLetterCommand(r *http.Request, id int64) (int, string) {
+	if status, detail := a.validateCoverLetterRequest(r, id); status != 0 {
+		return status, detail
+	}
+	job, err := a.jobByID(id)
+	if err != nil {
+		return http.StatusNotFound, "Opportunity or material unavailable"
+	}
+	draftID, _ := strconv.ParseInt(r.PostForm.Get("draft_id"), 10, 64)
+	draft, err := a.coverLetterByID(id, draftID)
+	if err != nil {
+		return http.StatusNotFound, "Opportunity or material unavailable"
+	}
+	requireSelection := r.PostForm.Get("require_selected_letter") == "yes"
+	mode := r.PostForm.Get("mode")
 	up := &coverLetterTransfer{draftID: draft.ID, destination: job.URL, body: draft.Body, mode: mode, status: "waiting", message: "Waiting for the intended cover-letter control in the current employer browser."}
 	up.current = func() bool {
 		latest, e := a.coverLetterByID(id, draftID)

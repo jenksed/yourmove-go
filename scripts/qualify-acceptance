@@ -1,0 +1,265 @@
+#!/bin/bash
+# Acceptance Runner, Slice 1: execute YourMove's existing real-browser
+# application acceptance journey and record trustworthy evidence.
+#
+# Runs the existing S2 logic tests plus the three opt-in controlled-browser
+# qualification tests against isolated synthetic workspaces, using the
+# production Go browser path and a controlled local employer fixture.
+# No live employer URLs, credentials, or applicant data are used.
+#
+# Usage: scripts/qualify-acceptance [evidence-dir]
+#
+# Exit status: 0 PASS, 1 FAIL (a test failed), 2 BLOCKED (prerequisite or
+# environment problem; not a passing run). Skipped tests are reported as
+# SKIP, never as passing evidence.
+set -euo pipefail
+
+source_root="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$source_root"
+
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+  echo "Usage: scripts/qualify-acceptance [evidence-dir]" >&2
+  exit 2
+fi
+
+if [ -n "${1:-}" ]; then
+  case "$1" in
+    /*) evidence_dir="$1" ;;
+    *) echo "BLOCKED: evidence dir must be an absolute path: $1" >&2; exit 2 ;;
+  esac
+  mkdir -p "$evidence_dir" || { echo "BLOCKED: cannot create evidence dir $evidence_dir" >&2; exit 2; }
+else
+  tmp_base="${TMPDIR:-/tmp}"
+  evidence_dir="$(mktemp -d "$tmp_base/yourmove-acceptance-XXXXXX")"
+fi
+workspace_root="$evidence_dir/workspaces"
+mkdir -p "$workspace_root"
+jsonl="$evidence_dir/tests.jsonl"
+: > "$jsonl"
+
+overall="PASS"
+blocker=""
+note() { printf '%s\n' "$1" >> "$evidence_dir/harness.log"; }
+
+# --- Preflight: fail fast on missing prerequisites, never silently. ---
+if [ -n "${YOURMOVE_LIVE_FILL_URL:-}" ]; then
+  echo "BLOCKED: YOURMOVE_LIVE_FILL_URL is set; live-employer settings must stay unset." >&2
+  exit 2
+fi
+
+need_version() {
+  # $1 = label, $2 = actual, $3 = expected prefix
+  case "$2" in
+    "$3"*) ;;
+    *) echo "BLOCKED: $1 version mismatch: have '$2', want '$3'." >&2; exit 2 ;;
+  esac
+}
+
+command -v go >/dev/null 2>&1 || { echo "BLOCKED: go not on PATH." >&2; exit 2; }
+command -v node >/dev/null 2>&1 || { echo "BLOCKED: node not on PATH." >&2; exit 2; }
+command -v pnpm >/dev/null 2>&1 || { echo "BLOCKED: pnpm not on PATH." >&2; exit 2; }
+
+go_version="$(go version | awk '{print $3}')"
+go_want="$(awk '/^go /{print $2; exit}' go.mod)"
+case "$go_want" in
+  *.*) go_want_prefix="go$go_want" ;;
+  *) go_want_prefix="go$go_want." ;;
+esac
+need_version "go" "$go_version" "$go_want_prefix"
+
+node_want="$(tr -d ' \t\r\n' < frontend/.nvmrc)"
+need_version "node" "v$(node --version | tr -d ' \t\r\n' | sed 's/^v//')" "v$node_want"
+need_version "pnpm" "v$(pnpm --version | tr -d ' \t\r\n')" "v10.14.0"
+
+if [ ! -f frontend/dist/index.html ]; then
+  echo "BLOCKED: frontend/dist is missing. Rebuild first:" >&2
+  echo "  cd frontend && pnpm install --frozen-lockfile && pnpm run build" >&2
+  exit 2
+fi
+
+# Mirror internal/application/browser/chromium executable discovery so a
+# missing browser is reported as BLOCKED instead of a confusing test FAIL.
+find_chromium() {
+  if [ -n "${YOURMOVE_CHROMIUM:-}" ]; then
+    case "$YOURMOVE_CHROMIUM" in
+      /*)
+        if [ -x "$YOURMOVE_CHROMIUM" ]; then
+          printf '%s' "$YOURMOVE_CHROMIUM"
+          return 0
+        fi
+        ;;
+    esac
+    return 1
+  fi
+  for name in google-chrome google-chrome-stable chromium chromium-browser chrome; do
+    found="$(command -v "$name" 2>/dev/null || true)"
+    if [ -n "$found" ]; then
+      printf '%s' "$found"
+      return 0
+    fi
+  done
+  for app_bin in \
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+    "/Applications/Chromium.app/Contents/MacOS/Chromium" \
+    "$HOME/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"; do
+    if [ -x "$app_bin" ]; then
+      printf '%s' "$app_bin"
+      return 0
+    fi
+  done
+  cache="${PLAYWRIGHT_BROWSERS_PATH:-}"
+  if [ -z "$cache" ]; then
+    for candidate in "$HOME/Library/Caches/ms-playwright" "$HOME/.cache/ms-playwright"; do
+      if [ -d "$candidate" ]; then
+        cache="$candidate"
+        break
+      fi
+    done
+  fi
+  if [ -n "$cache" ]; then
+    for suffix in \
+      "chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" \
+      "chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" \
+      "chrome-mac/Chromium.app/Contents/MacOS/Chromium" \
+      "chrome-win64/chrome.exe" \
+      "chrome-win/chrome.exe" \
+      "chrome-linux/chrome"; do
+      # Prefer the newest cached build, mirroring the Go discovery order.
+      latest=""
+      for match in "$cache"/chromium-*/"$suffix"; do
+        if [ -x "$match" ]; then
+          latest="$match"
+        fi
+      done
+      if [ -n "$latest" ]; then
+        printf '%s' "$latest"
+        return 0
+      fi
+    done
+  fi
+  return 1
+}
+
+if chromium_bin="$(find_chromium)"; then
+  chromium_version="$("$chromium_bin" --version 2>/dev/null | head -n 1 | tr -d '\r\n' || true)"
+else
+  chromium_bin="NOT FOUND"
+  chromium_version="NOT FOUND"
+  overall="BLOCKED"
+  blocker="No Chrome/Chromium executable found (PATH, standard installs, Playwright cache, YOURMOVE_CHROMIUM all empty). Controlled-browser tests cannot run."
+fi
+
+sha="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+dirty="$(git status --porcelain=v1 2>/dev/null | wc -l | tr -d ' ')"
+os_name="$(uname -s 2>/dev/null || echo unknown)"
+arch="$(uname -m 2>/dev/null || echo unknown)"
+os_version="$(sw_vers -productVersion 2>/dev/null || uname -r 2>/dev/null || echo unknown)"
+
+# --- Execute: serially, one isolated synthetic workspace per suite. ---
+run_suite() {
+  # $1 = suite label, $2 = workspace, rest = go test args (without -json)
+  label="$1"; shift
+  ws="$1"; shift
+  mkdir -p "$ws"
+  set +e
+  YOURMOVE_DATA_DIR="$ws" YOURMOVE_QUALIFY_BROWSER=1 \
+    go test -json -count=1 -timeout=5m "$@" >> "$jsonl" 2> "$evidence_dir/$label.stderr.log"
+  status=$?
+  set -e
+  printf '%s %s\n' "$status" "$label" >> "$evidence_dir/suite.status"
+  return 0
+}
+
+if [ "$overall" != "BLOCKED" ]; then
+  run_suite "s2" "$workspace_root/s2" ./internal/app -run '^TestS2'
+  run_suite "browser" "$workspace_root/browser" -tags qualification ./internal/app \
+    -run '^(TestReactJourneyDocumentTransfer|TestControlledRuntimeRestart|TestControlledAnswerLibraryWorkbench)$'
+fi
+
+# --- Report: test-level PASS/FAIL/SKIP from go test -json events. ---
+pass_count=0; fail_count=0; skip_count=0
+per_test=""
+if [ -f "$jsonl" ]; then
+  for result in pass fail skip; do
+    names="$(grep -o '"Action":"'"$result"'","Package":"[^"]*","Test":"[^"]*"' "$jsonl" 2>/dev/null | sed 's/.*","Test":"//;s/"$//' | sort -u || true)"
+    for name in $names; do
+      # A test that both fails and passes (retry) counts as failed; a test
+      # with only pass events counts once.
+      case "$result" in
+        pass)
+          if grep -q '"Action":"fail".*"Test":"'"$name"'"' "$jsonl"; then continue; fi
+          pass_count=$((pass_count + 1)); per_test="$per_test
+- $name: PASS" ;;
+        fail) fail_count=$((fail_count + 1)); per_test="$per_test
+- $name: FAIL" ;;
+        skip) skip_count=$((skip_count + 1)); per_test="$per_test
+- $name: SKIP" ;;
+      esac
+    done
+  done
+fi
+
+if [ "$overall" != "BLOCKED" ]; then
+  while read -r status label; do
+    if [ "$status" != "0" ]; then overall="FAIL"; fi
+  done < "$evidence_dir/suite.status"
+  if [ "$fail_count" -gt 0 ]; then overall="FAIL"; fi
+  if [ "$pass_count" -eq 0 ] && [ "$skip_count" -eq 0 ]; then
+    overall="BLOCKED"
+    blocker="No tests executed (pass=0 skip=0). A zero-test run is not acceptance."
+  fi
+fi
+
+json_escape() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr -d '\r\n'; }
+
+cat > "$evidence_dir/manifest.json" <<MANIFEST
+{
+  "source_sha": "$(json_escape "$sha")",
+  "dirty_files": $dirty,
+  "os": "$(json_escape "$os_name")",
+  "os_version": "$(json_escape "$os_version")",
+  "arch": "$(json_escape "$arch")",
+  "go_version": "$(json_escape "$go_version")",
+  "node_version": "$(json_escape "$(node --version)")",
+  "pnpm_version": "$(json_escape "$(pnpm --version)")",
+  "chromium": "$(json_escape "$chromium_bin")",
+  "chromium_version": "$(json_escape "$chromium_version")",
+  "qual_engine": "$(json_escape "${YOURMOVE_QUAL_ENGINE:-chromium(default)}")",
+  "live_fill_url_set": false,
+  "overall": "$overall",
+  "pass": $pass_count,
+  "fail": $fail_count,
+  "skip": $skip_count
+}
+MANIFEST
+
+cat > "$evidence_dir/summary.md" <<SUMMARY
+# Acceptance run: $overall
+
+- Source: $sha (dirty files: $dirty)
+- Platform: $os_name $os_version / $arch
+- Toolchain: $go_version, node $(node --version), pnpm $(pnpm --version)
+- Browser: $chromium_bin ($chromium_version); engine ${YOURMOVE_QUAL_ENGINE:-chromium(default)}
+- Tests: pass=$pass_count fail=$fail_count skip=$skip_count
+- Live employer settings: unset (YOURMOVE_LIVE_FILL_URL empty)
+$([ -n "$blocker" ] && printf '%s\n' "- Blocker: $blocker")
+## Tests
+$([ -n "$per_test" ] && printf '%s\n' "$per_test" || echo "- NOT RUN: no test-level results recorded.")
+## Suites
+$(awk '{printf "- %s: %s\n", $2, ($1 == "0" ? "exit 0" : "exit " $1)}' "$evidence_dir/suite.status" 2>/dev/null || echo "- NOT RUN")
+## Not verified in this slice
+- Native Windows x64 build/GUI/installer (see Slice 1 handoff).
+- Employer-side upload acceptance beyond exact file presence in the employer input.
+- Installed-artifact, upgrade, and native-dialog behavior.
+## Evidence
+- tests.jsonl (machine-readable go test -json), harness.log, manifest.json
+- Workspaces: workspaces/s2, workspaces/browser (synthetic, isolated)
+SUMMARY
+
+note "overall=$overall pass=$pass_count fail=$fail_count skip=$skip_count"
+cat "$evidence_dir/summary.md"
+case "$overall" in
+  PASS) exit 0 ;;
+  FAIL) exit 1 ;;
+  *) echo "BLOCKED: ${blocker:-see summary}" >&2; exit 2 ;;
+esac

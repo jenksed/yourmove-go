@@ -531,9 +531,20 @@ func (a *App) continuationContinueAPI(w http.ResponseWriter, r *http.Request) {
 			authorizedAnswers = a.reactAnswerTransfer(job, scope, input.ProfileRevision)
 		}
 	}
+	form := continueForm(input)
+	cmd := &http.Request{Method: http.MethodPost, PostForm: form}
+	cmd = cmd.WithContext(r.Context())
+	// A stale or otherwise ineligible letter is rejectable without
+	// launching Chromium. Other explicitly authorized material still
+	// proceeds: the browser starts whenever any included item may need
+	// it, and each item still reports its own result.
+	letterStatus := 0
+	if input.IncludeLetter {
+		letterStatus, _ = a.validateCoverLetterRequest(cmd, jobID)
+	}
 	// Letter and answer work may start its own authorized session. Viewing,
 	// saving, or loading scope never starts a browser.
-	if (input.IncludeLetter || (input.IncludeAnswers && authorizedAnswers != nil)) && !a.browsers.state(jobID).Active {
+	if ((input.IncludeLetter && letterStatus == 0) || (input.IncludeAnswers && authorizedAnswers != nil)) && !a.browsers.state(jobID).Active {
 		if err := a.browsers.start(r.Context(), jobID, job.URL); err != nil {
 			writeResumeError(w, http.StatusServiceUnavailable, "Unable to open the employer browser: "+err.Error())
 			return
@@ -546,9 +557,6 @@ func (a *App) continuationContinueAPI(w http.ResponseWriter, r *http.Request) {
 			return a.saveInspection(jobID, result)
 		})
 	}
-	form := continueForm(input)
-	cmd := &http.Request{Method: http.MethodPost, PostForm: form}
-	cmd = cmd.WithContext(r.Context())
 	results := make([]continueItemResult, 0, 3)
 	run := func(item string, included bool, fn func(*http.Request, int64) (int, string)) {
 		if !included {

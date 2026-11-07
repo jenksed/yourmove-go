@@ -107,7 +107,11 @@ func TestControlledRuntimeRestart(t *testing.T) {
 			if e == nil {
 				body, _ := io.ReadAll(response.Body)
 				response.Body.Close()
-				if response.StatusCode == 200 && strings.Contains(string(body), "Runtime fixture 1") {
+				// /jobs/1 serves the React shell when the production
+				// frontend is embedded, so readiness is HTTP 200; the
+				// workspace content itself is verified below through the
+				// controlled browser DOM.
+				if response.StatusCode == 200 && len(body) > 0 {
 					break
 				}
 			}
@@ -131,7 +135,11 @@ func TestControlledRuntimeRestart(t *testing.T) {
 	}
 	defer chrome.Close()
 	for deadline := time.Now().Add(8 * time.Second); ; {
-		err = chrome.FixtureCall(ctx, baseURL+"/jobs", "Target.createTarget", map[string]any{"url": baseURL + "/jobs/2"}, nil)
+		// Observe restart integrity through the supported Go-rendered
+		// fallback (?legacy=1): the plain /jobs/{id} route serves the React
+		// shell, whose equivalent restart persistence is already covered by
+		// TestReactJourneyDocumentTransfer.
+		err = chrome.FixtureCall(ctx, baseURL+"/jobs", "Target.createTarget", map[string]any{"url": baseURL + "/jobs/2?legacy=1"}, nil)
 		if err == nil {
 			break
 		}
@@ -140,7 +148,7 @@ func TestControlledRuntimeRestart(t *testing.T) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	page := baseURL + "/jobs/2"
+	page := baseURL + "/jobs/2?legacy=1"
 	eval := func(script string) bool {
 		var reply struct {
 			Result struct {
@@ -169,7 +177,19 @@ func TestControlledRuntimeRestart(t *testing.T) {
 	}
 	wait(`document.readyState==='complete'&&!document.querySelector('#history').hidden&&document.querySelector('#history').textContent.includes('Runtime confirmation')&&document.querySelector('#history').textContent.includes('restart-resume.pdf')&&!!document.querySelector('#history form[action="/jobs/2/next"]')`)
 	_ = eval(`document.querySelector('#history form[action="/jobs/2/next"] button').click();true`)
-	page = baseURL + "/jobs/1"
+	// The Next form redirects to the React workspace in the same tab.
+	// Open the Go-rendered fallback in a second tab for the legacy DOM
+	// assertions below; the click above already exercised the Next POST.
+	page = baseURL + "/jobs/1?legacy=1"
+	for deadline := time.Now().Add(8 * time.Second); ; {
+		if err := chrome.FixtureCall(ctx, baseURL+"/jobs", "Target.createTarget", map[string]any{"url": page}, nil); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("could not open legacy workspace tab")
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 	wait(`!document.querySelector('#prepare').hidden&&document.querySelector('form[action$="/continue"]').textContent.includes('Saved runtime answer')&&document.querySelector('form[action$="/continue"]').textContent.includes('runtime@example.test')&&document.querySelector('[name=include_resume]')?.value==='yes'&&document.querySelector('#letter_resume_id').value===document.querySelector('#resume_id').value&&document.querySelector('#letter_resume_id').selectedOptions[0].text===document.querySelector('#resume_id').selectedOptions[0].text&&document.querySelector('.browser-reconnect button').textContent.includes('Open browser without filling')`)
 	// Reproduce a real local blocker without touching a live application.
 	path := filepath.Join(dir, "resumes", resume.StoredName)
