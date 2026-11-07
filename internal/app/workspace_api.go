@@ -278,6 +278,9 @@ func (a *App) buildWorkspaceSnapshot(jobID int64) (map[string]any, error) {
 		"job":              toWorkspaceJob(job),
 		"resumeOptions":    optionJSON,
 		"selectedResumeId": job.SelectedResumeID,
+		// Distinct family count lets the workspace distinguish "no families
+		// configured" from "no confident match" without another request.
+		"familyCount": len(families),
 		"suggestion": workspaceMatchJSON{
 			Status: match.Status, FamilyName: match.FamilyName,
 			ResumeID: match.ResumeID, ResumeName: match.ResumeName,

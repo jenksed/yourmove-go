@@ -197,9 +197,11 @@ func qualifyReactJourneyDocumentTransfer(t *testing.T, occupied bool) {
 	wait(`document.body.innerText.includes('Synthetic React journey')`)
 	discoveryStarted := time.Now()
 	click("Documents")
-	wait(`!!document.querySelector('input[name=workspace-resume]:not(:checked)')`)
-	run(`Array.from(document.querySelectorAll('input[name=workspace-resume]')).find(x=>!x.checked).click()`)
-	wait(`document.body.innerText.includes('Selection saved')`)
+	wait(`Array.from(document.querySelectorAll('button')).some(x=>x.textContent.trim()==='Change résumé'&&x.offsetParent!==null)`)
+	run(`Array.from(document.querySelectorAll('button')).find(x=>x.textContent.trim()==='Change résumé').click()`)
+	wait(`document.querySelector('.resume-chooser')?.open===true`)
+	run(`Array.from(document.querySelectorAll('.resume-chooser input[name=chooser-resume]')).find(x=>!x.checked).click()`)
+	wait(`document.querySelector('.resume-chooser')?.open===false`)
 	const letter = "Dear Hiring Team, I am interested in this synthetic support role and would welcome the opportunity to contribute."
 	run(fmt.Sprintf(`(()=>{const e=document.querySelector('#manual-letter');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,%q);e.dispatchEvent(new Event('input',{bubbles:true}))})()`, letter))
 	click("Save new letter")
@@ -623,9 +625,11 @@ backendReady:
 	// Prepare job B with the same résumé and job A's reviewed reusable
 	// material, adapted and saved explicitly for B.
 	click("Documents")
-	wait(`!!document.querySelector('input[name=workspace-resume]:not(:checked)')`)
-	run(`Array.from(document.querySelectorAll('input[name=workspace-resume]')).find(x=>!x.checked).click()`)
-	wait(`document.body.innerText.includes('Selection saved')`)
+	wait(`Array.from(document.querySelectorAll('button')).some(x=>x.textContent.trim()==='Change résumé'&&x.offsetParent!==null)`)
+	run(`Array.from(document.querySelectorAll('button')).find(x=>x.textContent.trim()==='Change résumé').click()`)
+	wait(`document.querySelector('.resume-chooser')?.open===true`)
+	run(`Array.from(document.querySelectorAll('.resume-chooser input[name=chooser-resume]')).find(x=>!x.checked).click()`)
+	wait(`document.querySelector('.resume-chooser')?.open===false`)
 	click("Questions")
 	wait(`Array.from(document.querySelectorAll('[aria-label="Question navigation"] select option')).some(x=>x.textContent.includes('challenging collaboration'))`)
 	selectQuestion("challenging collaboration")
@@ -888,7 +892,7 @@ backendReady:
 	ui = runtimeUI
 	wait(`document.body.innerText.includes('Synthetic React journey')`)
 	click("Documents")
-	wait(`document.body.innerText.includes('journey-resume.pdf') && document.querySelector('input[name=workspace-resume]:checked')?.parentElement.innerText.includes('journey-resume.pdf') && document.querySelector('#letter-history')?.value==='1' && document.querySelector('#letter-body')?.value.includes('synthetic support role')`)
+	wait(`document.body.innerText.includes('journey-resume.pdf') && document.querySelector('.resume-current')?.innerText.includes('journey-resume.pdf') && document.querySelector('#letter-history')?.value==='1' && document.querySelector('#letter-body')?.value.includes('synthetic support role')`)
 	click("Questions")
 	wait(`document.body.innerText.includes('Delayed question')`)
 	run(`(()=>{const e=document.querySelector('[aria-label="Question navigation"] select');e.value=Array.from(e.options).find(x=>x.textContent.includes('Delayed question')).value;e.dispatchEvent(new Event('change',{bubbles:true}))})()`)

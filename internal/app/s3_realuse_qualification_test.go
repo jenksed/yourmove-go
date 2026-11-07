@@ -116,11 +116,12 @@ func TestS3LiveQuestionsAndContacts(t *testing.T) {
 		t.Fatal("ordinary tab navigation repeated discovery")
 	}
 	click("Documents")
-	wait(`!!document.querySelector('input[name=workspace-resume]:not(:checked)')`)
-	if err := eval(`document.querySelector('input[name=workspace-resume]:not(:checked)').click()`, nil); err != nil {
+	click("Change résumé")
+	wait(`document.querySelector('.resume-chooser')?.open===true`)
+	if err := eval(`Array.from(document.querySelectorAll('.resume-chooser input[name=chooser-resume]')).find(x=>!x.checked).click()`, nil); err != nil {
 		t.Fatal(err)
 	}
-	wait(`document.body.innerText.includes('Selection saved')`)
+	wait(`document.querySelector('.resume-chooser')?.open===false`)
 	click("Apply")
 	wait(`Array.from(document.querySelectorAll('button')).some(x=>x.textContent.trim()==='Fill Application'&&!x.disabled)`)
 	click("Fill Application")

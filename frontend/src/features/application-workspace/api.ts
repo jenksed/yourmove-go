@@ -95,6 +95,7 @@ export interface WorkspaceSnapshot {
   job: WorkspaceJob;
   resumeOptions: WorkspaceResumeOption[];
   selectedResumeId: number;
+  familyCount: number;
   suggestion: WorkspaceSuggestion;
   handoff: { allowed: boolean; reason: string };
   resumeValid: boolean;

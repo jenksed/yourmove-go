@@ -18,20 +18,33 @@ import { SubmissionSection } from "./SubmissionSection";
 import { WritingSection } from "./WritingSection";
 import { discoverQuestions } from "./writingApi";
 
-function suggestionText(status: string): string {
+function suggestionNote(status: string, familyName: string, familyCount: number): React.JSX.Element | null {
   switch (status) {
-    case "matched":
-      return "Suggested for this role family. A suggestion never changes your saved selection until you save it.";
     case "no-resume":
-      return "A family matched but has no selectable resume yet.";
+      return (
+        <p className="small-muted">
+          The {familyName} family has no résumé yet. <a href="/resumes">Add one in Documents</a>.
+        </p>
+      );
     case "choose-primary":
-      return "A family matched. Choose a primary resume for it in Documents to get one suggestion.";
+      return (
+        <p className="small-muted">
+          The {familyName} family needs a primary résumé. <a href="/resumes">Set one in Documents</a>.
+        </p>
+      );
     case "ambiguous":
-      return "Several families matched equally. Refine title rules or select manually.";
+      return <p className="small-muted">Several families matched equally — select manually.</p>;
     case "no-title":
-      return "Add a job title to enable document suggestions.";
+      return <p className="small-muted">Add a job title to enable suggestions.</p>;
     default:
-      return "No confident suggestion yet. Select a document manually or adjust role-family rules.";
+      if (familyCount === 0) {
+        return (
+          <p className="small-muted">
+            No role families yet. <a href="/families">Organize role families</a> to get suggestions.
+          </p>
+        );
+      }
+      return null;
   }
 }
 
@@ -76,7 +89,13 @@ export function WorkspacePage(): React.JSX.Element {
 
   const [resumeBusy, setResumeBusy] = useState<boolean>(false);
   const [resumeError, setResumeError] = useState<string>("");
-  const [resumeNotice, setResumeNotice] = useState<string>("");
+  const [chooserOpen, setChooserOpen] = useState<boolean>(false);
+  const [chooserQuery, setChooserQuery] = useState<string>("");
+  const [chooserFamily, setChooserFamily] = useState<string>("all");
+  const chooserRef = useRef<HTMLDialogElement | null>(null);
+  const chooserSearchRef = useRef<HTMLInputElement | null>(null);
+  const chooserPrevSelected = useRef<number | null>(null);
+  const chooserWasOpen = useRef<boolean>(false);
   const [refreshBusy, setRefreshBusy] = useState<boolean>(false);
   const [refreshError, setRefreshError] = useState<string>("");
   const initialNavDone = useRef(false);
@@ -123,6 +142,37 @@ export function WorkspacePage(): React.JSX.Element {
       })
       .catch(() => setDiscoveryStatus("failed"));
   }, [jobId, refreshSummary]);
+
+  const openChooser = useCallback(() => {
+    setChooserQuery("");
+    setChooserFamily("all");
+    setChooserOpen(true);
+  }, []);
+
+  // The native dialog is imperative: opening focuses search, and a changed
+  // saved selection closes it. Failures leave it open with the error shown.
+  useEffect(() => {
+    const dialog = chooserRef.current;
+    if (!dialog) return;
+    if (chooserOpen && !chooserWasOpen.current) {
+      chooserPrevSelected.current = snapshot?.selectedResumeId ?? null;
+      if (!dialog.open) dialog.showModal();
+      chooserSearchRef.current?.focus();
+    } else if (!chooserOpen && chooserWasOpen.current && dialog.open) {
+      dialog.close();
+    }
+    chooserWasOpen.current = chooserOpen;
+  }, [chooserOpen, snapshot]);
+  useEffect(() => {
+    if (
+      chooserOpen &&
+      snapshot &&
+      chooserPrevSelected.current !== null &&
+      snapshot.selectedResumeId !== chooserPrevSelected.current
+    ) {
+      setChooserOpen(false);
+    }
+  }, [chooserOpen, snapshot]);
 
   // First arrival at Questions — by explicit tab move or by initial landing
   // on a workspace that suggests it — starts the established discovery
@@ -284,14 +334,11 @@ export function WorkspacePage(): React.JSX.Element {
       }
       requestRef.current++;
       setResumeError("");
-      setResumeNotice("");
       setResumeBusy(true);
       try {
         await assignWorkspaceResume(jobId, resumeId);
-        setResumeNotice(
-          resumeId === 0 ? "Selection cleared." : "Selection saved for this opportunity.",
-        );
         // Assignment needs only a summary refresh; editor drafts stay intact.
+        // A changed selection closes the chooser via the snapshot effect below.
         await refreshSummary();
         materialSaved();
       } catch (error) {
@@ -402,6 +449,43 @@ export function WorkspacePage(): React.JSX.Element {
     else if (readiness.needsAnswerCount > 0) attention = `${readiness.needsAnswerCount} available questions without saved answers.`;
     return { resumeText, answersText, answersQualifier, letterText, attention };
   }, [snapshot, discoveryStatus]);
+
+  const selectedOption = snapshot?.resumeOptions.find((row) => row.id === snapshot.selectedResumeId) ?? null;
+
+  const chooserFamilies = useMemo(() => {
+    if (!snapshot) return [];
+    const seen = new Map<number, string>();
+    for (const option of snapshot.resumeOptions) {
+      if (option.roleFamilyId > 0 && !seen.has(option.roleFamilyId)) {
+        seen.set(option.roleFamilyId, option.roleFamilyName);
+      }
+    }
+    return [...seen.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [snapshot]);
+
+  const chooserGroups = useMemo(() => {
+    if (!snapshot) return [];
+    const needle = chooserQuery.trim().toLocaleLowerCase();
+    const matches = (name: string, family: string) =>
+      needle === "" || `${name} ${family}`.toLocaleLowerCase().includes(needle);
+    const inFilter = (option: { roleFamilyId: number }) =>
+      chooserFamily === "all" ||
+      (chooserFamily === "none" ? option.roleFamilyId === 0 : option.roleFamilyId === Number(chooserFamily));
+    const rows = snapshot.resumeOptions.filter(
+      (option) => inFilter(option) && matches(option.name, option.roleFamilyName),
+    );
+    if (chooserFamily !== "all") return [{ key: chooserFamily, label: null as string | null, rows }];
+    const groups: { key: string; label: string | null; rows: typeof rows }[] = [];
+    for (const family of chooserFamilies) {
+      const familyRows = rows.filter((option) => option.roleFamilyId === family.id);
+      if (familyRows.length > 0) groups.push({ key: `family-${family.id}`, label: family.name, rows: familyRows });
+    }
+    const ungrouped = rows.filter((option) => option.roleFamilyId === 0);
+    if (ungrouped.length > 0) groups.push({ key: "family-none", label: "No family", rows: ungrouped });
+    return groups;
+  }, [snapshot, chooserQuery, chooserFamily, chooserFamilies]);
 
   const showSuggested =
     snapshot !== null &&
@@ -706,98 +790,180 @@ export function WorkspacePage(): React.JSX.Element {
               <section className="panel" id="prepare" aria-labelledby="workspace-resume-title">
                 <div className="section-heading">
                   <div>
-                    <h2 id="workspace-resume-title">Selected document</h2>
-                    <p className="section-subtitle">
-                      Your choice is saved as soon as you select an option. Suggestions never replace it.
-                    </p>
+                    <h2 id="workspace-resume-title">Résumé</h2>
                   </div>
-                  <a className="button button-secondary" href="/resumes">
-                    Manage documents
-                  </a>
+                  <div className="heading-actions">
+                    <a className="text-link" href="/families">
+                      Role families
+                    </a>
+                    <a className="button button-secondary" href="/resumes">
+                      Manage documents
+                    </a>
+                  </div>
                 </div>
-                {snapshot.suggestion.status === "matched" && (
-                  <div className="match-suggestion workspace-suggestion">
-                    <div>
-                      <p className="eyebrow">SUGGESTION — NOT SAVED</p>
-                      <h3>{snapshot.suggestion.resumeName}</h3>
-                      <p className="small-muted">
-                        Family: {snapshot.suggestion.familyName}
-                        {snapshot.suggestion.titleEvidence !== "" &&
-                          ` · Title phrase “${snapshot.suggestion.titleEvidence}”`}
-                        {snapshot.suggestion.contextEvidence !== "" &&
-                          ` · Description phrase “${snapshot.suggestion.contextEvidence}”`}
-                      </p>
-                      <p className="small-muted">{suggestionText(snapshot.suggestion.status)}</p>
-                    </div>
-                    <button
-                      className="button button-primary"
-                      type="button"
-                      disabled={resumeBusy}
-                      onClick={() => void handleAssign(snapshot.suggestion.resumeId)}
-                    >
-                      Use suggested resume
-                    </button>
+                <div className="resume-current">
+                  <div className="resume-current-text">
+                    {selectedOption ? (
+                      <>
+                        <p>
+                          <strong>{selectedOption.name}</strong> · Version {selectedOption.version}
+                          {selectedOption.roleFamilyName !== "" && (
+                            <span className="resume-family">
+                              {" "}· {selectedOption.roleFamilyName}
+                              {selectedOption.isPrimary ? " · Primary" : ""}
+                            </span>
+                          )}
+                        </p>
+                        {!selectedOption.transferReady && (
+                          <p className="small-muted">Unavailable for transfer. Choose an available document.</p>
+                        )}
+                      </>
+                    ) : snapshot.selectedResumeId !== 0 ? (
+                      <p>Selected résumé unavailable. Review the selected document.</p>
+                    ) : (
+                      <p className="small-muted">No résumé selected.</p>
+                    )}
                   </div>
-                )}
-                {snapshot.suggestion.status !== "matched" && (
-                  <p className="small-muted workspace-suggestion-note">{suggestionText(snapshot.suggestion.status)}</p>
-                )}
+                  <button
+                    className="button button-secondary"
+                    type="button"
+                    disabled={resumeBusy}
+                    onClick={openChooser}
+                  >
+                    Change résumé
+                  </button>
+                </div>
+                {snapshot.suggestion.status === "matched" &&
+                  snapshot.suggestion.resumeId !== snapshot.selectedResumeId && (
+                    <p className="resume-suggestion">
+                      Suggested for {snapshot.suggestion.familyName}:{" "}
+                      <strong>{snapshot.suggestion.resumeName}</strong>{" "}
+                      <button
+                        className="button button-secondary"
+                        type="button"
+                        disabled={resumeBusy}
+                        onClick={() => void handleAssign(snapshot.suggestion.resumeId)}
+                      >
+                        Use suggested resume
+                      </button>
+                    </p>
+                  )}
+                {snapshot.suggestion.status === "matched" &&
+                  snapshot.suggestion.resumeId === snapshot.selectedResumeId && (
+                    <p className="small-muted">
+                      Using the suggested résumé for {snapshot.suggestion.familyName}.
+                    </p>
+                  )}
+                {snapshot.suggestion.status !== "matched" &&
+                  suggestionNote(
+                    snapshot.suggestion.status,
+                    snapshot.suggestion.familyName,
+                    snapshot.familyCount,
+                  )}
                 {resumeError !== "" && (
                   <p className="job-form-error" role="alert">
                     {resumeError}
                   </p>
                 )}
-                {resumeNotice !== "" && (
-                  <p className="form-notice" role="status">
-                    {resumeNotice}
-                  </p>
-                )}
                 {snapshot.resumeOptions.length === 0 && <p className="workspace-empty-documents">No selectable résumé yet. Add one in Documents, then return here to select it for this opportunity.</p>}
-                <ul className="resume-options workspace-options">
-                  <li>
-                    <label className="confirm-row">
+                <dialog
+                  ref={chooserRef}
+                  className="resume-chooser"
+                  aria-labelledby="resume-chooser-title"
+                  onClose={() => setChooserOpen(false)}
+                >
+                  <div className="resume-chooser-head">
+                    <h3 id="resume-chooser-title">Choose a résumé</h3>
+                    <button
+                      className="button button-secondary"
+                      type="button"
+                      onClick={() => setChooserOpen(false)}
+                    >
+                      Close
+                    </button>
+                  </div>
+                  <div className="resume-chooser-tools">
+                    <div className="field">
+                      <label htmlFor="resume-chooser-search">Search</label>
+                      <input
+                        ref={chooserSearchRef}
+                        id="resume-chooser-search"
+                        type="search"
+                        placeholder="Name or family"
+                        autoComplete="off"
+                        value={chooserQuery}
+                        onChange={(event) => setChooserQuery(event.target.value)}
+                      />
+                    </div>
+                    {chooserFamilies.length > 0 && (
+                      <div className="field">
+                        <label htmlFor="resume-chooser-family">Family</label>
+                        <select
+                          id="resume-chooser-family"
+                          value={chooserFamily}
+                          onChange={(event) => setChooserFamily(event.target.value)}
+                        >
+                          <option value="all">All families</option>
+                          {chooserFamilies.map((family) => (
+                            <option key={family.id} value={String(family.id)}>
+                              {family.name}
+                            </option>
+                          ))}
+                          <option value="none">No family</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                  {resumeError !== "" && (
+                    <p className="job-form-error" role="alert">
+                      {resumeError}
+                    </p>
+                  )}
+                  <div className="resume-chooser-list">
+                    <label className="confirm-row chooser-row">
                       <input
                         type="radio"
-                        name="workspace-resume"
+                        name="chooser-resume"
                         checked={snapshot.selectedResumeId === 0}
                         disabled={resumeBusy}
                         onChange={() => void handleAssign(0)}
                       />
-                      <span>No resume selected</span>
+                      <span>No résumé — clear selection</span>
                     </label>
-                  </li>
-                  {snapshot.resumeOptions.map((option) => (
-                    <li key={option.id}>
-                      <label className="confirm-row">
-                        <input
-                          type="radio"
-                          name="workspace-resume"
-                          checked={snapshot.selectedResumeId === option.id}
-                          disabled={resumeBusy}
-                          onChange={() => void handleAssign(option.id)}
-                        />
-                        <span>
-                          {option.name} · {option.kind} · Version {option.version}
-                          {option.roleFamilyName !== "" ? ` · ${option.roleFamilyName}` : ""}
-                          {option.archived ? " · Archived" : ""}
-                          {" · "}
-                          {option.transferReady ? (
-                            <strong className="transfer-ready">Transfer-ready</strong>
-                          ) : (
-                            <strong className="transfer-blocked">Not transfer-ready</strong>
-                          )}
-                          {option.transferNote !== "" && (
-                            <small className="transfer-note"> — {option.transferNote}</small>
-                          )}
-                        </span>
-                      </label>
-                    </li>
-                  ))}
-                </ul>
+                    {chooserGroups.map((group) => (
+                      <fieldset key={group.key} className="chooser-group">
+                        {group.label !== null && <legend>{group.label}</legend>}
+                        {group.rows.map((option) => (
+                          <label key={option.id} className="confirm-row chooser-row">
+                            <input
+                              type="radio"
+                              name="chooser-resume"
+                              checked={snapshot.selectedResumeId === option.id}
+                              disabled={resumeBusy}
+                              onChange={() => void handleAssign(option.id)}
+                            />
+                            <span className="chooser-row-text">
+                              {option.name} · Version {option.version}
+                              {option.isPrimary ? " · Primary" : ""}
+                              {option.archived ? " · Archived" : ""}
+                              {!option.transferReady ? " · Unavailable" : ""}
+                              {snapshot.selectedResumeId === option.id ? " · Current" : ""}
+                            </span>
+                          </label>
+                        ))}
+                      </fieldset>
+                    ))}
+                    {chooserGroups.length === 0 && (
+                      <p className="small-muted" role="status">
+                        No matching résumés.
+                      </p>
+                    )}
+                  </div>
+                  {resumeBusy && <p role="status">Saving…</p>}
+                </dialog>
                 {snapshot.masterCount > 0 && (
                   <p className="small-muted">
-                    A master resume is career evidence for cover letters, never an employer upload. It is
-                    not offered above.
+                    Master resumes are career evidence for cover letters, never employer uploads.
                   </p>
                 )}
               </section>
