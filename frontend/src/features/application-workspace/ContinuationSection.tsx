@@ -14,6 +14,13 @@ import {
   type ContinuationSnapshot,
 } from "./continuationApi";
 
+function letterEditedSuffix(editedAt: string): string {
+  if (editedAt === "") return "";
+  const parsed = new Date(editedAt);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return ` · edited ${parsed.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`;
+}
+
 function outcomeText(status: string): string {
   switch (status) {
     case "filled":
@@ -124,8 +131,6 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
         const result = await browserAction(jobId, action, action === "restart" ? confirmRestart : false);
         if (!result.ok) {
           setActionError(result.message ?? "The browser operation could not complete.");
-        } else if (action === "stop") {
-          setActionNotice("Employer browser closed. Saved materials in YourMove are unchanged.");
         }
         await reload();
       } catch (error) {
@@ -160,7 +165,9 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
       });
       const failed = result.items.filter((item) => !item.ok);
       if (failed.length === 0) {
-        setActionNotice("Filling… Review in the application.");
+        // No success notice: the Fill button and the observed outcomes below
+        // already narrate the transfer. A stale notice would linger past review.
+        setActionNotice("");
       } else {
         setActionError(failed.map((item) => `${item.item}: ${item.detail}`).join(" "));
       }
@@ -216,8 +223,7 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
       )}
       {snapshot.savedBrowser && !browser.active && browser.phase !== "interrupted" && (
         <p className="small-muted" role="note">
-          Browser closed. Your saved materials are unchanged. Last checked {snapshot.savedBrowser.checkedAt} ·{" "}
-          {snapshot.savedBrowser.fieldCount} observed controls.
+          Browser closed. Your saved materials are unchanged.
         </p>
       )}
       {browser.phase === "attention" && browser.message !== "" && (
@@ -280,7 +286,10 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
             <p><strong>Résumé:</strong> {snapshot.resume.name} · Version {snapshot.resume.version}
               {snapshot.resume.valid ? "" : " · unavailable"}
             </p>
-            {!prep.includeResume && <small>{snapshot.handoff.reason}</small>}
+            {!prep.includeResume && !snapshot.handoff.allowed && <small>{snapshot.handoff.reason}</small>}
+            {!prep.includeResume && snapshot.handoff.allowed && ["selected", "present", "complete"].includes(browser.resume_status) && (
+              <small>Already handled in this session.</small>
+            )}
             {(prep.includeResume || contactsOnly) && (
               <p className="small-muted">
                 Contact details: {snapshot.profile.fullName} · {snapshot.profile.email}
@@ -294,7 +303,7 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
 
         {snapshot.letter ? (
           <div className="continuation-item">
-            <p><strong>Cover letter:</strong> Selected saved letter</p>
+            <p><strong>Cover letter:</strong> Selected saved letter{letterEditedSuffix(snapshot.letter.editedAt)}</p>
             {!prep.includeLetter && <small>Already handled in this session.</small>}
           </div>
         ) : (
@@ -309,7 +318,10 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
                 <div key={answer.key}>
                   <dt>{answer.label}</dt>
                   <dd>
-                    {answer.value} — {answer.source === "Approved candidate information" ? "Candidate Profile" : answer.source}
+                    {answer.value}
+                    {answer.source !== "Saved for this application" && (
+                      <> — {answer.source === "Approved candidate information" ? "Candidate Profile" : answer.source}</>
+                    )}
                   </dd>
                 </div>
               ))}
