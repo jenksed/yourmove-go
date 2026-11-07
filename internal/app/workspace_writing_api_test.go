@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
  "path/filepath"
@@ -758,9 +759,13 @@ func TestLetterSelectionPersistsAndStaysWithinJob(t *testing.T) {
  if r:=postWritingJSON(t,a,http.MethodPost,"/api/jobs/1/letters/select",`{"draftId":1}`);r.Code!=http.StatusOK {t.Fatalf("select: %d %s",r.Code,r.Body.String())}
  if r:=postWritingJSON(t,a,http.MethodPost,"/api/jobs/1/letters/select",`{"draftId":999}`);r.Code!=http.StatusConflict {t.Fatalf("invalid: %d",r.Code)}
  stale,err:=a.coverLetterByID(1,2);if err!=nil{t.Fatal(err)}
+ launches:=0
+ a.browsers.factory=func(context.Context,string)(readOnlySession,error){launches++;return nil,errors.New("browser must not start for a stale letter-only request")}
  request := `{"destination":`+jsonString(testAshbyPosting)+`,"include_letter":true,"draft_id":"2","body_hash":`+jsonString(stale.ContentHash())+`,"mode":"file"}`
  rejected:=postWritingJSON(t,a,http.MethodPost,"/api/jobs/1/continue",request)
  if rejected.Code!=http.StatusOK || !strings.Contains(rejected.Body.String(),"selected letter changed") { t.Fatalf("stale selection accepted: %d %s",rejected.Code,rejected.Body.String()) }
+ if launches!=0 { t.Fatalf("stale letter-only request launched the browser %d times",launches) }
+ if a.browsers.state(1).Active { t.Fatal("stale letter-only request left a browser session behind") }
  if err:=a.db.Close();err!=nil {t.Fatal(err)}
  db,err:=storage.OpenDB(filepath.Join(dir,"jobs.db"));if err!=nil{t.Fatal(err)};defer db.Close()
  reopened:=newTestApp(t,db,filepath.Join(dir,"resumes"))
