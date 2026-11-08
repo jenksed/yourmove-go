@@ -331,8 +331,8 @@ export function OpportunitiesPage(): React.JSX.Element {
                         <p className="eyebrow">Suggested next opportunity</p>
                         <h2>{data.next.title}</h2>
                         <p className="dashboard-next-company">{data.next.company}</p>
-                        <p className="small-muted">{data.next.reason}</p>
                       </div>
+                      <p className="dashboard-next-reason">{data.next.reason}</p>
                       <a className="button button-primary" href={data.next.href}>
                         {data.next.label} <span aria-hidden="true">→</span>
                       </a>
