@@ -241,8 +241,15 @@ try {
     $uploadCode = (& curl.exe -s -o "$EvidenceDir/upload-resumes.out" -w '%{http_code}' `
       -F "resume=@$resumeFile;type=application/pdf" "$base/resumes/import" 2>$null).Trim()
     if ($uploadCode -ne '303') { throw "POST /resumes/import http_code=$uploadCode" }
-    $resumes = (Invoke-WebRequest -Uri "$base/resumes" -UseBasicParsing).Content
-    if (-not $resumes.Contains('ci-resume.pdf')) { throw 'uploaded resume not listed' }
+    # The embedded production frontend serves a React shell on /resumes, so
+    # assert the library through the JSON API and verify exact document bytes.
+    $lib = (Invoke-WebRequest -Uri "$base/api/resumes" -UseBasicParsing).Content | ConvertFrom-Json
+    if ($lib.total -lt 1 -or $lib.resumes[0].name -ne 'ci-resume.pdf') { throw 'uploaded resume not listed in /api/resumes' }
+    $downloaded = Join-Path $EvidenceDir 'ci-resume-download.pdf'
+    Invoke-WebRequest -Uri "$base/resumes/$($lib.resumes[0].id)/download" -OutFile $downloaded -UseBasicParsing
+    $upHash = (Get-FileHash $resumeFile -Algorithm SHA256).Hash
+    if ((Get-FileHash $downloaded -Algorithm SHA256).Hash -ne $upHash) { throw 'downloaded resume bytes differ' }
+    Write-Host "resume bytes round-trip sha=$($upHash.ToLower())"
     Set-Check 'backend-save' 'PASS' 'profile + role family + resume bytes saved over HTTP'
   } finally {
     Stop-Quiet $server 'Server cycle 1'
@@ -261,8 +268,8 @@ try {
     if (-not ($body.Contains('ci-qualify@example.test') -and $body.Contains('They/them'))) {
       throw 'saved profile not readable after restart'
     }
-    $resumes2 = (Invoke-WebRequest -Uri "$base2/resumes" -UseBasicParsing).Content
-    if (-not $resumes2.Contains('ci-resume.pdf')) { throw 'saved resume not listed after restart' }
+    $resumes2 = ((Invoke-WebRequest -Uri "$base2/api/resumes" -UseBasicParsing).Content | ConvertFrom-Json).resumes
+    if (-not ($resumes2 | Where-Object { $_.name -eq 'ci-resume.pdf' })) { throw 'saved resume not listed after restart' }
     $families = (Invoke-WebRequest -Uri "$base2/families" -UseBasicParsing).Content
     if (-not $families.Contains('CI Family')) { throw 'saved role family not listed after restart' }
     Set-Check 'backend-restart-persistence' 'PASS' "jobs.db sha=$hashBefore"
