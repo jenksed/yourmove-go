@@ -1,6 +1,6 @@
 # YourMove v0.2.0 Windows packaging readiness
 
-**Disposition: IMPLEMENTED and verified as a local unsigned packaging candidate; Windows native acceptance and OWNER-ACCEPTED release status remain pending.** Nothing was pushed, published, submitted, or changed on the live website. Other worktrees were inspected read-only. No application/storage code, data paths, database schema, updater or applicant workspace was changed.
+**Disposition: Windows CI-qualified packaging candidate (13 PASS, 0 FAIL, 3 NOT RUN on a hosted Windows Server 2025 x64 runner); installation, process launch, persistence, uninstall retention and reinstall recovery are demonstrated. Wails GUI interaction, managed-browser Fill, A/B upgrade, production signing and OWNER-ACCEPTED release status remain pending.** Nothing was pushed except the `v0.2/feat-windows-packaging` branch, and nothing was published, submitted, released, or changed on the live website. Other worktrees were inspected read-only. No application/storage code, data paths, database schema, updater or applicant workspace was changed.
 
 ## A. Existing capabilities and audit
 
@@ -36,7 +36,7 @@ Local implementation commits:
 - `dd01eeb3e90088b45c4ad18e280bec27b9a79638` — retain every file referenced by candidate checksums in CI artifacts.
 - `4085099dd9636504133d4b8dcf4fba53e4a5b90d` — apply the owner-selected **Joshua Jenks** publisher and increment the qualification build to 2.
 
-Modified paths: `.github/workflows/ci.yml`, `.gitignore`, and `release/windows/` (`prepare.py`, `product.json`, `project.nsi`, `sign.ps1`, installed README, runbook and three WinGet templates). This report is documentation committed after the artifact source revision; implementation is unchanged from that revision.
+Modified paths: `.github/workflows/ci.yml`, `.gitignore`, and `release/windows/` (`prepare.py`, `product.json`, `project.nsi`, `sign.ps1`, `qualify-ci.ps1`, installed README, runbook and three WinGet templates). This report is documentation committed after the artifact source revision; implementation is unchanged from that revision.
 
 Observed checks:
 
@@ -52,9 +52,38 @@ Observed checks:
 
 Evidence beside the final installer: `build.log`, `build-info.txt`, `source-manifest*.json`, `candidate.json`, `pe-inspection.json`, `publisher-inspection.json`, `frontend-inspection.json`, `inspection-summary.json`, and `SHA256SUMS`. Extra inspection files are local evidence, not additions to the installer. Earlier local candidates, including build 1 with the YourMove publisher label, are superseded by the single build 2 handoff candidate below. Publisher fields were independently checked on the current app, installer, extracted uninstaller and rendered WinGet locale/Installed Apps entries; all use Joshua Jenks. The proposed package identifier, stable uninstall key and install/data paths remain unchanged.
 
-**NOT VERIFIED:** actual Windows installation or launch, Start menu/Installed Apps presentation, `/S` execution, WebView2 installation/failure recovery, Chrome discovery/Fill, dialogs/import/export/cancel, restart persistence, locked-app/downgrade refusal at runtime, upgrade/uninstall/reinstall data retention, production signing/timestamps/trust, remote CI execution, or any public download. No native or owner acceptance is claimed.
+**NOT VERIFIED before CI:** actual Windows installation or launch, Start menu/Installed Apps presentation, `/S` execution, WebView2 installation/failure recovery, Chrome discovery/Fill, dialogs/import/export/cancel, restart persistence, locked-app/downgrade refusal at runtime, upgrade/uninstall/reinstall data retention, production signing/timestamps/trust, remote CI execution, or any public download. No native or owner acceptance is claimed.
 
-## C. Installer candidate
+## B2. Windows CI qualification (run 42446133465)
+
+GitHub Actions run [`42446133465`](https://github.com/jenksed/yourmove-go/actions/runs/42446133465), source `533efebe8a3aad42f7a8581bb66f92d861d968ca`, runner `Microsoft Windows Server 2025 Datacenter` on AMD64, standard hosted allocation. The Windows job built the installer natively with `release/windows/prepare.py`, then `release/windows/qualify-ci.ps1` exercised the installed artifact. The retained `YourMove-windows-x64-qualification-533efebe8a3aad42f7a8581bb66f92d861d968ca` artifact holds `evidence.json` plus installer-launch, server-cycle and upload logs. Result: **13 PASS, 0 FAIL, 3 NOT RUN**.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| artifact-sha256 | PASS | `3d787215d3a46d3dc6625b64a0370c54133c29ed3071329c262b39a4a959ba11` matches `candidate.json` |
+| payload-arch-x64 | PASS | Installed `YourMove.exe` is `IMAGE_FILE_MACHINE_AMD64` (NSIS stub is x86 by design) |
+| webview2-runtime | PASS | Evergreen registration present, `pv=156.0.4314.58`; installer detection path used, no bootstrap download needed |
+| install-silent | PASS | `installer /S` exit 0, AMD64 payload, file version `0.2.0.2` |
+| install-registration | PASS | HKCU `com.yourmove.go` key with `DisplayName=YourMove`, `DisplayVersion=0.2.0`, correct `InstallLocation`, `/S` quiet string |
+| install-shortcut | PASS | Per-user Start Menu `YourMove.lnk` |
+| install-per-user | PASS | HKCU key, `LOCALAPPDATA` path, `RequestExecutionLevel=user`; runner was elevated so standard-user non-elevation was **not** verified |
+| installed-launch | PASS | Installed process alive after 25s (pid 4136); window visibility **not** verified on headless Server |
+| backend-startup | PASS | Same-source server `GET /jobs` 200 on loopback with synthetic `YOURMOVE_DATA_DIR` |
+| backend-save | PASS | Candidate profile, role family and resume bytes saved over HTTP (`POST /candidate`, `/families`, `/resumes/import` → 303) |
+| backend-restart-persistence | PASS | Profile, role family and resume listing readable after server restart; `jobs.db` sha `68274b28ccdf4fab923d75673900f1fc986682a58851666c2bd5d5aa7978984b`; downloaded resume bytes identical |
+| uninstall-retention | PASS | Program files and HKCU registration removed; synthetic workspace retained byte-identical |
+| reinstall-recovery | PASS | Retained synthetic records reopen after reinstall |
+| upgrade-preservation | NOT RUN | No second versioned installer exists; same-binary reinstall is not an upgrade test |
+| browser-fill | NOT RUN | Managed Chromium Fill needs an interactive session; no automatic submission was attempted |
+| gui-acceptance | NOT RUN | Native window presentation needs Windows 11 interactive acceptance |
+
+CI defects found and fixed on this branch (packaging/CI only, no application changes): `GOPATH/bin` was missing from the Windows job PATH so `prepare.py` could not spawn `wails3`; the hosted runner exposes `pnpm` as an extensionless shim that `CreateProcess` cannot execute, so `prepare.py` resolves it (and runs it through node when needed); `Invoke-WebRequest` mishandles the application's 303 POST responses on the runner, so the save-path checks POST with `curl.exe`; resume listing is asserted through `/api/resumes` JSON plus an exact downloaded-bytes comparison because the embedded React shell on `/resumes` carries no filenames.
+
+Overall run conclusion was **failure** for reasons outside this assignment: the `Go source verification` job fails deterministically in `TestLetterSelectionPersistsAndStaysWithinJob` (`workspace_writing_api_test.go:763`, stale selection accepted with 503 `Chromium did not expose a debugging port`). That test exercises managed-Chromium launch on the Ubuntu runner, is untouched by any commit here, and is already fixed upstream by `ce015d0` (`fix(continuation): reject stale letter selection without launching Chromium`) on `v0.2/develop`. The application change was deliberately not duplicated. The `macOS desktop verification` job passed.
+
+## C. Installer candidates
+
+Local handoff candidate (pre-CI, owner transfer to UTM if still wanted):
 
 | Field | Exact value |
 | --- | --- |
@@ -70,6 +99,19 @@ Evidence beside the final installer: `build.log`, `build-info.txt`, `source-mani
 
 The same directory contains `YourMove-0.2.0-source.zip`, `YourMove.exe`, checksums and provenance. Transfer those with the installer to the owner's Windows 11 x64 UTM environment and check hashes after transfer. Signing or rebuilding changes artifact identity and requires new checksums/acceptance evidence.
 
+CI-built qualification candidate (current evidence basis; do not substitute the local hash above):
+
+| Field | Exact value |
+| --- | --- |
+| Filename | `YourMove-0.2.0-windows-x64-unsigned.exe` |
+| Location | CI artifact `YourMove-windows-x64-unsigned-533efebe8a3aad42f7a8581bb66f92d861d968ca` on run `42446133465` (14-day retention, private); provenance, source archive and checksums in the same artifact |
+| Version / build | `0.2.0` / `2`; Windows file version `0.2.0.2` |
+| Platform | Windows Server 2025 AMD64 runner build; AMD64 application payload verified installed |
+| SHA-256 | `3d787215d3a46d3dc6625b64a0370c54133c29ed3071329c262b39a4a959ba11` |
+| Source commit | `533efebe8a3aad42f7a8581bb66f92d861d968ca`, clean checkout at build |
+| Publisher label | Joshua Jenks — owner-selected; production signing identity still needs verification |
+| Signature / acceptance | Explicitly unsigned; Windows CI lifecycle qualified (B2), Windows 11 owner GUI acceptance pending |
+
 ## D. Distribution matrix
 
 | Channel | Status | Precise remaining prerequisite |
@@ -84,14 +126,15 @@ Recommend **NSIS EXE as the default future Store path**: it keeps the current in
 
 ## E. Remaining release blockers
 
-- **Code/package gaps:** Store-only offline WebView2 provisioning and signing of required NSIS plugin PEs remain missing. No known primary-installer code defect remains from build/source inspection; Windows runtime defects may still be found. The existing acceptance runner has no installed-artifact input: its source fixture passes cannot substitute for native installer acceptance.
-- **Native acceptance:** Owner-run Windows 11 x64 UTM install/first launch/WebView2/browser Fill/native files/restart, candidate A→B upgrade, record/byte/association preservation and uninstall/reinstall retention. Use only synthetic workspaces/accounts and the same installed executable/workspace for restart claims.
-- **Signing/publisher:** No production Windows credential was supplied. The owner selected Joshua Jenks. Need matching verified identity and trusted certificate/private-key access plus RFC 3161 timestamp service, then exercise the signing hooks and verify extracted payloads under Windows trust policy. [Azure Artifact Signing](https://learn.microsoft.com/en-us/azure/artifact-signing/quickstart) is an option after owner-approved subscription/account, identity validation, certificate profile and signer access; its adapter is not implemented. No enrollment or account changes performed.
+- **CI/verification state:** The Windows and macOS jobs pass on run `42446133465`. The overall run is red only because the `Go source verification` job fails in `TestLetterSelectionPersistsAndStaysWithinJob` (managed-Chromium launch on the Ubuntu runner); the demonstrated upstream fix is `ce015d0` on `v0.2/develop` and was intentionally not duplicated here. A rebase past that commit is an owner scheduling decision, not packaging work.
+- **Code/package gaps:** Store-only offline WebView2 provisioning and signing of required NSIS plugin PEs remain missing. The existing acceptance runner has no installed-artifact input: its source fixture passes cannot substitute for native installer acceptance. Missing-WebView2 bootstrap behavior was not qualified (the CI runner already had the Evergreen runtime), and standard-user non-elevation was not qualified (the runner was elevated).
+- **Native acceptance:** Owner-run Windows 11 x64 install/first launch with visible GUI, WebView2 behavior without a preinstalled runtime, browser Fill, native files/dialogs, candidate A→B upgrade, and record/byte/association preservation. Use only synthetic workspaces/accounts and the same installed executable/workspace for restart claims. CI proves the installed process starts and the backend persists; it does not prove the Wails window renders or is usable.
+- **Signing/publisher:** No production Windows credential was supplied. The owner selected Joshua Jenks. Need matching verified identity and trusted certificate/private-key access plus RFC 3161 timestamp service, then exercise the signing hooks and verify extracted payloads under Windows trust policy. [Azure Artifact Signing](https://learn.microsoft.com/en-us/azure/artifact-signing/quickstart) is an option after owner-approved subscription/account, identity validation, certificate profile and signer access; its adapter is not implemented. No enrollment or account changes performed. The CI candidate is explicitly unsigned.
 - **Publisher accounts:** Store Partner Center identity/account, reserved product identity and approved listing assets remain owner prerequisites; account availability was not assumed or changed.
-- **Publication:** Owner SHIP decision, GitHub Release/tag/asset upload and immutable actual URL, website download wiring, then WinGet validation/submission and later Store submission. None are authorized by successful packaging alone.
+- **Publication:** Owner SHIP decision, GitHub Release/tag/asset upload and immutable actual URL, website download wiring, then WinGet validation/submission and later Store submission. None are authorized by successful packaging alone. No release, tag, manifest submission, website change, or Store publication was made.
 
 ## F. Smallest next action
 
-Transfer the exact unsigned candidate and checksums to the Windows 11 x64 UTM environment, verify its SHA-256, and perform clean install → synthetic save → full quit/reopen on the same workspace. This first real native loop will establish whether the package installs and hosts the working product before spending effort on publisher enrollment or extra channels. Follow with A→B upgrade and uninstall/reinstall retention before normal public distribution.
+Owner release decisions now gate everything downstream of the qualified unsigned candidate: verify the Joshua Jenks signing identity and provide the production credential (or authorize Azure Artifact Signing enrollment), perform Windows 11 interactive GUI acceptance including a missing-WebView2 machine, and authorize the SHIP decision that creates the immutable public release asset WinGet and the website depend on. No further packaging work should precede those decisions; a second versioned installer is only needed when the A→B upgrade check is scheduled.
 
 Reuse `scripts/qualify-acceptance` from `v0.2/feat-acceptance-runner` (`ce015d02b25757da5e84f70d5875c89cefdac50c`) for its existing controlled-browser/source coverage. It currently accepts an evidence-directory argument only and expressly excludes native installer/upgrade behavior; no replacement acceptance harness was created here.
