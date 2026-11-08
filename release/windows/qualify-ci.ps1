@@ -87,6 +87,15 @@ function Start-AppServer([string]$Exe, [string]$DataDir, [int]$Port, [string]$Lo
   return $process
 }
 
+function Post-Form([string]$Url, [string[]]$Fields, [string]$OutFile) {
+  # curl.exe ships with Windows and reports redirect codes faithfully;
+  # Invoke-WebRequest mishandles the 303 responses on this runner.
+  $args = @('-s', '-o', $OutFile, '-w', '%{http_code}')
+  foreach ($field in $Fields) { $args += '--data-urlencode'; $args += $field }
+  $args += $Url
+  return ((& curl.exe @args 2>$null).Trim())
+}
+
 function Stop-Quiet([System.Diagnostics.Process]$Process, [string]$Name) {
   if ($null -eq $Process) { return }
   try {
@@ -213,16 +222,16 @@ try {
     if ($null -eq $ready) { throw 'server did not serve /jobs within 30s' }
     Set-Check 'backend-startup' 'PASS' "GET /jobs 200 on $base"
 
-    $profile = @{ first_name = 'CI'; last_name = 'Qualify'; email = 'ci-qualify@example.test';
-      phone = '5550100'; pronouns = 'They/them'; approve = 'yes' }
-    $resp = Invoke-WebRequest -Uri "$base/candidate" -Method Post -Body $profile `
-      -MaximumRedirection 0 -SkipHttpErrorCheck -UseBasicParsing
-    if ($resp.StatusCode -ne 303) { throw "POST /candidate status=$($resp.StatusCode)" }
+    $code = Post-Form "$base/candidate" @('first_name=CI', 'last_name=Qualify',
+      'email=ci-qualify@example.test', 'phone=5550100', 'pronouns=They/them', 'approve=yes') `
+      (Join-Path $EvidenceDir 'post-candidate.out')
+    Write-Host "POST /candidate http_code=$code"
+    if ($code -ne '303') { throw "POST /candidate http_code=$code" }
 
-    $family = @{ name = 'CI Family'; title_terms = 'support engineer'; context_terms = ''; exclude_terms = '' }
-    $resp = Invoke-WebRequest -Uri "$base/families" -Method Post -Body $family `
-      -MaximumRedirection 0 -SkipHttpErrorCheck -UseBasicParsing
-    if ($resp.StatusCode -ne 303) { throw "POST /families status=$($resp.StatusCode)" }
+    $code = Post-Form "$base/families" @('name=CI Family', 'title_terms=support engineer',
+      'context_terms=', 'exclude_terms=') (Join-Path $EvidenceDir 'post-families.out')
+    Write-Host "POST /families http_code=$code"
+    if ($code -ne '303') { throw "POST /families http_code=$code" }
 
     $resumeBytes = [Text.Encoding]::UTF8.GetBytes("%PDF-1.4`nsynthetic ci qualification resume")
     $resumeFile = Join-Path $EvidenceDir 'ci-resume.pdf'
