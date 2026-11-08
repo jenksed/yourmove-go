@@ -2,7 +2,7 @@
   "name": "YourMove",
   "identifier": "com.yourmove.go",
   "version": "0.2.0",
-  "build": 1,
-  "publisher": "YourMove",
+  "build": 2,
+  "publisher": "Joshua Jenks",
   "description": "Local-first job application workbench"
 }

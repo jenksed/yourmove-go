@@ -36,7 +36,7 @@ This is installer-over-installer maintenance, not a transactional updater or bac
 
 ## Production signing
 
-The qualification publisher string `YourMove` is branding, **not proof of a legal signing identity**. Before production, the owner must approve the publisher string and obtain a matching trusted identity. Keep Windows metadata, WinGet publisher and Partner Center identity consistent. The uninstall key and install path do not change with publisher spelling.
+The owner-selected publisher is **Joshua Jenks**, used for Windows metadata and rendered WinGet publisher fields and intended for the future Store listing. The product name remains **YourMove**. Production signing still requires a matching verified identity and trusted credential. Keep Windows metadata, WinGet publisher and Partner Center identity consistent. The uninstall key and install path do not change with publisher spelling.
 
 The pinned Wails CLI supports `wails3 tool sign -input ... -thumbprint ... -timestamp ...` on Windows and portable PE signing with an exported PFX. No project Windows signing configuration existed at the baseline. This package uses the standard NSIS `!uninstfinalize` integration plus Windows SDK SignTool so all three owner-produced PEs can be verified under Windows trust policy:
 
@@ -62,7 +62,7 @@ WinGet uses this same NSIS installer. The [Microsoft manifest specification](htt
 
 First WinGet publication actions, after Windows release approval:
 
-1. Approve publisher/identifier and freeze the signed, accepted version. Publish the final installer at its actual immutable HTTPS release asset URL.
+1. Confirm the proposed package identifier, verify the Joshua Jenks signing identity, and freeze the signed, accepted version. Publish the final installer at its actual immutable HTTPS release asset URL.
 2. Start from that candidate's three `winget-unpublished/*.yaml.in` files. Rename to `.yaml`; substitute the real URL and confirm final SHA-256 from an independent download. Confirm publisher, version and ARP matching on Windows.
 3. On Windows run `winget validate --manifest <directory>`; enable local manifests if needed and test `winget install --manifest <directory> --scope user`, silent installation, detection, upgrade from candidate A to B, and `winget uninstall --id YourMove.YourMove`. Use only disposable synthetic accounts/workspaces. Revalidate with the community repository's current schema/tools.
 4. With separate owner authorization, submit the three files to `microsoft/winget-pkgs` under `manifests/y/YourMove/YourMove/<version>/`. Do not use wingetcreate's submission option during local preparation.
