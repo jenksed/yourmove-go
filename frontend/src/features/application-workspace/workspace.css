@@ -47,8 +47,9 @@
 
 .workspace-facts {
   display: grid;
-  gap: 12px;
-  padding: 0 24px 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+  padding: 0 20px 8px;
 }
 
 .workspace-facts > div {
@@ -76,26 +77,43 @@
 }
 
 .workspace-source-actions {
-  display: grid;
-  gap: 10px;
-  padding: 12px 24px 0;
-  max-width: 560px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 12px 20px 0;
+}
+
+.workspace-source-actions .button {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 7px 12px;
+  font-size: 13px;
+}
+
+.workspace-source-actions .small-muted {
+  flex-basis: 100%;
+  margin: 0;
 }
 
 .workspace-description {
-  padding: 16px 24px 24px;
+  padding: 12px 20px 16px;
   max-width: 90ch;
   line-height: 1.6;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
+.workspace-facts > div:nth-child(n+3) {
+  grid-column: 1 / -1;
+}
+
 .resume-current {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 16px;
-  margin: 0 24px 12px;
+  gap: 12px;
+  margin: 0 20px 10px;
 }
 
 .resume-current-text p {
@@ -229,8 +247,8 @@
 /* YM-004B application writing compositions. */
 
 .writing-notice {
-  margin: 0 24px 12px;
-  padding: 10px 14px;
+  margin: 0 20px 10px;
+  padding: 8px 12px;
   border-inline-start: 3px solid var(--color-attention);
   background: var(--color-surface-muted);
   border-radius: 0 8px 8px 0;
@@ -248,8 +266,8 @@
 .question-navigator {
   display: flex;
   align-items: end;
-  gap: 12px;
-  padding: 0 24px 12px;
+  gap: 8px;
+  padding: 0 20px 10px;
   flex-wrap: wrap;
 }
 
@@ -262,6 +280,13 @@
 
 .question-selector select {
   width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 7px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding: 10px 11px;
+  font-size: 13px;
 }
 
 /* Adjacent explanation when unsaved edits intentionally block navigation. */
@@ -282,8 +307,8 @@
 .writing-desk {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
-  gap: 16px;
-  padding: 0 24px 12px;
+  gap: 14px;
+  padding: 0 20px 10px;
   align-items: start;
 }
 
@@ -415,12 +440,12 @@
 
 .writing-editor {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   align-content: start;
   border: 1px solid var(--color-border);
   border-radius: 8px;
   background: var(--color-surface);
-  padding: 16px;
+  padding: 14px;
 }
 
 .writing-editor h3 {
@@ -495,7 +520,7 @@
 }
 
 .writing-previous {
-  padding: 0 24px 20px;
+  padding: 0 20px 16px;
   display: grid;
   gap: 8px;
 }
@@ -661,6 +686,10 @@
   .readiness-grid {
     grid-template-columns: 1fr;
   }
+
+  .workspace-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .workspace-tabs {
@@ -669,7 +698,7 @@
   gap: 4px;
   overflow-x: auto;
   border-bottom: 1px solid var(--color-border);
-  margin: 12px 0 16px;
+  margin: 8px 0 12px;
 }
 .workspace-tabs button {
   background: transparent;
@@ -679,8 +708,8 @@
   cursor: pointer;
   font: inherit;
   font-size: 14px;
-  min-height: 42px;
-  padding: 12px 14px;
+  min-height: 40px;
+  padding: 10px 12px;
   white-space: nowrap;
 }
 .workspace-tabs button[aria-current="page"] {
@@ -692,7 +721,7 @@
 .workspace-page [hidden] { display: none !important; }
 
 /* Compact identity: one role title with company/stage beneath. */
-.workspace-page .page-heading { margin-bottom: 12px; }
+.workspace-page .page-heading { margin-bottom: 8px; }
 .workspace-page .page-heading h1 {
   font-size: 27px;
   line-height: 1.2;
@@ -701,7 +730,7 @@
 .workspace-page .page-heading .page-description { overflow-wrap: anywhere; }
 
 /* One readable materials surface: resume, answers, letter side by side. */
-.workspace-materials { padding: 16px; margin-bottom: 12px; }
+.workspace-materials { padding: 12px 16px; margin-bottom: 8px; }
 .workspace-materials-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -739,9 +768,9 @@
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 12px;
-  padding-top: 12px;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
   border-top: 1px solid var(--color-border);
 }
 .workspace-attention { margin: 0; font-size: 14px; }
@@ -755,7 +784,7 @@
   border-top: 1px solid var(--color-border);
 }
 .workspace-summary-error p { margin: 0; }
-.workspace-secondary-action { margin: 16px 0 24px; }
+.workspace-secondary-action { margin: 8px 0 12px; }
 @media (max-width: 600px) {
   .workspace-materials-grid { grid-template-columns: minmax(0, 1fr); }
   .workspace-attention-row { flex-direction: column; align-items: flex-start; }
@@ -772,5 +801,27 @@
   margin: 12px 0; padding: 12px 16px; border-left: 3px solid var(--color-attention);
   background: var(--color-surface-muted); font-size: 13px; line-height: 1.5;
 }
-.workspace-empty-documents { margin: 0 24px 12px; }
+.workspace-empty-documents { margin: 0 20px 10px; }
 .workspace-unsaved button { border: 0; padding: 0; background: transparent; color: var(--color-primary); font: inherit; text-decoration: underline; cursor: pointer; }
+
+/* Questions workbench: keep the current question and editor in view at 1280x800. */
+#writing { padding: 16px 20px; }
+#writing .section-heading { padding: 0 0 10px; }
+#writing .section-heading h2 { margin-bottom: 4px; }
+#writing .section-heading .section-subtitle { margin-top: 2px; }
+.workspace-page .workspace-materials-grid { gap: 8px 16px; }
+.resume-suggestion { margin: 0 20px 10px; }
+.readiness-grid { padding: 0 20px 10px; }
+.workspace-legacy-links { padding: 0 20px 16px; }
+
+/* Documents tab: denser resume and letter panels without crowding. */
+.workspace-page #prepare { padding: 16px 20px; }
+.workspace-page #prepare .section-heading { padding: 0 0 10px; }
+.workspace-page #cover-letters { padding: 16px 20px; }
+.workspace-page #cover-letters .section-heading { padding: 0 0 10px; }
+
+/* Questions tab: compress the context strip so the desk starts higher. */
+.workspace-activity-questions .workspace-materials { padding: 10px 14px; }
+.workspace-activity-questions .workspace-materials-grid dd { font-size: 13px; }
+.workspace-activity-questions .workspace-attention { font-size: 13px; }
+.workspace-activity-questions .breadcrumbs { margin-bottom: 8px; }

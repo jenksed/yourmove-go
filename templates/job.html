@@ -303,7 +303,7 @@
       <form method="POST" action="/jobs/{{.ID}}/cover-letter/save" class="letter-form" data-ai-draft>
         <input type="hidden" name="draft_id" value="{{.Letter.ID}}"><div class="field"><label for="letter-body" class="ai-draft-label">Letter text</label><textarea id="letter-body" name="body" rows="15" minlength="30" maxlength="12000" required spellcheck="true">{{.Letter.Body}}</textarea></div>
         <p class="small-muted" data-answer-status role="status">Saved locally · unsaved edits are excluded from transfer and download.</p>
-        <div class="ai-draft-toolbar"><span data-ai-word-count aria-live="polite">Target 120–160 words; editorial ceiling 180. Edit freely.</span><a class="text-link" href="/jobs/{{.ID}}/cover-letter/{{.Letter.ID}}/download">Download saved letter PDF ↧</a><button class="button button-secondary" type="submit">Save my edits</button></div>
+        <div class="ai-draft-toolbar"><span data-ai-word-count aria-live="polite">Target 120–160 words; editorial ceiling 180. Edit freely.</span><a class="text-link" href="/jobs/{{.ID}}/cover-letter/{{.Letter.ID}}/download">Download saved letter PDF ↧</a><button class="button button-primary" type="submit">Save my edits</button></div>
       </form>
 
       {{if and .BrowserState.Active .Preparation.IncludeLetter}}

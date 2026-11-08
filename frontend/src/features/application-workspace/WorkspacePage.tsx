@@ -1,4 +1,4 @@
-import { AppNavigation } from "../../shared/AppNavigation";
+import { AppNavigation, AppTopbar } from "../../shared/AppNavigation";
 // YM-004A React Application Workspace: one coherent preparation activity.
 // Reads and writes through Go-owned JSON contracts only. The source URL is
 // displayed, never edited here; resume bytes never enter this client.
@@ -500,7 +500,8 @@ export function WorkspacePage(): React.JSX.Element {
       </a>
       <AppNavigation active="opportunities" />
       <div className="app-main">
-        <main id="main-content" className="page-container workspace-page">
+        <AppTopbar />
+        <main id="main-content" className={`page-container workspace-page workspace-activity-${activity}`}>
           <nav className="breadcrumbs" aria-label="Breadcrumb">
             <a href="/jobs">Opportunities</a>
             <span aria-hidden="true">/</span>
@@ -825,12 +826,12 @@ export function WorkspacePage(): React.JSX.Element {
                     )}
                   </div>
                   <button
-                    className="button button-secondary"
+                    className={selectedOption ? "button button-secondary" : "button button-primary"}
                     type="button"
                     disabled={resumeBusy}
                     onClick={openChooser}
                   >
-                    Change résumé
+                    {selectedOption ? "Change résumé" : "Choose résumé"}
                   </button>
                 </div>
                 {snapshot.suggestion.status === "matched" &&
@@ -839,7 +840,7 @@ export function WorkspacePage(): React.JSX.Element {
                       Suggested for {snapshot.suggestion.familyName}:{" "}
                       <strong>{snapshot.suggestion.resumeName}</strong>{" "}
                       <button
-                        className="button button-secondary"
+                        className="button button-primary"
                         type="button"
                         disabled={resumeBusy}
                         onClick={() => void handleAssign(snapshot.suggestion.resumeId)}
@@ -981,7 +982,6 @@ export function WorkspacePage(): React.JSX.Element {
               </div>
 
               <div hidden={activity !== "questions"}>
-                <p>Answer any available questions you choose; the rest can be completed on the employer site.</p>
                 {snapshot.job.id > 0 && <WritingSection jobId={snapshot.job.id} destination={snapshot.job.url} onMaterialSaved={materialSaved} readOnly={applied} active={activity === "questions"} discoveryStatus={discoveryStatus} onRetryDiscovery={retryDiscovery} />}
                 <div className="workspace-secondary-action">
                   <button className="button button-secondary" type="button" onClick={() => handleActivitySelect("apply")}>

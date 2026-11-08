@@ -527,7 +527,7 @@ export function WritingSection({
               ? snapshot.activeContext === "live"
                 ? `${snapshot.source}. Your text saves locally in YourMove; nothing is filled on the employer site from here.`
                 : `${snapshot.source}. These questions have not yet been verified on your live form.`
-              : "Questions have not been discovered for this posting yet. Saved writing below is preserved."}
+              : "Saved writing below is preserved."}
             {snapshot.partial ? " Partial inspection; later questions may be missing." : ""}
           </p>
         </div>
