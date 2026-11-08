@@ -13,12 +13,14 @@ opportunities, résumés, answers, cover letters, and records of what you person
 </p>
 
 <p align="center">
-  <a href="https://github.com/jenksed/yourmove-go/releases/download/v0.2.0/YourMove-0.2.0-macOS-arm64.dmg"><strong>Download for Mac</strong></a> ·
+  <a href="https://github.com/jenksed/yourmove-go/releases/download/v0.1.0/YourMove-0.1.0-macOS-arm64-installer-r2.dmg"><strong>Download for Mac</strong></a> ·
   <a href="https://www.yourmove.run/docs/availability/">Installation guide</a> ·
   <a href="#one-workspace-for-the-whole-application">See how it works</a>
 </p>
 
-<p align="center"><sub>macOS Technical Alpha v0.2.0 · Apple Silicon · Unnotarized testers build</sub></p>
+<p align="center">v0.2.0 is being revised; downloads currently point to the last publicly available qualified release, v0.1.0.</p>
+
+<p align="center"><sub>macOS Technical Alpha v0.1.0 · Apple Silicon · Unnotarized testers build</sub></p>
 
 ---
 
@@ -62,12 +64,12 @@ A guided pass through one application:
 
 **Requires:** Apple Silicon Mac, macOS 26+. Chrome/Chromium only matters for assisted form filling.
 
-1. Download [**YourMove-0.2.0-macOS-arm64.dmg**](https://github.com/jenksed/yourmove-go/releases/download/v0.2.0/YourMove-0.2.0-macOS-arm64.dmg) ([checksum `99afcbdd…715d24ac`](https://github.com/jenksed/yourmove-go/releases/download/v0.2.0/YourMove-0.2.0-macOS-arm64.dmg.sha256)).
+1. Download [**YourMove-0.1.0-macOS-arm64-installer-r2.dmg**](https://github.com/jenksed/yourmove-go/releases/download/v0.1.0/YourMove-0.1.0-macOS-arm64-installer-r2.dmg) ([checksum `63c5ede4…11a2d41c`](https://github.com/jenksed/yourmove-go/releases/download/v0.1.0/YourMove-0.1.0-macOS-arm64-installer-r2.dmg.sha256)).
 2. Open the DMG, drag YourMove into Applications.
 3. Open it. macOS will warn that the app is unverified — this alpha is ad-hoc signed, not notarized. Choose **Done** (not Move to Trash).
 4. Open **System Settings → Privacy & Security** and choose **Open Anyway** for YourMove — a per-app approval, not a settings change — then open the app again.
 
-Full steps with screenshots: [installation guide](https://www.yourmove.run/docs/availability/). A plain ZIP of the same build is on the [release page](https://github.com/jenksed/yourmove-go/releases/tag/v0.2.0).
+Full steps with screenshots: [installation guide](https://www.yourmove.run/docs/availability/). A plain ZIP of the same build is on the [release page](https://github.com/jenksed/yourmove-go/releases/tag/v0.1.0).
 
 ## Trust and transparency
 
@@ -107,11 +109,11 @@ go test -tags desktop ./...  # macOS desktop build path
 
 ## Build from source
 
-The published [source archives](https://github.com/jenksed/yourmove-go/releases/tag/v0.2.0) build without private access. Download both the application source and the Career Discovery module source, then point Go at the local copy:
+The published [source archives](https://github.com/jenksed/yourmove-go/releases/tag/v0.1.0) build without private access. Download both the application source and the Career Discovery module source, then point Go at the local copy:
 
 ```sh
 mkdir yourmove-build && cd yourmove-build
-unzip ../YourMove-0.2.0-source.zip
+unzip ../YourMove-0.1.0-source.zip
 unzip ../yourmove-career-discovery-*-source.zip
 go mod edit -replace \
   github.com/jenksed/yourmove-career-discovery=./yourmove-career-discovery-v0.0.0-20261027151338-47aa7d49b55e
