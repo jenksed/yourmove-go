@@ -193,7 +193,7 @@ def main():
                     webview2="Evergreen bootstrapper; internet required if runtime missing",
                     tools={"go": capture("go", "version"), "wails": capture(wails, "version"),
                            "nsis": capture("makensis", "-VERSION"), "node": capture("node", "--version"),
-                           "pnpm": capture("pnpm", "--version")})
+                           "pnpm": capture(*pnpm, "--version")})
     (output / "candidate.json").write_text(json.dumps(metadata, indent=2) + "\n")
     winget = output / "winget-unpublished"
     winget.mkdir()
