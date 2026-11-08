@@ -276,7 +276,12 @@ func extractWorkdayMetadata(data []byte, requested workdayPostingURL) (Metadata,
 	}
 	requestedID := pathLastSegment(requested.postingID)
 	returnedID := strings.TrimSpace(string(info.JobPostingID))
-	if returnedID == "" || returnedID != requestedID {
+	// Workday's jobPostingId is the posting slug, but its capitalization may
+	// differ from the public URL (for example Technical-Support_R30773 versus
+	// technical-support_r30773). Compare the complete slug without treating
+	// case as identity; jobReqId is a separate requisition key and is not
+	// interchangeable with the URL posting slug.
+	if returnedID == "" || !strings.EqualFold(returnedID, requestedID) {
 		return Metadata{}, fmt.Errorf("Workday posting identity mismatch: got %q, want %q", returnedID, requestedID)
 	}
 
