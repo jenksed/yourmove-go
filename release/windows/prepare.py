@@ -20,7 +20,10 @@ def sha256(path):
 
 
 def capture(*args):
-    return subprocess.check_output(args, cwd=ROOT, text=True, stderr=subprocess.STDOUT).strip()
+    try:
+        return subprocess.check_output(args, cwd=ROOT, text=True, stderr=subprocess.STDOUT).strip()
+    except OSError as error:
+        raise RuntimeError(f"cannot execute {args[0]!r}: {error}") from error
 
 
 def validate_product(product):
@@ -189,5 +192,5 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (ValueError, OSError, subprocess.CalledProcessError) as error:
+    except (ValueError, OSError, RuntimeError, subprocess.CalledProcessError) as error:
         sys.exit(str(error) + "\nBuild failed; inspect build.log. Do not distribute incomplete output.")

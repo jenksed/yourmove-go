@@ -251,6 +251,7 @@ jobs:
       - name: Build unsigned Windows x64 installer candidate
         shell: pwsh
         run: |
+          Get-Command go, node, pnpm, makensis, wails3 -ErrorAction Continue | Format-Table Name, Source
           python release/windows/prepare.py (Join-Path $env:RUNNER_TEMP 'yourmove-windows-candidate')
           if ($LASTEXITCODE -ne 0) { throw 'Windows packaging failed' }
 
