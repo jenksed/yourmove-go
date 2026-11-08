@@ -2,6 +2,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   pull_request:
     branches:
       - main
@@ -10,6 +11,7 @@ on:
     branches:
       - main
       - v0.2/develop
+      - v0.2/feat-windows-packaging
 
 permissions:
   contents: read
@@ -214,8 +216,11 @@ jobs:
           pnpm run build
           pnpm list react react-dom
 
-      # Build/package verification only. This does not prove WebView2 rendering,
-      # installation, dialogs, or persistence; those need Windows 11 acceptance.
+      # Packaging plus installer-lifecycle qualification (silent install,
+      # registration, launch attempt, HTTP save-path lifecycle on a synthetic
+      # workspace, uninstall retention, reinstall recovery). Interactive GUI
+      # presentation, browser Fill, and A/B upgrade still need Windows 11
+      # acceptance; see qualify-ci.ps1 evidence for per-check status.
       # The Go test suite is intentionally not run here: it has never been
       # exercised on Windows and contains Unix-assuming cases, so gating on
       # it unobserved would trade a known gap for unknown red CI.
@@ -224,6 +229,11 @@ jobs:
 
       - name: Vet Windows desktop entry point
         run: go vet -tags desktop .
+
+      - name: Build same-source browser-mode server for save-path checks
+        run: |
+          mkdir -p "$RUNNER_TEMP/yourmove-server"
+          go build -o "$RUNNER_TEMP/yourmove-server/yourmove-server.exe" .
 
       - name: Set up Wails and NSIS packaging tools
         shell: pwsh
@@ -274,6 +284,33 @@ jobs:
             ${{ runner.temp }}/yourmove-windows-candidate/*.log
             ${{ runner.temp }}/yourmove-windows-candidate/SHA256SUMS
             ${{ runner.temp }}/yourmove-windows-candidate/winget-unpublished/
+          if-no-files-found: error
+          retention-days: 14
+
+      # Real Windows execution: silent install, registration, launch, HTTP
+      # save-path lifecycle on a synthetic workspace, uninstall retention,
+      # and reinstall recovery. GUI presentation, browser Fill, and A/B
+      # upgrade remain NOT RUN; see the evidence file for per-check status.
+      - name: Qualify installer lifecycle on this runner
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP/yourmove-ci-evidence" | Out-Null
+          & "$env:GITHUB_WORKSPACE/release/windows/qualify-ci.ps1" `
+            -CandidateDir (Join-Path $env:RUNNER_TEMP 'yourmove-windows-candidate') `
+            -ServerExe (Join-Path $env:RUNNER_TEMP 'yourmove-server/yourmove-server.exe') `
+            -WorkspaceRoot (Join-Path $env:RUNNER_TEMP 'yourmove-ci-workspaces') `
+            -EvidenceDir (Join-Path $env:RUNNER_TEMP 'yourmove-ci-evidence')
+
+      - name: Retain Windows qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: YourMove-windows-x64-qualification-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/yourmove-ci-evidence/evidence.json
+            ${{ runner.temp }}/yourmove-ci-evidence/*.log
+            ${{ runner.temp }}/yourmove-ci-evidence/*.stderr
+            ${{ runner.temp }}/yourmove-ci-evidence/ci-resume.pdf
           if-no-files-found: error
           retention-days: 14
 
