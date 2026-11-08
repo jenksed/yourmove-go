@@ -314,6 +314,7 @@ jobs:
             ${{ runner.temp }}/yourmove-ci-evidence/evidence.json
             ${{ runner.temp }}/yourmove-ci-evidence/*.log
             ${{ runner.temp }}/yourmove-ci-evidence/*.stderr
+            ${{ runner.temp }}/yourmove-ci-evidence/*.out
             ${{ runner.temp }}/yourmove-ci-evidence/ci-resume.pdf
           if-no-files-found: error
           retention-days: 14

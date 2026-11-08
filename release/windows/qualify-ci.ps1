@@ -222,10 +222,11 @@ try {
     $resumeBytes = [Text.Encoding]::UTF8.GetBytes("%PDF-1.4`nsynthetic ci qualification resume")
     $resumeFile = Join-Path $EvidenceDir 'ci-resume.pdf'
     [IO.File]::WriteAllBytes($resumeFile, $resumeBytes)
-    $resp = Invoke-WebRequest -Uri "$base/resumes/import" -Method Post `
-      -Form @{ resume = Get-Item $resumeFile } -MaximumRedirection 0 `
-      -SkipHttpErrorCheck -UseBasicParsing
-    if ($resp.StatusCode -ne 303) { throw "POST /resumes/import status=$($resp.StatusCode)" }
+    # curl.exe ships with Windows and builds the multipart body reliably;
+    # Invoke-WebRequest -Form mishandles the 303 redirect on this runner.
+    $uploadCode = (& curl.exe -s -o "$EvidenceDir/upload-resumes.out" -w '%{http_code}' `
+      -F "resume=@$resumeFile;type=application/pdf" "$base/resumes/import" 2>$null).Trim()
+    if ($uploadCode -ne '303') { throw "POST /resumes/import http_code=$uploadCode" }
     $resumes = (Invoke-WebRequest -Uri "$base/resumes" -UseBasicParsing).Content
     if (-not $resumes.Contains('ci-resume.pdf')) { throw 'uploaded resume not listed' }
     Set-Check 'backend-save' 'PASS' 'profile + role family + resume bytes saved over HTTP'
