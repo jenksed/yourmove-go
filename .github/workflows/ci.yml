@@ -171,7 +171,7 @@ jobs:
           echo "macOS application bundle verification passed"
 
   windows:
-    name: Windows desktop compile verification
+    name: Windows desktop and NSIS package verification
     runs-on: windows-2025
     timeout-minutes: 20
     defaults:
@@ -214,10 +214,8 @@ jobs:
           pnpm run build
           pnpm list react react-dom
 
-      # Compile verification only: this runner proves the actual native
-      # application (embedded frontend, Windows entry point) builds with the
-      # native toolchain. It does not prove WebView2 rendering, dialogs, or
-      # persistence; those need the graphical-host journey (Checkpoints C/D).
+      # Build/package verification only. This does not prove WebView2 rendering,
+      # installation, dialogs, or persistence; those need Windows 11 acceptance.
       # The Go test suite is intentionally not run here: it has never been
       # exercised on Windows and contains Unix-assuming cases, so gating on
       # it unobserved would trade a known gap for unknown red CI.
@@ -227,16 +225,53 @@ jobs:
       - name: Vet Windows desktop entry point
         run: go vet -tags desktop .
 
-      - name: Build Windows desktop executable
+      - name: Set up Wails and NSIS packaging tools
+        shell: pwsh
         run: |
-          mkdir -p "$RUNNER_TEMP/yourmove-windows-native"
-          go build -tags desktop \
-            -o "$RUNNER_TEMP/yourmove-windows-native/YourMove.exe" .
+          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
+          if ($LASTEXITCODE -ne 0) { throw 'Wails CLI installation failed' }
+          if (-not (Test-Path 'C:\Program Files (x86)\NSIS\makensis.exe')) {
+            choco install nsis --version=3.13 --yes --no-progress
+            if ($LASTEXITCODE -ne 0) { throw 'NSIS installation failed' }
+          }
+          'C:\Program Files (x86)\NSIS' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
-      - name: Record Windows executable provenance
+      - name: Build unsigned Windows x64 installer candidate
+        shell: pwsh
         run: |
-          ls -la "$RUNNER_TEMP/yourmove-windows-native/YourMove.exe"
-          file "$RUNNER_TEMP/yourmove-windows-native/YourMove.exe" || true
-          go version -m "$RUNNER_TEMP/yourmove-windows-native/YourMove.exe"
-          (cd "$RUNNER_TEMP/yourmove-windows-native" && sha256sum YourMove.exe)
+          python release/windows/prepare.py (Join-Path $env:RUNNER_TEMP 'yourmove-windows-candidate')
+          if ($LASTEXITCODE -ne 0) { throw 'Windows packaging failed' }
+
+      - name: Verify Windows metadata and unsigned status
+        shell: pwsh
+        run: |
+          $candidate = Join-Path $env:RUNNER_TEMP 'yourmove-windows-candidate'
+          $metadata = Get-Content (Join-Path $candidate 'candidate.json') | ConvertFrom-Json
+          $exe = Join-Path $candidate 'YourMove.exe'
+          $version = (Get-Item $exe).VersionInfo
+          if ($version.ProductName -ne 'YourMove' -or $version.ProductVersion -ne $metadata.version) { throw 'Wrong application metadata' }
+          if ($version.FileVersion -ne "$($metadata.version).$($metadata.build)") { throw 'Wrong build version' }
+          foreach ($name in @('YourMove.exe', $metadata.installer)) {
+            $file = Join-Path $candidate $name
+            if ((Get-AuthenticodeSignature $file).Status -ne 'NotSigned') { throw "Expected explicitly unsigned candidate: $name" }
+          }
+          if ((Get-FileHash (Join-Path $candidate $metadata.installer) -Algorithm SHA256).Hash -ne $metadata.installer_sha256) { throw 'Installer hash mismatch' }
+          Get-Content (Join-Path $candidate 'build-info.txt')
+          Get-Content (Join-Path $candidate 'SHA256SUMS')
+
+      # Private CI artifacts only; no GitHub Release is created or uploaded.
+      - name: Retain local qualification package and provenance
+        uses: actions/upload-artifact@v4
+        with:
+          name: YourMove-windows-x64-unsigned-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/yourmove-windows-candidate/YourMove-*-windows-x64-unsigned.exe
+            ${{ runner.temp }}/yourmove-windows-candidate/YourMove-*-source.zip
+            ${{ runner.temp }}/yourmove-windows-candidate/*.json
+            ${{ runner.temp }}/yourmove-windows-candidate/*.txt
+            ${{ runner.temp }}/yourmove-windows-candidate/*.log
+            ${{ runner.temp }}/yourmove-windows-candidate/SHA256SUMS
+            ${{ runner.temp }}/yourmove-windows-candidate/winget-unpublished/
+          if-no-files-found: error
+          retention-days: 14
 

@@ -1,0 +1,8 @@
+{
+  "name": "YourMove",
+  "identifier": "com.yourmove.go",
+  "version": "0.2.0",
+  "build": 1,
+  "publisher": "YourMove",
+  "description": "Local-first job application workbench"
+}
