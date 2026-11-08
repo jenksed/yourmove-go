@@ -19,6 +19,23 @@ def sha256(path):
         return hashlib.file_digest(source, "sha256").hexdigest()
 
 
+def resolve_tool(name):
+    """Resolve a CLI to a spawnable argv prefix on any OS.
+
+    A Windows PATH entry may expose an extensionless Node shim (runnable
+    from Git Bash, invisible to CreateProcess). Run that kind through node
+    instead of failing with a bare WinError.
+    """
+    path = shutil.which(name)
+    if path is None:
+        return None
+    if os.name == "nt" and Path(path).suffix.lower() not in (".exe", ".cmd", ".bat", ".com", ".ps1"):
+        node = shutil.which("node")
+        if node is not None:
+            return [node, path]
+    return [path]
+
+
 def capture(*args):
     try:
         return subprocess.check_output(args, cwd=ROOT, text=True, stderr=subprocess.STDOUT).strip()
@@ -57,15 +74,18 @@ def main():
         parser.error("commit source changes before building a candidate")
     if list(ROOT.glob("*.syso")):
         parser.error("unexpected root .syso resource; refusing to combine or overwrite it")
-    for tool in ("go", "node", "pnpm", "makensis", "git"):
+    for tool in ("go", "node", "makensis", "git"):
         if not shutil.which(tool):
             parser.error(f"missing build prerequisite: {tool}")
+    pnpm = resolve_tool("pnpm")
+    if pnpm is None:
+        parser.error("missing build prerequisite: pnpm")
     wails = os.environ.get("WAILS3", "wails3")
     if not shutil.which(wails):
         parser.error(f"missing build prerequisite: {wails} (install pinned Wails CLI v3.1.0 or set WAILS3)")
     if capture(wails, "version") != "v3.1.0":
         parser.error("install the pinned Wails CLI v3.1.0 (or set WAILS3)")
-    if capture("pnpm", "--version") != "10.14.0":
+    if capture(*pnpm, "--version") != "10.14.0":
         parser.error("pnpm 10.14.0 is required")
     if capture("node", "--version") != "v" + (ROOT / "frontend/.nvmrc").read_text().strip():
         parser.error("Node must match frontend/.nvmrc")
@@ -95,8 +115,8 @@ def main():
     (output / "source-commit.txt").write_text(commit + "\n")
     manifest_before = capture(sys.executable, str(ROOT / "release/macos/source_manifest.py"))
     (output / "source-manifest.json").write_text(manifest_before + "\n")
-    run("pnpm", "install", "--frozen-lockfile", cwd=ROOT / "frontend")
-    run("pnpm", "run", "build", cwd=ROOT / "frontend")
+    run(*pnpm, "install", "--frozen-lockfile", cwd=ROOT / "frontend")
+    run(*pnpm, "run", "build", cwd=ROOT / "frontend")
     assets = output / "assets"
     run(wails, "generate", "build-assets", "-dir", str(assets), "-name", product["name"],
         "-binaryname", product["name"], "-productname", product["name"],

@@ -252,6 +252,7 @@ jobs:
         shell: pwsh
         run: |
           Get-Command go, node, pnpm, makensis, wails3 -ErrorAction Continue | Format-Table Name, Source
+          if ($env:PNPM_HOME) { Get-ChildItem $env:PNPM_HOME | Format-Table Name, Length }
           python release/windows/prepare.py (Join-Path $env:RUNNER_TEMP 'yourmove-windows-candidate')
           if ($LASTEXITCODE -ne 0) { throw 'Windows packaging failed' }
 
