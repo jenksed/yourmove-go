@@ -90,12 +90,17 @@ function Start-AppServer([string]$Exe, [string]$DataDir, [int]$Port, [string]$Lo
 function Stop-Quiet([System.Diagnostics.Process]$Process, [string]$Name) {
   if ($null -eq $Process) { return }
   try {
+    $Process.Refresh()
     if (-not $Process.HasExited) {
-      $Process.CloseMainWindow() | Out-Null
-      if (-not $Process.WaitForExit(5000)) { $Process.Kill() }
+      try { $Process.CloseMainWindow() | Out-Null } catch { }
+      $Process.Refresh()
+      if (-not $Process.HasExited -and -not $Process.WaitForExit(5000)) {
+        $Process.Refresh()
+        if (-not $Process.HasExited) { $Process.Kill() }
+      }
     }
   } catch { }
-  Write-Host "$Name exited: $($Process.HasExited) exit code: $($Process.ExitCode)"
+  try { $Process.Refresh(); Write-Host "$Name exited: $($Process.HasExited)" } catch { }
 }
 
 $candidate = Get-Content (Join-Path $CandidateDir 'candidate.json') | ConvertFrom-Json
@@ -256,6 +261,8 @@ try {
     Stop-Quiet $server2 'Server cycle 2'
   }
 } catch {
+  $notes['backend-error'] = "$($_.Exception.GetType().FullName): $($_.Exception.Message)`n$($_.ScriptStackTrace)"
+  Write-Host "BACKEND-ERROR $($notes['backend-error'])"
   Set-Check 'backend-restart-persistence' 'FAIL' $_.Exception.Message
   if ($checks['backend-save'] -eq $null) { Set-Check 'backend-save' 'FAIL' 'save path did not complete' }
 }
