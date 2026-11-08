@@ -12,6 +12,20 @@ InstallerSwitches:
   Silent: /S
   SilentWithProgress: /S
 UpgradeBehavior: install
+ExpectedReturnCodes:
+  - InstallerReturnCode: 64
+    ReturnResponse: systemNotSupported
+  - InstallerReturnCode: 65
+    ReturnResponse: systemNotSupported
+  - InstallerReturnCode: 66
+    ReturnResponse: downgrade
+  - InstallerReturnCode: 67
+    ReturnResponse: packageInUse
+  - InstallerReturnCode: 70
+    ReturnResponse: missingDependency
+Dependencies:
+  ExternalDependencies:
+    - Google Chrome (for employer-browser Fill)
 AppsAndFeaturesEntries:
   - DisplayName: YourMove
     Publisher: '@PUBLISHER@'

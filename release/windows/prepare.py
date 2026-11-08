@@ -122,9 +122,10 @@ def main():
     # Go needs a physical .syso in the main package. Own it exclusively, remove even
     # on build failure, and never alter an existing resource or another worktree.
     temporary_resource = ROOT / "yourmove_packaging_windows_amd64.syso"
-    with temporary_resource.open("xb") as target:
-        target.write(resource.read_bytes())
+    target = temporary_resource.open("xb")
     try:
+        with target:
+            target.write(resource.read_bytes())
         run("go", "build", "-trimpath", "-buildvcs=true", "-tags", "desktop,production", "-ldflags", flags,
             "-o", str(executable), ".", env=environment)
     finally:
