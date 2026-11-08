@@ -58,6 +58,8 @@ def main():
         if not shutil.which(tool):
             parser.error(f"missing build prerequisite: {tool}")
     wails = os.environ.get("WAILS3", "wails3")
+    if not shutil.which(wails):
+        parser.error(f"missing build prerequisite: {wails} (install pinned Wails CLI v3.1.0 or set WAILS3)")
     if capture(wails, "version") != "v3.1.0":
         parser.error("install the pinned Wails CLI v3.1.0 (or set WAILS3)")
     if capture("pnpm", "--version") != "10.14.0":

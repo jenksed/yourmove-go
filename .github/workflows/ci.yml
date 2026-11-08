@@ -240,6 +240,8 @@ jobs:
         run: |
           go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
           if ($LASTEXITCODE -ne 0) { throw 'Wails CLI installation failed' }
+          # go install lands outside PATH on this runner; prepare.py spawns it.
+          "$(go env GOPATH)/bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           if (-not (Test-Path 'C:\Program Files (x86)\NSIS\makensis.exe')) {
             choco install nsis --version=3.13 --yes --no-progress
             if ($LASTEXITCODE -ne 0) { throw 'NSIS installation failed' }
