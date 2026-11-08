@@ -266,7 +266,9 @@ jobs:
           name: YourMove-windows-x64-unsigned-${{ github.sha }}
           path: |
             ${{ runner.temp }}/yourmove-windows-candidate/YourMove-*-windows-x64-unsigned.exe
+            ${{ runner.temp }}/yourmove-windows-candidate/YourMove.exe
             ${{ runner.temp }}/yourmove-windows-candidate/YourMove-*-source.zip
+            ${{ runner.temp }}/yourmove-windows-candidate/assets/windows/nsis/MicrosoftEdgeWebview2Setup.exe
             ${{ runner.temp }}/yourmove-windows-candidate/*.json
             ${{ runner.temp }}/yourmove-windows-candidate/*.txt
             ${{ runner.temp }}/yourmove-windows-candidate/*.log
