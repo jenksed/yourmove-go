@@ -71,9 +71,21 @@
 }
 
 .workspace-url {
+  display: block;
   overflow-wrap: anywhere;
   font-size: 12px;
+  line-height: 1.5;
   color: var(--color-muted);
+  margin-top: 2px;
+}
+
+.workspace-source-status {
+  display: block;
+}
+
+.workspace-source-meta {
+  display: block;
+  margin-top: 2px;
 }
 
 .workspace-source-actions {
@@ -809,14 +821,20 @@
 #writing .section-heading { padding: 0 0 10px; }
 #writing .section-heading h2 { margin-bottom: 4px; }
 #writing .section-heading .section-subtitle { margin-top: 2px; }
+#writing .question-navigator,
+#writing .writing-desk,
+#writing .writing-previous { padding-left: 0; padding-right: 0; }
+#writing .writing-notice { margin-left: 0; margin-right: 0; }
 .workspace-page .workspace-materials-grid { gap: 8px 16px; }
-.resume-suggestion { margin: 0 20px 10px; }
-.readiness-grid { padding: 0 20px 10px; }
-.workspace-legacy-links { padding: 0 20px 16px; }
+.resume-suggestion { margin: 0 0 10px; }
+.readiness-grid { padding: 0 0 10px; }
+.workspace-legacy-links { padding: 0 0 16px; }
 
 /* Documents tab: denser resume and letter panels without crowding. */
 .workspace-page #prepare { padding: 16px 20px; }
 .workspace-page #prepare .section-heading { padding: 0 0 10px; }
+.workspace-page #prepare .resume-current,
+.workspace-page #prepare .workspace-empty-documents { margin-left: 0; margin-right: 0; }
 .workspace-page #cover-letters { padding: 16px 20px; }
 .workspace-page #cover-letters .section-heading { padding: 0 0 10px; }
 

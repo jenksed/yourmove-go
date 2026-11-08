@@ -96,9 +96,9 @@ a.progress-metric:hover span {text-decoration:underline;color:var(--color-primar
 .dashboard-next h2 {font-size:17px;overflow-wrap:anywhere}
 .dashboard-next-identity {min-width:0}
 .dashboard-next-company,.dashboard-next .small-muted {margin:3px 0 8px;overflow-wrap:anywhere}
-.dashboard-next .button {min-height:36px;padding:7px 11px;justify-self:end;max-width:220px;white-space:normal;text-align:center}
+.dashboard-next .button {min-height:36px;padding:7px 14px;justify-self:end;max-width:none;white-space:nowrap;text-align:center}
 .dashboard-next .small-muted {margin-bottom:0}
-@media(max-width:819px){.topbar{flex-basis:auto}.dashboard-next{grid-template-columns:minmax(0,1fr)}.dashboard-next .button{justify-self:start;max-width:100%}}
+@media(max-width:819px){.topbar{flex-basis:auto}.dashboard-next{grid-template-columns:minmax(0,1fr)}.dashboard-next .button{justify-self:start;max-width:100%;white-space:normal}}
 .create-panel {margin-bottom:16px}
 .create-panel>summary {padding:0 16px;min-height:46px;display:flex;align-items:center}
 .create-summary-text strong {font-size:14px}

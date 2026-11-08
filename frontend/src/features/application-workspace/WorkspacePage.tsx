@@ -445,7 +445,7 @@ export function WorkspacePage(): React.JSX.Element {
     else if (job.stage === "closed") attention = "This opportunity is closed.";
     else if (snapshot.selectedResumeId === 0) attention = "No résumé selected. Choose one to continue.";
     else if (!snapshot.resumeValid) attention = "Selected résumé unavailable. Review the selected document.";
-    else if (!readiness.questionsAvailable) attention = "Questions not yet established.";
+    else if (!readiness.questionsAvailable) attention = "";
     else if (readiness.needsAnswerCount > 0) attention = `${readiness.needsAnswerCount} available questions without saved answers.`;
     return { resumeText, answersText, answersQualifier, letterText, attention };
   }, [snapshot, discoveryStatus]);
@@ -543,9 +543,9 @@ export function WorkspacePage(): React.JSX.Element {
                   </div>
                   <div>
                     <dt>Answers</dt>
-                    <dd>
-                      {materials.answersText}
-                      {!snapshot.readiness.questionsAvailable && (
+                      <dd>
+                        {materials.answersText}
+                        {!snapshot.readiness.questionsAvailable && activity !== "questions" && (
                         <>
                           {" "}
                           <button
@@ -636,16 +636,22 @@ export function WorkspacePage(): React.JSX.Element {
                   </div>
                   <div>
                     <dt>Posting</dt>
-                    <dd className="workspace-url">{snapshot.job.url}</dd>
+                    <dd>
+                      <span className="workspace-source-status">{snapshot.job.host !== "" ? snapshot.job.host : snapshot.job.url}</span>
+                      <span className="workspace-url">{snapshot.job.url}</span>
+                    </dd>
                   </div>
                   <div>
                     <dt>Source</dt>
                     <dd>
-                      {snapshot.job.sourceStatusLabel}
-                      {snapshot.job.sourceCheckedAt !== "" && (
-                        <small> · Last checked {snapshot.job.sourceCheckedAt}</small>
+                      <span className="workspace-source-status">{snapshot.job.sourceStatusLabel}</span>
+                      {(snapshot.job.sourceCheckedAt !== "" || snapshot.job.sourceNote !== "") && (
+                        <small className="workspace-source-meta">
+                          {snapshot.job.sourceCheckedAt !== "" ? `Last checked ${snapshot.job.sourceCheckedAt}` : ""}
+                          {snapshot.job.sourceCheckedAt !== "" && snapshot.job.sourceNote !== "" ? " · " : ""}
+                          {snapshot.job.sourceNote}
+                        </small>
                       )}
-                      {snapshot.job.sourceNote !== "" && <small> · {snapshot.job.sourceNote}</small>}
                     </dd>
                   </div>
                 </dl>
@@ -983,11 +989,13 @@ export function WorkspacePage(): React.JSX.Element {
 
               <div hidden={activity !== "questions"}>
                 {snapshot.job.id > 0 && <WritingSection jobId={snapshot.job.id} destination={snapshot.job.url} onMaterialSaved={materialSaved} readOnly={applied} active={activity === "questions"} discoveryStatus={discoveryStatus} onRetryDiscovery={retryDiscovery} />}
-                <div className="workspace-secondary-action">
-                  <button className="button button-secondary" type="button" onClick={() => handleActivitySelect("apply")}>
-                    Review application options →
-                  </button>
-                </div>
+                {!showSuggested && (
+                  <div className="workspace-secondary-action">
+                    <button className="button button-secondary" type="button" onClick={() => handleActivitySelect("apply")}>
+                      Review application options →
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div hidden={activity !== "apply"}>
