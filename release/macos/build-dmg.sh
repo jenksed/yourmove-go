@@ -1,7 +1,7 @@
 #!/bin/sh
-# Build the branded YourMove macOS DMG from the exact published v0.1.0 ZIP.
+# Build the branded YourMove macOS DMG from an exact accepted candidate ZIP.
 #
-# The application itself is never rebuilt or modified: the published ZIP is
+# The application itself is never rebuilt or modified: the candidate ZIP is
 # checksum-verified first, and the embedded .app keeps its executable,
 # resources, bundle identity, and ad-hoc signature. This script only stages
 # the installer presentation (background, Applications link, assistance
@@ -12,11 +12,28 @@
 #
 # Defaults match the accepted v0.1.0 build 3 candidate. Both arguments must be
 # absolute paths when supplied; the output directory must not exist yet.
+# Override the frozen-candidate identity for another accepted version/build:
+#   YOURMOVE_DMG_EXPECTED_SHA=<zip sha256> \
+#   YOURMOVE_DMG_VERSION=<x.y.z> YOURMOVE_DMG_BUILD=<n> \
+#   [YOURMOVE_DMG_NAME=<custom.dmg>] \
+#   bash release/macos/build-dmg.sh /absolute/candidate.zip /absolute/new/outdir
 set -eu
 
-EXPECTED_ZIP_SHA="d8d4baf30f65b233f2671459925d17d4b0f94a77e29521e42a54ccc90fdf2ad1"
+EXPECTED_ZIP_SHA="${YOURMOVE_DMG_EXPECTED_SHA:-d8d4baf30f65b233f2671459925d17d4b0f94a77e29521e42a54ccc90fdf2ad1}"
 VOLUME_NAME="YourMove"
-DMG_NAME="YourMove-0.1.0-macOS-arm64.dmg"
+DMG_VERSION="${YOURMOVE_DMG_VERSION:-0.1.0}"
+DMG_BUILD="${YOURMOVE_DMG_BUILD:-3}"
+DMG_NAME="${YOURMOVE_DMG_NAME:-YourMove-$DMG_VERSION-macOS-arm64.dmg}"
+case "$DMG_VERSION" in
+	[0-9]*.[0-9]*.[0-9]*) ;;
+	*) echo "Invalid YOURMOVE_DMG_VERSION: $DMG_VERSION" >&2; exit 2 ;;
+esac
+case "$DMG_BUILD" in
+	''|*[!0-9]*) echo "Invalid YOURMOVE_DMG_BUILD: $DMG_BUILD" >&2; exit 2 ;;
+esac
+case "$DMG_NAME" in
+	*/*) echo "Invalid YOURMOVE_DMG_NAME: must be a bare filename" >&2; exit 2 ;;
+esac
 WINDOW_W=700
 WINDOW_H=600
 
@@ -69,8 +86,8 @@ bundle_id=$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$APP/Contents
 test "$bundle_id" = "com.yourmove.go" || { echo "bundle id: $bundle_id" >&2; exit 1; }
 short_version=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$APP/Contents/Info.plist")
 build_version=$(/usr/libexec/PlistBuddy -c "Print CFBundleVersion" "$APP/Contents/Info.plist")
-test "$short_version" = "0.1.0" || { echo "version: $short_version" >&2; exit 1; }
-test "$build_version" = "3" || { echo "build: $build_version" >&2; exit 1; }
+test "$short_version" = "$DMG_VERSION" || { echo "version: $short_version" >&2; exit 1; }
+test "$build_version" = "$DMG_BUILD" || { echo "build: $build_version" >&2; exit 1; }
 /usr/bin/file "$APP/Contents/MacOS/YourMove" | grep -q arm64 || { echo "not arm64" >&2; exit 1; }
 /usr/bin/codesign --verify --deep --strict "$APP" || { echo "signature check failed" >&2; exit 1; }
 echo "App identity OK: $bundle_id $short_version build $build_version arm64, ad-hoc signature verifies."
