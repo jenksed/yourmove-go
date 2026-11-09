@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   browseLibrary,
   fetchLibraryExample,
+  fetchManualStartingPoint,
   fetchStartingPoint,
   type LibraryBrowseEntry,
   type LibraryBrowseResult,
@@ -106,18 +107,30 @@ export function PreviousWriting({
     setUseBusy(true);
     setUseError("");
     try {
-      const validated = await fetchStartingPoint(jobId, {
-        library_entry_id: previewId,
-        library_revision: previewRevision,
-        question_key: question.key,
-        revision: baselineRevision,
-        destination,
-        early: question.isEarly,
-        discovery_source: question.discoverySource,
-        discovery_fingerprint: question.discoveryFingerprint,
-        source_question_id: question.sourceQuestionId,
-      });
-      onUseAsDraft(validated.answer, { entryId: validated.entry_id, revision: validated.library_revision, label: previewTitle }, previewTitle);
+      // Manual questions validate against their application-owned key; the
+      // returned text is still an unsaved draft, never a transfer.
+      if (question.isManual) {
+        const validated = await fetchManualStartingPoint(jobId, question.key, {
+          library_entry_id: previewId,
+          library_revision: previewRevision,
+          revision: baselineRevision,
+          destination,
+        });
+        onUseAsDraft(validated.answer, { entryId: validated.library_entry_id, revision: validated.library_revision, label: previewTitle }, previewTitle);
+      } else {
+        const validated = await fetchStartingPoint(jobId, {
+          library_entry_id: previewId,
+          library_revision: previewRevision,
+          question_key: question.key,
+          revision: baselineRevision,
+          destination,
+          early: question.isEarly,
+          discovery_source: question.discoverySource,
+          discovery_fingerprint: question.discoveryFingerprint,
+          source_question_id: question.sourceQuestionId,
+        });
+        onUseAsDraft(validated.answer, { entryId: validated.entry_id, revision: validated.library_revision, label: previewTitle }, previewTitle);
+      }
     } catch (error) {
       setUseError(error instanceof Error ? error.message : "Unable to use this example");
     } finally {

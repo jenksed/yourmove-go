@@ -8,11 +8,14 @@ import {
   aiCancel,
   aiGenerate,
   aiReview,
+  createManualQuestion,
+  deleteManualQuestion,
   fetchAssistance,
   fetchBrief,
   fetchQuestions,
   captureQuestions,
   saveAnswer,
+  saveManualAnswer,
   type AssistanceSnapshot,
   type AiTicket,
   type QuestionsSnapshot,
@@ -125,6 +128,15 @@ export function WritingSection({
   const [saveNotice, setSaveNotice] = useState<string>("");
   const [saving, setSaving] = useState<boolean>(false);
   const [reusable, setReusable] = useState<boolean>(false);
+  const [manualFormOpen, setManualFormOpen] = useState<boolean>(false);
+  const [manualQuestionText, setManualQuestionText] = useState<string>("");
+  const [manualBusy, setManualBusy] = useState<boolean>(false);
+  const [manualError, setManualError] = useState<string>("");
+  const [editingQuestionText, setEditingQuestionText] = useState<boolean>(false);
+  const [questionDraft, setQuestionDraft] = useState<string>("");
+  const [confirmingRemove, setConfirmingRemove] = useState<boolean>(false);
+  const [copyNotice, setCopyNotice] = useState<string>("");
+  const [copyFallback, setCopyFallback] = useState<string>("");
   const [assistance, setAssistance] = useState<AssistanceSnapshot | null>(null);
   const [assistBusy, setAssistBusy] = useState<boolean>(false);
   const [assistError, setAssistError] = useState<string>("");
@@ -227,6 +239,11 @@ export function WritingSection({
       setSaveError("");
       setSaveNotice("");
       setReusable(false);
+      setEditingQuestionText(false);
+      setQuestionDraft(selected.label);
+      setConfirmingRemove(false);
+      setCopyNotice("");
+      setCopyFallback("");
       setAssistance(null);
       setAssistOpen(false);
       setTicket(null);
@@ -278,6 +295,8 @@ export function WritingSection({
     setSaveError("");
     setPendingOrigin(null);
     setReplaceCandidate(null);
+    setQuestionDraft(selected.label);
+    setEditingQuestionText(false);
   }, [selected]);
 
   const pickQuestion = useCallback(
@@ -334,6 +353,27 @@ export function WritingSection({
       // draft takes precedence over the automatic suggestion.
       const autoEntryId = pendingOrigin?.entryId ?? (selected.libraryAutoPrepared ? selected.libraryAutoEntryId : 0);
       const autoRevision = pendingOrigin?.revision ?? (selected.libraryAutoPrepared ? selected.libraryAutoRevision : 0);
+      if (selected.isManual) {
+        const questionChanged = editingQuestionText && questionDraft.trim() !== "" && questionDraft !== selected.label;
+        const result = await saveManualAnswer(jobId, selected.key, {
+          question: questionChanged ? questionDraft.trim() : undefined,
+          answer: draft,
+          revision: baselineRevision,
+          save_to_library: toLibrary,
+          origin_entry_id: autoEntryId || undefined,
+          origin_revision: autoRevision || undefined,
+        });
+        setDirty(false);
+        dirtyRef.current = false;
+        setPendingOrigin(null);
+        setReplaceCandidate(null);
+        setEditingQuestionText(false);
+        setBaselineRevision(result.question.revision);
+        setSaveNotice(toLibrary ? "Saved for this application and available in the Answer Library." : "Saved for this application only. Complete it on the employer website yourself; nothing was filled automatically.");
+        onMaterialSaved();
+        await reload();
+        return;
+      }
       const result = await saveAnswer(jobId, {
         save_to_library: toLibrary,
         question_key: selected.key,
@@ -362,7 +402,74 @@ export function WritingSection({
     } finally {
       setSaving(false);
     }
-  }, [selected, snapshot, jobId, destination, draft, reusable, baselineRevision, pendingOrigin, reload, onMaterialSaved, readOnly]);
+  }, [selected, snapshot, jobId, destination, draft, reusable, baselineRevision, pendingOrigin, reload, onMaterialSaved, readOnly, editingQuestionText, questionDraft]);
+
+  const handleAddManualQuestion = useCallback(async () => {
+    if (!snapshot?.editingAllowed || readOnly || manualQuestionText.trim() === "") return;
+    setManualBusy(true);
+    setManualError("");
+    try {
+      const result = await createManualQuestion(jobId, manualQuestionText.trim());
+      setManualQuestionText("");
+      setManualFormOpen(false);
+      await reload();
+      setSelectedId(`live:${result.question.key}`);
+    } catch (error) {
+      setManualError(error instanceof Error ? error.message : "Unable to add the question");
+    } finally {
+      setManualBusy(false);
+    }
+  }, [snapshot, jobId, manualQuestionText, readOnly, reload]);
+
+  const handleRemoveManualQuestion = useCallback(async () => {
+    if (!selected?.isManual || !snapshot?.editingAllowed || readOnly) return;
+    setSaving(true);
+    setSaveError("");
+    try {
+      await deleteManualQuestion(jobId, selected.key, baselineRevision);
+      setConfirmingRemove(false);
+      setSelectedId("");
+      await reload();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Unable to remove the question");
+    } finally {
+      setSaving(false);
+    }
+  }, [selected, snapshot, jobId, baselineRevision, readOnly, reload]);
+
+  // Copies the current prepared answer for manual completion on the employer
+  // website. The clipboard is a user convenience; nothing is transferred.
+  const handleCopyManualAnswer = useCallback(async () => {
+    if (!selected?.isManual) return;
+    setCopyNotice("");
+    setCopyFallback("");
+    const text = dirty ? draft : selected.value;
+    if (text.trim() === "") {
+      setCopyNotice("Nothing to copy yet. Save an answer first.");
+      return;
+    }
+    if (dirty) {
+      setCopyNotice("Copied your unsaved edits. Save them to keep this copy.");
+    }
+    try {
+      if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
+        setCopyFallback(text);
+        setCopyNotice("Clipboard access is unavailable here. Copy the text below manually.");
+        return;
+      }
+      await navigator.clipboard.writeText(text);
+      if (!dirty) setCopyNotice("Copied. Paste it into the employer form.");
+    } catch {
+      setCopyFallback(text);
+      setCopyNotice("Clipboard access was denied. Copy the text below manually.");
+    }
+  }, [selected, dirty, draft]);
+
+  const markAnswerDirty = useCallback((answerNext: string, questionNext: string) => {
+    const changed = answerNext !== (selected?.value ?? "") || (editingQuestionText && questionNext !== (selected?.label ?? ""));
+    dirtyRef.current = changed;
+    setDirty(changed);
+  }, [selected, editingQuestionText]);
 
   const openAssistance = useCallback(async () => {
     if (!selected) return;
@@ -509,7 +616,7 @@ export function WritingSection({
   const canSave = selected !== null && (dirty || (reusable && selected.reusableEligible)) && selected.editable && snapshot.editingAllowed && !readOnly;
 
   return (
-    <section className={snapshot.ownsPosting ? "panel" : "panel questions-unsupported"} aria-labelledby="writing-title" id="writing">
+    <section className="panel" aria-labelledby="writing-title" id="writing">
       <div className="section-heading">
         <div>
           <h2 id="writing-title">Questions</h2>
@@ -523,8 +630,7 @@ export function WritingSection({
           </p>
         </div>
         <div className="heading-actions">
-          <button className="button" type="button" disabled={captureBusy || readOnly || !snapshot.editingAllowed || !snapshot.ownsPosting} onClick={async () => {
-            setCaptureBusy(true);
+          <button className="button" type="button" disabled={captureBusy || readOnly || !snapshot.editingAllowed || !snapshot.ownsPosting} onClick={async () => {            setCaptureBusy(true);
             setCaptureNotice("");
             try {
               await captureQuestions(jobId);
@@ -538,8 +644,39 @@ export function WritingSection({
           <button className="button button-secondary" type="button" disabled={dirty} onClick={() => void reload()}>
             Refresh questions
           </button>
+          {snapshot.editingAllowed && !readOnly && (
+            <button className="button button-secondary" type="button" disabled={dirty || manualFormOpen} onClick={() => { setManualFormOpen(true); setManualError(""); }}>
+              Add question manually
+            </button>
+          )}
         </div>
       </div>
+
+      {manualFormOpen && (
+        <div className="panel detail-editor" aria-label="Add a question manually">
+          <h3>Add question manually</h3>
+          <p className="small-muted">Enter the employer&apos;s question exactly as displayed. It stays saved for this application only and never fills the employer site automatically.</p>
+          <div className="field field-full">
+            <label htmlFor="manual-question-text">Employer question</label>
+            <input
+              id="manual-question-text"
+              value={manualQuestionText}
+              onChange={(event) => setManualQuestionText(event.target.value)}
+              placeholder="Why do you want this role?"
+              maxLength={500}
+            />
+          </div>
+          {manualError !== "" && <p className="job-form-error" role="alert">{manualError}</p>}
+          <div className="form-actions">
+            <button className="button button-primary" type="button" disabled={manualBusy || manualQuestionText.trim() === ""} onClick={() => void handleAddManualQuestion()}>
+              {manualBusy ? "Adding…" : "Add question"}
+            </button>
+            <button className="button button-secondary" type="button" onClick={() => { setManualFormOpen(false); setManualQuestionText(""); setManualError(""); }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {captureNotice && <p role="status">{captureNotice}</p>}
       <p role="status" aria-label="Question capture status">
@@ -550,7 +687,7 @@ export function WritingSection({
       {dirty && <p className="small-muted">Save your answer before refreshing the question list.</p>}
 
       {discoveryStatus === "checking" && <p role="status">Checking for application questions…</p>}
-      {!snapshot.ownsPosting && <p className="writing-notice" role="note">Question capture supports saved Ashby, Greenhouse, and Lever postings. This URL cannot yet be safely associated with an employer form. Open the employer site yourself and prepare answers manually; automatic Fill remains unavailable.</p>}
+      {!snapshot.ownsPosting && <p className="writing-notice" role="note">Question capture supports saved Ashby, Greenhouse, and Lever postings. This URL cannot yet be safely associated with an employer form. Select Add question manually to prepare answers yourself; automatic Fill remains unavailable.</p>}
       {discoveryStatus === "unsupported" && snapshot.ownsPosting && answerTasks.length > 0 && <p className="writing-notice">This employer does not offer an early question preview. Select Capture application questions to check managed inspection support.</p>}
       {discoveryStatus === "failed" && <p className="writing-notice">We could not check questions right now. Your saved work is safe. <button className="button button-secondary" type="button" onClick={onRetryDiscovery}>Retry question check</button> You can also select Capture application questions.</p>}
 
@@ -570,7 +707,7 @@ export function WritingSection({
         <div className="empty-state">
           <h3>No questions discovered yet</h3>
           <p>
-            {!snapshot.ownsPosting ? "Automatic capture and Fill are unavailable for this posting. Open the employer site yourself and prepare answers manually." : discoveryStatus === "checking" ? "Checking this posting for questions." : "No early questions are available. Select Capture application questions, then navigate the employer form in the managed browser."}
+            {!snapshot.ownsPosting ? "Automatic capture and Fill are unavailable for this posting. Select Add question manually above, then open the employer site yourself and complete the form." : discoveryStatus === "checking" ? "Checking this posting for questions." : "No early questions are available. Select Capture application questions, then navigate the employer form in the managed browser."}
           </p>
         </div>
       )}
@@ -669,14 +806,44 @@ export function WritingSection({
                       {selected.manualReason !== "" ? selected.manualReason : "This question requires manual completion in Chromium."}
                     </p>
                   )}
+                  {selected.isManual && (
+                    <p className="writing-notice" role="note">
+                      Manually added question. It is saved for this application only and never fills the employer site automatically — complete it on the employer website yourself.
+                    </p>
+                  )}
+                  {selected.isManual && snapshot.editingAllowed && !readOnly && (
+                    <div className="field field-full">
+                      {!editingQuestionText ? (
+                        <div className="form-actions">
+                          <button className="button button-secondary" type="button" disabled={dirty} onClick={() => { setEditingQuestionText(true); setQuestionDraft(selected.label); }}>
+                            Edit question
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <label htmlFor="manual-question-edit">Employer question (exact wording)</label>
+                          <input
+                            id="manual-question-edit"
+                            value={questionDraft}
+                            onChange={(event) => { setQuestionDraft(event.target.value); markAnswerDirty(draft, event.target.value); }}
+                            maxLength={500}
+                          />
+                          <div className="form-actions">
+                            <button className="button button-secondary" type="button" onClick={() => { setEditingQuestionText(false); setQuestionDraft(selected.label); markAnswerDirty(draft, selected.label); }}>
+                              Keep current wording
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
                   <QuestionEditor
                     question={selected}
                     value={draft}
                     disabled={!selected.editable || !snapshot.editingAllowed || readOnly}
                     onChange={(next) => {
                       setDraft(next);
-                      dirtyRef.current = next !== selected.value;
-                      setDirty(dirtyRef.current);
+                      markAnswerDirty(next, questionDraft);
                     }}
                   />
                   {selected.reusableAvailable && (
@@ -713,7 +880,41 @@ export function WritingSection({
                     >
                       {saving ? "Saving…" : "Save for this application only"}
                     </button>
+                    {selected.isManual && (
+                      <button className="button button-secondary" type="button" disabled={dirty && draft.trim() === "" && selected.value === ""} onClick={() => void handleCopyManualAnswer()}>
+                        Copy answer
+                      </button>
+                    )}
                   </div>
+                  {selected.isManual && copyNotice !== "" && (
+                    <p className="form-notice" role="status">
+                      {copyNotice}
+                    </p>
+                  )}
+                  {selected.isManual && copyFallback !== "" && (
+                    <textarea rows={6} readOnly value={copyFallback} onFocus={(event) => event.target.select()} aria-label="Prepared answer to copy" />
+                  )}
+                  {selected.isManual && snapshot.editingAllowed && !readOnly && (
+                    <div className="form-actions">
+                      {confirmingRemove ? (
+                        <>
+                          <button className="button button-primary" type="button" disabled={saving || dirty} onClick={() => void handleRemoveManualQuestion()}>
+                            {saving ? "Removing…" : "Confirm remove"}
+                          </button>
+                          <button className="button button-secondary" type="button" onClick={() => setConfirmingRemove(false)}>
+                            Keep question
+                          </button>
+                        </>
+                      ) : (
+                        <button className="button button-secondary" type="button" disabled={dirty} onClick={() => setConfirmingRemove(true)}>
+                          Remove question
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {confirmingRemove && selected.isManual && (
+                    <p className="small-muted" role="note">Removing deletes this prepared answer. Saved Answer Library examples stay unchanged.</p>
+                  )}
                   {replaceCandidate && (
                     <div className="writing-replace" role="alert">
                       <p><strong>Replace your unsaved edits?</strong> “{replaceCandidate.label}” would replace the current editor text. This stays unsaved until you save.</p>

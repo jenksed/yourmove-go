@@ -55,7 +55,9 @@ current commands, not a second automation engine.
   posting owns itself; browser start/observe routes reject unsupported postings
   (`422`) with guidance to prepare manually. The Questions and continuation APIs
   expose `ownsPosting` so React disables Capture up front instead of failing on
-  click (`2baa899`); preserved writing stays legible.
+  click (`2baa899`); applicant-authored manual questions remain available with
+  saved writing and Answer Library reuse, and preserved writing stays legible.
+  Manual rows use application-owned keys and never enter Fill scope.
 - **Fill gating.** Every Fill revalidates the exact saved destination, field
   identity, wording, kind, options, sensitivity, revision, and live DOM target, and
   preserves existing or actively edited values. A captured question is **not**

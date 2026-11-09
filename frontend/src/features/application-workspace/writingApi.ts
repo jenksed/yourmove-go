@@ -38,6 +38,10 @@ export interface WritingQuestion {
   libraryEligible: boolean;
   helpEligible: boolean;
   isEarly: boolean;
+  // isManual marks an applicant-authored question that never describes an
+  // observed employer control. Manual rows are always editable writing
+  // tasks and never enter Fill scope.
+  isManual: boolean;
   discoverySource: string;
   discoveryFingerprint: string;
   sourceQuestionId: string;
@@ -693,4 +697,87 @@ export async function captureQuestions(jobId: number): Promise<void> {
     try { message = (JSON.parse(text) as { error?: string }).error || text; } catch { /* Legacy transport error. */ }
     throw new Error(message);
   }
+}
+
+// Manual questions are applicant-authored preparation with
+// application-owned keys. They never describe an observed employer control
+// and never enter Fill scope.
+
+export interface ManualQuestionRow {
+  key: string;
+  label: string;
+  kind: string;
+  value: string;
+  source: string;
+  localStatus: string;
+  revision: number;
+  editable: boolean;
+  libraryEligible: boolean;
+  isManual: boolean;
+}
+
+export async function createManualQuestion(jobId: number, question: string): Promise<{ saved: boolean; question: ManualQuestionRow }> {
+  const response = await fetch(`/api/jobs/${jobId}/manual-questions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ question }),
+  });
+  if (!response.ok) throw new Error(await readError(response));
+  return (await response.json()) as { saved: boolean; question: ManualQuestionRow };
+}
+
+export interface SaveManualAnswerInput {
+  question?: string;
+  answer: string;
+  revision: number;
+  save_to_library?: boolean;
+  origin_entry_id?: number;
+  origin_revision?: number;
+  origin_clear?: boolean;
+}
+
+export async function saveManualAnswer(
+  jobId: number,
+  key: string,
+  input: SaveManualAnswerInput,
+): Promise<{ saved: boolean; question: ManualQuestionRow }> {
+  const response = await fetch(`/api/jobs/${jobId}/manual-questions/${encodeURIComponent(key)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) throw new Error(await readError(response));
+  return (await response.json()) as { saved: boolean; question: ManualQuestionRow };
+}
+
+export async function deleteManualQuestion(jobId: number, key: string, revision: number): Promise<{ deleted: boolean }> {
+  const response = await fetch(`/api/jobs/${jobId}/manual-questions/${encodeURIComponent(key)}`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ revision }),
+  });
+  if (!response.ok) throw new Error(await readError(response));
+  return (await response.json()) as { deleted: boolean };
+}
+
+export async function fetchManualStartingPoint(
+  jobId: number,
+  key: string,
+  input: { library_entry_id: number; library_revision: number; revision: number; destination: string },
+): Promise<ManualStartingPointResult> {
+  const response = await fetch(`/api/jobs/${jobId}/manual-questions/${encodeURIComponent(key)}/starting-point`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) throw new Error(await readError(response));
+  return (await response.json()) as ManualStartingPointResult;
+}
+
+export interface ManualStartingPointResult {
+  library_entry_id: number;
+  library_revision: number;
+  question_key: string;
+  revision: number;
+  answer: string;
 }

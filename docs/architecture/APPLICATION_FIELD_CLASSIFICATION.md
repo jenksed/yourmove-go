@@ -96,9 +96,14 @@ suffix is what matters).
    - *Automatic Answer Library preparation*: an exact equivalent library entry may
      pre-fill an eligible narrative editor for review. It is saved only by explicit
      applicant action and never enters Fill scope unsaved.
-   - *Applicant edits and saves*: saves are revision-checked against the exact
-     observed question and destination. Non-editable questions (profile,
-     employer-only, unsupported) cannot be saved as local answers.
+    - *Applicant edits and saves*: saves are revision-checked against the exact
+      observed question and destination. Non-editable questions (profile,
+      employer-only, unsupported) cannot be saved as local answers.
+    - *Manual questions where capture is unavailable or incomplete*: the
+      applicant authors the employer question exactly as displayed under an
+      application-owned identity. Manual rows are editable writing tasks with
+      revision-checked saves, library reuse, and confirmed removal, and they
+      never enter transfer scope. See the unsupported-postings section below.
 4. **Apply.** The continuation surface shows the exact authorized scope (resume,
    contacts snapshot, letter, saved answers with `review_hash`). Each included item
    is independently guarded; Fill executes only explicitly authorized material in
@@ -138,20 +143,22 @@ scope (`workspace_writing_api_test.go`, `workspace_continuation_api_test.go`,
 `react_questions_unified_test.go`, `structured_question_capture_test.go`,
 `structured_question_capture_qualification_test.go`).
 
-### Unsupported postings (`2baa899`)
+### Unsupported postings (`2baa899`, manual preparation)
 
 The Questions API exposes `ownsPosting` (`browser.OwnsPostingURL(job.URL, job.URL)`);
 unsupported postings disable managed capture up front (browser routes return `422`
-with explicit guidance) and the React Questions area renders dimmed/non-interactive
-while preserved writing stays legible. Existing Fill restrictions are unchanged.
+with explicit guidance) and the React Questions area keeps capture disabled while
+offering applicant-authored preparation instead of a dead end. Existing Fill
+restrictions are unchanged.
 
-Known product gap: the intended experience keeps useful manual question preparation
-available without managed capture, but the current unsupported-posting implementation
-may lack a usable manually created manual-question workflow — early saves require an
-existing discovered question identity and revision
-(`earlyQuestionForGeneration`), and live preparation returns no inventory without
-ownership. Dimming the Questions interface is not a complete manual-preparation
-fallback. Verify this gap in source before designing around it.
+Manually created questions carry application-owned identities (`manual-…`),
+never describe an observed employer control, and never enter save,
+reconciliation, or transfer scope for observed controls. They support the same
+revision-checked editing, Answer Library reuse (suggestions, starting points,
+exact-equivalent automatic preparation for review, explicit promotion), restart
+persistence, and confirmed removal as the rest of the Questions workflow; later
+capture cannot silently merge, overwrite, or authorize them. Final transfer
+remains manual and unavailable for unsupported postings.
 
 ## Qualification status
 

@@ -94,12 +94,12 @@ func TestStructuredQuestionsProjectedManualWithChoices(t *testing.T) {
 		byLabel[q.Field.Label] = q
 	}
 	for _, tc := range []struct {
-		label       string
-		editable    bool
-		options     int
-		inReady     bool
-		inAction    bool
-		inReview    bool
+		label    string
+		editable bool
+		options  int
+		inReady  bool
+		inAction bool
+		inReview bool
 	}{
 		{"Preferred working pattern", true, 3, false, true, false},
 		{"Preferred shift", true, 2, false, true, false},

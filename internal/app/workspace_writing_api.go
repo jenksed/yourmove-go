@@ -69,22 +69,26 @@ type writingEvidenceSuggestionJSON struct {
 }
 
 type writingQuestionJSON struct {
-	Key                 string                          `json:"key"`
-	Label               string                          `json:"label"`
-	Kind                string                          `json:"kind"`
-	Required            bool                            `json:"required"`
-	Options             []string                        `json:"options"`
-	Value               string                          `json:"value"`
-	Source              string                          `json:"source"`
-	LocalStatus         string                          `json:"localStatus"`
-	Revision            int64                           `json:"revision"`
-	Editable            bool                            `json:"editable"`
-	LibraryEligible     bool                            `json:"libraryEligible"`
-	HelpEligible        bool                            `json:"helpEligible"`
-	IsEarly             bool                            `json:"isEarly"`
-	DiscoverySource     string                          `json:"discoverySource"`
-	DiscoveryPrint      string                          `json:"discoveryFingerprint"`
-	SourceQuestionID    string                          `json:"sourceQuestionId"`
+	Key              string   `json:"key"`
+	Label            string   `json:"label"`
+	Kind             string   `json:"kind"`
+	Required         bool     `json:"required"`
+	Options          []string `json:"options"`
+	Value            string   `json:"value"`
+	Source           string   `json:"source"`
+	LocalStatus      string   `json:"localStatus"`
+	Revision         int64    `json:"revision"`
+	Editable         bool     `json:"editable"`
+	LibraryEligible  bool     `json:"libraryEligible"`
+	HelpEligible     bool     `json:"helpEligible"`
+	IsEarly          bool     `json:"isEarly"`
+	DiscoverySource  string   `json:"discoverySource"`
+	DiscoveryPrint   string   `json:"discoveryFingerprint"`
+	SourceQuestionID string   `json:"sourceQuestionId"`
+	// IsManual marks an applicant-authored question that never describes an
+	// observed employer control. Manual rows are always editable writing
+	// tasks and never enter Fill scope.
+	IsManual            bool                            `json:"isManual"`
 	TriageCategory      string                          `json:"triageCategory"`
 	ManualReason        string                          `json:"manualReason"`
 	ReusableKey         string                          `json:"reusableKey"`
@@ -217,10 +221,15 @@ func displayUnidentifiedControl(id string) bool {
 // transfer authority: every write still revalidates the exact underlying
 // record. Empty means the row must never merge with another context, so two
 // genuinely distinct controls with identical wording stay separate.
+// Applicant-authored manual questions never merge: they are appended after
+// unification with their own application-owned keys.
 func displayQuestionIdentity(id string) string {
 	base := ashbyStableFieldSuffix(id)
 	base = strings.TrimPrefix(base, "application:")
 	if base == "" || base == "unidentified-controls" || strings.HasPrefix(base, "unidentified-") || positionalQuestionID.MatchString(base) {
+		return ""
+	}
+	if strings.HasPrefix(base, "manual-") {
 		return ""
 	}
 	return base
@@ -647,6 +656,15 @@ func (a *App) buildWritingQuestions(jobID int64) (map[string]any, error) {
 		apply(earlyJSON)
 		apply(unified)
 	}()
+
+	// Applicant-authored questions are appended after unification with their
+	// own application-owned keys. They never merge with observed controls, so
+	// later capture cannot silently merge, overwrite, or authorize them.
+	manual, err := a.manualQuestionProjection(job)
+	if err != nil {
+		return nil, err
+	}
+	unified = append(unified, manual...)
 
 	previous := make([]writingPreviousJSON, 0, len(live.Previous)+len(early.Previous))
 	for _, p := range live.Previous {
