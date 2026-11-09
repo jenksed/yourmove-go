@@ -609,6 +609,12 @@ backendReady:
 		t.Fatal("refused navigation closed the browser")
 	}
 	wait(`document.body.innerText.includes('Synthetic React journey')`)
+	// Leaving for the Opportunities list with unsaved edits is held with
+	// an explicit choice. Staying keeps the draft and the page.
+	run(`Array.from(document.querySelectorAll('a')).find(x=>x.textContent.trim()==='Back to Opportunities').click()`)
+	wait(`Array.from(document.querySelectorAll('button')).some(x=>x.textContent.trim()==='Stay and keep editing' && x.offsetParent!==null)`)
+	click("Stay and keep editing")
+	wait(`document.querySelector('#writing-answer')?.value.includes('guard draft')`)
 	click("Questions")
 	click("Discard edits")
 	wait(`!document.body.innerText.includes('Unsaved edits on this question')`)

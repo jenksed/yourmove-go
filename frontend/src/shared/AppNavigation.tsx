@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useLeaveGuard } from "./leaveGuard";
 
 type ThemeChoice = "light" | "dark" | "system";
 
@@ -57,8 +58,9 @@ export function AppTopbar(): React.JSX.Element {
 }
 
 export function AppNavigation({ active }: { active?: "opportunities" | "documents" | "discovery" | "studio" }): React.JSX.Element {
+  const { intercept, banner } = useLeaveGuard();
   return (
-      <aside className="sidebar" aria-label="Primary navigation">
+      <aside className="sidebar" aria-label="Primary navigation" onClick={intercept}>
         <a className="brand" href="/jobs" aria-label="YourMove — Opportunities">
           <img
             className="brand-wordmark brand-light"
@@ -112,8 +114,8 @@ export function AppNavigation({ active }: { active?: "opportunities" | "document
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" />
               </svg>
-              Answer Library
-            </a>
+            Answer Library
+          </a>
             <a className="nav-item" href="/career-evidence">
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M4 19V5m0 14h16M7 15l4-4 3 2 5-6" />
@@ -150,6 +152,7 @@ export function AppNavigation({ active }: { active?: "opportunities" | "document
           <span className="local-dot" aria-hidden="true" />
           <span>Local workspace</span>
         </div>
+        {banner}
       </aside>
   );
 }

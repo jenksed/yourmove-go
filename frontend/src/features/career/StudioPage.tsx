@@ -24,6 +24,7 @@ import {
   type StudioRoleSnapshot,
   type StudioSynthesisResponse,
 } from "./studioApi";
+import { useLeaveGuard } from "../../shared/leaveGuard";
 import { setUnsaved } from "../../shared/unsaved";
 
 const emptyContent: StudioEvidenceContent = {
@@ -180,6 +181,7 @@ export function StudioPage(): React.JSX.Element {
   const activeProvider = providers.find((provider) => provider.id === providerId);
   const maxEvidence = rolesData?.max_evidences ?? 4;
   const recordDirty = record !== null && JSON.stringify(fields) !== JSON.stringify(contentFromRecord(record));
+  const { intercept: interceptLeave, banner: leaveBanner } = useLeaveGuard();
 
   useEffect(() => {
     // Report evidence drafts to the desktop close guard; saving stays
@@ -192,6 +194,9 @@ export function StudioPage(): React.JSX.Element {
   }, [recordDirty]);
 
   const setField = useCallback((key: keyof StudioEvidenceContent, value: string) => {
+    // Report the keystroke to the host immediately: the reconciling
+    // effect below can lag an instant quit.
+    setUnsaved("studio", true);
     setFields((current) => ({ ...current, [key]: value }));
   }, []);
 
@@ -468,7 +473,7 @@ export function StudioPage(): React.JSX.Element {
       </a>
       <CareerNav active="studio" />
       <div className="app-main">
-        <main id="main-content" className="page-container">
+        <main id="main-content" className="page-container" onClick={interceptLeave}>
           <div className="page-heading">
             <div>
               <h1>Career Studio</h1>
@@ -487,6 +492,7 @@ export function StudioPage(): React.JSX.Element {
               </span>
             </div>
           </div>
+          {leaveBanner}
 
           {loading && (
             <section className="panel" aria-label="Loading">

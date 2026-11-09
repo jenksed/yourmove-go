@@ -1,4 +1,5 @@
 import { AppNavigation, AppTopbar } from "../../shared/AppNavigation";
+import { useLeaveGuard } from "../../shared/leaveGuard";
 import { setUnsaved } from "../../shared/unsaved";
 // YM-004A React Application Workspace: one coherent preparation activity.
 // Reads and writes through Go-owned JSON contracts only. The source URL is
@@ -108,6 +109,7 @@ export function WorkspacePage(): React.JSX.Element {
   // responses never touch snapshot, drafts, or baseline.
   const requestRef = useRef(0);
   const prevActivity = useRef<Activity>("job");
+  const { intercept: interceptLeave, banner: leaveBanner } = useLeaveGuard();
 
   const refreshSummary = useCallback(async () => {
     if (jobId === null) return;
@@ -516,12 +518,13 @@ export function WorkspacePage(): React.JSX.Element {
       <AppNavigation active="opportunities" />
       <div className="app-main">
         <AppTopbar />
-        <main id="main-content" className={`page-container workspace-page workspace-activity-${activity}`}>
+        <main id="main-content" className={`page-container workspace-page workspace-activity-${activity}`} onClick={interceptLeave}>
           <nav className="breadcrumbs" aria-label="Breadcrumb">
             <a href="/jobs">Opportunities</a>
             <span aria-hidden="true">/</span>
             <span>Workspace</span>
           </nav>
+          {leaveBanner}
 
           {loading && <p role="status">Loading application workspace…</p>}
           {loadError !== "" && (
@@ -716,7 +719,7 @@ export function WorkspacePage(): React.JSX.Element {
                       value={title}
                       maxLength={200}
                       disabled={detailsBusy}
-                      onChange={(event) => setTitle(event.target.value)}
+                      onChange={(event) => { setUnsaved("details", true); setTitle(event.target.value); }}
                     />
                   </div>
                   <div className="field">
@@ -726,7 +729,7 @@ export function WorkspacePage(): React.JSX.Element {
                       value={company}
                       maxLength={200}
                       disabled={detailsBusy}
-                      onChange={(event) => setCompany(event.target.value)}
+                      onChange={(event) => { setUnsaved("details", true); setCompany(event.target.value); }}
                     />
                   </div>
                   {applied ? (
@@ -770,7 +773,7 @@ export function WorkspacePage(): React.JSX.Element {
                       value={salary}
                       maxLength={500}
                       disabled={detailsBusy}
-                      onChange={(event) => setSalary(event.target.value)}
+                      onChange={(event) => { setUnsaved("details", true); setSalary(event.target.value); }}
                     />
                     <small>Current source: {snapshot.job.salaryOriginLabel}</small>
                   </div>
@@ -781,7 +784,7 @@ export function WorkspacePage(): React.JSX.Element {
                       rows={8}
                       value={description}
                       disabled={detailsBusy}
-                      onChange={(event) => setDescription(event.target.value)}
+                      onChange={(event) => { setUnsaved("details", true); setDescription(event.target.value); }}
                     />
                   </div>
                   <p className="field-full form-note">

@@ -421,6 +421,9 @@ export function CoverLetterSection({
               value={draft}
               readOnly={!snapshot.editingAllowed || readOnly}
               onChange={(event) => {
+                // Report the keystroke to the host immediately: the
+                // reconciling effect below can lag an instant quit.
+                setUnsaved("letter", true);
                 setDraft(event.target.value);
                 setDirty(event.target.value !== (snapshot.current?.body ?? ""));
               }}
@@ -547,7 +550,7 @@ export function CoverLetterSection({
               <p className="small-muted">From letter {newDraftSource.id} ({newDraftSource.label}). Current résumé stays {currentResumeLabel}. Saving creates a new manual letter; the original is unchanged.</p>
               <div className="field field-full">
                 <label htmlFor="prior-new-body">New letter text</label>
-                <textarea id="prior-new-body" rows={14} value={newDraft} onChange={(event) => setNewDraft(event.target.value)} readOnly={!snapshot.editingAllowed || readOnly} />
+                <textarea id="prior-new-body" rows={14} value={newDraft} onChange={(event) => { setUnsaved("letter", true); setNewDraft(event.target.value); }} readOnly={!snapshot.editingAllowed || readOnly} />
               </div>
               {newDraftError !== "" && <p className="job-form-error" role="alert">{newDraftError}</p>}
               {newDraftNotice !== "" && <p className="form-notice" role="status">{newDraftNotice}</p>}
@@ -567,7 +570,7 @@ export function CoverLetterSection({
           <summary><strong>Write a letter</strong></summary>
           <div className="editor-content field">
             <label htmlFor="manual-letter">Your letter</label>
-            <textarea id="manual-letter" rows={10} value={manualDraft} onChange={(event) => setManualDraft(event.target.value)} />
+            <textarea id="manual-letter" rows={10} value={manualDraft} onChange={(event) => { setUnsaved("letter", true); setManualDraft(event.target.value); }} />
             <button className="button button-primary" type="button" disabled={saving || dirty || manualDraft.trim() === ""} onClick={() => void handleManual()}>Save new letter</button>
             {saveError !== "" && <p role="alert">{saveError}</p>}
           </div>

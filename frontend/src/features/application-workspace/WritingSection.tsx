@@ -825,12 +825,12 @@ export function WritingSection({
                       ) : (
                         <>
                           <label htmlFor="manual-question-edit">Employer question (exact wording)</label>
-                          <input
-                            id="manual-question-edit"
-                            value={questionDraft}
-                            onChange={(event) => { setQuestionDraft(event.target.value); markAnswerDirty(draft, event.target.value); }}
-                            maxLength={500}
-                          />
+                            <input
+                              id="manual-question-edit"
+                              value={questionDraft}
+                              onChange={(event) => { setUnsaved("answers", true); setQuestionDraft(event.target.value); markAnswerDirty(draft, event.target.value); }}
+                              maxLength={500}
+                            />
                           <div className="form-actions">
                             <button className="button button-secondary" type="button" onClick={() => { setEditingQuestionText(false); setQuestionDraft(selected.label); markAnswerDirty(draft, selected.label); }}>
                               Keep current wording
@@ -845,6 +845,9 @@ export function WritingSection({
                     value={draft}
                     disabled={!selected.editable || !snapshot.editingAllowed || readOnly}
                     onChange={(next) => {
+                      // Report the keystroke to the host immediately: the
+                      // reconciling effect below can lag an instant quit.
+                      setUnsaved("answers", true);
                       setDraft(next);
                       markAnswerDirty(next, questionDraft);
                     }}
