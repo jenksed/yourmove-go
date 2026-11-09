@@ -657,9 +657,11 @@ func (a *App) buildWritingQuestions(jobID int64) (map[string]any, error) {
 		previous = append(previous, writingPreviousJSON{Key: p.SourceQuestionID, Label: p.QuestionLabel, Value: p.Answer, Revision: p.Revision, Early: true})
 	}
 
+	captureState := a.browsers.state(job.ID)
 	editingAllowed := job.Stage != StageApplied && job.Stage != StageClosed && job.SubmissionCount == 0
 	return map[string]any{
-		"browserActive": a.browsers.state(job.ID).Active,
+		"browserActive": captureState.Active,
+		"captureState":  map[string]any{"phase": captureState.Phase, "message": captureState.Message},
 		"available":     snapshot.Available, "source": snapshot.Source,
 		"partial": snapshot.Partial, "anchor": snapshot.Anchor,
 		"activeContext": activeContext,

@@ -518,7 +518,7 @@ export function WritingSection({
             setCaptureNotice("");
             try {
               await captureQuestions(jobId);
-              setCaptureNotice("Navigate the application form in YourMove’s managed browser. Questions appear here automatically. No answers or documents are transferred; use Apply when you are ready to authorize transfer.");
+              setCaptureNotice("Navigate the employer form yourself. Capture observes question definitions; it does not authorize any transfer. Current capture status appears below.");
             } catch (error) {
               setCaptureNotice(error instanceof Error ? error.message : "Unable to start question capture.");
             } finally { setCaptureBusy(false); }
@@ -532,6 +532,11 @@ export function WritingSection({
       </div>
 
       {captureNotice && <p role="status">{captureNotice}</p>}
+      <p role="status" aria-label="Question capture status">
+        {snapshot.captureState?.phase
+          ? `Capture — ${snapshot.captureState.phase}: ${snapshot.captureState.message}`
+          : "Capture is not running. Open the managed browser to observe application questions."}
+      </p>
       {dirty && <p className="small-muted">Save your answer before refreshing the question list.</p>}
 
       {discoveryStatus === "checking" && <p role="status">Checking for application questions…</p>}

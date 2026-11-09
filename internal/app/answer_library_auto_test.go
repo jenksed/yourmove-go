@@ -1,11 +1,15 @@
 package app
 
 import (
+	"context"
+	"github.com/jenksed/yourmove-go/internal/application/browser"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jenksed/yourmove-go/internal/application/schema"
 	"github.com/jenksed/yourmove-go/internal/storage"
@@ -45,9 +49,26 @@ func TestAnswerLibraryAutomaticPreparationABC(t *testing.T) {
 	if err := a.saveJob(Job{URL: urlB, Host: "jobs.ashbyhq.com", Title: "Support B", Company: "Fixture B"}); err != nil {
 		t.Fatal(err)
 	}
-	fieldB := schema.Field{ID: "browser:incident-story", Label: labelA, Kind: "textarea", Required: true}
-	if _, err := a.saveInspection(2, schema.Result{Platform: "ashby", Source: "browser", ApplicationURL: urlB + "/application", Fields: []schema.Field{fieldB}}); err != nil {
-		t.Fatal(err)
+	fieldB := schema.Field{ID: "browser:incident-story", Label: labelA, Kind: "textarea", Required: true, Group: "rendered form"}
+	a.browsers.pollEvery = 10 * time.Millisecond
+	a.browsers.factory = func(_ context.Context, raw string) (readOnlySession, error) {
+		return &captureNarrativeBrowser{fakeBrowser: fakeBrowser{url: raw + "/application"}, field: fieldB}, nil
+	}
+	defer a.browsers.close(2)
+	request := httptest.NewRequest("POST", "http://localhost/jobs/2/browser/start", strings.NewReader(""))
+	request.Header.Set("Accept", "application/json")
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	response := httptest.NewRecorder()
+	newMux(a).ServeHTTP(response, request)
+	if response.Code != 200 {
+		t.Fatal(response.Body.String())
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for a.browsers.state(2).LatestID == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if a.browsers.state(2).LatestID == 0 {
+		t.Fatal("start-only observer did not capture equivalent library question")
 	}
 	jobB, _ := a.jobByID(2)
 	profile, _ := a.candidateProfile()
@@ -303,4 +324,13 @@ func TestAnswerLibraryEarlyAutomaticPreparation(t *testing.T) {
 	if err := a.db.QueryRow(`SELECT COUNT(*) FROM early_application_answers WHERE job_id=?`, jobB.ID).Scan(&count); err != nil || count != 0 {
 		t.Fatalf("early auto wrote durable state: %d %v", count, err)
 	}
+}
+
+type captureNarrativeBrowser struct {
+	fakeBrowser
+	field schema.Field
+}
+
+func (f *captureNarrativeBrowser) Observe(context.Context) (browser.Observation, error) {
+	return browser.Observation{URL: f.url, Forms: 1, Controls: []browser.Control{{ID: strings.TrimPrefix(f.field.ID, "browser:"), Label: f.field.Label, Kind: f.field.Kind, Required: f.field.Required}}}, nil
 }

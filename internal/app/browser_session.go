@@ -218,7 +218,7 @@ func (h *sessionHost) start(ctx context.Context, jobID int64, jobURL string) err
 		if named, ok := session.(browserEngineSession); ok {
 			engine = named.Engine()
 		}
-		h.states[jobID] = browserRunState{Destination: jobURL, Engine: engine, Active: true, Phase: "watching", Message: "The " + engine + " employer browser is opening the application's URL directly. Waiting for the resume field; continue manually if the employer requires another step."}
+		h.states[jobID] = browserRunState{Destination: jobURL, Engine: engine, Active: true, Phase: "watching", Message: "The " + engine + " employer browser is opening the application's URL directly. Waiting for application questions; continue manually if the employer requires another step."}
 	}
 	h.mu.Unlock()
 	return err
@@ -475,7 +475,7 @@ func (h *sessionHost) reportLaunchFailure(jobID int64, err error) {
 	if h.states == nil {
 		h.states = make(map[int64]browserRunState)
 	}
-	h.states[jobID] = browserRunState{Phase: "interrupted", Message: "Could not reopen the employer browser: " + err.Error() + ". Check the employer browser and try Reopen application."}
+	h.states[jobID] = browserRunState{Phase: "interrupted", Message: "Could not open the managed browser: " + err.Error() + ". Close any existing managed session before retrying Capture application questions."}
 }
 
 func (h *sessionHost) has(jobID int64) bool { return h.state(jobID).Active }

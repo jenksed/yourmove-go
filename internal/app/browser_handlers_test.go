@@ -556,7 +556,7 @@ func TestQuestionsCaptureUnsupportedExplicitResult(t *testing.T) {
 	r.Header.Set("Accept", "application/json")
 	w := httptest.NewRecorder()
 	newMux(a).ServeHTTP(w, r)
-	if w.Code != 422 || !strings.Contains(w.Body.String(), "prepare answers manually") {
+	if w.Code != 422 || !strings.Contains(w.Header().Get("Content-Type"), "application/json") || !strings.Contains(w.Body.String(), "prepare answers manually") {
 		t.Fatalf("unsupported result: %d %s", w.Code, w.Body.String())
 	}
 }
@@ -576,5 +576,53 @@ func TestQuestionsCaptureLaunchFailureReturnsError(t *testing.T) {
 	newMux(a).ServeHTTP(w, r)
 	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "retry") {
 		t.Fatalf("launch failure: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestQuestionsCaptureStartOnlyAndStatus(t *testing.T) {
+	a, _ := testWorkspace(t)
+	for _, u := range []string{testAshbyPosting, "https://jobs.ashbyhq.com/render/00000000-0000-0000-0000-000000000001"} {
+		if err := a.saveJob(Job{URL: u, Host: "jobs.ashbyhq.com", Title: "Synthetic"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a.browsers.pollEvery = 10 * time.Millisecond
+	a.browsers.factory = func(_ context.Context, raw string) (readOnlySession, error) {
+		return &fakeBrowser{url: raw + "/application"}, nil
+	}
+	defer a.browsers.close(1)
+	h := newMux(a)
+	start := func(id string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("POST", "http://localhost/jobs/"+id+"/browser/start", strings.NewReader(""))
+		r.Header.Set("Accept", "application/json")
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	if w := start("1"); w.Code != 200 {
+		t.Fatal(w.Body.String())
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for a.browsers.state(1).LatestID == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	state := a.browsers.state(1)
+	if state.LatestID == 0 || state.Contacts != nil || len(state.AnswerPending) > 0 || state.ResumeStatus != "" || state.LetterStatus != "" {
+		t.Fatalf("start-only observation or authority: %+v", state)
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "http://localhost/api/jobs/1/questions", nil))
+	if !strings.Contains(w.Body.String(), "Work authorization") || !strings.Contains(w.Body.String(), "\"captureState\":") {
+		t.Fatal(w.Body.String())
+	}
+	if w = start("2"); w.Code != 409 || !strings.Contains(w.Body.String(), "close the existing managed browser") || strings.Contains(w.Body.String(), "installed") || !strings.Contains(w.Header().Get("Content-Type"), "application/json") {
+		t.Fatalf("busy: %d %s", w.Code, w.Body.String())
+	}
+	a.browsers.interrupt(1, "Browser disconnected. Retry Capture application questions.")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "http://localhost/api/jobs/1/questions", nil))
+	if !strings.Contains(w.Body.String(), "\"phase\":\"interrupted\"") || !strings.Contains(w.Body.String(), "Retry Capture") {
+		t.Fatal(w.Body.String())
 	}
 }

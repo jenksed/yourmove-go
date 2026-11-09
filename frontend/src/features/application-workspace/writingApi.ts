@@ -118,6 +118,7 @@ export interface WritingPrevious {
 
 export interface QuestionsSnapshot {
   browserActive: boolean;
+  captureState?: { phase: string; message: string };
   available: boolean;
   source: string;
   partial: boolean;
@@ -687,7 +688,8 @@ export async function captureQuestions(jobId: number): Promise<void> {
   });
   if (!response.ok) {
     const text = await response.text();
-    try { const error = JSON.parse(text) as { error?: string }; throw new Error(error.error || text); }
-    catch (error) { if (error instanceof SyntaxError) throw new Error(text); throw error; }
+    let message = text;
+    try { message = (JSON.parse(text) as { error?: string }).error || text; } catch { /* Legacy transport error. */ }
+    throw new Error(message);
   }
 }
