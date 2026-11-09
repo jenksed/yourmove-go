@@ -3,9 +3,11 @@ package app
 import (
 	"bytes"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -157,5 +159,91 @@ func TestDeleteJobWithHistoryPreservesReusableWriting(t *testing.T) {
 	other, err := a.jobByID(2)
 	if err != nil || other.Title != "Support Engineer" {
 		t.Fatalf("surviving opportunity=%+v err=%v", other, err)
+	}
+}
+
+// YM-A7 inventory: deleting a synthetic opportunity removes exactly its
+// local preparation (saved answers, manual questions, cover-letter
+// drafts, and, with explicit authorization, its submission history)
+// while reusable Answer Library examples, resume files, and every other
+// opportunity's records stay intact.
+func TestDeleteSyntheticOpportunityRemovesOnlyItsLocalWriting(t *testing.T) {
+	a, _ := testWorkspace(t)
+	resume, err := a.importResume("synthetic-shared.pdf", bytes.NewReader([]byte("%PDF-1.4\nsynthetic shared")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.saveJob(Job{URL: "https://example.com/doomed-role", Host: "example.com", Title: "Doomed role"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.assignResume(1, resume.ID); err != nil {
+		t.Fatal(err)
+	}
+	// Reusable library example seeded from the surviving opportunity.
+	_, libraryEntryID := seedLibraryNarrative(t, a)
+	manual := func(jobID int64, question, answer string) string {
+		t.Helper()
+		created := postManualJSON(t, a, http.MethodPost, "/api/jobs/"+strconv.FormatInt(jobID, 10)+"/manual-questions", `{"question":`+jsonString(question)+`}`)
+		if created.Code != http.StatusOK {
+			t.Fatalf("create manual question on job %d: %d %s", jobID, created.Code, created.Body.String())
+		}
+		var payload struct {
+			Question map[string]any `json:"question"`
+		}
+		if err := json.Unmarshal(created.Body.Bytes(), &payload); err != nil {
+			t.Fatal(err)
+		}
+		key, _ := payload.Question["key"].(string)
+		saved := postManualJSON(t, a, http.MethodPost, "/api/jobs/"+strconv.FormatInt(jobID, 10)+"/manual-questions/"+key, `{"answer":`+jsonString(answer)+`,"revision":1}`)
+		if saved.Code != http.StatusOK {
+			t.Fatalf("save manual answer on job %d: %d %s", jobID, saved.Code, saved.Body.String())
+		}
+		return key
+	}
+	manual(1, "Why do you want this doomed role?", "I enjoy resolving difficult technical problems for customers.")
+	manual(2, "Why do you want this kept role?", "I enjoy resolving difficult technical problems for kept customers.")
+	letter := "Dear Hiring Team, I am interested in this doomed support role and would welcome the opportunity to contribute with careful follow-up."
+	if rec := postWritingJSON(t, a, http.MethodPost, "/api/jobs/1/letters/manual", `{"body":`+jsonString(letter)+`}`); rec.Code != http.StatusOK {
+		t.Fatalf("save doomed letter: %d %s", rec.Code, rec.Body.String())
+	}
+	if err := a.recordSubmission(1, "doomed history", reviewedSubmissionToken(t, a, 1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.recordSubmission(2, "kept history", reviewedSubmissionToken(t, a, 2)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.deleteJobs([]int64{1}, true); err != nil {
+		t.Fatal(err)
+	}
+	// The deleted opportunity and every local record are gone.
+	if _, err := a.jobByID(1); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("deleted job remains: %v", err)
+	}
+	if history, err := a.jobSubmissions(1); err != nil || len(history) != 0 {
+		t.Fatalf("deleted history=%+v err=%v", history, err)
+	}
+	if rec := postManualJSON(t, a, http.MethodGet, "/api/jobs/1/questions", `{}`); rec.Code != http.StatusNotFound {
+		t.Fatalf("deleted questions reachable: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := postWritingJSON(t, a, http.MethodGet, "/api/jobs/1/letters", ""); rec.Code != http.StatusNotFound {
+		t.Fatalf("deleted letters reachable: %d %s", rec.Code, rec.Body.String())
+	}
+	// Shared and reusable material is untouched.
+	entries, err := a.answerLibraryEntries()
+	if err != nil || len(entries) != 1 || entries[0].ID != libraryEntryID {
+		t.Fatalf("reusable library disturbed: %+v err=%v", entries, err)
+	}
+	if _, err := a.resumeByID(resume.ID); err != nil {
+		t.Fatalf("shared resume removed: %v", err)
+	}
+	kept := postManualJSON(t, a, http.MethodGet, "/api/jobs/2/questions", `{}`)
+	if kept.Code != http.StatusOK || !strings.Contains(kept.Body.String(), "kept customers") {
+		t.Fatalf("surviving answers=%d %s", kept.Code, kept.Body.String())
+	}
+	if history, err := a.jobSubmissions(2); err != nil || len(history) != 1 || history[0].Notes != "kept history" {
+		t.Fatalf("surviving history=%+v err=%v", history, err)
+	}
+	if other, err := a.jobByID(2); err != nil || other.Title != "Support Engineer" {
+		t.Fatalf("surviving job=%+v err=%v", other, err)
 	}
 }

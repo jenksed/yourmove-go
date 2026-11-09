@@ -623,7 +623,9 @@ export function OpportunitiesPage(): React.JSX.Element {
                       </summary>
                       <div className="bulk-remove-body">
                         <p className="confirmation-note">
-                          Permanent deletion. Jobs with confirmed submissions are excluded here;
+                          Permanent deletion. This removes the selected jobs with their saved answers, manual questions,
+                          and cover-letter drafts. Reusable Answer Library examples and imported resumes are retained.
+                          Jobs with confirmed submissions are excluded here;
                           remove them individually from their workspace.
                         </p>
                         <div className="field">
