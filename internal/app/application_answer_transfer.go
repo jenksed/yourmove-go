@@ -16,7 +16,7 @@ import (
 func (p questionPreparation) ReadyAnswers() []preparedQuestion {
 	var ready []preparedQuestion
 	for _, q := range p.Questions {
-		if !q.Editable || q.Value == "" {
+		if !q.Editable || q.Value == "" || classifyApplicationField(q.Field, true).Role != fieldApplicationQuestion {
 			continue
 		}
 		// Exact library automatic preparation is review-only until the
@@ -84,7 +84,7 @@ func (a *App) reactAnswerTransfer(job Job, scope []preparedQuestion, profileRevi
 						return q, "manual"
 					}
 				} else {
-					profile.Approved = true
+					// Profile approval is not answer-transfer authority.
 					prep, e := a.prepareQuestions(latest, profile)
 					valid := false
 					if e == nil {
@@ -183,7 +183,7 @@ func (a *App) answerTransferForAction(r *http.Request, id int64, profileAuthoriz
 		if r.PostForm.Get("profile_revision") != fmt.Sprint(profile.Revision) {
 			return http.StatusConflict, "Candidate Profile changed. Review it before filling."
 		}
-		profile.Approved = true
+		// Profile approval is not answer-transfer authority.
 	}
 	prepared, err := a.prepareQuestions(job, profile)
 	if err != nil {
@@ -208,7 +208,7 @@ func (a *App) answerTransferForAction(r *http.Request, id int64, profileAuthoriz
 			if p.Revision != profileRevision {
 				return false
 			}
-			p.Approved = true
+			// Profile approval is not answer-transfer authority.
 		}
 		if q.Revision > 0 {
 			saved, e := a.savedLiveAnswer(latest, q.Key)
@@ -306,7 +306,7 @@ func (h *sessionHost) tryAnswers(ctx context.Context, id int64) {
 		if ctx.Err() != nil {
 			waiting = append(waiting, q)
 			continue
-		} else if ok {
+		} else if ok && classifyApplicationField(q.Field, true).Role == fieldApplicationQuestion {
 			fill := q
 			if resolve := resolvers[q.Key]; resolve != nil {
 				var status string
@@ -352,6 +352,10 @@ func (h *sessionHost) tryAnswers(ctx context.Context, id int64) {
 					outcomes = append(outcomes, out)
 					continue
 				}
+			}
+			if classifyApplicationField(fill.Field, true).Role != fieldApplicationQuestion {
+				outcomes = append(outcomes, out)
+				continue
 			}
 			// Record the attempt before the external effect. A concurrent reader
 			// must never interpret an in-flight write as safe to replay.

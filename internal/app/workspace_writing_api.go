@@ -183,17 +183,16 @@ func toWritingQuestion(q preparedQuestion) writingQuestionJSON {
 // presentation; save and transfer authority stay with Editable and the
 // server-owned validators.
 func liveWritingTriage(q preparedQuestion) (string, string) {
-	readyProfile := q.Editable && q.Value != "" && q.Source == "Approved candidate information"
-	switch {
-	case readyProfile:
-		return "profile", ""
-	case employerOnlyQuestion(q.Field):
-		return "employer", "This question is excluded from saved-answer transfer by existing privacy or legal policy. Complete it in the employer application."
-	case !q.Editable:
-		return "review", "This published control is unsupported for saved-answer transfer. Complete it manually in the employer application."
+	category := writingCategory(q.Field, true, q.Editable)
+	switch category {
+	case "employer":
+		return category, "Complete this control manually in the employer application."
+	case "review":
+		return category, "This control is unsupported for saved-answer transfer. Complete it manually in the employer application."
 	default:
-		return "answer", ""
+		return category, ""
 	}
+
 }
 
 // displayDocumentControl keeps résumé and cover-letter controls in the
@@ -272,7 +271,7 @@ func unifyQuestionInventories(liveRows []preparedQuestion, earlyRows []earlyAppl
 	liveUnidentified, earlyUnidentified := 0, 0
 	liveKept := make([]preparedQuestion, 0, len(liveRows))
 	for _, q := range liveRows {
-		if displayDocumentControl(q.Field) {
+		if displayDocumentControl(q.Field) || isProfileField(q.Field) {
 			continue
 		}
 		if displayUnidentifiedControl(q.Field.ID) {
@@ -283,7 +282,7 @@ func unifyQuestionInventories(liveRows []preparedQuestion, earlyRows []earlyAppl
 	}
 	earlyKept := make([]earlyApplicationQuestion, 0, len(earlyRows))
 	for _, q := range earlyRows {
-		if displayDocumentControl(q.Field) {
+		if displayDocumentControl(q.Field) || isProfileField(q.Field) {
 			continue
 		}
 		if displayUnidentifiedControl(q.SourceQuestionID) {

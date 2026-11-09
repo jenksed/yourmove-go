@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"github.com/jenksed/yourmove-go/internal/application/schema"
 	"net/http/httptest"
 	"net/url"
 	"os"
@@ -11,7 +12,7 @@ import (
 )
 
 func TestAttentionAllowsOnlyIndependentNewMaterial(t *testing.T) {
-	q := preparedQuestion{Key: "new", Value: "saved answer", Editable: true}
+	q := preparedQuestion{Field: schema.Field{ID: "browser:story", Label: "Describe a challenge", Kind: "textarea"}, Key: "new", Value: "saved answer", Editable: true}
 	w := jobWorkspace{BrowserState: browserRunState{Active: true, Phase: "attention", ResumeStatus: "attention", LetterStatus: "attention"}, Questions: questionPreparation{Questions: []preparedQuestion{q}}}
 	w.Letter.ID = 1
 	got := summarizePreparation(w)

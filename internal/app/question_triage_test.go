@@ -71,32 +71,15 @@ func TestEarlyQuestionTriageUsesApprovedProfileAndKeepsDrafts(t *testing.T) {
 		t.Fatalf("presentation created answer records: early=%d live=%d", early, live)
 	}
 
-	// Saving an explicit draft on a profile-resolvable field keeps the draft and
-	// puts it back in the action queue for review instead of replacing it.
+	// New profile overrides are refused; historical records remain profile data.
 	name := prep.ProfileQuestions()[0]
-	if ok, reason := earlyQuestionWritable(name.Field, true); !ok {
-		t.Fatalf("full name should remain explicitly editable in the early flow: %s", reason)
+	if ok, _ := earlyQuestionWritable(name.Field, true); ok {
+		t.Fatal("profile field writable as answer")
 	}
-	name.Editable = true
-	if rec := postApp(newMux(a), "/jobs/1/answers/early-save", earlySaveValues(job, name, "0", "Alex E."), "", ""); rec.Code != 303 {
-		t.Fatalf("save profile override draft: %d %s", rec.Code, rec.Body.String())
+	if rec := postApp(newMux(a), "/jobs/1/answers/early-save", earlySaveValues(job, name, "0", "Alex E."), "", ""); rec.Code == 303 {
+		t.Fatal("profile override accepted")
 	}
-	prep, err = a.prepareEarlyQuestions(job, httptest.NewRequest("GET", "http://localhost/jobs/1", nil))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var saved *earlyApplicationQuestion
-	for i := range prep.Questions {
-		if prep.Questions[i].SourceQuestionID == name.SourceQuestionID {
-			saved = &prep.Questions[i]
-		}
-	}
-	if saved == nil || saved.Value != "Alex E." || saved.ProfileValue != "Alex Example" || !saved.NeedsAnswer() {
-		t.Fatalf("saved draft was replaced or hidden: %+v", saved)
-	}
-	if len(prep.ActionableQuestions()) != 4 || len(prep.ProfileQuestions()) != 1 || prep.PreparedCount() != 1 {
-		t.Fatalf("saved early draft did not remain available for review: action=%d profile=%d prepared=%d", len(prep.ActionableQuestions()), len(prep.ProfileQuestions()), prep.PreparedCount())
-	}
+
 }
 
 func TestQuestionTriageLeavesMissingAndUnapprovedFactsUnresolved(t *testing.T) {
@@ -119,7 +102,7 @@ func TestQuestionTriageLeavesMissingAndUnapprovedFactsUnresolved(t *testing.T) {
 		profile      CandidateProfile
 		profileCount int
 		actionCount  int
-	}{{CandidateProfile{}, 0, 3}, {CandidateProfile{FirstName: "Alex", LastName: "Example", Email: "alex@example.test"}, 0, 3}, {CandidateProfile{Approved: true, FirstName: "Alex", LastName: "Example", Email: "alex@example.test"}, 2, 2}} {
+	}{{CandidateProfile{}, 2, 2}, {CandidateProfile{FirstName: "Alex", LastName: "Example", Email: "alex@example.test"}, 2, 2}, {CandidateProfile{Approved: true, FirstName: "Alex", LastName: "Example", Email: "alex@example.test"}, 2, 2}} {
 		profile := tc.profile
 		if err := a.saveCandidateProfile(profile); err != nil {
 			t.Fatal(err)

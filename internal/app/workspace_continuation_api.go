@@ -131,11 +131,9 @@ func (a *App) buildContinuation(jobID int64) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	// The explicit Fill action authorizes the displayed profile snapshot, without
-	// changing its separate approval state for other workflows.
-	profileForFill := profile
-	profileForFill.Approved = true
-	live, err := a.prepareQuestions(job, profileForFill)
+	// Contact Fill authorizes the displayed snapshot independently of saved
+	// approval. Reading preparation must not manufacture approved provenance.
+	live, err := a.prepareQuestions(job, profile)
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +154,7 @@ func (a *App) buildContinuation(jobID int64) (map[string]any, error) {
 	state := a.browsers.state(jobID)
 	prepWorkspace := jobWorkspace{
 		Job: job, BrowserState: state, Handoff: handoff,
-		Questions: live, EarlyQuestions: early, Letter: letter, Profile: profileForFill,
+		Questions: live, EarlyQuestions: early, Letter: letter, Profile: profile,
 	}
 	// A failed launch with no transfer can be retried by the React fill action.
 	// Retain interrupted status for display; never re-arm an attempted upload.

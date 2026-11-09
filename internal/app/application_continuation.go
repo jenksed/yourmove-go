@@ -78,7 +78,7 @@ func (a *App) continueApplication(w http.ResponseWriter, r *http.Request) {
 func pendingAnswers(ready, attempted []preparedQuestion, contactsHandled bool) []preparedQuestion {
 	var pending []preparedQuestion
 	for _, q := range ready {
-		if contactsHandled && q.profileContact() {
+		if q.profileContact() {
 			continue
 		}
 		seen := false

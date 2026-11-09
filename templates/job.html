@@ -195,7 +195,7 @@
         </div>
         </div>
         {{else}}<p role="status">No additional answers to prepare here. Review the employer form for questions that must be completed manually.</p>{{end}}
-        {{if .EarlyQuestions.ProfileQuestions}}<details class="profile-question-summary"><summary><strong>From your candidate profile</strong> · {{len .EarlyQuestions.ProfileQuestions}}</summary><p class="small-muted">These approved facts are available for review. They have not been saved as early answers or filled on the employer site. <a href="/candidate">Review candidate profile</a></p>{{range .EarlyQuestions.ProfileQuestions}}<div class="profile-question-fact"><p><strong>{{.Field.Label}}</strong> · {{.ProfileValue}}</p>{{if .Editable}}<details class="question-override"><summary>Prepare an application-specific answer</summary><p class="small-muted">Saving here creates an early draft for this question. Your approved profile stays unchanged.</p>{{template "early-application-question" .}}</details>{{end}}</div>{{end}}</details>{{end}}
+        {{if .EarlyQuestions.ProfileQuestions}}<p class="small-muted">From your candidate profile · Manage personal details in <a href="/candidate">Candidate Profile</a> or Apply. Missing details remain profile information; transfer requires explicit authorization.</p>{{end}}
         {{if .EarlyQuestions.EmployerSiteQuestions}}<details><summary><strong>Complete on employer site</strong> · {{len .EarlyQuestions.EmployerSiteQuestions}}</summary>{{range .EarlyQuestions.EmployerSiteQuestions}}<p><strong>{{.Field.Label}}</strong>{{if .Field.Required}} · Required{{else}} · Optional{{end}}</p><p class="small-muted">{{.ManualReason}}</p>{{end}}</details>{{end}}
         {{if .EarlyQuestions.ManualReviewQuestions}}<details><summary><strong>Needs manual review</strong> · {{len .EarlyQuestions.ManualReviewQuestions}}</summary>{{range .EarlyQuestions.ManualReviewQuestions}}<p><strong>{{.Field.Label}}</strong>{{if .Field.Required}} · Required{{else}} · Optional{{end}}</p><p class="small-muted">{{.ManualReason}}</p>{{end}}</details>{{end}}
         {{else if eq .EarlyQuestions.Item.Source "preview"}}<p role="status">No visible application controls were captured. The page may require authentication, CAPTCHA, or a later manual step. YourMove stopped at the current page; continue through the rendered-form inspection path.</p><a href="/jobs/{{.ID}}/inspection" class="button button-secondary">Open rendered-form inspection</a>{{else}}<p>No question definitions were published. Use rendered-form inspection when supported, or open the employer application manually.</p>{{end}}
@@ -267,21 +267,7 @@
       {{end}}
     </section>
     {{end}}
-    {{if and .Questions.ProfileQuestions .AnswerEditingAllowed}}
-    <details class="prepare-handoff profile-question-summary">
-      <summary><strong>From your candidate profile</strong> · {{len .Questions.ProfileQuestions}} ready</summary>
-      <p class="small-muted">Available from approved profile facts; this does not mean the employer form is filled. Review or edit the source at <a href="/candidate">candidate profile</a>.</p>
-      {{range .Questions.ProfileQuestions}}
-      <div class="profile-question-fact">
-        <p><strong>{{.Field.Label}}</strong> · {{.Value}}</p>
-        <details class="question-override"><summary>Edit answer for this application</summary>
-          <p class="small-muted">Saving creates an application-specific override. Your approved profile stays unchanged.</p>
-          {{template "application-question" .}}
-        </details>
-      </div>
-      {{end}}
-    </details>
-    {{end}}
+    {{if and .Questions.ProfileQuestions .AnswerEditingAllowed}}<p class="small-muted">From your candidate profile · Manage personal details in <a href="/candidate">Candidate Profile</a> or Apply. Missing details remain profile information; transfer requires explicit authorization.</p>{{end}}
     {{if and .Questions.EmployerSiteQuestions .AnswerEditingAllowed}}<details class="prepare-handoff employer-site-summary"><summary><strong>Complete on employer site</strong> · {{len .Questions.EmployerSiteQuestions}}</summary>{{range .Questions.EmployerSiteQuestions}}<p><strong>{{.Field.Label}}</strong>{{if .Field.Required}} · Required{{else}} · Optional{{end}}</p><p class="small-muted">This question is excluded from YourMove preparation by the existing safety policy. Complete it on the employer site.</p>{{end}}</details>{{end}}
     {{if and .Questions.ManualReviewQuestions .AnswerEditingAllowed}}<details class="prepare-handoff manual-review-summary"><summary><strong>Needs manual review</strong> · {{len .Questions.ManualReviewQuestions}}</summary>{{range .Questions.ManualReviewQuestions}}<p><strong>{{.Field.Label}}</strong>{{if .Field.Required}} · Required{{else}} · Optional{{end}}</p><p class="small-muted">This control cannot be identified or prepared safely. Review and complete it manually on the employer site.</p>{{end}}</details>{{end}}
     {{if and (eq .WritingAnswerContext "early") .AnswerEditingAllowed}}</details>{{end}}

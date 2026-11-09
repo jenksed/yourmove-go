@@ -580,7 +580,7 @@ func TestWritingQuestionsUnifiedProjection(t *testing.T) {
 	// early editor identity; profile, employer, and manual rows are categorized.
 	payload := writingQuestions(t, a, 1)
 	byLabel := unifiedByLabel(payload)
-	for label, want := range map[string]int{"Website": 1, storyLabel: 1, "How did you hear about Render?": 1, "Name": 1, "Email": 1, "Phone": 1, "Location": 1, "LinkedIn": 1, "Pronouns": 1, "Race": 1, "Work authorization status": 1, "Veteran Status": 1, "Other information": 2, "Extra note": 2} {
+	for label, want := range map[string]int{"Website": 1, storyLabel: 1, "How did you hear about Render?": 1, "Name": 0, "Email": 0, "Phone": 0, "Location": 0, "LinkedIn": 0, "Pronouns": 0, "Race": 1, "Work authorization status": 1, "Veteran Status": 1, "Other information": 2, "Extra note": 2} {
 		if len(byLabel[label]) != want {
 			t.Fatalf("phase 1 %q rows=%d, want %d", label, len(byLabel[label]), want)
 		}
@@ -608,14 +608,9 @@ func TestWritingQuestionsUnifiedProjection(t *testing.T) {
 			t.Fatalf("phase 1 source question misrepresented: %v", row)
 		}
 	}
-	for _, label := range []string{"Name", "Email", "Phone", "Location", "LinkedIn"} {
-		if byLabel[label][0]["triageCategory"] != "profile" {
-			t.Fatalf("phase 1 %q not profile-handled: %v", label, byLabel[label][0])
-		}
-	}
-	for _, row := range byLabel["Pronouns"] {
-		if row["isEarly"] != true || row["triageCategory"] != "profile" {
-			t.Fatalf("phase 1 Pronouns should be the single early profile row: %v", row)
+	for _, label := range []string{"Name", "Email", "Phone", "Location", "LinkedIn", "Pronouns"} {
+		if len(byLabel[label]) != 0 {
+			t.Fatalf("phase 1 %q not profile-handled: %v", label, byLabel[label])
 		}
 	}
 	for _, row := range byLabel["Work authorization status"] {
@@ -630,7 +625,7 @@ func TestWritingQuestionsUnifiedProjection(t *testing.T) {
 	}
 	for _, label := range []string{"Race", "Veteran Status"} {
 		if byLabel[label][0]["triageCategory"] != "employer" {
-			t.Fatalf("phase 1 %q not employer guidance: %v", label, byLabel[label][0])
+			t.Fatalf("phase 1 %q not employer guidance: %v", label, byLabel[label])
 		}
 	}
 	for _, label := range answerLabels(byLabel) {
@@ -659,18 +654,13 @@ func TestWritingQuestionsUnifiedProjection(t *testing.T) {
 	a.browsers.mu.Unlock()
 	payload = writingQuestions(t, a, 1)
 	byLabel = unifiedByLabel(payload)
-	for label, want := range map[string]int{"Website": 1, storyLabel: 1, "How did you hear about Render?": 1, "Pronouns": 1, "Work authorization status": 1, "Other information": 2, "Extra note": 2} {
+	for label, want := range map[string]int{"Website": 1, storyLabel: 1, "How did you hear about Render?": 1, "Pronouns": 0, "Work authorization status": 1, "Other information": 2, "Extra note": 2} {
 		if len(byLabel[label]) != want {
 			t.Fatalf("phase 2 %q rows=%d, want %d", label, len(byLabel[label]), want)
 		}
 	}
 	if got, _ := payload["unidentifiedCount"].(float64); got != 1 {
 		t.Fatalf("phase 2 unidentifiedCount=%v, want 1", payload["unidentifiedCount"])
-	}
-	for _, row := range byLabel["Pronouns"] {
-		if row["isEarly"] != false || row["triageCategory"] != "profile" {
-			t.Fatalf("phase 2 Pronouns should be the live profile row once: %v", row)
-		}
 	}
 	for _, row := range byLabel["Work authorization status"] {
 		if row["isEarly"] != false || row["triageCategory"] != "employer" || row["kind"] != "radio" {

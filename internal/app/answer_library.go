@@ -63,7 +63,7 @@ func validAnswerLibraryText(value string) bool {
 // only stable, free-text narrative prompts can be promoted. Sensitive flags and
 // conservative label checks are barriers, not a claim that arbitrary prose is safe.
 func answerLibraryEligible(f schema.Field, unique bool) bool {
-	if !stableQuestionIdentity(f, unique) || (f.Kind != "text" && f.Kind != "textarea") {
+	if classifyApplicationField(f, unique).Role != fieldApplicationQuestion || (f.Kind != "text" && f.Kind != "textarea") {
 		return false
 	}
 	for _, blocked := range answerLibrarySensitivePhrases {

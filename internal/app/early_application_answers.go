@@ -236,6 +236,9 @@ var earlyNarrativeMarkers = []string{
 }
 
 func earlyQuestionWritable(field schema.Field, unique bool) (bool, string) {
+	if isProfileField(field) {
+		return false, "Use Candidate Profile or Apply for this field."
+	}
 	if !unique || strings.TrimSpace(field.ID) == "" {
 		return false, "This question has no unique published identity. Write or complete it in the employer application."
 	}
@@ -403,23 +406,11 @@ func (a *App) prepareEarlyQuestions(job Job, r *http.Request) (earlyQuestionPrep
 			stableIdentity := stableQuestionIdentity(field.Field, counts[field.ID] == 1)
 			profileValue, profileSource := resolveApplicationAnswer(field.Field, "", false, profile, "", false)
 			profileResolved := stableIdentity && profileSource == "Approved candidate information" && strings.TrimSpace(profileValue) != ""
-			category := "answer"
-			switch {
-			case profileResolved && !(answer.Revision > 0 && editable):
-				category = "profile"
-			case employerOnlyQuestion(field.Field):
-				category = "employer"
-				if reason == "" {
-					reason = "This question is excluded from early preparation by existing privacy or legal policy. Complete it in the employer application."
-				}
-			case answer.Revision > 0 && editable:
-				category = "answer" // Preserve explicit early work over a profile fact.
-			case !editable || !stableIdentity && answer.Revision == 0:
-				if reason == "" {
-					reason = "This question has no unique, stable identity. Review and complete it manually in the employer application."
-				}
-				category = "review"
+			category := writingCategory(field.Field, counts[field.ID] == 1, editable)
+			if category == "employer" && reason == "" {
+				reason = "Complete this control manually in the employer application."
 			}
+
 			value := answer.Answer
 			var autoEntryID, autoRevision int64
 			var autoQuestion string
@@ -437,7 +428,7 @@ func (a *App) prepareEarlyQuestions(job Job, r *http.Request) (earlyQuestionPrep
 			}
 			q := earlyApplicationQuestion{JobID: job.ID, Destination: job.URL, DiscoverySource: item.Source, DiscoveryFingerprint: item.Fingerprint, SourceQuestionID: field.ID, Key: key, Field: field.Field, Value: value, ProfileValue: profileValue, ProfileResolved: profileResolved, Revision: answer.Revision, Editable: editable, IsEarly: true, ManualReason: reason, TriageCategory: category, LocalStatus: status, EarlyAnswerID: answer.ID, SavedReconciliationStatus: answer.ReconciliationStatus, SavedLiveInspection: answer.LiveInspection, SavedLiveQuestionKey: answer.LiveQuestionKey, LibraryAutoEntryID: autoEntryID, LibraryAutoRevision: autoRevision, LibraryAutoQuestion: autoQuestion}
 			out.Questions = append(out.Questions, q)
-			seenCurrent[earlyRecordIdentity(job.URL, item.Source, item.Fingerprint, field.ID)] = true
+			seenCurrent[earlyRecordIdentity(job.URL, item.Source, item.Fingerprint, field.ID)] = !isProfileField(field.Field)
 		}
 		for _, question := range out.Questions {
 			if question.Editable {

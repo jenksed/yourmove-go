@@ -115,7 +115,7 @@ func (p questionPreparation) WorkbenchQuestions() []preparedQuestion {
 func (p questionPreparation) ActionableQuestions() []preparedQuestion {
 	var questions []preparedQuestion
 	for _, q := range p.WorkbenchQuestions() {
-		if q.Editable && !employerOnlyQuestion(q.Field) && !(q.Value != "" && q.Source == "Approved candidate information") {
+		if q.Editable && classifyApplicationField(q.Field, true).Role == fieldApplicationQuestion {
 			questions = append(questions, q)
 		}
 	}
@@ -163,10 +163,7 @@ func (p questionPreparation) ManualReviewQuestions() []preparedQuestion {
 func (p questionPreparation) partitionQuestions(category string) []preparedQuestion {
 	var questions []preparedQuestion
 	for _, q := range p.WorkbenchQuestions() {
-		readyProfile := q.Editable && q.Value != "" && q.Source == "Approved candidate information"
-		employerOnly := employerOnlyQuestion(q.Field)
-		manualReview := !q.Editable && !employerOnly
-		if (category == "profile" && readyProfile) || (category == "employer" && employerOnly) || (category == "review" && manualReview) {
+		if writingCategory(q.Field, true, q.Editable) == category {
 			questions = append(questions, q)
 		}
 	}
@@ -200,7 +197,7 @@ func (p *questionPreparation) selectQuestion(r *http.Request) {
 }
 
 func (q preparedQuestion) profileContact() bool {
-	return q.Source == "Approved candidate information" && profileContactKey(q.Field) != ""
+	return isProfileField(q.Field)
 }
 
 func (a *App) prepareQuestions(job Job, p CandidateProfile) (questionPreparation, error) {
@@ -258,8 +255,9 @@ func (a *App) prepareQuestions(job Job, p CandidateProfile) (questionPreparation
 		memoryKey := reusableAnswerKey(job.URL, f.Field)
 		reusable := memory[memoryKey]
 		value, source := resolveApplicationAnswer(f.Field, answer.Value, exists, p, reusable.Value, reusable.Revision > 0)
-		editable := editableQuestionForPlatform(f.Field, counts[f.ID] == 1, platform, p)
-		if !editable {
+		supported := editableQuestionForPlatform(f.Field, counts[f.ID] == 1, platform, p)
+		editable := !isProfileField(f.Field) && supported
+		if !supported {
 			value = ""
 			source = ""
 		}

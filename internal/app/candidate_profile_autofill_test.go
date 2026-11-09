@@ -152,7 +152,7 @@ func TestProfileFactsRemainPendingAfterContacts(t *testing.T) {
 		ready = append(ready, preparedQuestion{Field: f, Value: value, Source: source, Key: f.ID, Editable: true})
 	}
 	pending := pendingAnswers(ready, nil, true)
-	if len(pending) != 2 || pending[0].Field.ID != "browser:pronouns" || pending[1].Field.ID != "browser:linkedin" {
+	if len(pending) != 0 {
 		t.Fatalf("wrong pending facts: %+v", pending)
 	}
 }
