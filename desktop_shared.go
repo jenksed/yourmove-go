@@ -72,9 +72,20 @@ func runDesktop() {
 	// confirmed second close proceed without re-prompting.
 	var allowDesktopClose atomic.Bool
 	var desktop *application.App
+	var window *application.WebviewWindow
 	desktop = application.New(application.Options{
 		Name:   "YourMove",
 		Assets: application.AssetOptions{Handler: handler},
+		// One workspace owner: a second launch notifies this instance
+		// and exits cleanly instead of opening a competing workspace.
+		SingleInstance: &application.SingleInstanceOptions{
+			UniqueID: "com.yourmove.go",
+			OnSecondInstanceLaunch: func(application.SecondInstanceData) {
+				if window != nil {
+					window.Show().Focus()
+				}
+			},
+		},
 		// Cmd+Q and Dock quit arrive here. A clean workspace quits
 		// directly; dirty answer, letter, detail, or evidence drafts
 		// get a native confirmation instead of silent loss.
@@ -93,7 +104,7 @@ func runDesktop() {
 	// Explicit applicant action is required for download, install, restart.
 	configureDesktopUpdater(a, desktop)
 	startDesktopUpdateTasks(a, desktop)
-	window := desktop.Window.NewWithOptions(application.WebviewWindowOptions{
+	window = desktop.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:     "YourMove",
 		Width:     1100,
 		Height:    800,
