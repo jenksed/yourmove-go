@@ -1,4 +1,5 @@
 import { AppNavigation, AppTopbar } from "../../shared/AppNavigation";
+import { setUnsaved } from "../../shared/unsaved";
 // YM-004A React Application Workspace: one coherent preparation activity.
 // Reads and writes through Go-owned JSON contracts only. The source URL is
 // displayed, never edited here; resume bytes never enter this client.
@@ -195,6 +196,9 @@ export function WorkspacePage(): React.JSX.Element {
     priority !== baseline.priority;
 
   useEffect(() => {
+    // Report job-detail edits to the desktop close guard; saving stays
+    // explicit through the details form.
+    setUnsaved("details", detailsDirty);
     if (!detailsDirty) return;
     const guard = (event: BeforeUnloadEvent) => { event.preventDefault(); };
     window.addEventListener("beforeunload", guard);

@@ -17,6 +17,7 @@ import {
   type LetterDraft,
   type LettersSnapshot,
 } from "./writingApi";
+import { setUnsaved } from "../../shared/unsaved";
 
 export interface LetterResumeOption {
   id: number;
@@ -137,6 +138,9 @@ export function CoverLetterSection({
   }, [selectedResumeId]);
 
   useEffect(() => {
+    // Report letter drafts to the desktop close guard; the editor keeps
+    // its explicit save and revision checks.
+    setUnsaved("letter", dirty || manualDraft !== "" || newDraft !== "");
     if (!dirty && manualDraft === "" && newDraft === "") return;
     const guard = (event: BeforeUnloadEvent) => {
       event.preventDefault();

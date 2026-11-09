@@ -22,6 +22,7 @@ import {
   type WritingQuestion,
 } from "./writingApi";
 import { PreviousWriting, type PendingSource } from "./PreviousWriting";
+import { setUnsaved } from "../../shared/unsaved";
 
 function questionId(q: WritingQuestion): string {
   return `${q.isEarly ? "early" : "live"}:${q.key}`;
@@ -279,6 +280,9 @@ export function WritingSection({
   }, [loading, selectedId, allQuestions]);
 
   useEffect(() => {
+    // Report answer drafts to the desktop close guard; the in-app
+    // question switcher already blocks on the same dirty flag.
+    setUnsaved("answers", dirty);
     if (!dirty) return;
     const guard = (event: BeforeUnloadEvent) => {
       event.preventDefault();

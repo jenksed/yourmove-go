@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 type App struct {
@@ -22,7 +23,8 @@ type App struct {
 	intakeMu                  sync.Mutex
 	enrichmentMu              sync.Mutex
 	enrichment                *enrichmentRun
-	enrichmentFetch           postingFetcher
+	enrichmentFetch          postingFetcher
+	desktopUnsaved            atomic.Bool
 	db                        *sql.DB
 	resumeDir                 string
 	pickResume                func() (string, error)
@@ -141,6 +143,7 @@ func newMux(app *App) http.Handler {
 	mux.HandleFunc("POST /api/jobs/{id}/submit", app.continuationSubmitAPI)
 	mux.HandleFunc("GET /api/jobs/{id}/submissions", app.continuationSubmissionsAPI)
 	mux.HandleFunc("POST /api/jobs/{id}/next", app.continuationNextAPI)
+	mux.HandleFunc("POST /api/desktop/unsaved", app.desktopUnsavedAPI)
 	mux.HandleFunc("GET /api/resumes", app.resumesAPI)
 	mux.HandleFunc("GET /api/jobs/{id}/resume-options", app.resumeOptionsAPI)
 	mux.HandleFunc("POST /api/jobs/{id}/resume", app.setJobResumeAPI)

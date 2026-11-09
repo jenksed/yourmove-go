@@ -24,6 +24,7 @@ import {
   type StudioRoleSnapshot,
   type StudioSynthesisResponse,
 } from "./studioApi";
+import { setUnsaved } from "../../shared/unsaved";
 
 const emptyContent: StudioEvidenceContent = {
   title: "",
@@ -181,6 +182,9 @@ export function StudioPage(): React.JSX.Element {
   const recordDirty = record !== null && JSON.stringify(fields) !== JSON.stringify(contentFromRecord(record));
 
   useEffect(() => {
+    // Report evidence drafts to the desktop close guard; saving stays
+    // explicit through the record form.
+    setUnsaved("studio", recordDirty);
     if (!recordDirty) return;
     const guard = (event: BeforeUnloadEvent) => { event.preventDefault(); };
     window.addEventListener("beforeunload", guard);

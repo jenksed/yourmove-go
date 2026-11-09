@@ -6,8 +6,10 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sync/atomic"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 
 	"github.com/jenksed/yourmove-go/internal/app"
 	"github.com/jenksed/yourmove-go/internal/storage"
@@ -64,15 +66,34 @@ func runDesktop() {
 		start = "/__wails_probe"
 	}
 
-	desktop := application.New(application.Options{
+	// Ordinary window closing (red X) and Cmd+Q / Dock quit are guarded
+	// separately: both consult the React-reported unsaved flag. A clean
+	// workspace closes without prompting. allowDesktopClose lets the
+	// confirmed second close proceed without re-prompting.
+	var allowDesktopClose atomic.Bool
+	var desktop *application.App
+	desktop = application.New(application.Options{
 		Name:   "YourMove",
 		Assets: application.AssetOptions{Handler: handler},
+		// Cmd+Q and Dock quit arrive here. A clean workspace quits
+		// directly; dirty answer, letter, detail, or evidence drafts
+		// get a native confirmation instead of silent loss.
+		ShouldQuit: func() bool {
+			if allowDesktopClose.Load() || !a.HasDesktopUnsaved() {
+				return true
+			}
+			confirmDesktopUnsavedClose(desktop.Window.Current(), func() {
+				allowDesktopClose.Store(true)
+				application.Get().Quit()
+			})
+			return false
+		},
 	})
 	// macOS only: wire the pinned updater lifecycle without blocking startup.
 	// Explicit applicant action is required for download, install, restart.
 	configureDesktopUpdater(a, desktop)
 	startDesktopUpdateTasks(a, desktop)
-	desktop.Window.NewWithOptions(application.WebviewWindowOptions{
+	window := desktop.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:     "YourMove",
 		Width:     1100,
 		Height:    800,
@@ -80,10 +101,40 @@ func runDesktop() {
 		MinHeight: 550,
 		URL:       start,
 	})
+	// Ordinary window closing is cancellable: a clean workspace closes
+	// directly, while dirty drafts get a native confirmation.
+	window.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
+		if allowDesktopClose.Load() || !a.HasDesktopUnsaved() {
+			return
+		}
+		event.Cancel()
+		confirmDesktopUnsavedClose(window, func() {
+			allowDesktopClose.Store(true)
+			window.Close()
+		})
+	})
 	log.Printf("YourMove Wails compatibility run starting at %s (version %s build %s)", start, app.CurrentAppVersion(), app.CurrentAppBuild())
 	if err := desktop.Run(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// confirmDesktopUnsavedClose asks natively whether to abandon dirty React
+// drafts. Stay is the default and cancel action; quitting runs quit, which
+// sets the one-shot allow flag before closing or quitting again.
+func confirmDesktopUnsavedClose(host application.Window, quit func()) {
+	dialog := application.Get().Dialog.Question()
+	dialog.SetTitle("Unsaved writing")
+	dialog.SetMessage("You have unsaved answer or letter edits. Quit without saving them?")
+	quitButton := dialog.AddButton("Quit without saving")
+	quitButton.OnClick(func() { quit() })
+	stay := dialog.AddButton("Stay")
+	dialog.SetDefaultButton(stay)
+	dialog.SetCancelButton(stay)
+	if host != nil {
+		dialog.AttachToWindow(host)
+	}
+	dialog.Show()
 }
 
 // probeMux is the debug-only endpoint mount. It is not mounted in browser

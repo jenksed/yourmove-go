@@ -8,6 +8,7 @@ import {
   StaleSubmissionError,
   type SubmissionsSnapshot,
 } from "./continuationApi";
+import { hasUnsaved } from "../../shared/unsaved";
 
 export function SubmissionSection({ jobId, onRecorded }: { jobId: number; onRecorded: () => void }): React.JSX.Element {
   const [history, setHistory] = useState<SubmissionsSnapshot | null>(null);
@@ -64,6 +65,13 @@ export function SubmissionSection({ jobId, onRecorded }: { jobId: number; onReco
     setBusy(true);
     setError("");
     try {
+      // Full-page navigation would discard answer and letter drafts, so
+      // refuse while this page holds unsaved edits. Tab switches keep
+      // their state and need no guard.
+      if (hasUnsaved()) {
+        setError("Save or discard your edits before moving on.");
+        return;
+      }
       const state = await fetchContinuation(jobId);
       const active = state.browser.active;
       // The macOS Wails host does not present window.confirm(), so moving
