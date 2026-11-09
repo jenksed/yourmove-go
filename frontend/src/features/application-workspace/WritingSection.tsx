@@ -499,7 +499,7 @@ export function WritingSection({
   const canSave = selected !== null && (dirty || (reusable && selected.reusableEligible)) && selected.editable && snapshot.editingAllowed && !readOnly;
 
   return (
-    <section className="panel" aria-labelledby="writing-title" id="writing">
+    <section className={snapshot.ownsPosting ? "panel" : "panel questions-unsupported"} aria-labelledby="writing-title" id="writing">
       <div className="section-heading">
         <div>
           <h2 id="writing-title">Questions</h2>
@@ -513,7 +513,7 @@ export function WritingSection({
           </p>
         </div>
         <div className="heading-actions">
-          <button className="button" type="button" disabled={captureBusy || readOnly || !snapshot.editingAllowed} onClick={async () => {
+          <button className="button" type="button" disabled={captureBusy || readOnly || !snapshot.editingAllowed || !snapshot.ownsPosting} onClick={async () => {
             setCaptureBusy(true);
             setCaptureNotice("");
             try {
@@ -540,7 +540,8 @@ export function WritingSection({
       {dirty && <p className="small-muted">Save your answer before refreshing the question list.</p>}
 
       {discoveryStatus === "checking" && <p role="status">Checking for application questions…</p>}
-      {discoveryStatus === "unsupported" && answerTasks.length > 0 && <p className="writing-notice">This employer does not offer an early question preview. Select Capture application questions to check managed inspection support.</p>}
+      {!snapshot.ownsPosting && <p className="writing-notice" role="note">Question capture supports saved Ashby, Greenhouse, and Lever postings. This URL cannot yet be safely associated with an employer form. Open the employer site yourself and prepare answers manually; automatic Fill remains unavailable.</p>}
+      {discoveryStatus === "unsupported" && snapshot.ownsPosting && answerTasks.length > 0 && <p className="writing-notice">This employer does not offer an early question preview. Select Capture application questions to check managed inspection support.</p>}
       {discoveryStatus === "failed" && <p className="writing-notice">We could not check questions right now. Your saved work is safe. <button className="button button-secondary" type="button" onClick={onRetryDiscovery}>Retry question check</button> You can also select Capture application questions.</p>}
 
       {(snapshot.returnNotice !== "" || snapshot.earlyNotice !== "") && (
@@ -559,7 +560,7 @@ export function WritingSection({
         <div className="empty-state">
           <h3>No questions discovered yet</h3>
           <p>
-            {discoveryStatus === "checking" ? "Checking this posting for questions." : "No early questions are available. Select Capture application questions, then navigate the employer form in the managed browser."}
+            {!snapshot.ownsPosting ? "Automatic capture and Fill are unavailable for this posting. Open the employer site yourself and prepare answers manually." : discoveryStatus === "checking" ? "Checking this posting for questions." : "No early questions are available. Select Capture application questions, then navigate the employer form in the managed browser."}
           </p>
         </div>
       )}

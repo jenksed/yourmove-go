@@ -6,7 +6,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
- "path/filepath"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -762,4 +763,33 @@ func TestLetterSelectionPersistsAndStaysWithinJob(t *testing.T) {
  reopened:=newTestApp(t,db,filepath.Join(dir,"resumes"))
  letter,err:=reopened.selectedCoverLetter(1);if err!=nil||letter.ID!=1||letter.Body!=body1{t.Fatalf("selection after reopen: %+v %v",letter,err)}
  snapshot,err:=reopened.buildContinuation(1); if err!=nil { t.Fatal(err) }; payload,_:=json.Marshal(snapshot); if !strings.Contains(string(payload), `"id":1`) { t.Fatalf("continuation: %s",payload) }
+}
+
+func TestWritingQuestionsReportsPostingSupport(t *testing.T) {
+	a, _ := testWorkspace(t)
+	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com", Title: "Supported"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.saveJob(Job{URL: "https://example.com/job", Host: "example.com", Title: "Unsupported"}); err != nil {
+		t.Fatal(err)
+	}
+	questions := func(id int64) map[string]any {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		newMux(a).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "http://localhost/api/jobs/"+strconv.FormatInt(id, 10)+"/questions", nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("job %d questions status=%d body=%s", id, rec.Code, rec.Body.String())
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatal(err)
+		}
+		return payload
+	}
+	if got := questions(1)["ownsPosting"]; got != true {
+		t.Fatalf("supported posting ownsPosting=%v", got)
+	}
+	if got := questions(2)["ownsPosting"]; got != false {
+		t.Fatalf("unsupported posting ownsPosting=%v", got)
+	}
 }

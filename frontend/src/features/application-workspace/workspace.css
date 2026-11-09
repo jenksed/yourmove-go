@@ -324,6 +324,19 @@
   align-items: start;
 }
 
+/* Unsupported posting: the question area cannot drive capture or Fill, so
+   it renders dimmed and non-interactive while notices and preserved
+   writing stay fully legible. */
+#writing.questions-unsupported .empty-state,
+#writing.questions-unsupported .question-navigator,
+#writing.questions-unsupported .writing-desk {
+  opacity: 0.55;
+}
+#writing.questions-unsupported .question-navigator,
+#writing.questions-unsupported .writing-desk {
+  pointer-events: none;
+}
+
 .previous-column {
   display: grid;
   gap: 12px;

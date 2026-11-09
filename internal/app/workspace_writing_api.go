@@ -698,6 +698,7 @@ func (a *App) buildWritingQuestions(jobID int64) (map[string]any, error) {
 		"returnNotice":         live.ReturnNotice,
 		"editingAllowed":       editingAllowed,
 		"answerEditingAllowed": editingAllowed,
+		"ownsPosting":          browser.OwnsPostingURL(job.URL, job.URL),
 	}, nil
 }
 

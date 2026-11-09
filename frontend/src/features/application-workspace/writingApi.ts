@@ -148,6 +148,7 @@ export interface QuestionsSnapshot {
   returnNotice: string;
   editingAllowed: boolean;
   answerEditingAllowed: boolean;
+  ownsPosting: boolean;
 }
 
 export interface AiChoice {
