@@ -597,6 +597,22 @@ backendReady:
 	if !a.browsers.state(1).Active {
 		t.Fatal("cancelling navigation closed the browser")
 	}
+	// Unsaved writing blocks moving on: the draft and the open browser are
+	// preserved, and the opportunity does not change.
+	click("Questions")
+	selectQuestion("challenging collaboration")
+	setTextarea("#writing-answer", "guard draft", "Unsaved guard draft that must not be silently discarded.")
+	click("Apply")
+	click("Next opportunity → Next synthetic opportunity")
+	wait(`document.body.innerText.includes('Save or discard your edits before moving on.')`)
+	if !a.browsers.state(1).Active {
+		t.Fatal("refused navigation closed the browser")
+	}
+	wait(`document.body.innerText.includes('Synthetic React journey')`)
+	click("Questions")
+	click("Discard edits")
+	wait(`!document.body.innerText.includes('Unsaved edits on this question')`)
+	click("Apply")
 	click("Next opportunity → Next synthetic opportunity")
 	wait(`Array.from(document.querySelectorAll('#submission button')).some(x=>x.textContent.trim()==='Close and continue' && x.offsetParent!==null)`)
 	click("Close and continue")
