@@ -69,16 +69,22 @@ current commands, not a second automation engine.
 
 Only uniquely identified native controls are filled. Existing values/files, custom
 dropdowns and other structured controls, authentication, CAPTCHA, sensitive
-questions, and cross-origin embedded forms remain manual. A successful file
-selection does not establish employer acceptance. Account or tenant-specific
-variations still need live read-only qualification; local fixtures do not prove
-compatibility with every hosted form.
+questions, and cross-origin embedded forms remain manual. Observation stays
+read-only and provider-neutral: accessible custom controls keep their real
+question label, choices already visible in the DOM are preserved as read-only
+reference (never collected by opening or clicking a widget), and recognizable
+controls without a stable identity receive a relationship-scoped display
+identity that confers no transfer authority. A successful file selection does
+not establish employer acceptance. Account or tenant-specific variations still
+need live read-only qualification; local fixtures do not prove compatibility
+with every hosted form.
 
-Known investigation example (not a verified root cause or a fixed issue): the live
-Render posting rotates Ashby's per-form UUID namespace, and its “How did you hear
-about Render?” question arrives as an option-less Ashby combobox that must stay
-manual-only while still being represented. Option-less comboboxes, `custom_combobox`,
-and `unsupported_ambiguous` controls are never automated-Fill targets.
+Known investigation example: the live Render posting rotates Ashby's per-form
+UUID namespace, and its “How did you hear about Render?” question arrives as an
+option-less Ashby combobox without a stable control identity. The question is
+represented under its real label with manual-completion guidance while staying
+outside automated-Fill scope. Option-less comboboxes, `custom_combobox`,
+`listbox`, and `unsupported_ambiguous` controls are never automated-Fill targets.
 
 ### Lever qualification detail
 

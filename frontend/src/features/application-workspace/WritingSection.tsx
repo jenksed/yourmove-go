@@ -29,6 +29,16 @@ function triageOf(q: WritingQuestion): string {
   return q.editable ? "answer" : "review";
 }
 
+// Observed choices are read-only reference for manual completion on the
+// employer site. They never authorize or populate an employer control.
+function formatObservedChoices(options: string[] | null): string | null {
+  const choices = (options ?? []).filter((option) => option.trim() !== "");
+  if (choices.length === 0) return null;
+  const shown = choices.slice(0, 8);
+  const suffix = choices.length > shown.length ? `, and ${choices.length - shown.length} more` : "";
+  return `Observed choices: ${shown.join(" · ")}${suffix}`;
+}
+
 function QuestionEditor({
   question,
   value,
@@ -877,7 +887,7 @@ export function WritingSection({
               <h3>Needs manual completion</h3>
               <ul className="writing-suggestions">
                 {reviewItems.map((q) => (
-                  <li key={questionId(q)}><strong>{q.label}</strong><small>{q.required ? "Required by employer · " : ""}{q.manualReason !== "" ? q.manualReason : "This question requires manual completion in Chromium."}</small></li>
+                  <li key={questionId(q)}><strong>{q.label}</strong><small>{q.required ? "Required by employer · " : ""}{q.manualReason !== "" ? q.manualReason : "This question requires manual completion in Chromium."}</small>{formatObservedChoices(q.options) !== null && <small>{formatObservedChoices(q.options)}</small>}</li>
                 ))}
               </ul>
             </div>

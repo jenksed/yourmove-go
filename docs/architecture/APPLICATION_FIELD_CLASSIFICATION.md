@@ -115,18 +115,28 @@ suffix is what matters).
 Only uniquely identified native controls are filled (`input`, `textarea`, native
 `select`, single radio groups, checkboxes with exact semantics, plus the dedicated
 Ashby location-autocomplete path). Custom dropdowns (`role="combobox"`,
-`custom_combobox`), option-less selects, ambiguous multi-match identities, and
-controls inside cross-origin frames or social widgets remain manual.
+`custom_combobox`, `role="listbox"`), option-less selects, ambiguous multi-match
+identities, and controls inside cross-origin frames or social widgets remain manual.
 
-Known investigation example (not a verified root cause or a fixed issue): the live
-Render posting's “How did you hear about Render?” question arrives as an
-option-less Ashby combobox. Regression tests pin its handling — represented in the
-Questions projection, never an automated-Fill target
-(`workspace_writing_api_test.go`, `workspace_continuation_api_test.go`,
-`react_questions_unified_test.go`) — but the underlying control-class limitation is
-open. When extending capture or Fill, prefer provider-neutral semantic control
-handling when the failure is not provider-specific, and verify with controlled
-browser fixtures.
+Observation is read-only and provider-neutral: accessible labels are resolved
+through `aria-labelledby`, wrapping labels, and semantic group containers, and
+choices already rendered in the visible DOM are preserved as read-only evidence
+for custom structured controls — nothing is opened or clicked to discover
+choices, and choices are collected onto a Fill/save candidate's record only
+when they cannot flap across transient popup states. A recognizable custom
+control without a stable control identity is shown under its real question
+label with a relationship-scoped display identity; that identity is never a
+transfer identity and the question stays manual-only with no Fill authority.
+Controls with neither a reliable label nor an associated control keep the
+unidentified-control notice.
+
+Known investigation example: the live Render posting's “How did you hear
+about Render?” question arrives as an option-less Ashby combobox without a
+stable control identity. It is represented in the Questions projection under
+its real label with manual-completion guidance and never enters automated-Fill
+scope (`workspace_writing_api_test.go`, `workspace_continuation_api_test.go`,
+`react_questions_unified_test.go`, `structured_question_capture_test.go`,
+`structured_question_capture_qualification_test.go`).
 
 ### Unsupported postings (`2baa899`)
 

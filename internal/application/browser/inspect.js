@@ -12,7 +12,7 @@
   const labelText = label => {
     if (!label) return '';
     const copy = label.cloneNode(true);
-    copy.querySelectorAll('input,textarea,select,button,[role="combobox"]').forEach(el => el.remove());
+    copy.querySelectorAll('input,textarea,select,button,[role="combobox"],[role="listbox"],[role="option"],[role="radio"],[role="checkbox"],[role="group"],[role="radiogroup"]').forEach(el => el.remove());
     return String(copy.textContent || '').replace(/\s+/g, ' ').trim();
   };
   const sensitive = value =>
@@ -29,11 +29,23 @@
     const referenced = labelledBy.map(id => document.getElementById(id)?.innerText || '').filter(Boolean).join(' ');
     return clip(el.getAttribute('aria-label') || referenced || el.innerText || el.textContent, 350);
   };
+  const labelledByText = el => {
+    if (!el || typeof el.getAttribute !== 'function') return '';
+    const ids = (el.getAttribute('aria-labelledby') || '').split(/\s+/).filter(Boolean);
+    return clip(ids.map(id => document.getElementById(id)?.innerText || '').filter(Boolean).join(' '), 350);
+  };
   const describe = el => {
     const root = entryRoot(el);
     const title = questionTitle(root) || el.closest('fieldset')?.querySelector('legend')?.innerText;
     const labelFromId = el.id ? document.querySelector('label[for="' + CSS.escape(el.id) + '"]') : null;
+    // Custom structured controls are often labelled through an accessible
+    // relationship (aria-labelledby), a wrapping label, or a semantic group
+    // container rather than a directly associated <label>.
+    const group = el.closest('[role="group"],[role="radiogroup"]');
+    const groupLabel = group && group !== el
+      ? clip(group.getAttribute('aria-label') || labelledByText(group), 350) : '';
     return clip(title || labelText(el.labels?.[0]) || labelText(labelFromId) ||
+      labelledByText(el) || labelText(el.closest('label')) || groupLabel ||
       el.getAttribute('aria-label') || el.getAttribute('placeholder') || el.name || 'Unlabeled control', 350);
   };
   const optionLabel = el => clip(labelText(el.labels?.[0]) || ariaText(el) || el.name || 'Unlabeled option', 350);
@@ -44,13 +56,16 @@
     if (el.getAttribute('role') === 'combobox') {
       return el.tagName.toLowerCase() === 'input' ? 'combobox' : 'custom_combobox';
     }
+    if (el.getAttribute('role') === 'listbox') {
+      return 'listbox';
+    }
     if (el.getAttribute('role') === 'checkbox') return 'custom_checkbox';
     if (el.getAttribute('role') === 'radio') return 'custom_radio';
     if (el.type === 'checkbox') return 'checkbox';
     if (el.type === 'radio') return 'radio';
     return el.type || 'text';
   };
-  const raw = [...document.querySelectorAll('input,textarea,select,[role="combobox"],[role="checkbox"],[role="radio"]')]
+  const raw = [...document.querySelectorAll('input,textarea,select,[role="combobox"],[role="listbox"],[role="checkbox"],[role="radio"]')]
     .filter(el => visible(el) && !socialAuth(el) &&
       !['hidden', 'password', 'submit', 'button', 'reset'].includes(el.type || ''));
   const candidates = raw.slice(0, 200).filter(el => {
@@ -60,6 +75,21 @@
     return (roleRoot.getAttribute('role') === 'checkbox' && el.type === 'checkbox') ||
       (roleRoot.getAttribute('role') === 'radio' && el.type === 'radio');
   });
+  // A listbox referenced as the popup of an observed combobox (via
+  // aria-controls/aria-owns) belongs to that control: its visible options
+  // are collected onto the combobox record instead of reported twice.
+  const popupOwners = new Map();
+  for (const el of candidates) {
+    if (!['combobox', 'custom_combobox'].includes(kindOf(el))) continue;
+    for (const attr of ['aria-controls', 'aria-owns']) {
+      const id = (el.getAttribute(attr) || '').split(/\s+/).filter(Boolean)[0] || '';
+      if (id && !popupOwners.has(id)) popupOwners.set(id, el);
+    }
+  }
+  const ownedPopup = el => {
+    if (kindOf(el) !== 'listbox' || !el.id || !popupOwners.has(el.id)) return null;
+    return popupOwners.get(el.id);
+  };
   const records = [];
   const unknown = [];
   const add = (record, members) => {
@@ -117,6 +147,87 @@
   const mergeOptions = groups => {
     if (groups.length > 1 && groups.every(group => equalOptions(group, groups[0]))) return groups[0];
     return groups.flat();
+  };
+  // Read-only option evidence for ARIA structured controls. Only options
+  // already rendered in the visible DOM are collected; nothing is opened,
+  // clicked, or otherwise interacted with to discover choices. Options from
+  // a referenced popup (aria-controls/aria-owns) are collected only for
+  // controls without a stable control identity: a named control may be a
+  // Fill or save candidate, so its record must stay identical across
+  // transient popup states (for example location suggestions that appear
+  // only after typing), while an identity-less custom control is
+  // display-only and keeps its visible choices as read-only evidence.
+  const ariaOptions = el => {
+    const seen = new Set();
+    const out = [];
+    const push = node => {
+      const value = clip(node.innerText || node.textContent, 110);
+      if (value !== '' && !seen.has(value) && out.length < 60) {
+        seen.add(value);
+        out.push(value);
+      }
+    };
+    el.querySelectorAll('[role="option"]').forEach(opt => { if (visible(opt)) push(opt); });
+    if (!el.name && !el.id) {
+      for (const attr of ['aria-controls', 'aria-owns']) {
+        const id = (el.getAttribute(attr) || '').split(/\s+/).filter(Boolean)[0] || '';
+        const target = id ? document.getElementById(id) : null;
+        if (target && target !== el) {
+          target.querySelectorAll('[role="option"]').forEach(opt => { if (visible(opt)) push(opt); });
+        }
+      }
+    }
+    return out;
+  };
+  // Relationship-scoped display identity for recognizable custom controls
+  // without a stable control identity. It derives only from real DOM
+  // references (group containers, owned popups, labelling elements), never
+  // from label wording, and only custom kinds that are never Fill-eligible
+  // receive it, so it cannot become a transfer identity.
+  const containerReference = el => {
+    const group = el.closest('[role="group"],[role="radiogroup"],fieldset');
+    const groupRef = group && group !== el ? (group.id || group.getAttribute('aria-labelledby') || '') : '';
+    if (groupRef) return 'aria_group_' + groupRef;
+    for (const attr of ['aria-controls', 'aria-owns']) {
+      const owned = (el.getAttribute(attr) || '').split(/\s+/).filter(Boolean)[0] || '';
+      if (owned && document.getElementById(owned)) return 'aria_group_' + owned;
+    }
+    const labelled = (el.getAttribute('aria-labelledby') || '').split(/\s+/).filter(Boolean)[0] || '';
+    if (labelled && document.getElementById(labelled)) return 'aria_labelled_' + labelled;
+    return '';
+  };
+  // Custom structured controls can never be operated automatically, so a
+  // relationship-scoped display identity keeps their real question visible
+  // instead of collapsing it into the unidentified-control notice. Native
+  // kinds keep the existing rule: no stable identity means no display row.
+  const customDisplayKind = kind =>
+    ['combobox', 'custom_combobox', 'listbox', 'custom_radio_group', 'custom_checkbox_group', 'unsupported_ambiguous'].includes(kind);
+  const selectishOptions = el => {
+    const kind = kindOf(el);
+    if (kind === 'select') return [...el.options].slice(0, 60).map(option => clip(option.text, 110));
+    if (['combobox', 'custom_combobox', 'listbox'].includes(kind)) return ariaOptions(el);
+    return [];
+  };
+  // One record for one observed control. A referenced listbox popup is
+  // reported through its combobox when that control is itself displayed
+  // under the same question label; otherwise it stands as its own record.
+  const singleRecord = (el, root) => {
+    const kind = kindOf(el);
+    const options = selectishOptions(el);
+    let identity = fieldIdentity(el, root);
+    if (!identity && customDisplayKind(kind)) identity = containerReference(el);
+    const record = makeRecord([el], kind, root, options, identity);
+    const owner = ownedPopup(el);
+    if (owner) {
+      const ownerKind = kindOf(owner);
+      let ownerId = fieldIdentity(owner, entryRoot(owner));
+      if (!ownerId && customDisplayKind(ownerKind)) ownerId = containerReference(owner);
+      if (ownerId) {
+        const ownerRecord = makeRecord([owner], ownerKind, entryRoot(owner), selectishOptions(owner), ownerId);
+        if (ownerRecord.label === record.label) return null;
+      }
+    }
+    return record;
   };
   const processScope = (root, members, ashbyEntry) => {
     const units = [];
@@ -202,10 +313,10 @@
     for (const el of members) {
       if (handled.has(el)) continue;
       const kind = kindOf(el);
-      const options = kind === 'select' ? [...el.options].slice(0, 60).map(option => clip(option.text, 110)) : [];
-      const record = makeRecord([el], kind, root, options, fieldIdentity(el, root));
-      units.push({ members: [el], family: kind === 'select' || kind === 'combobox' || kind === 'custom_combobox' ? 'selectish' : kind,
-        representation: kind === 'combobox' || kind === 'custom_combobox' ? 'custom' : 'native', record });
+      const record = singleRecord(el, root);
+      if (!record) continue;
+      units.push({ members: [el], family: kind === 'select' || kind === 'combobox' || kind === 'custom_combobox' || kind === 'listbox' ? 'selectish' : kind,
+        representation: kind === 'combobox' || kind === 'custom_combobox' || kind === 'listbox' ? 'custom' : 'native', record });
     }
 
     // One Ashby field-entry ID is the question boundary. If native and custom
@@ -281,10 +392,9 @@
   }
   for (const el of candidates) {
     if (assigned.has(el)) continue;
-    const kind = kindOf(el);
-    const id = fieldIdentity(el, null);
-    const options = kind === 'select' ? [...el.options].slice(0, 60).map(option => clip(option.text, 110)) : [];
-    add(makeRecord([el], kind, null, options, id), [el]);
+    const record = singleRecord(el, null);
+    if (!record) continue;
+    add(record, [el]);
   }
   if (unknown.length) {
     records.push({
