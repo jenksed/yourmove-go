@@ -160,7 +160,7 @@ go build -o /tmp/yourmove-go-manual-runner/yourmove .
   ./yourmove)
 ```
 
-This intentionally does **not** start the Wails window; it opens local browser mode at `http://127.0.0.1:3000`. Use the same `YOURMOVE_DATA_DIR` on subsequent runs to retain experiments. Do not use that path for automated qualification involving destructive data fixtures. Run the app under the exact Go toolchain declared in `go.mod`; the snapshot specifies Go 1.27.2. Do not run two instances against the same managed Chromium/session workflow.
+This intentionally does **not** start the Wails window; it opens local browser mode at `http://127.0.0.1:3000`. Use the same `YOURMOVE_DATA_DIR` on subsequent runs to retain experiments. Do not use that path for automated qualification involving destructive data fixtures. Run the app under the exact Go toolchain declared in `go.mod` (currently Go 1.27.3). Do not run two instances against the same managed Chromium/session workflow.
 
 For a native-only change, verify `go test -tags desktop ./...` and `go run -tags desktop .` on macOS with an explicitly isolated workspace. Wails behavior is not fully proven by an ordinary browser request.
 
