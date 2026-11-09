@@ -707,6 +707,54 @@ func (a *App) continuationSubmitAPI(w http.ResponseWriter, r *http.Request) {
 	writeResumeJSON(w, http.StatusOK, map[string]any{"recorded": true, "jobId": jobID})
 }
 
+// POST /api/jobs/{id}/unsubmit removes the most recent local submission
+// record for an accidentally recorded application. It never submits to an
+// employer and never touches saved answers, letters, résumé associations,
+// or unrelated history. Older records stay; when none remain, the
+// opportunity returns to review so editing resumes.
+func (a *App) continuationUnsubmitAPI(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	jobID, err := parseJobID(r)
+	if err != nil {
+		writeResumeError(w, http.StatusNotFound, "Unknown job")
+		return
+	}
+	var input struct {
+		Confirm string `json:"confirm"`
+	}
+	if !decodeResumeJSON(w, r, 4<<10, &input) {
+		return
+	}
+	if input.Confirm != "yes" {
+		writeResumeError(w, http.StatusBadRequest, "Confirm correction of the recorded submission")
+		return
+	}
+	remaining, err := a.correctSubmission(jobID)
+	if errors.Is(err, ErrNoSubmissionToCorrect) {
+		writeResumeJSON(w, http.StatusConflict, map[string]string{
+			"code":    "nothing-to-correct",
+			"message": "There is no submission record to correct for this opportunity.",
+		})
+		return
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		writeResumeError(w, http.StatusNotFound, "Unknown job")
+		return
+	}
+	if err != nil {
+		log.Printf("correct submission: %v", err)
+		writeResumeJSON(w, http.StatusInternalServerError, map[string]string{
+			"code":    "failed",
+			"message": "YourMove could not correct this record. Check submission history before trying again.",
+		})
+		return
+	}
+	writeResumeJSON(w, http.StatusOK, map[string]any{"corrected": true, "jobId": jobID, "remaining": remaining})
+}
+
 // GET /api/jobs/{id}/submissions returns the durable per-job history.
 func (a *App) continuationSubmissionsAPI(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {

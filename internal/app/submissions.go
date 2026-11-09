@@ -37,6 +37,8 @@ func validSubmissionToken(token string) bool {
 
 var ErrSubmissionReviewStale = errors.New("submission review is stale")
 
+var ErrNoSubmissionToCorrect = errors.New("no submission record to correct")
+
 func (a *App) recordSubmissionReview(jobID int64, token string, resumeID int64, resumeHash string) error {
 	if !validSubmissionToken(token) || jobID <= 0 || resumeID < 0 {
 		return fmt.Errorf("invalid submission review")
@@ -180,4 +182,51 @@ func (a *App) jobSubmissions(jobID int64) ([]Submission, error) {
 		result = append(result, s)
 	}
 	return result, rows.Err()
+}
+
+// correctSubmission removes the most recent local submission record for a
+// job, returning the remaining record count. When no confirmed history
+// remains, the opportunity returns to review so applicant editing resumes.
+// Saved answers, letters, résumé associations, and unrelated records are
+// untouched; only this job's latest submissions row and the applied stage
+// change, atomically.
+func (a *App) correctSubmission(jobID int64) (int64, error) {
+	// Keep correction serialized with explicit submission and deletion.
+	a.intakeMu.Lock()
+	defer a.intakeMu.Unlock()
+	tx, err := a.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	var jobExists bool
+	if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM jobs WHERE id=?)`, jobID).Scan(&jobExists); err != nil {
+		return 0, err
+	}
+	if !jobExists {
+		return 0, sql.ErrNoRows
+	}
+	var latest int64
+	if err := tx.QueryRow(`SELECT id FROM submissions WHERE job_id=? ORDER BY id DESC LIMIT 1`, jobID).Scan(&latest); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, ErrNoSubmissionToCorrect
+		}
+		return 0, err
+	}
+	if _, err := tx.Exec(`DELETE FROM submissions WHERE id=?`, latest); err != nil {
+		return 0, err
+	}
+	var remaining int64
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM submissions WHERE job_id=?`, jobID).Scan(&remaining); err != nil {
+		return 0, err
+	}
+	if remaining == 0 {
+		if _, err := tx.Exec(`UPDATE jobs SET stage='review' WHERE id=? AND stage='applied'`, jobID); err != nil {
+			return 0, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return remaining, nil
 }

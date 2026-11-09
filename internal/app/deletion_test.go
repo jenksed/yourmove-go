@@ -117,3 +117,45 @@ func TestBulkDeleteRejectsHistoryAndCrossSiteRequests(t *testing.T) {
 		t.Fatalf("historical application changed: %v", err)
 	}
 }
+
+// Deleting an opportunity with explicit history authorization removes only
+// that job's local preparation. Reusable Answer Library examples, résumé
+// files, and other opportunities (including their submissions) survive.
+func TestDeleteJobWithHistoryPreservesReusableWriting(t *testing.T) {
+	a, _ := testWorkspace(t)
+	resume, err := a.importResume("shared.pdf", bytes.NewReader([]byte("%PDF-1.4\nshared")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.saveJob(Job{URL: "https://example.com/doomed", Host: "example.com", Title: "Doomed role"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.assignResume(1, resume.ID); err != nil {
+		t.Fatal(err)
+	}
+	// A reusable library example seeded from the surviving opportunity.
+	_, libraryEntryID := seedLibraryNarrative(t, a)
+	if err := a.recordSubmission(1, "doomed history", reviewedSubmissionToken(t, a, 1)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.deleteJobs([]int64{1}, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.jobByID(1); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("deleted job remains: %v", err)
+	}
+	if history, err := a.jobSubmissions(1); err != nil || len(history) != 0 {
+		t.Fatalf("deleted history=%+v err=%v", history, err)
+	}
+	entries, err := a.answerLibraryEntries()
+	if err != nil || len(entries) != 1 || entries[0].ID != libraryEntryID {
+		t.Fatalf("reusable library disturbed: %+v err=%v", entries, err)
+	}
+	if _, err := a.resumeByID(resume.ID); err != nil {
+		t.Fatalf("shared resume removed: %v", err)
+	}
+	other, err := a.jobByID(2)
+	if err != nil || other.Title != "Support Engineer" {
+		t.Fatalf("surviving opportunity=%+v err=%v", other, err)
+	}
+}

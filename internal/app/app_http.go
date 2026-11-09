@@ -141,6 +141,7 @@ func newMux(app *App) http.Handler {
 	mux.HandleFunc("POST /api/jobs/{id}/continue", app.continuationContinueAPI)
 	mux.HandleFunc("POST /api/jobs/{id}/submission-review", app.continuationReviewAPI)
 	mux.HandleFunc("POST /api/jobs/{id}/submit", app.continuationSubmitAPI)
+	mux.HandleFunc("POST /api/jobs/{id}/unsubmit", app.continuationUnsubmitAPI)
 	mux.HandleFunc("GET /api/jobs/{id}/submissions", app.continuationSubmissionsAPI)
 	mux.HandleFunc("POST /api/jobs/{id}/next", app.continuationNextAPI)
 	mux.HandleFunc("POST /api/desktop/unsaved", app.desktopUnsavedAPI)
