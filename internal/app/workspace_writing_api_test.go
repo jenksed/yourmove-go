@@ -198,10 +198,11 @@ func TestWritingEarlyAnswerSaveReopen(t *testing.T) {
 		t.Fatalf("early question missing: %v", payload["early"])
 	}
 	rec := postWritingJSON(t, a, http.MethodPost, "/api/jobs/1/answers",
-		`{"question_key":"`+key+`","revision":0,"destination":"`+testAshbyPosting+`","answer":"Early synthetic motivation","early":true,"discovery_source":"preview","discovery_fingerprint":"`+fingerprint+`","source_question_id":"application:motivation"}`)
+		`{"question_key":"`+key+`","revision":0,"destination":"`+testAshbyPosting+`","answer":"Early synthetic motivation","early":true,"save_to_library":true,"discovery_source":"preview","discovery_fingerprint":"`+fingerprint+`","source_question_id":"application:motivation"}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("early save status=%d body=%s", rec.Code, rec.Body.String())
 	}
+	entries,err:=a.answerLibraryEntries();if err!=nil||len(entries)!=1 {t.Fatalf("combined early save: %v %v",entries,err)}
 	payload = writingQuestions(t, a, 1)
 	for _, item := range payload["early"].([]any) {
 		q := item.(map[string]any)

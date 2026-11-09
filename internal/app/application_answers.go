@@ -42,6 +42,12 @@ type preparedQuestion struct {
 	SourceQuestionID          string
 	LibrarySuggestions        []answerLibrarySuggestion
 	CareerEvidenceSuggestions []careerEvidenceSuggestion
+	// LibraryAuto* carries exact automatic preparation from a single
+	// equivalent Answer Library entry. Value holds the library answer for
+	// review; Revision stays 0 until the applicant explicitly saves.
+	LibraryAutoEntryID  int64
+	LibraryAutoRevision int64
+	LibraryAutoQuestion string
 }
 type questionPreparation struct {
 	InspectionID           int64
@@ -78,6 +84,9 @@ func (q preparedQuestion) LocalStatus() string {
 	}
 	if q.Source == "Approved candidate information" {
 		return "Approved candidate information; transfer requires your authorization"
+	}
+	if q.Source == libraryAutoSource {
+		return "Automatically prepared from Answer Library; review and save locally. It has not been filled on the employer website."
 	}
 	if q.Revision > 0 {
 		return "Answer saved locally. It has not been filled on the employer website."
@@ -254,8 +263,23 @@ func (a *App) prepareQuestions(job Job, p CandidateProfile) (questionPreparation
 			value = ""
 			source = ""
 		}
+		// Exact automatic preparation: when nothing is saved or supplied
+		// (no explicit answer, profile fact, or employer memory), a single
+		// equivalent library entry populates the preparation state for
+		// review. Conflicting equivalents and related wording stay manual.
+		var autoEntryID, autoRevision int64
+		var autoQuestion string
+		if value == "" && editable && answerLibraryEligible(f.Field, counts[f.ID] == 1) {
+			if entry, ok := a.libraryAutoForLabel(f.Field.Label); ok {
+				value = entry.Answer
+				source = libraryAutoSource
+				autoEntryID = entry.ID
+				autoRevision = entry.Revision
+				autoQuestion = entry.OriginalQuestion
+			}
+		}
 		libraryEligible := exists && answer.Revision > 0 && strings.TrimSpace(answer.Value) != "" && validAnswerLibraryText(answer.Value) && answerLibraryEligible(f.Field, counts[f.ID] == 1)
-		out.Questions = append(out.Questions, preparedQuestion{ReusableKey: memoryKey, ReusableRevision: reusable.Revision, ReusableAnswer: reusable.Value, ReusableAvailable: reusable.Revision > 0, JobID: job.ID, Destination: job.URL, Field: f.Field, Key: key, Value: value, Source: source, Revision: answer.Revision, Editable: editable, LibraryEligible: libraryEligible})
+		out.Questions = append(out.Questions, preparedQuestion{ReusableKey: memoryKey, ReusableRevision: reusable.Revision, ReusableAnswer: reusable.Value, ReusableAvailable: reusable.Revision > 0, JobID: job.ID, Destination: job.URL, Field: f.Field, Key: key, Value: value, Source: source, Revision: answer.Revision, Editable: editable, LibraryEligible: libraryEligible, LibraryAutoEntryID: autoEntryID, LibraryAutoRevision: autoRevision, LibraryAutoQuestion: autoQuestion})
 		if exists && editable {
 			used[key] = true
 		}

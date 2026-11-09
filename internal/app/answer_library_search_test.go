@@ -100,16 +100,17 @@ func TestAnswerLibrarySearchAndStartingPointAreReadOnlyUntilSave(t *testing.T) {
 	}
 
 	result := postApp(newMux(a), "/answer-library/search", url.Values{"query": {"Linux logs customer database diagnostics"}}, "", "")
-	if result.Code != http.StatusOK || !strings.Contains(result.Body.String(), answerLibraryStory) ||
-		!strings.Contains(result.Body.String(), "Fixture Systems") || !strings.Contains(result.Body.String(), "Open full example") {
-		t.Fatalf("explicit library search did not retain context: %d %s", result.Code, result.Body.String())
+	if result.Code != http.StatusSeeOther || !strings.Contains(result.Header().Get("Location"), "/answer-library?q=") {
+		t.Fatalf("explicit library search did not redirect with preserved query: %d %s", result.Code, result.Header().Get("Location"))
 	}
-	if result.Header().Get("Location") != "" {
-		t.Fatalf("search query was exposed in redirect URL: %q", result.Header().Get("Location"))
+	followed := httptestGet(t, newMux(a), result.Header().Get("Location"))
+	if followed.Code != http.StatusOK || !strings.Contains(followed.Body.String(), answerLibraryStory) ||
+		!strings.Contains(followed.Body.String(), "Fixture Systems") || !strings.Contains(followed.Body.String(), "Reusable answer") {
+		t.Fatalf("explicit library search did not retain context: %d %s", followed.Code, followed.Body.String())
 	}
 	desktopSearch := postApp(newDesktopMux(a), "/answer-library/search", url.Values{"query": {"Linux logs customer database diagnostics"}}, "wails://localhost", "1")
-	if desktopSearch.Code != http.StatusOK || desktopSearch.Header().Get("Location") != "" || !strings.Contains(desktopSearch.Body.String(), "Fixture Systems") {
-		t.Fatalf("Wails did not render the local search response: %d %s %s", desktopSearch.Code, desktopSearch.Header().Get("Location"), desktopSearch.Body.String())
+	if desktopSearch.Code != http.StatusSeeOther || desktopSearch.Header().Get("Location") == "" {
+		t.Fatalf("Wails did not redirect the local search response: %d %s %s", desktopSearch.Code, desktopSearch.Header().Get("Location"), desktopSearch.Body.String())
 	}
 
 	destination := Job{URL: "https://jobs.ashbyhq.com/render/00000000-0000-0000-0000-000000000001", Host: "jobs.ashbyhq.com", Title: "Support Engineer", Company: "Other Fixture"}

@@ -141,7 +141,7 @@ func TestControlledAnswerLibraryWorkbench(t *testing.T) {
 	// The no-JavaScript path is a real server link to a page that renders the
 	// complete answer in escaped HTML for manual reading and copy/paste.
 	noJS := httptestGet(t, appHandler, "/answer-library/1")
-	if noJS.Code != http.StatusOK || !strings.Contains(noJS.Body.String(), "Read the complete saved answer") ||
+	if noJS.Code != http.StatusOK || !strings.Contains(noJS.Body.String(), "Reusable answer") ||
 		!strings.Contains(noJS.Body.String(), "I investigated a challenging Linux incident") || !strings.Contains(noJS.Body.String(), "I explained the fix to the customer.") {
 		t.Fatalf("manual copy path did not render the complete source text: %d", noJS.Code)
 	}

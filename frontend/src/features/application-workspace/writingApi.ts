@@ -3,6 +3,7 @@
 // and provider rules. React owns presentation and disposable drafts.
 
 export interface WritingLibrarySuggestion {
+ matchKind: string;
   entryId: number;
   revision: number;
   identity: string;
@@ -52,6 +53,10 @@ export interface WritingQuestion {
   originQuestion: string;
   originEmployer: string;
   originRecorded: boolean;
+  libraryAutoEntryId: number;
+  libraryAutoRevision: number;
+  libraryAutoQuestion: string;
+  libraryAutoPrepared: boolean;
   librarySuggestions: WritingLibrarySuggestion[];
   evidenceSuggestions: WritingEvidenceSuggestion[];
   reconciliationStatus: string;
@@ -350,6 +355,7 @@ export async function discoverQuestions(jobId: number): Promise<string> {
 }
 
 export interface SaveAnswerInput {
+ save_to_library?: boolean;
   question_key: string;
   revision: number;
   destination: string;

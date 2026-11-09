@@ -29,6 +29,7 @@ var (
 // AnswerLibraryEntry is a curated copy of one saved answer, with enough source
 // metadata to preserve its provenance after the original job is removed.
 type AnswerLibraryEntry struct {
+	Alternatives                []string
 	ID                          int64
 	OriginalQuestion            string
 	Answer                      string
@@ -348,6 +349,79 @@ func (a *App) answerLibraryEntries() ([]AnswerLibraryEntry, error) {
 	return entries, rows.Err()
 }
 
+func (a *App) answerLibraryCount() (int64, error) {
+	var total int64
+	if err := a.db.QueryRow(`SELECT COUNT(*) FROM answer_library`).Scan(&total); err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
+func (a *App) answerLibraryAltCounts(ids []int64) (map[int64]int, error) {
+	counts := make(map[int64]int, len(ids))
+	if len(ids) == 0 {
+		return counts, nil
+	}
+	placeholders := make([]string, len(ids))
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	rows, err := a.db.Query(`SELECT entry_id,COUNT(*) FROM answer_library_alternatives WHERE entry_id IN (`+strings.Join(placeholders, ",")+`) GROUP BY entry_id`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var count int
+		if err := rows.Scan(&id, &count); err != nil {
+			return nil, err
+		}
+		counts[id] = count
+	}
+	return counts, rows.Err()
+}
+
+// answerLibraryListPage serves the library-wide browse list only. Sort is
+// "recent" (updated_at DESC, id DESC) or "alpha" (question A-Z). Paging is
+// offset-based with a bounded page size; the ranked application suggestions
+// keep their own top-3 path and are unaffected.
+func (a *App) answerLibraryListPage(sort string, page, perPage int) ([]AnswerLibraryEntry, int64, error) {
+	if perPage < 1 || perPage > answerLibraryLibrarySearchLimit {
+		perPage = answerLibraryLibraryPageSize
+	}
+	if page < 1 {
+		page = 1
+	}
+	total, err := a.answerLibraryCount()
+	if err != nil {
+		return nil, 0, err
+	}
+	order := `ORDER BY updated_at DESC,id DESC`
+	if sort == "alpha" {
+		order = `ORDER BY original_question COLLATE NOCASE ASC,id ASC`
+	}
+	rows, err := a.db.Query(`SELECT `+answerLibrarySelectColumns+` FROM answer_library `+order+` LIMIT ? OFFSET ?`, perPage, (page-1)*perPage)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var entries []AnswerLibraryEntry
+	for rows.Next() {
+		var entry AnswerLibraryEntry
+		if err := scanAnswerLibraryEntry(rows, &entry); err != nil {
+			return nil, 0, err
+		}
+		if entry.SourceKind == "" {
+			entry.SourceKind = "live"
+		}
+		entries = append(entries, entry)
+	}
+	return entries, total, rows.Err()
+}
+
 func (a *App) answerLibraryBySourceID(queryer interface {
 	QueryRow(string, ...any) *sql.Row
 }, id int64) (AnswerLibraryEntry, error) {
@@ -473,6 +547,10 @@ func (a *App) promoteEarlyApplicationAnswer(jobID int64, key string, expectedRev
 }
 
 func (a *App) updateAnswerLibrary(id, expectedRevision int64, answer string) error {
+	return a.updateAnswerLibraryWithAlternatives(id, expectedRevision, answer, nil)
+}
+
+func (a *App) updateAnswerLibraryWithAlternatives(id, expectedRevision int64, answer string, alternatives []string) error {
 	if id <= 0 || expectedRevision < 1 || !validAnswerLibraryText(answer) || strings.TrimSpace(answer) == "" {
 		return ErrAnswerLibraryInvalid
 	}
@@ -491,6 +569,26 @@ func (a *App) updateAnswerLibrary(id, expectedRevision int64, answer string) err
 		return err
 	}
 	if count == 1 {
+		if alternatives != nil {
+			if len(alternatives) > 30 {
+				return ErrAnswerLibraryInvalid
+			}
+			if _, err := tx.Exec("DELETE FROM answer_library_alternatives WHERE entry_id=?", id); err != nil {
+				return err
+			}
+			for _, phrase := range alternatives {
+				phrase = strings.TrimSpace(phrase)
+				if phrase == "" {
+					continue
+				}
+				if len(phrase) > 1000 || !validAnswerLibraryText(phrase) {
+					return ErrAnswerLibraryInvalid
+				}
+				if _, err := tx.Exec("INSERT OR IGNORE INTO answer_library_alternatives(entry_id,phrasing,normalized) VALUES(?,?,?)", id, phrase, normalizeLibraryQuestion(phrase)); err != nil {
+					return err
+				}
+			}
+		}
 		return tx.Commit()
 	}
 	var exists bool

@@ -84,6 +84,12 @@ type earlyApplicationQuestion struct {
 	SavedReconciliationStatus string
 	SavedLiveInspection       string
 	SavedLiveQuestionKey      string
+	// LibraryAuto* mirrors the live exact automatic preparation for
+	// early-discovered eligible questions. Value holds the library answer
+	// for review; Revision stays 0 until explicitly saved.
+	LibraryAutoEntryID  int64
+	LibraryAutoRevision int64
+	LibraryAutoQuestion string
 }
 
 type earlyQuestionPreparation struct {
@@ -414,7 +420,22 @@ func (a *App) prepareEarlyQuestions(job Job, r *http.Request) (earlyQuestionPrep
 				}
 				category = "review"
 			}
-			q := earlyApplicationQuestion{JobID: job.ID, Destination: job.URL, DiscoverySource: item.Source, DiscoveryFingerprint: item.Fingerprint, SourceQuestionID: field.ID, Key: key, Field: field.Field, Value: answer.Answer, ProfileValue: profileValue, ProfileResolved: profileResolved, Revision: answer.Revision, Editable: editable, IsEarly: true, ManualReason: reason, TriageCategory: category, LocalStatus: status, EarlyAnswerID: answer.ID, SavedReconciliationStatus: answer.ReconciliationStatus, SavedLiveInspection: answer.LiveInspection, SavedLiveQuestionKey: answer.LiveQuestionKey}
+			value := answer.Answer
+			var autoEntryID, autoRevision int64
+			var autoQuestion string
+			// Exact automatic preparation for early discovery mirrors live:
+			// only when nothing is saved, the row is an editable narrative
+			// answer, and exactly one equivalent library entry exists.
+			if value == "" && answer.Revision == 0 && editable && category == "answer" && earlyPotentialNarrative(field.Field) {
+				if entry, ok := a.libraryAutoForLabel(field.Field.Label); ok {
+					value = entry.Answer
+					status = "Automatically prepared from Answer Library; review and save locally. It has not been checked against the employer form."
+					autoEntryID = entry.ID
+					autoRevision = entry.Revision
+					autoQuestion = entry.OriginalQuestion
+				}
+			}
+			q := earlyApplicationQuestion{JobID: job.ID, Destination: job.URL, DiscoverySource: item.Source, DiscoveryFingerprint: item.Fingerprint, SourceQuestionID: field.ID, Key: key, Field: field.Field, Value: value, ProfileValue: profileValue, ProfileResolved: profileResolved, Revision: answer.Revision, Editable: editable, IsEarly: true, ManualReason: reason, TriageCategory: category, LocalStatus: status, EarlyAnswerID: answer.ID, SavedReconciliationStatus: answer.ReconciliationStatus, SavedLiveInspection: answer.LiveInspection, SavedLiveQuestionKey: answer.LiveQuestionKey, LibraryAutoEntryID: autoEntryID, LibraryAutoRevision: autoRevision, LibraryAutoQuestion: autoQuestion}
 			out.Questions = append(out.Questions, q)
 			seenCurrent[earlyRecordIdentity(job.URL, item.Source, item.Fingerprint, field.ID)] = true
 		}

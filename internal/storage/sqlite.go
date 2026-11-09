@@ -347,6 +347,8 @@ func initJobsSchema(db *sql.DB) error {
 		 revision INTEGER NOT NULL DEFAULT 1,
 		 UNIQUE(source_job_id,source_destination,source_provider,source_question_key,source_revision))`,
 		`CREATE INDEX IF NOT EXISTS answer_library_updated ON answer_library(updated_at DESC,id DESC)`,
+		`CREATE TABLE IF NOT EXISTS answer_library_alternatives (entry_id INTEGER NOT NULL REFERENCES answer_library(id) ON DELETE CASCADE, phrasing TEXT NOT NULL, normalized TEXT NOT NULL, UNIQUE(entry_id,normalized))`,
+		`CREATE INDEX IF NOT EXISTS answer_library_alternative_lookup ON answer_library_alternatives(normalized)`,
 		// Career Evidence belongs to the applicant independently of jobs and saved answers.
 		// Answer Library source fields are snapshots, not foreign keys.
 		`CREATE TABLE IF NOT EXISTS career_evidence (

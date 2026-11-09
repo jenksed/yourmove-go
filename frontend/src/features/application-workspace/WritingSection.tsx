@@ -11,7 +11,6 @@ import {
   fetchAssistance,
   fetchBrief,
   fetchQuestions,
-  promoteToLibrary,
   saveAnswer,
   type AssistanceSnapshot,
   type AiTicket,
@@ -113,9 +112,6 @@ export function WritingSection({
   const [saveNotice, setSaveNotice] = useState<string>("");
   const [saving, setSaving] = useState<boolean>(false);
   const [reusable, setReusable] = useState<boolean>(false);
-  const [promoteBusy, setPromoteBusy] = useState<boolean>(false);
-  const [promoteError, setPromoteError] = useState<string>("");
-  const [promoteNotice, setPromoteNotice] = useState<string>("");
   const [assistance, setAssistance] = useState<AssistanceSnapshot | null>(null);
   const [assistBusy, setAssistBusy] = useState<boolean>(false);
   const [assistError, setAssistError] = useState<string>("");
@@ -217,8 +213,6 @@ export function WritingSection({
       setReplaceCandidate(null);
       setSaveError("");
       setSaveNotice("");
-      setPromoteError("");
-      setPromoteNotice("");
       setReusable(false);
       setAssistance(null);
       setAssistOpen(false);
@@ -316,15 +310,19 @@ export function WritingSection({
     setReplaceCandidate(null);
   }, [selected, replaceCandidate]);
 
-  const handleSave = useCallback(async () => {
+  const handleSave = useCallback(async (toLibrary = false) => {
     if (!selected || !snapshot?.editingAllowed || readOnly) return;
     setSaveError("");
     setSaveNotice("");
-    setPromoteError("");
-    setPromoteNotice("");
     setSaving(true);
     try {
+      // Automatic preparation carries provenance when the applicant saves the
+      // suggested text without choosing another source. An explicit starting
+      // draft takes precedence over the automatic suggestion.
+      const autoEntryId = pendingOrigin?.entryId ?? (selected.libraryAutoPrepared ? selected.libraryAutoEntryId : 0);
+      const autoRevision = pendingOrigin?.revision ?? (selected.libraryAutoPrepared ? selected.libraryAutoRevision : 0);
       const result = await saveAnswer(jobId, {
+        save_to_library: toLibrary,
         question_key: selected.key,
         revision: baselineRevision,
         destination,
@@ -335,14 +333,14 @@ export function WritingSection({
         discovery_source: selected.discoverySource,
         discovery_fingerprint: selected.discoveryFingerprint,
         source_question_id: selected.sourceQuestionId,
-        origin_entry_id: pendingOrigin?.entryId ?? 0,
-        origin_revision: pendingOrigin?.revision ?? 0,
+        origin_entry_id: autoEntryId,
+        origin_revision: autoRevision,
       });
       setDirty(false);
       setPendingOrigin(null);
       setReplaceCandidate(null);
       setBaselineRevision(result.revision);
-      setSaveNotice("Saved locally. It has not been filled on the employer website.");
+      setSaveNotice(toLibrary ? "Saved for this application and available in the Answer Library. Existing reusable answers remain unchanged; edit them explicitly in the library." : "Saved for this application only. Nothing was filled on the employer website.");
       onMaterialSaved();
       await reload();
       void result;
@@ -352,26 +350,6 @@ export function WritingSection({
       setSaving(false);
     }
   }, [selected, snapshot, jobId, destination, draft, reusable, baselineRevision, pendingOrigin, reload, onMaterialSaved, readOnly]);
-
-  const handlePromote = useCallback(async () => {
-    if (!selected) return;
-    setPromoteError("");
-    setPromoteNotice("");
-    setPromoteBusy(true);
-    try {
-      const result = await promoteToLibrary(jobId, {
-        question_key: selected.key,
-        revision: selected.revision,
-        early: selected.isEarly,
-      });
-      setPromoteNotice(result.existing ? "This saved answer is already in the Answer Library. The existing copy was left unchanged." : "Saved as a separate Answer Library example. The employer-specific answer remains unchanged.");
-      onMaterialSaved();
-    } catch (error) {
-      setPromoteError(error instanceof Error ? error.message : "Unable to save to the Answer Library");
-    } finally {
-      setPromoteBusy(false);
-    }
-  }, [selected, jobId, onMaterialSaved]);
 
   const openAssistance = useCallback(async () => {
     if (!selected) return;
@@ -604,7 +582,7 @@ export function WritingSection({
               </p>
               <div className="form-actions">
                 <button className="button button-secondary" type="button" disabled={saving || !canSave} onClick={() => void handleSave()}>
-                  {saving ? "Saving…" : "Save answer locally"}
+                  {saving ? "Saving…" : "Save for this application only"}
                 </button>
                 <button className="button button-secondary" type="button" onClick={discardEdits}>
                   Discard edits
@@ -633,6 +611,11 @@ export function WritingSection({
                   {pendingOrigin && (
                     <p className="small-muted" role="status">
                       Starting from {pendingSourceLabel}. Review employer-specific wording, then save.
+                    </p>
+                  )}
+                  {selected.libraryAutoPrepared && !pendingOrigin && (
+                    <p className="small-muted" role="status">
+                      Automatically prepared from Answer Library{selected.libraryAutoQuestion !== "" && selected.libraryAutoQuestion !== selected.label ? ` (“${selected.libraryAutoQuestion}”)` : ""}. Review employer-specific wording, then save. Saving keeps this application independent; the library copy is unchanged.
                     </p>
                   )}
                   {staleBaseline && (
@@ -688,14 +671,15 @@ export function WritingSection({
                     </p>
                   )}
                   <div className="form-actions">
+                    {selected.libraryEligible && <button className="button button-primary" type="button" disabled={saving || !selected.editable || !snapshot.editingAllowed || readOnly || !draft.trim()} onClick={() => void handleSave(true)}>{saving ? "Saving…" : "Save to Answer Library"}</button>}
                     {dirty && <button className="button button-secondary" type="button" onClick={discardEdits}>Discard edits</button>}
                     <button
-                      className="button button-primary"
+                      className="button button-secondary"
                       type="button"
                       disabled={saving || !canSave}
                       onClick={() => void handleSave()}
                     >
-                      {saving ? "Saving…" : "Save answer locally"}
+                      {saving ? "Saving…" : "Save for this application only"}
                     </button>
                   </div>
                   {replaceCandidate && (
@@ -708,21 +692,6 @@ export function WritingSection({
                     </div>
                   )}
                   {dirty && <p className="small-muted">Unsaved edits — they stay on this screen until you save.</p>}
-                  {selected.helpEligible && snapshot.editingAllowed && !readOnly && (
-                    <div className="library-promote" aria-label="Save to Answer Library">
-                      {selected.libraryEligible && selected.revision > 0 ? (
-                        <button className="button button-secondary" type="button" disabled={promoteBusy} onClick={() => void handlePromote()}>
-                          {promoteBusy ? "Saving…" : "Save a copy to Answer Library"}
-                        </button>
-                      ) : (
-                        <p className="small-muted">
-                          This is a reusable kind of question. Save an answer here, then you can save a copy to your Answer Library for future applications.
-                        </p>
-                      )}
-                      {promoteError !== "" && <p className="job-form-error" role="alert">{promoteError}</p>}
-                      {promoteNotice !== "" && <p className="form-notice" role="status">{promoteNotice}</p>}
-                    </div>
-                  )}
                   {assistError !== "" && (
                     <p className="job-form-error" role="alert">
                       {assistError}

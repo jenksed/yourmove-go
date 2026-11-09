@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/bits"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode"
 )
@@ -14,10 +15,16 @@ const (
 	answerLibraryCorpusLimit        = 5000
 	answerLibraryRelatedLimit       = 3
 	answerLibrarySearchPageLimit    = 3
+	// answerLibraryLibrarySearchLimit bounds library-wide browse/search only.
+	// Ranked application-preparation suggestions stay capped at
+	// answerLibrarySearchPageLimit/answerLibraryRelatedLimit.
+	answerLibraryLibrarySearchLimit = 50
+	answerLibraryLibraryPageSize    = 20
 	answerLibraryExcerptRunes       = 320
 )
 
 type answerLibrarySuggestion struct {
+	MatchKind        string
 	EntryID          int64
 	Revision         int64
 	OriginalQuestion string
@@ -37,6 +44,8 @@ type answerLibrarySearchDocument struct {
 	UpdatedAt        string
 	questionTerms    map[string]struct{}
 	answerTerms      map[string]struct{}
+	altTerms         map[string]struct{}
+	sourceTerms      map[string]struct{}
 }
 
 type rankedAnswerLibraryDocument struct {
@@ -147,6 +156,9 @@ func newAnswerLibrarySearchDocument(entry AnswerLibraryEntry) answerLibrarySearc
 		SourceHost: entry.SourceHost, UpdatedAt: entry.UpdatedAt,
 		questionTerms: answerLibraryTermSet(answerLibraryIndexTerms(entry.OriginalQuestion), ""),
 		answerTerms:   answerLibraryTermSet(answerLibraryIndexTerms(entry.Answer), ""),
+		altTerms:      answerLibraryTermSet(answerLibraryIndexTerms(strings.Join(entry.Alternatives, "\n")), ""),
+		sourceTerms: answerLibraryTermSet("", entry.SourceEmployer+" "+entry.SourceJobTitle+
+			" "+entry.SourceHost),
 	}
 }
 
@@ -208,11 +220,15 @@ func answerLibraryPhraseMatches(query, originalQuestion string) int {
 }
 
 func rankAnswerLibraryDocuments(query string, docs []answerLibrarySearchDocument, limit int) []rankedAnswerLibraryDocument {
+	return rankAnswerLibraryDocumentsWithLimit(query, docs, limit, answerLibrarySearchPageLimit, false)
+}
+
+func rankAnswerLibraryDocumentsWithLimit(query string, docs []answerLibrarySearchDocument, limit, cap int, libraryWide bool) []rankedAnswerLibraryDocument {
 	if limit < 1 || len(docs) == 0 {
 		return nil
 	}
-	if limit > answerLibrarySearchPageLimit {
-		limit = answerLibrarySearchPageLimit
+	if limit > cap {
+		limit = cap
 	}
 	queryTerms := informativeAnswerLibraryTerms(query, 32)
 	if len(queryTerms) == 0 {
@@ -221,19 +237,24 @@ func rankAnswerLibraryDocuments(query string, docs []answerLibrarySearchDocument
 	df := answerLibraryDocumentFrequency(docs)
 	ranked := make([]rankedAnswerLibraryDocument, 0)
 	for _, doc := range docs {
-		questionWeight, answerWeight, sharedCount, mostInformative := 0, 0, 0, 0
+		questionWeight, answerWeight, sourceWeight, sharedCount, mostInformative := 0, 0, 0, 0, 0
 		seen := make(map[string]bool, len(queryTerms))
 		for _, term := range queryTerms {
 			weight := answerLibraryTermWeight(len(docs), df[term])
 			_, inQuestion := doc.questionTerms[term]
+			_, inAlt := doc.altTerms[term]
 			_, inAnswer := doc.answerTerms[term]
-			if inQuestion {
+			_, inSource := doc.sourceTerms[term]
+			if inQuestion || inAlt {
 				questionWeight += weight
 			}
 			if inAnswer {
 				answerWeight += weight
 			}
-			if inQuestion || inAnswer {
+			if inSource {
+				sourceWeight += weight
+			}
+			if inQuestion || inAlt || inAnswer || inSource {
 				seen[term] = true
 				if weight > mostInformative {
 					mostInformative = weight
@@ -247,8 +268,18 @@ func rankAnswerLibraryDocuments(query string, docs []answerLibrarySearchDocument
 		if answerWeight > 6 {
 			answerWeight = 6
 		}
-		score := 2*questionWeight + answerWeight + 4*phraseMatches
-		if score < 5 || (sharedCount < 2 && mostInformative < 6 && phraseMatches == 0) {
+		if sourceWeight > 4 {
+			sourceWeight = 4
+		}
+		score := 2*questionWeight + answerWeight + sourceWeight + 4*phraseMatches
+		// A sharp source-context match (employer/title/host) is a legitimate
+		// library-wide hit even without question/answer overlap. Ranked
+		// preparation suggestions keep the stricter historical gate.
+		sourceHit := libraryWide && sourceWeight >= 4
+		if score < 5 && !sourceHit {
+			continue
+		}
+		if sharedCount < 2 && mostInformative < 6 && phraseMatches == 0 && !sourceHit {
 			continue
 		}
 		ranked = append(ranked, rankedAnswerLibraryDocument{
@@ -301,7 +332,35 @@ func (a *App) answerLibrarySearchDocuments() ([]answerLibrarySearchDocument, err
 		doc.answerTerms = answerLibraryTermSet(answerTerms, "")
 		docs = append(docs, doc)
 	}
-	return docs, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(docs) == 0 {
+		return docs, nil
+	}
+	altRows, err := a.db.Query(`SELECT entry_id,phrasing FROM answer_library_alternatives`)
+	if err != nil {
+		return nil, err
+	}
+	defer altRows.Close()
+	byEntry := make(map[int64][]string)
+	for altRows.Next() {
+		var id int64
+		var phrase string
+		if err := altRows.Scan(&id, &phrase); err != nil {
+			return nil, err
+		}
+		byEntry[id] = append(byEntry[id], phrase)
+	}
+	if err := altRows.Err(); err != nil {
+		return nil, err
+	}
+	for i := range docs {
+		docs[i].altTerms = answerLibraryTermSet(answerLibraryIndexTerms(strings.Join(byEntry[docs[i].EntryID], "\n")), "")
+		docs[i].sourceTerms = answerLibraryTermSet("", docs[i].SourceEmployer+" "+docs[i].SourceJobTitle+
+			" "+docs[i].SourceHost)
+	}
+	return docs, nil
 }
 
 func (a *App) answerLibraryExcerpts(ranked []rankedAnswerLibraryDocument) ([]answerLibrarySuggestion, error) {
@@ -356,6 +415,75 @@ func (a *App) searchAnswerLibrary(query string, limit int) ([]answerLibrarySugge
 	return a.answerLibraryExcerpts(ranked)
 }
 
+// searchAnswerLibraryPaged serves library-wide browse/search only. It ranks
+// with the higher library cap and merges exact-equivalence matches first so
+// user-defined alternative phrasings always surface even when the ranker
+// threshold would skip them. Ranked application suggestions keep using
+// searchAnswerLibrary with the 3-result cap.
+func (a *App) searchAnswerLibraryPaged(query string, limit int) ([]answerLibrarySuggestion, error) {
+	if limit < 1 {
+		limit = answerLibraryLibrarySearchLimit
+	}
+	if limit > answerLibraryLibrarySearchLimit {
+		limit = answerLibraryLibrarySearchLimit
+	}
+	docs, err := a.answerLibrarySearchDocuments()
+	if err != nil {
+		return nil, err
+	}
+	ranked := rankAnswerLibraryDocumentsWithLimit(query, docs, limit, answerLibraryLibrarySearchLimit, true)
+	excerpts, err := a.answerLibraryExcerpts(ranked)
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[int64]bool, len(excerpts))
+	for _, item := range excerpts {
+		seen[item.EntryID] = true
+	}
+	ids, err := equivalentLibraryIDs(a.db, query)
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) > 0 {
+		placeholders := make([]string, 0, len(ids))
+		args := make([]any, 0, len(ids))
+		for _, id := range ids {
+			if seen[id] {
+				continue
+			}
+			placeholders = append(placeholders, "?")
+			args = append(args, id)
+		}
+		if len(placeholders) > 0 {
+			rows, err := a.db.Query(`SELECT id,revision,original_question,source_employer,source_job_title,source_host,substr(answer,1,`+strconv.Itoa(answerLibraryExcerptRunes)+`) FROM answer_library WHERE id IN (`+strings.Join(placeholders, ",")+`)`, args...)
+			if err != nil {
+				return nil, err
+			}
+			var exact []answerLibrarySuggestion
+			for rows.Next() {
+				var item answerLibrarySuggestion
+				var excerpt string
+				if err := rows.Scan(&item.EntryID, &item.Revision, &item.OriginalQuestion, &item.SourceEmployer, &item.SourceJobTitle, &item.SourceHost, &excerpt); err != nil {
+					rows.Close()
+					return nil, err
+				}
+				item.MatchKind = "Equivalent question — review and use"
+				item.Excerpt = answerLibraryExcerpt(excerpt)
+				exact = append(exact, item)
+			}
+			rows.Close()
+			if err := rows.Err(); err != nil {
+				return nil, err
+			}
+			excerpts = append(exact, excerpts...)
+			if len(excerpts) > limit {
+				excerpts = excerpts[:limit]
+			}
+		}
+	}
+	return excerpts, nil
+}
+
 func (a *App) answerLibrarySuggestionsForQuestions(questions []preparedQuestion) (map[string][]answerLibrarySuggestion, error) {
 	var eligible []preparedQuestion
 	for _, question := range questions {
@@ -403,6 +531,35 @@ func (a *App) answerLibrarySuggestionsForQuestions(questions []preparedQuestion)
 		for _, item := range group.items {
 			result[group.key] = append(result[group.key], byID[item.document.EntryID])
 		}
+	}
+	for _, q := range eligible {
+		ids, err := equivalentLibraryIDs(a.db, q.Field.Label)
+		if err != nil {
+			return nil, err
+		}
+		if len(ids) == 0 {
+			continue
+		}
+		matches := []answerLibrarySuggestion{}
+		seen := map[int64]bool{}
+		kind := "Equivalent question — review and use"
+		if len(ids) > 1 {
+			kind = "Conflicting equivalents — choose after review"
+		}
+		for _, id := range ids {
+			e, err := a.answerLibraryBySourceID(a.db, id)
+			if err != nil {
+				return nil, err
+			}
+			seen[id] = true
+			matches = append(matches, answerLibrarySuggestion{EntryID: e.ID, Revision: e.Revision, OriginalQuestion: e.OriginalQuestion, SourceEmployer: e.SourceEmployer, SourceJobTitle: e.SourceJobTitle, SourceHost: e.SourceHost, Excerpt: answerLibraryExcerpt(e.Answer), MatchKind: kind})
+		}
+		for _, s := range result[q.Key] {
+			if !seen[s.EntryID] {
+				matches = append(matches, s)
+			}
+		}
+		result[q.Key] = matches
 	}
 	return result, nil
 }

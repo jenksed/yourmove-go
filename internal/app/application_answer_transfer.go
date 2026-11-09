@@ -16,9 +16,15 @@ import (
 func (p questionPreparation) ReadyAnswers() []preparedQuestion {
 	var ready []preparedQuestion
 	for _, q := range p.Questions {
-		if q.Editable && q.Value != "" {
-			ready = append(ready, q)
+		if !q.Editable || q.Value == "" {
+			continue
 		}
+		// Exact library automatic preparation is review-only until the
+		// applicant explicitly saves. It must never enter Fill scope.
+		if q.LibraryAutoEntryID > 0 && q.Revision == 0 {
+			continue
+		}
+		ready = append(ready, q)
 	}
 	sort.Slice(ready, func(i, j int) bool { return ready[i].Key < ready[j].Key })
 	return ready

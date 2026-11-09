@@ -170,7 +170,7 @@ export function PreviousWriting({
               <strong>{s.question}</strong>
               <small>
                 {[s.employer, s.jobTitle].filter((part) => part !== "").join(" · ")}
-                {s.employer !== "" || s.jobTitle !== "" ? " · " : ""}revision {s.revision} · Related — review for this question
+                {s.employer !== "" || s.jobTitle !== "" ? " · " : ""}revision {s.revision} · {s.matchKind || "Related — review for this question"}
               </small>
               <p>{s.excerpt}</p>
               <div className="form-actions">
@@ -251,7 +251,7 @@ export function PreviousWriting({
               {browseError} Your editor is unchanged.
             </p>
           )}
-          {browseResult && browseResult.libraryEmpty && <p className="small-muted">The Answer Library is empty. Save an answer on a narrative question, then choose “Save a copy to Answer Library” to reuse it here.</p>}
+          {browseResult && browseResult.libraryEmpty && <p className="small-muted">The Answer Library is empty. Choose “Save to Answer Library” on a narrative question to reuse it here.</p>}
           {browseResult && !browseResult.libraryEmpty && browseResult.entries.length === 0 && (
             <p className="small-muted">
               {browseResult.query !== "" ? `No ranked matches for “${browseResult.query}”. Try different wording or browse the full list.` : "No saved answers yet."}
