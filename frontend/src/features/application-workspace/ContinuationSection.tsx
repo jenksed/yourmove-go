@@ -54,6 +54,7 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [loadError, setLoadError] = useState<string>("");
   const [confirmRestart, setConfirmRestart] = useState<boolean>(false);
+  const [confirmStop, setConfirmStop] = useState<boolean>(false);
   const [busy, setBusy] = useState<boolean>(false);
   const [actionError, setActionError] = useState<string>("");
   const [actionNotice, setActionNotice] = useState<string>("");
@@ -82,6 +83,7 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
     setLoadError("");
     setActionError("");
     setActionNotice("");
+    setConfirmStop(false);
   }, [jobId]);
 
   useEffect(() => {
@@ -123,7 +125,15 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
 
   const runBrowser = useCallback(
     async (action: BrowserAction) => {
-      if (action === "stop" && !window.confirm("Closing the employer browser may lose unsaved form work. Close it?")) return;
+      // The macOS Wails host does not present window.confirm(), so closing
+      // the managed browser uses this inline confirmation instead.
+      // Canceling leaves the session open; confirming closes it.
+      if (action === "stop" && !confirmStop) {
+        setActionError("");
+        setConfirmStop(true);
+        return;
+      }
+      setConfirmStop(false);
       setActionError("");
       setActionNotice("");
       setBusy(true);
@@ -139,7 +149,7 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
         setBusy(false);
       }
     },
-    [jobId, confirmRestart, reload],
+    [jobId, confirmRestart, confirmStop, reload],
   );
 
   const runAuthorize = useCallback(async () => {
@@ -257,8 +267,19 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
             <button className="button button-secondary" type="button" disabled={busy} onClick={() => void runBrowser(browser.active ? "focus" : "start")}>
               {busy ? "Opening…" : browser.active ? "Return to Application" : "View Application"}
             </button>
-            {browser.active && (
+            {browser.active && !confirmStop && (
               <button className="button button-secondary" type="button" disabled={busy} onClick={() => void runBrowser("stop")}>Close browser</button>
+            )}
+            {browser.active && confirmStop && (
+              <div role="alert" aria-label="Confirm closing the employer browser">
+                <p className="writing-notice">
+                  Closing the employer browser may lose unsaved form work. Close it?
+                </p>
+                <div className="form-actions">
+                  <button className="button button-secondary" type="button" disabled={busy} onClick={() => void runBrowser("stop")}>Close browser</button>
+                  <button className="button button-secondary" type="button" onClick={() => setConfirmStop(false)}>Keep open</button>
+                </div>
+              </div>
             )}
           </>
         )}

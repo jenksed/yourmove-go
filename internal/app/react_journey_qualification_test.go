@@ -414,8 +414,12 @@ answerReady:
 	}
 
 	// Close, improve saved materials, and Fill again. The fresh session must
-	// receive the updated answer and the updated selected letter.
-	run(`window.confirm=()=>true`)
+	// receive the updated answer and the updated selected letter. Closing
+	// the browser uses the inline confirmation (window.confirm is not
+	// presented by the native host): the first click arms it, the second
+	// confirms, and Keep open would leave the session open.
+	click("Close browser")
+	wait(`Array.from(document.querySelectorAll('#employer button')).some(x=>x.textContent.trim()==='Keep open' && x.offsetParent!==null)`)
 	click("Close browser")
 	wait(`Array.from(document.querySelectorAll('#employer button')).some(x=>x.textContent.trim()==='View Application' && !x.disabled)`)
 	wait(`Array.from(document.querySelectorAll('#employer button')).some(x=>x.textContent.trim()==='Fill Application' && !x.disabled)`)
@@ -581,15 +585,20 @@ backendReady:
 	click("Apply")
 
 	// Leaving an unsubmitted job requires an explicit decision before browser-only work is closed.
+	// Moving on uses the inline confirmation (window.confirm is not
+	// presented by the native host). Staying keeps the browser open;
+	// confirming closes it and moves on without changing job state.
 	wait(`document.querySelector('#submission')?.innerText.includes('Next synthetic opportunity')`)
-	run(`window.confirm=()=>false`)
 	click("Next opportunity → Next synthetic opportunity")
+	wait(`Array.from(document.querySelectorAll('#submission button')).some(x=>x.textContent.trim()==='Stay here' && x.offsetParent!==null)`)
+	click("Stay here")
 	wait(`Array.from(document.querySelectorAll('#submission button')).some(x=>x.textContent.includes('Next opportunity') && !x.disabled)`)
 	if !a.browsers.state(1).Active {
 		t.Fatal("cancelling navigation closed the browser")
 	}
-	run(`window.confirm=()=>true`)
 	click("Next opportunity → Next synthetic opportunity")
+	wait(`Array.from(document.querySelectorAll('#submission button')).some(x=>x.textContent.trim()==='Close and continue' && x.offsetParent!==null)`)
+	click("Close and continue")
 	page = app.URL + "/jobs/2"
 	wait(`document.body.innerText.includes('Next synthetic opportunity')`)
 	job, err := a.jobByID(1)

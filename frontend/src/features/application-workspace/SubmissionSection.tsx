@@ -14,6 +14,7 @@ export function SubmissionSection({ jobId, onRecorded }: { jobId: number; onReco
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [confirmNext, setConfirmNext] = useState(false);
   const token = useRef("");
 
   const reload = useCallback(async () => {
@@ -27,6 +28,7 @@ export function SubmissionSection({ jobId, onRecorded }: { jobId: number; onReco
 
   useEffect(() => {
     token.current = "";
+    setConfirmNext(false);
     void reload().catch(() => setError("Unable to load submission history."));
   }, [reload]);
 
@@ -58,13 +60,20 @@ export function SubmissionSection({ jobId, onRecorded }: { jobId: number; onReco
     }
   };
 
-  const next = async () => {
+  const next = async (proceed = false) => {
     setBusy(true);
     setError("");
     try {
       const state = await fetchContinuation(jobId);
       const active = state.browser.active;
-      if (active && !window.confirm("Moving on will close the employer browser. Unsaved work in that form may be lost. Close it and continue?")) return;
+      // The macOS Wails host does not present window.confirm(), so moving
+      // on with an open browser uses this inline confirmation instead.
+      // Canceling leaves the session open; confirming closes it and moves on.
+      if (active && !proceed) {
+        setConfirmNext(true);
+        return;
+      }
+      setConfirmNext(false);
       const result = await moveNext(jobId, active);
       window.location.href = result.target;
     } catch (err) {
@@ -105,11 +114,22 @@ export function SubmissionSection({ jobId, onRecorded }: { jobId: number; onReco
         </>
       )}
       {error && <p className="job-form-error" role="alert">{error}</p>}
-      {history && (
+      {history && !confirmNext && (
         <div className="form-actions">
           <button className="button button-secondary" type="button" disabled={busy} onClick={() => void next()}>
             {history.next ? `Next opportunity → ${history.next.title}` : "Back to opportunities"}
           </button>
+        </div>
+      )}
+      {history && confirmNext && (
+        <div role="alert" aria-label="Confirm moving to the next opportunity">
+          <p className="writing-notice">
+            Moving on will close the employer browser. Unsaved work in that form may be lost. Close it and continue?
+          </p>
+          <div className="form-actions">
+            <button className="button button-secondary" type="button" disabled={busy} onClick={() => void next(true)}>Close and continue</button>
+            <button className="button button-secondary" type="button" onClick={() => setConfirmNext(false)}>Stay here</button>
+          </div>
         </div>
       )}
     </section>
