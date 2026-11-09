@@ -910,8 +910,22 @@ backendReady:
 	wait(`document.body.innerText.includes('Browser closed') || document.body.innerText.includes('saved materials are unchanged') || document.body.innerText.includes('disconnected')`)
 	click("Submission history")
 	click("I submitted this application")
+	wait(`Array.from(document.querySelectorAll('#submission button')).some(x=>x.textContent.trim()==='Record submission' && x.offsetParent!==null)`)
+	click("Record submission")
 	wait(`document.body.innerText.includes('Submission recorded locally.')`)
 	wait(`(async()=>{const history=await (await fetch('/api/jobs/1/submissions')).json();const job=await (await fetch('/api/jobs/1/workspace')).json();return history.count===1 && job.job.stage==='applied'})()`)
+	// Canceling the correction keeps the confirmed record.
+	click("Correct an accidental recording")
+	wait(`Array.from(document.querySelectorAll('#submission button')).some(x=>x.textContent.trim()==='Keep history' && x.offsetParent!==null)`)
+	click("Keep history")
+	wait(`(async()=>{const history=await (await fetch('/api/jobs/1/submissions')).json();return history.count===1})()`)
+	// Correcting removes the accidental record, returns the opportunity
+	// to review, and restores editing without touching saved material.
+	click("Correct an accidental recording")
+	wait(`Array.from(document.querySelectorAll('#submission button')).some(x=>x.textContent.trim()==='Remove most recent record' && x.offsetParent!==null)`)
+	click("Remove most recent record")
+	wait(`document.body.innerText.includes('back to review')`)
+	wait(`(async()=>{const history=await (await fetch('/api/jobs/1/submissions')).json();const job=await (await fetch('/api/jobs/1/workspace')).json();const questions=await (await fetch('/api/jobs/1/questions')).json();return history.count===0 && job.job.stage==='review' && questions.editingAllowed===true})()`)
 	click("Next opportunity → Next synthetic opportunity")
 	page = baseURL + "/jobs/2"
 	wait(`document.body.innerText.includes('Next synthetic opportunity')`)

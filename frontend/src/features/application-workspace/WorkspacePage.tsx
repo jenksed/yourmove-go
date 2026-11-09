@@ -403,6 +403,17 @@ export function WorkspacePage(): React.JSX.Element {
     materialSaved();
   }, [jobId, refreshSummary, materialSaved]);
 
+  const correctionApplied = useCallback(() => {
+    if (jobId === null) return;
+    requestRef.current++;
+    // A fully corrected record returns the opportunity to review; all other
+    // unsaved job edits and child drafts are preserved.
+    setStage("review");
+    setBaseline((previous) => ({ ...previous, stage: "review" }));
+    void refreshSummary();
+    materialSaved();
+  }, [jobId, refreshSummary, materialSaved]);
+
   const materials = useMemo(() => {
     if (!snapshot) return null;
     const { job, readiness } = snapshot;
@@ -1007,7 +1018,7 @@ export function WorkspacePage(): React.JSX.Element {
               </div>
 
               <div hidden={activity !== "apply" && activity !== "applied"} id="history">
-                {snapshot.job.id > 0 && <SubmissionSection jobId={snapshot.job.id} onRecorded={completionRecorded} />}
+                {snapshot.job.id > 0 && <SubmissionSection jobId={snapshot.job.id} onRecorded={completionRecorded} onCorrected={correctionApplied} />}
                 <a className="button button-secondary" href="/jobs">Back to Opportunities</a>
               </div>
 

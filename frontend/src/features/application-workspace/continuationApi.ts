@@ -230,6 +230,20 @@ export interface SubmissionsSnapshot {
   next: { jobId: number; title: string; href: string; label: string; reason: string } | null;
 }
 
+export interface UnsubmitResult {
+  remaining: number;
+}
+
+export async function unsubmit(jobId: number): Promise<UnsubmitResult> {
+  const response = await fetch(`/api/jobs/${jobId}/unsubmit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ confirm: "yes" }),
+  });
+  if (!response.ok) throw new Error(await readError(response));
+  return (await response.json()) as UnsubmitResult;
+}
+
 export async function fetchSubmissions(jobId: number): Promise<SubmissionsSnapshot> {
   const response = await fetch(`/api/jobs/${jobId}/submissions`, {
     headers: { Accept: "application/json" },

@@ -5,17 +5,21 @@ import {
   mintSubmissionReview,
   moveNext,
   recordSubmission,
+  unsubmit,
   StaleSubmissionError,
   type SubmissionsSnapshot,
 } from "./continuationApi";
 import { hasUnsaved } from "../../shared/unsaved";
 
-export function SubmissionSection({ jobId, onRecorded }: { jobId: number; onRecorded: () => void }): React.JSX.Element {
+export function SubmissionSection({ jobId, onRecorded, onCorrected }: { jobId: number; onRecorded: () => void; onCorrected: () => void }): React.JSX.Element {
   const [history, setHistory] = useState<SubmissionsSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [confirmNext, setConfirmNext] = useState(false);
+  const [confirmRecord, setConfirmRecord] = useState(false);
+  const [confirmCorrect, setConfirmCorrect] = useState(false);
   const token = useRef("");
 
   const reload = useCallback(async () => {
@@ -30,16 +34,21 @@ export function SubmissionSection({ jobId, onRecorded }: { jobId: number; onReco
   useEffect(() => {
     token.current = "";
     setConfirmNext(false);
+    setConfirmRecord(false);
+    setConfirmCorrect(false);
+    setNotice("");
     void reload().catch(() => setError("Unable to load submission history."));
   }, [reload]);
 
   const submit = async () => {
     setBusy(true);
     setError("");
+    setNotice("");
     try {
       // Reuse the same token on retry; Go makes repeated submissions idempotent.
       if (!token.current) token.current = (await mintSubmissionReview(jobId)).token;
       await recordSubmission(jobId, "", token.current);
+      setConfirmRecord(false);
       await reload();
       onRecorded();
     } catch (err) {
@@ -48,6 +57,7 @@ export function SubmissionSection({ jobId, onRecorded }: { jobId: number; onReco
         const current = await fetchSubmissions(jobId);
         setHistory(current);
         if (current.count > 0) {
+          setConfirmRecord(false);
           onRecorded();
           return;
         }
@@ -56,6 +66,28 @@ export function SubmissionSection({ jobId, onRecorded }: { jobId: number; onReco
         setError("Could not check submission history. Check it before trying again.");
         setHistory(null);
       }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const correct = async () => {
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await unsubmit(jobId);
+      setConfirmCorrect(false);
+      await reload();
+      if (result.remaining === 0) {
+        setNotice("Recording removed. This opportunity is back to review and editable; your saved answers, letters, and documents are unchanged.");
+        onCorrected();
+      } else {
+        setNotice("Most recent recording removed. Older history remains, so this application stays recorded.");
+        onRecorded();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not correct this record. Check submission history before trying again.");
     } finally {
       setBusy(false);
     }
@@ -112,15 +144,47 @@ export function SubmissionSection({ jobId, onRecorded }: { jobId: number; onReco
               ))}
             </ol>
           </details>
+          {!confirmCorrect ? (
+            <div className="form-actions">
+              <button className="button button-secondary" type="button" disabled={busy} onClick={() => { setError(""); setNotice(""); setConfirmCorrect(true); }}>
+                Correct an accidental recording
+              </button>
+            </div>
+          ) : (
+            <div role="alert" aria-label="Confirm correcting the submission record">
+              <p className="writing-notice">
+                This removes the most recent local record only. Older history stays, and your saved answers,
+                letters, and documents are unchanged. With no records left, this opportunity returns to review.
+              </p>
+              <div className="form-actions">
+                <button className="button button-secondary" type="button" disabled={busy} onClick={() => void correct()}>Remove most recent record</button>
+                <button className="button button-secondary" type="button" onClick={() => setConfirmCorrect(false)}>Keep history</button>
+              </div>
+            </div>
+          )}
         </>
-      ) : (
+      ) : !confirmRecord ? (
         <>
           <p>After submitting on the employer website, record it here.</p>
-          <button className="button button-primary" type="button" disabled={busy} onClick={() => void submit()}>
-            {busy ? "Recording…" : "I submitted this application"}
+          <button className="button button-primary" type="button" disabled={busy} onClick={() => { setError(""); setNotice(""); setConfirmRecord(true); }}>
+            I submitted this application
           </button>
         </>
+      ) : (
+        <div role="alert" aria-label="Confirm recording the submission">
+          <p className="writing-notice">
+            Record that you personally submitted this application on the employer website?
+            This keeps only a local note — employer receipt is not verified — and pauses editing here.
+          </p>
+          <div className="form-actions">
+            <button className="button button-primary" type="button" disabled={busy} onClick={() => void submit()}>
+              {busy ? "Recording…" : "Record submission"}
+            </button>
+            <button className="button button-secondary" type="button" onClick={() => setConfirmRecord(false)}>Not yet</button>
+          </div>
+        </div>
       )}
+      {notice && <p className="form-notice" role="status">{notice}</p>}
       {error && <p className="job-form-error" role="alert">{error}</p>}
       {history && !confirmNext && (
         <div className="form-actions">
