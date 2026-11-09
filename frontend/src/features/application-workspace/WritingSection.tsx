@@ -611,7 +611,6 @@ export function WritingSection({
   if (!snapshot) return <></>;
 
   const answerTasks = allQuestions.filter((q) => triageOf(q) === "answer");
-  const profileItems = allQuestions.filter((q) => triageOf(q) === "profile");
   const employerItems = allQuestions.filter((q) => triageOf(q) === "employer");
   const reviewItems = allQuestions.filter((q) => triageOf(q) === "review");
 
@@ -1074,9 +1073,9 @@ export function WritingSection({
         </p>
       )}
 
-      {(profileItems.length > 0 || employerItems.length > 0 || reviewItems.length > 0) && (
+      {(snapshot.profileCount > 0 || employerItems.length > 0 || reviewItems.length > 0) && (
         <div className="writing-previous" aria-label="Fields outside the writing tasks">
-          {profileItems.length > 0 && <p className="small-muted">Candidate Profile fields are handled automatically when authorized.</p>}
+          {snapshot.profileCount > 0 && <p className="small-muted">Candidate Profile fields are handled automatically when authorized.</p>}
           {employerItems.length > 0 && (
             <div>
               <h3>Complete on the employer site</h3>

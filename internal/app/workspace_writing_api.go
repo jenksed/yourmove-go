@@ -709,7 +709,7 @@ func (a *App) buildWritingQuestions(jobID int64) (map[string]any, error) {
 		"questions":            unified,
 		"unidentifiedCount":    unidentified,
 		"previous":             previous,
-		"profileCount":         len(live.ProfileQuestions()),
+		"profileCount":         len(live.ProfileQuestions()) + len(early.ProfileQuestions()),
 		"employerOnlyCount":    len(live.EmployerSiteQuestions()),
 		"manualReviewCount":    len(live.ManualReviewQuestions()),
 		"earlyNotice":          early.Notice,

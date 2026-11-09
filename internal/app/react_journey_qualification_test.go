@@ -197,8 +197,9 @@ func qualifyReactJourneyDocumentTransfer(t *testing.T, occupied bool) {
 	wait(`document.body.innerText.includes('Synthetic React journey')`)
 	discoveryStarted := time.Now()
 	click("Documents")
-	wait(`Array.from(document.querySelectorAll('button')).some(x=>x.textContent.trim()==='Change résumé'&&x.offsetParent!==null)`)
-	run(`Array.from(document.querySelectorAll('button')).find(x=>x.textContent.trim()==='Change résumé').click()`)
+	// No résumé is selected yet, so the chooser opens from "Choose résumé".
+	wait(`Array.from(document.querySelectorAll('button')).some(x=>x.textContent.trim()==='Choose résumé'&&x.offsetParent!==null)`)
+	run(`Array.from(document.querySelectorAll('button')).find(x=>x.textContent.trim()==='Choose résumé').click()`)
 	wait(`document.querySelector('.resume-chooser')?.open===true`)
 	run(`Array.from(document.querySelectorAll('.resume-chooser input[name=chooser-resume]')).find(x=>!x.checked).click()`)
 	wait(`document.querySelector('.resume-chooser')?.open===false`)
@@ -221,8 +222,8 @@ func qualifyReactJourneyDocumentTransfer(t *testing.T, occupied bool) {
 	}
 	run(`(()=>{const e=document.querySelector('[aria-label="Question navigation"] select');e.value=Array.from(e.options).find(x=>x.textContent.includes('Why this team?')).value;e.dispatchEvent(new Event('change',{bubbles:true}))})()`)
 	run(`(()=>{const e=document.querySelector('#writing-answer');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,'Prepared before opening');e.dispatchEvent(new Event('input',{bubbles:true}))})()`)
-	click("Save answer locally")
-	wait(`document.body.innerText.includes('Saved locally. It has not been filled')`)
+	click("Save for this application only")
+	wait(`document.body.innerText.includes('Saved for this application only. Nothing was filled')`)
 
 	click("Apply")
 	wait(`document.body.innerText.includes('journey-resume.pdf')&&document.body.innerText.includes('Cover letter:')`)
@@ -273,15 +274,15 @@ func qualifyReactJourneyDocumentTransfer(t *testing.T, occupied bool) {
 		t.Fatalf("delayed contacts: %v; state: %+v", contactValues, a.browsers.state(1))
 	}
 	t.Logf("one-click delayed contact values: %v; missing profile phone preserved manually", contactValues)
-	var linkedIn string
-	for time.Now().Before(deadline) {
-		if err := employerEval(`document.querySelector('[name=linkedin]').value`, &linkedIn); err == nil && linkedIn == "https://example.test/casey" {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
+	// An unapproved profile snapshot must not transfer additional profile
+	// facts: LinkedIn stays empty while the authorized core contacts fill,
+	// and the saved approval is unchanged.
+	var linkedIn = "unread"
+	if err := employerEval(`document.querySelector('[name=linkedin]').value`, &linkedIn); err != nil {
+		t.Fatal(err)
 	}
-	if linkedIn != "https://example.test/casey" {
-		t.Fatalf("profile LinkedIn not filled: %q; state=%+v", linkedIn, a.browsers.state(1))
+	if linkedIn != "" {
+		t.Fatalf("unapproved profile LinkedIn transferred: %q; state=%+v", linkedIn, a.browsers.state(1))
 	}
 
 	var contactChanges map[string]int
@@ -360,8 +361,8 @@ func qualifyReactJourneyDocumentTransfer(t *testing.T, occupied bool) {
 	run(`(()=>{const e=document.querySelector('[aria-label="Question navigation"] select');e.value=Array.from(e.options).find(x=>x.textContent.includes('Delayed question')).value;e.dispatchEvent(new Event('change',{bubbles:true}))})()`)
 	const answer = "I enjoy helping customers solve challenging support problems."
 	run(fmt.Sprintf(`(()=>{const e=document.querySelector('#writing-answer');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,%q);e.dispatchEvent(new Event('input',{bubbles:true}))})()`, answer))
-	click("Save answer locally")
-	wait(`document.body.innerText.includes('Saved locally.')`)
+	click("Save for this application only")
+	wait(`document.body.innerText.includes('Saved for this application only')`)
 	deadline = time.Now().Add(15 * time.Second)
 answerReady:
 	for {
@@ -428,8 +429,8 @@ answerReady:
 	run(`(()=>{const e=document.querySelector('[aria-label="Question navigation"] select');e.value=Array.from(e.options).find(x=>x.textContent.includes('Delayed question')).value;e.dispatchEvent(new Event('change',{bubbles:true}))})()`)
 	const updatedAnswer = "I enjoy helping customers solve challenging support problems with clear follow-up."
 	run(fmt.Sprintf(`(()=>{const e=document.querySelector('#writing-answer');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,%q);e.dispatchEvent(new Event('input',{bubbles:true}))})()`, updatedAnswer))
-	click("Save answer locally")
-	wait(`document.body.innerText.includes('Saved locally.')`)
+	click("Save for this application only")
+	wait(`document.body.innerText.includes('Saved for this application only')`)
 	click("Documents")
 	wait(`document.querySelector('#letter-body')?.value.includes('synthetic support role')`)
 	const updatedLetter = "Dear Hiring Team, I am interested in this updated synthetic support role and would welcome the opportunity to contribute with careful follow-up."
@@ -576,11 +577,11 @@ backendReady:
 	selectQuestion("challenging collaboration")
 	const collabA = "I navigated a challenging collaboration by aligning support and engineering on a shared incident timeline for customers."
 	setTextarea("#writing-answer", "shared incident timeline", collabA)
-	click("Save answer locally")
-	wait(`document.body.innerText.includes('Saved locally.')`)
-	wait(`Array.from(document.querySelectorAll('button')).some(x=>x.textContent.trim()==='Save a copy to Answer Library' && x.offsetParent!==null)`)
-	click("Save a copy to Answer Library")
-	wait(`document.body.innerText.includes('Saved as a separate Answer Library example')`)
+	click("Save for this application only")
+	wait(`document.body.innerText.includes('Saved for this application only')`)
+	wait(`Array.from(document.querySelectorAll('button')).some(x=>x.textContent.trim()==='Save to Answer Library' && x.offsetParent!==null)`)
+	click("Save to Answer Library")
+	wait(`document.body.innerText.includes('available in the Answer Library')`)
 	t.Log("Job A curated a reusable narrative answer without leaving its workspace.")
 	click("Apply")
 
@@ -632,10 +633,11 @@ backendReady:
 	}
 
 	// Prepare job B with the same résumé and job A's reviewed reusable
-	// material, adapted and saved explicitly for B.
+	// material, adapted and saved explicitly for B. Job B starts without a
+	// selected résumé, so the chooser opens from "Choose résumé".
 	click("Documents")
-	wait(`Array.from(document.querySelectorAll('button')).some(x=>x.textContent.trim()==='Change résumé'&&x.offsetParent!==null)`)
-	run(`Array.from(document.querySelectorAll('button')).find(x=>x.textContent.trim()==='Change résumé').click()`)
+	wait(`Array.from(document.querySelectorAll('button')).some(x=>x.textContent.trim()==='Choose résumé'&&x.offsetParent!==null)`)
+	run(`Array.from(document.querySelectorAll('button')).find(x=>x.textContent.trim()==='Choose résumé').click()`)
 	wait(`document.querySelector('.resume-chooser')?.open===true`)
 	run(`Array.from(document.querySelectorAll('.resume-chooser input[name=chooser-resume]')).find(x=>!x.checked).click()`)
 	wait(`document.querySelector('.resume-chooser')?.open===false`)
@@ -650,8 +652,8 @@ backendReady:
 	wait(`document.body.innerText.includes('Starting from')`)
 	const collabB = "I navigated a challenging collaboration at the second employer by aligning support and engineering on a shared incident timeline with weekly updates."
 	setTextarea("#writing-answer", "weekly updates", collabB)
-	click("Save answer locally")
-	wait(`document.body.innerText.includes('Saved locally.')`)
+	click("Save for this application only")
+	wait(`document.body.innerText.includes('Saved for this application only')`)
 	t.Log("Job B reused job A's reviewed answer through an explicit starting draft, adapted it, and saved it for B.")
 
 	// Start job B's cover letter from job A's prior letter, edit and save it
@@ -814,7 +816,9 @@ backendReady:
 	if observedB.ResumeHash != hex.EncodeToString(sum[:]) {
 		t.Fatal("job B resume bytes differ")
 	}
-	if observedB.LinkedIn != "https://example.test/casey" || observedB.FirstName != "Casey" || observedB.LastName != "Fixture" || observedB.Email != "casey@example.test" || observedB.Phone != "Manual phone" {
+	// Core contacts fill from the unapproved snapshot; additional profile
+	// facts such as LinkedIn stay out until the profile is approved.
+	if observedB.LinkedIn != "" || observedB.FirstName != "Casey" || observedB.LastName != "Fixture" || observedB.Email != "casey@example.test" || observedB.Phone != "Manual phone" {
 		t.Fatalf("job B contacts wrong: %+v", observedB)
 	}
 	if observedB.Submits != 0 {
