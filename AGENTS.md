@@ -49,6 +49,44 @@ Treat each screen migration as one usable React → Go → persistent-state capa
 - Preserve job/source IDs, manual edits, résumé bytes/associations, saved answers, letters and application history. No silent overwrites or misassociation.
 - Use only isolated synthetic workspaces selected through `YOURMOVE_DATA_DIR` for tests/qualification. Never access real applicant data. Respect the single SQLite writer. Employer-browser sessions do not survive restart.
 
+## Application integrity (must preserve)
+
+Authoritative references: `docs/architecture/APPLICATION_FIELD_CLASSIFICATION.md`
+(field roles, capture/Fill stages, Questions workflow, qualification status) and
+`docs/implementation/ats-platform-integration-notes.md` (per-operation ATS support).
+Follow them instead of reconstructing boundaries from history.
+
+- Make field-role decisions only through the existing authoritative Go classifier
+  (`internal/app/application_field_classification.go: classifyApplicationField`).
+  Do not duplicate classification rules in React or another Go subsystem.
+- Do not classify profile fields by value presence, value absence, or provenance
+  strings. Role is intrinsic to the observed control.
+- Keep profile/contact Fill separate from answer Fill: separate authorization,
+  scope, and revision checks. Historical answers on profile-kind controls stay
+  preserved under Previous writing and gain no transfer authority.
+- Keep browser observation separate from transfer authorization. Capture, preview,
+  and discovery never mint Fill authority.
+- Explicit authorization of the displayed, revision-validated profile snapshot is
+  sufficient on the React continuation path; saved profile approval is not an
+  additional prerequisite there. Never silently mark a stored profile approved
+  during Fill.
+- Keep final employer submission manual. Preserve field identity, revision checks,
+  posting-ownership checks, and existing-value protection on every transfer.
+- Distinguish ATS support by operation (intake ≠ discovery ≠ capture ≠ Fill), not
+  by a blanket supported/unsupported label. Do not assume a captured question can
+  be automatically filled; custom dropdowns and other unsupported controls stay
+  manual. Preserve useful manual behavior where automatic capabilities are
+  unavailable.
+
+When extending capture or Fill: (1) trace the real observed control through
+normalization, classification, API projection, and transfer; (2) reuse the
+established ownership and authorization mechanisms; (3) prefer provider-neutral
+semantic control handling when the failure is not provider-specific; (4) verify
+with controlled browser fixtures, never a live submission; (5) update the
+capability documentation when support changes. Scope qualification to the touched
+path plus one material failure/recovery case; do not perform exhaustive acceptance
+for unrelated changes.
+
 ## Read documentation and skills only when useful
 
 Start from the assigned behavior. Search the specific route/symbol, inspect its Go owner and tests, then consult **only the relevant documentation section** when necessary. Source/tests outrank outdated prose. Do not pre-read all docs, all skills, or historical evidence.
@@ -56,6 +94,8 @@ Start from the assigned behavior. Search the specific route/symbol, inspect its 
 | Task need | Read when needed |
 | --- | --- |
 | Product overview | `README.md` |
+| Field roles, capture/Fill authority, Questions workflow | `docs/architecture/APPLICATION_FIELD_CLASSIFICATION.md` |
+| Per-operation ATS platform support | `docs/implementation/ats-platform-integration-notes.md` |
 | Unfamiliar code path | Relevant section of `docs/CODEBASE_GUIDE.md` |
 | Running app or isolated workspace | Relevant section of `docs/TRY_IT.md` |
 | UI composition or styling | Relevant sections of `docs/design/RULES.md` and `docs/design/DESIGN_SYSTEM.md` |

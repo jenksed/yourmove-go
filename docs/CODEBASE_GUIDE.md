@@ -31,7 +31,7 @@ macOS Wails desktop.go ─┘           │
 - Root `assets.go` embeds `templates/`, `static/`, and the single editable `prompts/cover_letter.md`. Entry points pass those filesystems and instructions to `app.New`; construction parses each page with its shared partials once and returns an error for invalid templates. Production needs no repository working directory. Tests initialize the same resources explicitly from repository fixtures in `internal/app/resources_test.go`.
 - `templates/*.html` are **server-rendered**; `static/ui.js` and `static/inspection.js` add enhancement and polling. Go POST handlers remain the mutation authority.
 - SQLite and document bytes are durable; an open employer `sessionHost`/Chromium state is not durable across process exit.
-- `internal/platforms` fetches *job-posting metadata*. `internal/application/providers` retrieves *public application requirements*. `internal/application/browser` observes the *live employer page*. `internal/application/browser/chromium` launches Chromium and performs CDP reads/writes. These are four different purposes.
+- `internal/platforms` fetches *job-posting metadata*. `internal/application/providers` retrieves *public application requirements* (Greenhouse question definitions; Ashby's documented posting API exposes no application questions — early Ashby questions come only from the read-only rendered preview). `internal/application/browser` observes the *live employer page*. `internal/application/browser/chromium` launches Chromium and performs CDP reads/writes. These are four different purposes. Discovery never happens automatically: public/early discovery and managed capture each require an explicit applicant action, and neither grants transfer authority.
 
 ## One request, end to end
 
@@ -113,6 +113,9 @@ The main persisted records map to these tables and files:
 | Letter editing or save behavior | `internal/app/cover_letters.go` | `templates/job.html`, `static/ui.js`, `internal/app/desktop_redirect.go` | save/reopen/Unicode/error recovery |
 | Letter attachment/text fill | `internal/app/cover_letter_transfer.go` | `internal/app/browser_session.go`, `chromium/cover_letter.go`, `chromium/attachment.go` | controlled fixture checks exact content and repeat-upload suppression |
 | Employer question preparation | `internal/app/application_answers.go` | `internal/app/reusable_answers.go`, `templates/job.html`, `static/ui.js` | identity/revision/option/explicit override checks |
+| Field-role classification question | `internal/app/application_field_classification.go` | `internal/app/application_answer_policy.go`, `docs/architecture/APPLICATION_FIELD_CLASSIFICATION.md` | classifier test + qualification fixture; never duplicate rules in React or another Go subsystem |
+| Questions workflow / unsupported posting | `internal/app/workspace_writing_api.go` | `internal/app/workspace_continuation_api.go`, `frontend/src/features/application-workspace/WritingSection.tsx` | `ownsPosting` gating, dimmed UI with guidance, preserved Previous writing |
+| ATS support by operation | `docs/implementation/ats-platform-integration-notes.md` | `internal/application/browser/posting.go`, `internal/platforms/*`, `internal/application/providers/*` | intake ≠ discovery ≠ capture ≠ Fill; update the matrix when support changes |
 | Curated previous writing | `internal/app/answer_library.go`, `internal/app/answer_library_search.go` | `internal/app/answer_library_handlers.go`, `templates/answer_library.html`, `templates/job.html`, `static/ui.js`, `internal/storage/sqlite.go` | promotion identity, deterministic retrieval, independent lifecycle, unsaved starting point |
 | Employer answer transfer | `internal/app/application_answer_transfer.go` | `internal/app/browser_session.go`, `chromium/answer.go` | controlled fixture controls, manual value preservation |
 | How one-click continuation is composed | `internal/app/application_continuation.go` | `internal/app/handoff_state.go`, `internal/app/application_handlers.go`, `templates/job.html` | exact flags and independent partial failures |
@@ -169,6 +172,9 @@ For a native-only change, verify `go test -tags desktop ./...` and `go run -tags
 - **Employer completion ≠ local recording.** The user submits in the employer browser; YourMove records the user's confirmation separately.
 - **Persistent record ≠ active browser session.** An SQLite answer can survive restart; the same Chromium tab and in-memory operation cannot be assumed to.
 - **Manual correction takes precedence.** Browser mutation should preserve existing values when ambiguous or manually filled.
+- **Field role is intrinsic to the control.** `classifyApplicationField` (`internal/app/application_field_classification.go`) is the only authority for profile/question/document/employer-only/unsupported decisions. Never re-derive roles from values, saved approval, provenance, or history. Authoritative reference: `docs/architecture/APPLICATION_FIELD_CLASSIFICATION.md`.
+- **A captured question is not a Fill target.** Transfer eligibility (`ReadyAnswers`, `pendingAnswers`), explicit authorization (displayed scope + revision hash), and browser-side revalidation are separate gates owned by `application_answer_transfer.go`, `application_continuation.go`, `workspace_continuation_api.go`, and `browser_session.go`. Profile/contact Fill and answer Fill are independent operations.
+- **Unsupported postings disable managed capture.** `browser.OwnsPostingURL` gates live preparation and browser routes; Questions exposes `ownsPosting` and React dims capture while preserving saved writing. Dimming is not a complete manual-preparation fallback (no manual question-creation workflow exists yet).
 
 ## Repository cleanup: recommended order
 
@@ -299,6 +305,27 @@ These descriptions are navigation hints checked against the relocated source; re
 | `internal/app/role_families.go` | Role-family storage and deterministic resume suggestion |
 | `internal/app/triage.go` | Queue next-action and next-job recommendation |
 | `internal/app/ui_pages.go` | Opportunity dashboard summary and recorded-applications page |
+
+### Newer application files added after the relocation snapshot
+
+These files postdate the file index above and are the current owners of their
+behavior; prefer them over older prose when they disagree.
+
+| File | Role |
+| --- | --- |
+| `internal/app/application_field_classification.go` | Authoritative field-role classifier and `writingCategory` projection |
+| `internal/app/application_answer_policy.go` | Stable identity, editability, employer-only predicates, answer resolution |
+| `internal/app/early_application_answers.go` | Early (public/preview) discovery inventory, local saves, reconciliation |
+| `internal/app/application_answer_reconciliation.go` | Early-to-live reconciliation (presentation data; accept revalidates) |
+| `internal/app/workspace_writing_api.go` | React Questions JSON transport (`ownsPosting`, unified inventory, saves) |
+| `internal/app/workspace_continuation_api.go` | React Apply JSON transport (scope, browser ops, continue, submit, history) |
+| `internal/app/workspace_discovery_api.go` | Public/preview discovery transport |
+| `internal/app/application_brief.go` | Read-only applicant-facing preparation brief |
+| `internal/app/browser_session.go` (expanded) | Session ownership, watcher, and per-item Fill execution (`tryAnswers`, `tryContacts`) |
+
+Authoritative behavior references: `docs/architecture/APPLICATION_FIELD_CLASSIFICATION.md`
+(classification and capture/Fill architecture) and
+`docs/implementation/ats-platform-integration-notes.md` (per-operation platform support).
 
 ### Established internal packages and browser assets (55 files)
 

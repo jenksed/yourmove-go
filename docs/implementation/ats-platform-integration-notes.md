@@ -1,15 +1,84 @@
-# Application platforms: current scope and next integrations
+# Application platforms: capability reference and next integrations
 
-## Current behavior
+**Authoritative platform-support reference as of `2baa899`** (release branch `v0.2/release-0.2.0`).
+Verify against source before extending support; dated prose elsewhere is historical.
 
-The managed browser uses the existing Ashby flow for hosted Greenhouse and Lever postings as well. This is an extension of the current session, observation, and transfer commands, not a second automation engine.
+**Core rule: distinguish support by operation, not by a blanket supported/unsupported label.**
+Job-intake support (recognizing a URL and fetching posting metadata) is **not**
+equivalent to managed capture or automated Fill support. A platform can be fully
+supported for intake while remaining manual-only for browser operations.
 
-- Ashby: `jobs.ashbyhq.com/<board>/<uuid>`; existing API-derived application destination.
-- Greenhouse: `job-boards.greenhouse.io/<board>/jobs/<numeric-id>` and the older `boards.greenhouse.io` host; open the saved posting's embedded application.
-- Lever: `jobs.lever.co/<board>/<uuid>` and `jobs.eu.lever.co`; open the same posting's `/apply` route, preserving query attribution.
-- Other hosts and incomplete posting URLs: manual application, with a primary Open application action. Download the selected resume and saved cover-letter PDF from Prepare. Final submission and recording remain explicit user actions.
+Status grades used below:
 
-Only uniquely identified native controls are filled. Existing values/files, custom dropdowns, authentication, CAPTCHA, sensitive questions, and cross-origin embedded forms remain manual. A successful file selection does not establish employer acceptance. Account or tenant-specific variations still need live read-only qualification; local fixtures do not prove compatibility with every hosted form.
+- **Implemented + tested** — covered by Go unit tests and, where browser effects
+  are involved, controlled Chromium fixtures. Not a claim of universal employer-site
+  compatibility or native Wails acceptance.
+- **Implemented, not natively verified** — the code path exists and is exercised in
+  tests/fixtures, but end-to-end native Wails GUI acceptance on that OS is missing.
+- **Unsupported** — the code refuses the operation with an explicit manual fallback.
+- **Planned / under investigation** — Workday and iCIMS only; narrow, evidence-gated
+  next steps are recorded below. No other platform is committed.
+
+## Capability matrix
+
+| Operation | Ashby | Greenhouse | Lever | Other intake-supported providers¹ | Other / incomplete URLs |
+| --- | --- | --- | --- | --- | --- |
+| Job URL recognition + intake metadata (`internal/platforms.FetchJob`) | Implemented + tested (`jobs.ashbyhq.com/<board>/<uuid>`, plus corporate-careers `ashby_jid` links resolved against the verified public board) | Implemented + tested (`job-boards.greenhouse.io/<board>/jobs/<numeric-id>` and `boards.greenhouse.io`) | Implemented + tested (`jobs.lever.co/<board>/<uuid>` and `jobs.eu.lever.co`) | Implemented + tested for metadata only: iCIMS, Personio, Teamtailor, Recruitee, SmartRecruiters, Workable, Jobvite, Workday identity repair, Paylocity (`2000recruiting.paylocity.com`) | Unsupported (`ErrUnsupported` or a URL-specific error); never silently treated as closed |
+| Public / early question discovery (`internal/application/discovery`, read-only preview) | Early questions via read-only rendered preview only (`previewEarlyQuestions`, `chromium.Preview`, source `preview`). The documented public posting API exposes **no** application questions | Implemented + tested via the public boards API (`?questions=true`; compliance/demographic content marked sensitive, conditional fields unverified) | Unsupported (no public or preview discovery) | Unsupported | Unsupported |
+| Managed browser inspection (`browser.PostingPlatform`, `OwnsPostingURL`) | Implemented + tested: exact `https` board/UUID identity; same-posting descendants allowed | Implemented + tested: exact board/job identity; the **same posting path only** (board/error redirects and neighboring jobs never match) | Implemented + tested: exact board/UUID identity; the same posting's `/apply` route allowed, query attribution preserved | Unsupported | Unsupported |
+| Field / question capture (read-only observation → `saveInspection`) | Implemented + tested | Implemented + tested | Implemented + tested | Unsupported: managed capture disabled up front | Unsupported: managed capture disabled up front |
+| Candidate-profile Fill (contact resolver) | Implemented, not natively verified (controlled Chromium only) | Implemented, not natively verified (same shared resolver flow as Ashby) | Implemented, not natively verified (same shared resolver flow; social-widget controls excluded) | Unsupported | Unsupported |
+| Saved-answer Fill | Implemented, not natively verified (controlled Chromium only) | Implemented, not natively verified | Implemented, not natively verified | Unsupported | Unsupported |
+| Document transfer (resume / cover letter) | Implemented, not natively verified (controlled Chromium only) | Implemented, not natively verified | Implemented, not natively verified (nested upload shape covered by fixture; see Lever note below) | Unsupported | Unsupported |
+| Manual fallback | Always available | Always available | Always available | Manual path: download selected resume and saved letter, open the employer site, complete and submit personally | Manual path with explicit unsupported-posting guidance |
+| Final employer submission | Manual only (no automation on any platform) | Manual only | Manual only | Manual only | Manual only |
+
+¹ Intake-only providers have posting-metadata retrieval (`internal/platforms/*`) and
+nothing else: no public question discovery, no managed inspection, no Fill. Workday
+posting-identity intake was repaired for previously failed records; that repair does
+not extend to managed capture or Fill.
+
+The managed browser uses the existing Ashby session, observation, and transfer flow
+for hosted Greenhouse and Lever postings as well. This is an extension of the
+current commands, not a second automation engine.
+
+### Eligibility and ownership rules enforced by the code
+
+- **Exact posting identity.** `PostingPlatform` accepts only supported, complete
+  posting identities: `https`, no credentials, no explicit ports, no encoded-path
+  tricks. Board indexes, sign-in pages, custom employer domains, partial IDs, `http`
+  URLs, and already-deep application paths stay on the manual path.
+- **Exact ownership.** `OwnsPostingURL` keeps every observation and transfer on the
+  exact saved origin and posting. Ashby allows same-posting descendants, Lever allows
+  the same posting's `/apply`, and Greenhouse requires the same posting path.
+- **Capture gating.** `prepareQuestions` returns no live inventory unless the saved
+  posting owns itself; browser start/observe routes reject unsupported postings
+  (`422`) with guidance to prepare manually. The Questions and continuation APIs
+  expose `ownsPosting` so React disables Capture up front instead of failing on
+  click (`2baa899`); preserved writing stays legible.
+- **Fill gating.** Every Fill revalidates the exact saved destination, field
+  identity, wording, kind, options, sensitivity, revision, and live DOM target, and
+  preserves existing or actively edited values. A captured question is **not**
+  assumed to be automatically fillable. See
+  [`../architecture/APPLICATION_FIELD_CLASSIFICATION.md`](../architecture/APPLICATION_FIELD_CLASSIFICATION.md)
+  for the authoritative field-role and authorization rules.
+- **Submission boundary.** `POST /jobs/{id}/submit` records the applicant's manual
+  submission declaration locally. Nothing submits to an employer.
+
+### Control-level limitations (all managed platforms)
+
+Only uniquely identified native controls are filled. Existing values/files, custom
+dropdowns and other structured controls, authentication, CAPTCHA, sensitive
+questions, and cross-origin embedded forms remain manual. A successful file
+selection does not establish employer acceptance. Account or tenant-specific
+variations still need live read-only qualification; local fixtures do not prove
+compatibility with every hosted form.
+
+Known investigation example (not a verified root cause or a fixed issue): the live
+Render posting rotates Ashby's per-form UUID namespace, and its “How did you hear
+about Render?” question arrives as an option-less Ashby combobox that must stay
+manual-only while still being represented. Option-less comboboxes, `custom_combobox`,
+and `unsupported_ambiguous` controls are never automated-Fill targets.
 
 ### Lever qualification detail
 
@@ -22,6 +91,9 @@ The local Chromium fixture now covers that nested upload shape, a conflicting re
 | Concern | Existing location |
 | --- | --- |
 | Supported posting shapes and exact destination ownership | `internal/application/browser/posting.go` |
+| Field-role decisions (profile / question / document / employer-only / unsupported) | `internal/app/application_field_classification.go`; authoritative reference in `docs/architecture/APPLICATION_FIELD_CLASSIFICATION.md` |
+| Questions inventory, `ownsPosting`, and save authority | `internal/app/workspace_writing_api.go`, `internal/app/application_answers.go`, `internal/app/early_application_answers.go` |
+| Transfer eligibility and explicit Fill authorization | `internal/app/workspace_continuation_api.go`, `internal/app/application_answer_transfer.go`, `internal/app/browser_session.go` |
 | First application destination and tab selection | `internal/application/browser/chromium/chromium.go` |
 | Read-only structural observation | `internal/application/browser/inspect.js`, `observation.go` |
 | Unique document purpose, format, existing file and integrity checks | `internal/application/browser/chromium/attachment.go` |
@@ -63,6 +135,7 @@ Questions to resolve with evidence:
 ## Verification before enabling either platform
 
 - Exact posting identity tests: own steps accepted; other jobs, tenants, account pages, error boards, scheme changes, encoded path tricks, and lookalike hosts rejected.
+- Route every newly captured control through the existing authoritative classifier (`classifyApplicationField`); do not duplicate field-role rules in React or another Go subsystem, and do not classify profile fields by value presence or provenance.
 - Run the existing consent/stale-scope/independent-failure tests for the new platform. Saved answers must use its actual provider and exact destination; reusable answers must remain employer-scoped.
 - Local real-Chromium fixtures: contacts, full versus separate names, hidden upload inputs, distinct resume and letter, existing manual values/files, delayed/rerendered controls, and zero form submissions.
 - Read-only checks on real pages to establish selector and route evidence. Any real applicant-material transfer requires the user's explicit in-app authorization.

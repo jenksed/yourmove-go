@@ -1,6 +1,6 @@
 # Run YourMove locally
 
-This is the authoritative source-run quickstart for contributors and people evaluating YourMove. **Only macOS has been tested. Windows and Linux commands below are unverified and may fail.** There is no public installer, downloadable release, or qualified Windows/Linux desktop build.
+This is the authoritative source-run quickstart for contributors and people evaluating YourMove. **Only macOS has been tested. Windows and Linux commands below are unverified and may fail.** Packaged releases are governed by `docs/releases/`, the [release policy](RELEASE_POLICY.md), and the [release checklist](RELEASE_CHECKLIST.md), not by this guide; there is no qualified Windows/Linux desktop build.
 
 [Back to README](../README.md) · [Codebase guide](CODEBASE_GUIDE.md) · [Give feedback](FEEDBACK.md)
 
@@ -9,12 +9,12 @@ This is the authoritative source-run quickstart for contributors and people eval
 - Git and **Go 1.27.2**, matching `go.mod`. These commands compile and run from source; they do not install a packaged application.
 - A browser to visit the local interface at `http://127.0.0.1:3000`.
 - To inspect or fill employer forms: a locally installed Chrome/Chromium executable. Basic opportunity, resume and draft management does not require it. The Chromium discovery path is not qualified on Windows or Linux.
-- For the optional Wails desktop development host: **macOS only** with Xcode Command Line Tools. Wails v3 is a beta dependency. No Windows/Linux native entry point is included.
+- For the optional Wails desktop development host: **macOS only tested**, with Xcode Command Line Tools. Wails v3 is a beta dependency. A Windows native entry point exists in source (`desktop_windows.go`) but has no Windows 11 native acceptance; there is no Linux native entry point.
 
 | Platform | Source-run local web interface | Native Wails host | Installable release |
 | --- | --- | --- | --- |
-| macOS (Apple Silicon) | Tested | Development only, not fully accepted for public distribution | None published |
-| Windows | **Not tested** | Not implemented | None |
+| macOS (Apple Silicon) | Tested | Development only, not fully accepted for public distribution | See `docs/releases/` and the release policy |
+| Windows | **Not tested** | Implemented, not natively verified (no Windows 11 acceptance: window presentation, managed-Chromium Fill, and upgrade unobserved) | None (held back; see `docs/releases/0.2.0-macos.md`) |
 | Linux | **Not tested** | Not implemented | None |
 
 Passing a build or opening the local UI does not qualify browser-based employer automation or native file dialogs.
@@ -41,7 +41,7 @@ cd yourmove-go
 go run .
 ```
 
-This is an **unverified source-run attempt**, not a Windows installer. In particular, the current Chromium locator has Unix/macOS-oriented executable checks and no qualified Windows browser-discovery path. Employer-form assistance may not work even if the HTTP interface starts.
+This is an **unverified source-run attempt**, not a Windows installer. Windows executable discovery was repaired in source (Windows binary extensions, install-location and Playwright-cache lookup) but has no qualified Windows browser-discovery path: employer-form assistance is unverified and may not work even if the HTTP interface starts.
 
 ### Linux (not tested)
 
@@ -118,9 +118,9 @@ go test ./... -run TestName -count=1
 
 - **`go` or `git` not found:** Install the required tool, restart the terminal and check `go version` / `git --version`.
 - **Port 3000 already in use:** Stop the instance you started or check what else is listening before relaunching. The port is currently fixed.
-- **Chrome/Chromium not found:** Employer-form operations need a local Chromium-compatible executable. You may set `YOURMOVE_CHROMIUM` to an absolute executable path; macOS is the only platform where this path has been exercised. On Windows, the current executable permission check may reject a valid `.exe`, and setting the override is not a verified fix.
-- **An employer form doesn't fill:** Only selected controls/platforms are supported. Do not treat a successful posting fetch or UI startup as proof of live form support.
-- **Windows/Linux issues:** These platforms have not been built or run as part of the qualification evidence. Report the OS/architecture, `go version`, exact command and sanitized error output. Do not include personal resumes or employer form data.
+- **Chrome/Chromium not found:** Employer-form operations need a local Chromium-compatible executable. You may set `YOURMOVE_CHROMIUM` to an absolute executable path; macOS is the only platform where this path has been exercised. Windows executable acceptance was repaired in source but never qualified on a Windows host, so setting the override on Windows is not a verified fix.
+- **An employer form doesn't fill:** Only selected controls/platforms are supported. Do not treat a successful posting fetch, question discovery, or UI startup as proof of managed capture or live form support. See the [per-operation platform support](implementation/ats-platform-integration-notes.md) and [field classification](architecture/APPLICATION_FIELD_CLASSIFICATION.md) references.
+- **Windows/Linux issues:** Windows cross-compilation is verified in CI, but neither platform has native acceptance evidence. Report the OS/architecture, `go version`, exact command and sanitized error output. Do not include personal resumes or employer form data.
 
 For the macOS candidate package and its signing/installation limitations, see [release/macos/README.md](../release/macos/README.md) and the [release checklist](RELEASE_CHECKLIST.md).
 
