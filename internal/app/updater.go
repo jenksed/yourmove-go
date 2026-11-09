@@ -200,6 +200,8 @@ func (a *App) updateStatusAPI(w http.ResponseWriter, r *http.Request) {
 // BackgroundUpdateCheck records availability without opening any UI.
 // It is the nonblocking automatic path: offline or endpoint errors leave
 // the current app usable and do not overwrite an explicit user state.
+// A background success only surfaces from idle/up-to-date/available; it
+// never overwrites a user-initiated checking/installing/ready/error phase.
 func (a *App) BackgroundUpdateCheck(ctx context.Context) {
 	if a.updateCheck == nil {
 		return
@@ -210,6 +212,17 @@ func (a *App) BackgroundUpdateCheck(ctx context.Context) {
 		return
 	}
 	if !res.Available {
+		return
+	}
+	a.updates.mu.Lock()
+	phase := a.updates.phase
+	a.updates.mu.Unlock()
+	switch phase {
+	case "", "idle", "up-to-date", "available":
+		// Safe to surface availability.
+	default:
+		// Preserve user-initiated checking/installing/ready/error states.
+		log.Printf("background update check: version %s available but preserving user phase %q", res.LatestVersion, phase)
 		return
 	}
 	c := res
@@ -227,9 +240,120 @@ func updateUserError(err error) string {
 		return ""
 	}
 	msg := err.Error()
+	// Keep only the first line: multi-line staging logs never reach the UI.
+	if idx := indexNewline(msg); idx >= 0 {
+		msg = msg[:idx]
+	}
+	msg = redactUpdateDetail(msg)
 	// Truncate to avoid leaking staging paths or endpoint internals.
 	if len(msg) > 300 {
 		msg = msg[:300] + "…"
 	}
+	msg = redactUpdateDetail(msg)
+	if msg == "" {
+		msg = "an update error occurred"
+	}
 	return "Update could not be completed: " + msg + ". Your current app and workspace are unchanged; the manual DMG remains available."
+}
+
+func indexNewline(s string) int {
+	for i, r := range s {
+		if r == '\n' || r == '\r' {
+			return i
+		}
+	}
+	return -1
+}
+
+// redactUpdateDetail removes absolute filesystem paths and sensitive URL
+// material while preserving short actionable phrases such as signature or
+// network failures.
+func redactUpdateDetail(s string) string {
+	// Redact absolute POSIX paths.
+	for {
+		start := indexAbsPath(s)
+		if start < 0 {
+			break
+		}
+		end := start
+		for end < len(s) && s[end] != ' ' && s[end] != '\t' && s[end] != '"' && s[end] != '\'' && s[end] != ')' && s[end] != ';' {
+			end++
+		}
+		s = s[:start] + "[path]" + s[end:]
+	}
+	// Redact Windows absolute paths (e.g., C:\...).
+	for {
+		idx := indexWindowsPath(s)
+		if idx < 0 {
+			break
+		}
+		end := idx
+		for end < len(s) && s[end] != ' ' && s[end] != '\t' && s[end] != '"' && s[end] != '\'' && s[end] != ')' && s[end] != ';' {
+			end++
+		}
+		s = s[:idx] + "[path]" + s[end:]
+	}
+	// Redact URLs carrying query strings or credentials; bare hosts stay.
+	for {
+		idx := indexSensitiveURL(s)
+		if idx < 0 {
+			break
+		}
+		end := idx
+		for end < len(s) && s[end] != ' ' && s[end] != '\t' && s[end] != '"' && s[end] != '\'' && s[end] != ')' && s[end] != ';' {
+			end++
+		}
+		s = s[:idx] + "[url]" + s[end:]
+	}
+	return s
+}
+
+func indexAbsPath(s string) int {
+	for i := 0; i < len(s); i++ {
+		if s[i] == '/' && i+1 < len(s) && isPathChar(s[i+1]) {
+			return i
+		}
+	}
+	return -1
+}
+
+func isPathChar(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-' || c == '~'
+}
+
+func indexWindowsPath(s string) int {
+	for i := 0; i+2 < len(s); i++ {
+		c := s[i]
+		if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) && s[i+1] == ':' && (s[i+2] == '\\' || s[i+2] == '/') {
+			return i
+		}
+	}
+	return -1
+}
+
+func indexSensitiveURL(s string) int {
+	for i := 0; i+7 < len(s); i++ {
+		var prefix string
+		if len(s)-i >= 8 && (s[i:i+8] == "https://" || s[i:i+7] == "http://") {
+			if s[i:i+8] == "https://" {
+				prefix = "https://"
+			} else {
+				prefix = "http://"
+			}
+			rest := s[i+len(prefix):]
+			// Only redact when the URL carries credentials, a query, or a token-like path.
+			hasSensitive := false
+			for j := 0; j < len(rest) && rest[j] != ' ' && rest[j] != '\t' && rest[j] != '"' && rest[j] != '\'' && rest[j] != ')' && rest[j] != ';'; j++ {
+				if rest[j] == '?' || rest[j] == '@' || rest[j] == '#' {
+					hasSensitive = true
+					break
+				}
+			}
+			if hasSensitive {
+				return i
+			}
+		}
+		_ = prefix
+	}
+	return -1
 }
