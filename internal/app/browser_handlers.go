@@ -53,7 +53,7 @@ func (a *App) browserOperation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !browser.OwnsPostingURL(job.URL, job.URL) {
-		http.Error(w, "Managed inspection supports saved Ashby, Greenhouse, and Lever postings", 422)
+		http.Error(w, "Question capture supports saved Ashby, Greenhouse, and Lever postings. This URL cannot yet be safely associated with an employer form. Open the employer site yourself and prepare answers manually; automatic Fill remains unavailable.", 422)
 		return
 	}
 	switch r.PathValue("action") {
@@ -129,6 +129,14 @@ func (a *App) browserOperation(w http.ResponseWriter, r *http.Request) {
 		}
 	default:
 		http.NotFound(w, r)
+		return
+	}
+	if r.Header.Get("Accept") == "application/json" {
+		if err != nil {
+			writeResumeError(w, http.StatusConflict, "Could not capture questions. Check that Chromium is installed and retry. Your saved answers are unchanged.")
+			return
+		}
+		writeResumeJSON(w, http.StatusOK, a.browsers.state(id))
 		return
 	}
 	target := "/jobs/" + strconv.FormatInt(id, 10) + "/inspection"

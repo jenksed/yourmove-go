@@ -11,6 +11,7 @@ import {
   fetchAssistance,
   fetchBrief,
   fetchQuestions,
+  captureQuestions,
   saveAnswer,
   type AssistanceSnapshot,
   type AiTicket,
@@ -94,6 +95,8 @@ export function WritingSection({
   onRetryDiscovery: () => void;
 }): React.JSX.Element {
   const [snapshot, setSnapshot] = useState<QuestionsSnapshot | null>(null);
+  const [captureBusy, setCaptureBusy] = useState(false);
+  const [captureNotice, setCaptureNotice] = useState("");
   const [loading, setLoading] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string>("");
   const [selectedId, setSelectedId] = useState<string>("");
@@ -510,17 +513,30 @@ export function WritingSection({
           </p>
         </div>
         <div className="heading-actions">
+          <button className="button" type="button" disabled={captureBusy || readOnly || !snapshot.editingAllowed} onClick={async () => {
+            setCaptureBusy(true);
+            setCaptureNotice("");
+            try {
+              await captureQuestions(jobId);
+              setCaptureNotice("Navigate the application form in YourMove’s managed browser. Questions appear here automatically. No answers or documents are transferred; use Apply when you are ready to authorize transfer.");
+            } catch (error) {
+              setCaptureNotice(error instanceof Error ? error.message : "Unable to start question capture.");
+            } finally { setCaptureBusy(false); }
+          }}>
+            {captureBusy ? "Opening capture browser…" : "Capture application questions"}
+          </button>
           <button className="button button-secondary" type="button" disabled={dirty} onClick={() => void reload()}>
             Refresh questions
           </button>
         </div>
       </div>
 
+      {captureNotice && <p role="status">{captureNotice}</p>}
       {dirty && <p className="small-muted">Save your answer before refreshing the question list.</p>}
 
       {discoveryStatus === "checking" && <p role="status">Checking for application questions…</p>}
-      {discoveryStatus === "unsupported" && answerTasks.length > 0 && <p className="writing-notice">This employer does not offer an early question preview. You can continue to Apply; additional questions may appear on the employer form.</p>}
-      {discoveryStatus === "failed" && <p className="writing-notice">We could not check questions right now. Your saved work is safe. <button className="button button-secondary" type="button" onClick={onRetryDiscovery}>Retry question check</button> You can also continue to Apply.</p>}
+      {discoveryStatus === "unsupported" && answerTasks.length > 0 && <p className="writing-notice">This employer does not offer an early question preview. Select Capture application questions to check managed inspection support.</p>}
+      {discoveryStatus === "failed" && <p className="writing-notice">We could not check questions right now. Your saved work is safe. <button className="button button-secondary" type="button" onClick={onRetryDiscovery}>Retry question check</button> You can also select Capture application questions.</p>}
 
       {(snapshot.returnNotice !== "" || snapshot.earlyNotice !== "") && (
         <p className="writing-notice" role="note">
@@ -538,7 +554,7 @@ export function WritingSection({
         <div className="empty-state">
           <h3>No questions discovered yet</h3>
           <p>
-            {discoveryStatus === "checking" ? "Checking this posting for questions." : "No early questions are available. You can continue to Apply and answer questions on the employer form."}
+            {discoveryStatus === "checking" ? "Checking this posting for questions." : "No early questions are available. Select Capture application questions, then navigate the employer form in the managed browser."}
           </p>
         </div>
       )}

@@ -509,3 +509,72 @@ func TestReadOnlyBrowserNeverFillsContacts(t *testing.T) {
 		t.Fatal("read-only browser received contact information")
 	}
 }
+
+func TestQuestionsCaptureJSONUsesManagedObserver(t *testing.T) {
+	a, _ := testWorkspace(t)
+	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com", Title: "Synthetic"}); err != nil {
+		t.Fatal(err)
+	}
+	launched := 0
+	a.browsers.factory = func(_ context.Context, raw string) (readOnlySession, error) {
+		launched++
+		return &fakeBrowser{url: raw + "/application"}, nil
+	}
+	defer a.browsers.close(1)
+	h := newMux(a)
+	for _, action := range []string{"start", "observe"} {
+		r := httptest.NewRequest(http.MethodPost, "http://localhost/jobs/1/browser/"+action, strings.NewReader(""))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		r.Header.Set("Accept", "application/json")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != 200 || w.Header().Get("Location") != "" || !strings.Contains(w.Header().Get("Content-Type"), "application/json") {
+			t.Fatalf("capture %s: %d %s", action, w.Code, w.Body.String())
+		}
+	}
+	if launched != 1 {
+		t.Fatalf("managed launches: %d", launched)
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "http://localhost/api/jobs/1/questions", nil))
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "Work authorization") {
+		t.Fatalf("captured inventory: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestQuestionsCaptureUnsupportedExplicitResult(t *testing.T) {
+	a, _ := testWorkspace(t)
+	if err := a.saveJob(Job{URL: "https://example.com/job", Host: "example.com", Title: "Synthetic"}); err != nil {
+		t.Fatal(err)
+	}
+	a.browsers.factory = func(context.Context, string) (readOnlySession, error) {
+		t.Fatal("unsupported posting launched browser")
+		return nil, nil
+	}
+	r := httptest.NewRequest(http.MethodPost, "http://localhost/jobs/1/browser/start", strings.NewReader(""))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Header.Set("Accept", "application/json")
+	w := httptest.NewRecorder()
+	newMux(a).ServeHTTP(w, r)
+	if w.Code != 422 || !strings.Contains(w.Body.String(), "prepare answers manually") {
+		t.Fatalf("unsupported result: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestQuestionsCaptureLaunchFailureReturnsError(t *testing.T) {
+	a, _ := testWorkspace(t)
+	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com", Title: "Synthetic"}); err != nil {
+		t.Fatal(err)
+	}
+	a.browsers.factory = func(context.Context, string) (readOnlySession, error) {
+		return nil, errors.New("synthetic launch failure")
+	}
+	r := httptest.NewRequest(http.MethodPost, "http://localhost/jobs/1/browser/start", strings.NewReader(""))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Header.Set("Accept", "application/json")
+	w := httptest.NewRecorder()
+	newMux(a).ServeHTTP(w, r)
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "retry") {
+		t.Fatalf("launch failure: %d %s", w.Code, w.Body.String())
+	}
+}

@@ -677,3 +677,17 @@ export async function generateLetter(jobId: number, input: GenerateLetterInput):
   if (!response.ok) throw new Error(await readError(response));
   return (await response.json()) as { generated: boolean; draftId: number };
 }
+
+// Starts only the existing read-only managed observer; never a transfer.
+export async function captureQuestions(jobId: number): Promise<void> {
+  const response = await fetch(`/jobs/${jobId}/browser/start`, {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/x-www-form-urlencoded" },
+    body: "",
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    try { const error = JSON.parse(text) as { error?: string }; throw new Error(error.error || text); }
+    catch (error) { if (error instanceof SyntaxError) throw new Error(text); throw error; }
+  }
+}
