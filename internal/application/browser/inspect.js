@@ -34,6 +34,17 @@
     const ids = (el.getAttribute('aria-labelledby') || '').split(/\s+/).filter(Boolean);
     return clip(ids.map(id => document.getElementById(id)?.innerText || '').filter(Boolean).join(' '), 350);
   };
+  // Hosted application forms (for example Lever's .application-question
+  // items) often render the employer's question as plain text in a container
+  // heading rather than in a <label>, <legend>, or ARIA relationship. The
+  // container heading is authoritative DOM semantics for the enclosed
+  // control; input placeholders, default values, and machine names below
+  // are not.
+  const containerQuestionLabel = el => {
+    const container = el?.closest?.('.application-question');
+    if (!container) return '';
+    return clip(labelText(container.querySelector('.application-label')), 350);
+  };
   const describe = el => {
     const root = entryRoot(el);
     const title = questionTitle(root) || el.closest('fieldset')?.querySelector('legend')?.innerText;
@@ -44,9 +55,28 @@
     const group = el.closest('[role="group"],[role="radiogroup"]');
     const groupLabel = group && group !== el
       ? clip(group.getAttribute('aria-label') || labelledByText(group), 350) : '';
+    // Placeholders, default values, and machine names are deliberately not
+    // question wording: they hint at or identify the control but never state
+    // the employer's question. An empty result keeps the honest
+    // unidentified-control notice instead of a fabricated label.
     return clip(title || labelText(el.labels?.[0]) || labelText(labelFromId) ||
       labelledByText(el) || labelText(el.closest('label')) || groupLabel ||
-      el.getAttribute('aria-label') || el.getAttribute('placeholder') || el.name || 'Unlabeled control', 350);
+      el.getAttribute('aria-label') || containerQuestionLabel(el) || '', 350);
+  };
+  // Sensitivity still considers hint and machine text: a control whose only
+  // wording is a placeholder or name keeps its privacy handling even though
+  // that text never becomes its displayed question.
+  const sensitiveHints = el =>
+    sensitive((el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('placeholder') || '') + ' ' + (el.name || ''));
+  // A label element that encloses every member of a group names the group;
+  // a label that encloses one member names that option and is never used
+  // as the group question.
+  const sharedGroupLabel = members => {
+    if (members.length < 2 || !members[0].labels) return '';
+    for (const label of members[0].labels) {
+      if (members.every(member => label.contains(member))) return labelText(label);
+    }
+    return '';
   };
   const optionLabel = el => clip(labelText(el.labels?.[0]) || ariaText(el) || el.name || 'Unlabeled option', 350);
   const kindOf = el => {
@@ -119,16 +149,22 @@
   const makeRecord = (members, kind, root, options = [], identity = '') => {
     const labelledBy = (members[0]?.getAttribute('aria-labelledby') || '')
       .split(/\s+/).filter(Boolean).map(id => document.getElementById(id)?.innerText || '').filter(Boolean).join(' ');
+    // The group question comes only from reliable DOM semantics: the entry or
+    // structural container heading, an accessible name, the enclosing
+    // application-question heading, or one label shared by every member.
+    // Per-option wrapping labels describe one choice, never the group, and
+    // machine names are never question wording, so neither is used here.
+    // Without semantics the record keeps the honest unidentified-control
+    // notice.
     const groupLabel = root?.getAttribute('aria-label') || labelledBy ||
-      (members.length > 1 && kind === 'radio' && members[0].name ? 'Radio group: ' + members[0].name : '');
-    const label = clip(questionTitle(root) || groupLabel || describe(members[0]), 350);
+      containerQuestionLabel(members[0]) || sharedGroupLabel(members);
+    const label = clip(questionTitle(root) || groupLabel || (members.length === 1 ? describe(members[0]) : ''), 350);
     return {
       id: identity || (members.length === 1 ? fieldIdentity(members[0], root) : rootIdentity(root, members)),
       label: label || 'Unlabeled control',
       kind,
       required: members.some(el => !!(el.required || el.getAttribute('aria-required') === 'true')),
-      sensitive: sensitive(label) || options.some(sensitive) ||
-        members.some(el => sensitive(el.getAttribute('aria-label') || '')),
+      sensitive: sensitive(label) || options.some(sensitive) || members.some(sensitiveHints),
       options
     };
   };
@@ -402,7 +438,7 @@
       label: 'Controls without a stable field identity',
       kind: 'unsupported_ambiguous',
       required: unknown.some(el => !!(el.required || el.getAttribute('aria-required') === 'true')),
-      sensitive: unknown.some(el => sensitive(describe(el))),
+      sensitive: unknown.some(el => sensitive(describe(el)) || sensitiveHints(el)),
       options: [],
       order: Math.min(...unknown.map(el => candidates.indexOf(el)))
     });

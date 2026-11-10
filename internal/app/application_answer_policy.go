@@ -44,8 +44,47 @@ func profileQuestionIdentity(id string) string {
 }
 
 func stableQuestionIdentity(f schema.Field, unique bool) bool {
+	if !unique || f.Sensitive {
+		return false
+	}
+	// Observer fallback wording describes the observation failure, never the
+	// employer's question, so it must not become a question identity,
+	// reusable entry, or transfer target.
+	if inspectorFallbackLabel(f.Label) {
+		return false
+	}
 	id := profileQuestionIdentity(f.ID)
-	return unique && !f.Sensitive && id != "" && !positionalQuestionID.MatchString(id) && !strings.HasPrefix(id, "unidentified-") && !strings.Contains(strings.ToLower(f.Label), "cover letter")
+	if id == "" || strings.HasPrefix(id, "unidentified-") || strings.Contains(strings.ToLower(f.Label), "cover letter") {
+		return false
+	}
+	// Positional machine identities ("question-1", "field_3") are DOM
+	// observation junk, never employer questions. Greenhouse public API
+	// definitions are the exception: the provider itself names custom
+	// questions "question_N", so those identities are authoritative.
+	if positionalQuestionID.MatchString(id) && !providerDefinitionIdentity(f.ID) {
+		return false
+	}
+	return true
+}
+
+// providerDefinitionIdentity reports IDs minted by a documented provider
+// definition (Greenhouse public API groups), as opposed to live DOM
+// observation. Only the Greenhouse inspector uses these group prefixes.
+func providerDefinitionIdentity(id string) bool {
+	for _, prefix := range []string{"application:", "location:", "compliance:"} {
+		if strings.HasPrefix(id, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// inspectorFallbackLabel reports labels the read-only observer emits when it
+// could not establish employer wording. They describe the observation
+// failure, never the employer's question.
+func inspectorFallbackLabel(label string) bool {
+	trimmed := strings.TrimSpace(label)
+	return trimmed == "Unlabeled control" || strings.HasPrefix(trimmed, "Radio group: ")
 }
 
 // employerOnlyQuestion labels identify questions the existing preparation

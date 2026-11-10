@@ -202,9 +202,27 @@ func liveWritingTriage(q preparedQuestion) (string, string) {
 // displayDocumentControl keeps résumé and cover-letter controls in the
 // Documents workflow: they never appear as applicant writing tasks. This
 // mirrors the live workbench filter, which already excludes them, for the
-// early inventory that preserves them.
+// early inventory that preserves them. File kinds are documents whatever
+// their label says, and the provider's own résumé identities (including the
+// Greenhouse paste-text control) are documents whatever their control kind
+// is. Anything else keeps its own role: narrative wording that merely
+// mentions a résumé stays an applicant-written question.
 func displayDocumentControl(f schema.Field) bool {
-	return f.Kind == "file" || strings.Contains(strings.ToLower(f.Label), "cover letter")
+	if f.Kind == "file" || f.Kind == "input_file" {
+		return true
+	}
+	if strings.Contains(strings.ToLower(f.Label), "cover letter") {
+		return true
+	}
+	switch resumeDocumentIdentity(profileQuestionIdentity(f.ID)) {
+	case "resume", "resumetext", "cv":
+		return true
+	}
+	return false
+}
+
+func resumeDocumentIdentity(id string) string {
+	return strings.NewReplacer("_", "", "-", "", " ", "").Replace(strings.ToLower(id))
 }
 
 // displayUnidentifiedControl reports generic buckets without a stable field
