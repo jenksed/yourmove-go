@@ -543,7 +543,7 @@ export function WorkspacePage(): React.JSX.Element {
                 <div>
                   <h1>{snapshot.job.displayTitle}</h1>
                   <p className="page-description">
-                    <ATSPlatformIcon url={snapshot.job.url} host={snapshot.job.host} />
+                    <ATSPlatformIcon provider={snapshot.job.provider} providerLabel={snapshot.job.providerLabel} />
                     {snapshot.job.companyOrHost} <span className="dot-sep" aria-hidden="true">·</span>{" "}
                     {snapshot.job.stageLabel}
                   </p>

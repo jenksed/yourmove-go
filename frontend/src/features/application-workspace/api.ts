@@ -27,6 +27,11 @@ export interface WorkspaceJob {
   lastSubmittedAt: string;
   companyOrHost: string;
   displayTitle: string;
+  // Go-owned ATS platform key ("" when unrecognized) and its accessible
+  // label, identical to the Opportunities list verdict. Rendered verbatim;
+  // never re-derived here.
+  provider: string;
+  providerLabel: string;
   missingDetails: string[];
   titleManual: boolean;
   companyManual: boolean;

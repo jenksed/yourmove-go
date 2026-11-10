@@ -54,6 +54,11 @@ type workspaceJobJSON struct {
 	LastSubmittedAt  string   `json:"lastSubmittedAt"`
 	CompanyOrHost    string   `json:"companyOrHost"`
 	DisplayTitle     string   `json:"displayTitle"`
+	// Provider is the Go-owned ATS platform key ("" when unrecognized) with
+	// its accessible label, identical to the Opportunities list verdict.
+	// React renders these verbatim.
+	Provider      string `json:"provider"`
+	ProviderLabel string `json:"providerLabel"`
 	MissingDetails   []string `json:"missingDetails"`
 	TitleManual      bool     `json:"titleManual"`
 	CompanyManual    bool     `json:"companyManual"`
@@ -76,6 +81,7 @@ func toWorkspaceJob(job Job) workspaceJobJSON {
 		SourceNote: job.SourceNote, SourceCheckedAt: job.SourceCheckedAt,
 		SelectedResumeID: job.SelectedResumeID, SubmissionCount: job.SubmissionCount,
 		LastSubmittedAt: job.LastSubmittedAt, CompanyOrHost: companyOrHost, DisplayTitle: displayTitle,
+		Provider: job.PostingProvider(), ProviderLabel: job.PostingProviderLabel(),
 		MissingDetails: job.MissingPostingDetails(),
 		TitleManual:    job.TitleManual, CompanyManual: job.CompanyManual,
 		DescriptionMan: job.DescriptionManual, SalaryManual: job.SalaryManual,

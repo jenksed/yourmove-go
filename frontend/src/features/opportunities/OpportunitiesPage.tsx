@@ -561,8 +561,6 @@ export function OpportunitiesPage(): React.JSX.Element {
                               <ATSPlatformIcon
                                 provider={job.provider}
                                 providerLabel={job.providerLabel}
-                                url={job.url}
-                                host={job.host}
                                 decorative
                               />
                               <span className="company-label">{job.companyOrHost}</span>

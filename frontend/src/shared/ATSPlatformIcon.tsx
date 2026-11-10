@@ -1,14 +1,12 @@
-import { atsIconSrc, atsPlatformLabel, resolveATSPlatform } from "./atsPlatforms";
+import { atsIconSrc, atsPlatformLabel, normalizeATSProvider } from "./atsPlatforms";
 
 export interface ATSPlatformIconProps {
-  // Go-owned provider key when the API supplies one (Opportunities).
-  // Trusted verbatim; never re-derived.
+  // Go-owned provider key from the API ("" when unrecognized), identical in
+  // the Opportunities list and the workspace snapshot. Rendered verbatim;
+  // never re-derived here.
   provider?: string;
   // Go-owned accessible name shown beside the icon.
   providerLabel?: string;
-  // Posting URL and host, used only when no provider was supplied.
-  url?: string;
-  host?: string;
   // Set when the platform name already appears beside the icon (the
   // Opportunities source badge), so screen readers hear it once.
   decorative?: boolean;
@@ -20,7 +18,7 @@ export interface ATSPlatformIconProps {
 // The icon identifies the posting platform only; it never implies support
 // for question discovery, browser automation, assisted Fill, or submission.
 export function ATSPlatformIcon(props: ATSPlatformIconProps): React.JSX.Element {
-  const platform = resolveATSPlatform(props);
+  const platform = normalizeATSProvider(props.provider);
   const label = props.providerLabel?.trim() !== "" && props.providerLabel !== undefined
     ? props.providerLabel.trim()
     : atsPlatformLabel(platform);
