@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jenksed/yourmove-go/internal/platforms"
 )
@@ -233,12 +234,23 @@ func (a *App) updateJob(job Job) error {
 
 // applyPostingRefresh atomically applies an employer observation without touching manually
 // edited values. A failed lookup updates evidence only, never the saved job content.
+// A retrieved lookup also persists the sealed rich posting source (location,
+// workplace, employment, description evidence) the same way single intake
+// does, so bulk-enriched postings keep the useful public facts available
+// from their source. Non-retrieved or non-available results leave existing
+// evidence untouched, and manual descriptions keep their precedence through
+// the confirmed flags.
 func (a *App) applyPostingRefresh(id int64, metadata platforms.Metadata, status, note, checkedAt string) error {
 	salaryOrigin := metadata.SalaryOrigin
 	if salaryOrigin == "" {
 		salaryOrigin = "employer"
 	}
-	result, err := a.db.Exec(`UPDATE jobs SET
+	tx, err := a.db.Begin()
+	if err != nil {
+		return fmt.Errorf("refresh job %d: %w", id, err)
+	}
+	defer tx.Rollback()
+	result, err := tx.Exec(`UPDATE jobs SET
 			stage = CASE WHEN ? = 'closed' THEN 'closed' ELSE stage END,
             title = CASE WHEN ? = 'retrieved' AND title_manual = 0 AND ? <> '' THEN ? ELSE title END,
             company = CASE WHEN ? = 'retrieved' AND company_manual = 0 AND ? <> '' THEN ? ELSE company END,
@@ -263,6 +275,29 @@ func (a *App) applyPostingRefresh(id int64, metadata platforms.Metadata, status,
 	}
 	if n == 0 {
 		return sql.ErrNoRows
+	}
+	if status == "retrieved" {
+		var jobURL string
+		if err := tx.QueryRow(`SELECT url FROM jobs WHERE id = ?`, id).Scan(&jobURL); err != nil {
+			return fmt.Errorf("refresh job %d: %w", id, err)
+		}
+		usable := platforms.NormalizePostingSourceResult(metadata.Source)
+		if usable.Availability == platforms.PostingSourceAvailable && usable.Validate(jobURL, metadata.Description) == nil {
+			successAt := checkedAt
+			if _, err := time.Parse(time.RFC3339Nano, successAt); err != nil {
+				if parsed, perr := time.Parse(time.RFC3339, checkedAt); perr == nil {
+					successAt = parsed.UTC().Format(time.RFC3339Nano)
+				} else {
+					return fmt.Errorf("refresh job %d: invalid success time: %w", id, err)
+				}
+			}
+			if err := saveJobPostingSource(tx, id, jobURL, metadata.Description, successAt, usable, metadata.Description != "", metadata.SalaryText != ""); err != nil {
+				return fmt.Errorf("refresh job %d: %w", id, err)
+			}
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("refresh job %d: %w", id, err)
 	}
 	return nil
 }
