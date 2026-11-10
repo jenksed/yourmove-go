@@ -66,10 +66,7 @@ func toWorkspaceJob(job Job) workspaceJobJSON {
 	if companyOrHost == "" {
 		companyOrHost = job.Host
 	}
-	displayTitle := strings.TrimSpace(job.Title)
-	if displayTitle == "" {
-		displayTitle = job.URL
-	}
+	displayTitle := job.DisplayTitle()
 	return workspaceJobJSON{
 		ID: job.ID, URL: job.URL, Host: job.Host, Title: job.Title,
 		Company: job.Company, Description: job.Description, Stage: job.Stage,

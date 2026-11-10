@@ -34,6 +34,10 @@ type opportunityJobJSON struct {
 	SourceStatus     string `json:"sourceStatus"`
 	CompanyOrHost    string `json:"companyOrHost"`
 	DisplayTitle     string `json:"displayTitle"`
+	// Provider is the Go-owned ATS platform key ("" when unrecognized) with
+	// its accessible label. React renders these verbatim.
+	Provider      string `json:"provider"`
+	ProviderLabel string `json:"providerLabel"`
 }
 
 func toOpportunityJSON(job Job) opportunityJobJSON {
@@ -41,10 +45,7 @@ func toOpportunityJSON(job Job) opportunityJobJSON {
 	if strings.TrimSpace(companyOrHost) == "" {
 		companyOrHost = job.Host
 	}
-	displayTitle := job.Title
-	if strings.TrimSpace(displayTitle) == "" {
-		displayTitle = job.URL
-	}
+	displayTitle := job.DisplayTitle()
 	return opportunityJobJSON{
 		ID: job.ID, URL: job.URL, Host: job.Host, Title: job.Title,
 		Company: job.Company, Description: job.Description, Stage: job.Stage,
@@ -52,6 +53,7 @@ func toOpportunityJSON(job Job) opportunityJobJSON {
 		ActionLabel: job.ActionLabel(), ActionHref: job.ActionHref(), ActionReason: job.ActionReason(),
 		SelectedResumeID: job.SelectedResumeID, SubmissionCount: job.SubmissionCount,
 		SourceStatus: job.SourceStatus, CompanyOrHost: companyOrHost, DisplayTitle: displayTitle,
+		Provider: job.PostingProvider(), ProviderLabel: job.PostingProviderLabel(),
 	}
 }
 
@@ -186,6 +188,20 @@ func (a *App) opportunitiesImportAPI(w http.ResponseWriter, r *http.Request) {
 		log.Printf("batch intake api: %v", err)
 		writeOpportunityError(w, http.StatusInternalServerError, "Unable to import jobs; no changes from this batch were saved")
 		return
+	}
+	// Begin automatic initial metadata checks for the newly added jobs only.
+	// This never delays the import response: workers run in the background,
+	// duplicates and unrelated jobs are untouched, and a busy engine leaves
+	// the new jobs unchecked for the manual pending path.
+	var added []int64
+	for _, item := range results.Items {
+		if item.Status == "added" {
+			added = append(added, item.JobID)
+		}
+	}
+	if len(added) > 0 {
+		_, started := a.queueAutoEnrichment(added)
+		results.Enrichment = &BatchEnrichment{Started: started, Total: len(added)}
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")

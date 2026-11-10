@@ -4,7 +4,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
+	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/jenksed/yourmove-go/internal/platforms"
 )
@@ -80,6 +84,16 @@ func validPriority(s string) bool {
 	return s == PriorityNormal || s == PriorityHigh || s == PriorityLow
 }
 
+// PostingProvider is the Go-owned ATS platform key for this saved posting
+// URL ("lever", "recruitee", … or "" when unrecognized). Both the React
+// Opportunities list and the Go-rendered fallback render this value; React
+// must not re-derive it with its own heuristics.
+func (j Job) PostingProvider() string { return platforms.PostingProvider(j.URL) }
+
+// PostingProviderLabel is the accessible source name for PostingProvider,
+// or "" for unrecognized URLs (rendered with the neutral indicator).
+func (j Job) PostingProviderLabel() string { return platforms.PostingProviderLabel(j.PostingProvider()) }
+
 func (j Job) DisplayDescription() string { return platforms.NormalizeDescription(j.Description) }
 
 func (j Job) SalaryOriginLabel() string {
@@ -126,6 +140,64 @@ func (j Job) MissingPostingDetails() []string {
 	}
 
 	return missing
+}
+
+// DisplayTitle is presentation only. Verified or manually entered titles pass
+// through unchanged. When no title is stored, it derives a readable fallback
+// from the posting slug (last URL path segment with hyphens/underscores as
+// spaces) instead of showing the entire URL. The stored Title stays empty, so
+// MissingPostingDetails, TitleManual, and source-check evidence still
+// distinguish the fallback from verified employer metadata. It never writes
+// inferred titles, never uses third-party search results, and never changes
+// stage or source status.
+func (j Job) DisplayTitle() string {
+	if strings.TrimSpace(j.Title) != "" {
+		return j.Title
+	}
+	if readable := readableTitleFromPostingURL(j.URL); readable != "" {
+		return readable
+	}
+	if strings.TrimSpace(j.Host) != "" {
+		return j.Host
+	}
+	return j.URL
+}
+
+// readableTitleFromPostingURL derives a human-readable fallback from the
+// posting slug only. It returns "" when the URL has no usable slug, so
+// callers can fall back to host or URL instead of inventing a title.
+func readableTitleFromPostingURL(rawURL string) string {
+	u, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	segments := strings.Split(strings.Trim(u.Path, "/"), "/")
+	slug := ""
+	for i := len(segments) - 1; i >= 0; i-- {
+		if s := strings.TrimSpace(segments[i]); s != "" {
+			slug = s
+			break
+		}
+	}
+	if slug == "" {
+		return ""
+	}
+	slug = strings.ReplaceAll(slug, "-", " ")
+	slug = strings.ReplaceAll(slug, "_", " ")
+	slug = strings.Join(strings.Fields(slug), " ")
+	if slug == "" {
+		return ""
+	}
+	words := strings.Fields(slug)
+	for i, w := range words {
+		lower := strings.ToLower(w)
+		r, size := utf8.DecodeRuneInString(lower)
+		if r == utf8.RuneError && size == 0 {
+			continue
+		}
+		words[i] = string(unicode.ToUpper(r)) + lower[size:]
+	}
+	return strings.Join(words, " ")
 }
 
 func (a *App) saveJob(job Job) error {
@@ -233,12 +305,23 @@ func (a *App) updateJob(job Job) error {
 
 // applyPostingRefresh atomically applies an employer observation without touching manually
 // edited values. A failed lookup updates evidence only, never the saved job content.
+// A retrieved lookup also persists the sealed rich posting source (location,
+// workplace, employment, description evidence) the same way single intake
+// does, so bulk-enriched postings keep the useful public facts available
+// from their source. Non-retrieved or non-available results leave existing
+// evidence untouched, and manual descriptions keep their precedence through
+// the confirmed flags.
 func (a *App) applyPostingRefresh(id int64, metadata platforms.Metadata, status, note, checkedAt string) error {
 	salaryOrigin := metadata.SalaryOrigin
 	if salaryOrigin == "" {
 		salaryOrigin = "employer"
 	}
-	result, err := a.db.Exec(`UPDATE jobs SET
+	tx, err := a.db.Begin()
+	if err != nil {
+		return fmt.Errorf("refresh job %d: %w", id, err)
+	}
+	defer tx.Rollback()
+	result, err := tx.Exec(`UPDATE jobs SET
 			stage = CASE WHEN ? = 'closed' THEN 'closed' ELSE stage END,
             title = CASE WHEN ? = 'retrieved' AND title_manual = 0 AND ? <> '' THEN ? ELSE title END,
             company = CASE WHEN ? = 'retrieved' AND company_manual = 0 AND ? <> '' THEN ? ELSE company END,
@@ -263,6 +346,29 @@ func (a *App) applyPostingRefresh(id int64, metadata platforms.Metadata, status,
 	}
 	if n == 0 {
 		return sql.ErrNoRows
+	}
+	if status == "retrieved" {
+		var jobURL string
+		if err := tx.QueryRow(`SELECT url FROM jobs WHERE id = ?`, id).Scan(&jobURL); err != nil {
+			return fmt.Errorf("refresh job %d: %w", id, err)
+		}
+		usable := platforms.NormalizePostingSourceResult(metadata.Source)
+		if usable.Availability == platforms.PostingSourceAvailable && usable.Validate(jobURL, metadata.Description) == nil {
+			successAt := checkedAt
+			if _, err := time.Parse(time.RFC3339Nano, successAt); err != nil {
+				if parsed, perr := time.Parse(time.RFC3339, checkedAt); perr == nil {
+					successAt = parsed.UTC().Format(time.RFC3339Nano)
+				} else {
+					return fmt.Errorf("refresh job %d: invalid success time: %w", id, err)
+				}
+			}
+			if err := saveJobPostingSource(tx, id, jobURL, metadata.Description, successAt, usable, metadata.Description != "", metadata.SalaryText != ""); err != nil {
+				return fmt.Errorf("refresh job %d: %w", id, err)
+			}
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("refresh job %d: %w", id, err)
 	}
 	return nil
 }

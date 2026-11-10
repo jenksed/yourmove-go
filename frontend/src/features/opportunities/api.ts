@@ -20,6 +20,10 @@ export interface OpportunityJob {
   sourceStatus: string;
   companyOrHost: string;
   displayTitle: string;
+  // Go-owned ATS platform key ("" when unrecognized) and its accessible
+  // label. Rendered verbatim; never re-derived here.
+  provider: string;
+  providerLabel: string;
 }
 
 export interface NextOpportunity {
@@ -51,11 +55,17 @@ export interface BatchItem {
   jobId: number;
 }
 
+export interface BatchEnrichment {
+  started: boolean;
+  total: number;
+}
+
 export interface BatchResult {
   items: BatchItem[];
   added: number;
   duplicates: number;
   invalid: number;
+  enrichment?: BatchEnrichment | null;
 }
 
 async function readError(response: Response): Promise<string> {

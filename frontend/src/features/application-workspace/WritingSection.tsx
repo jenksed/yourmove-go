@@ -21,6 +21,7 @@ import {
   type QuestionsSnapshot,
   type WritingQuestion,
 } from "./writingApi";
+import { browserAction } from "./continuationApi";
 import { PreviousWriting, type PendingSource } from "./PreviousWriting";
 import { setUnsaved } from "../../shared/unsaved";
 
@@ -111,6 +112,8 @@ export function WritingSection({
   const [snapshot, setSnapshot] = useState<QuestionsSnapshot | null>(null);
   const [captureBusy, setCaptureBusy] = useState(false);
   const [captureNotice, setCaptureNotice] = useState("");
+  const [viewBusy, setViewBusy] = useState(false);
+  const [viewNotice, setViewNotice] = useState("");
   const [loading, setLoading] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string>("");
   const [selectedId, setSelectedId] = useState<string>("");
@@ -633,7 +636,23 @@ export function WritingSection({
           </p>
         </div>
         <div className="heading-actions">
-          <button className="button" type="button" disabled={captureBusy || readOnly || !snapshot.editingAllowed || !snapshot.ownsPosting} onClick={async () => {            setCaptureBusy(true);
+          <button className="button" type="button" disabled={viewBusy || readOnly || !snapshot.editingAllowed || !snapshot.ownsPosting} onClick={async () => {
+            setViewBusy(true);
+            setViewNotice("");
+            try {
+              const result = await browserAction(jobId, snapshot.browserActive ? "focus" : "start");
+              if (!result.ok) {
+                setViewNotice(result.message ?? "The employer browser could not be opened.");
+              } else if (!snapshot.browserActive) {
+                setViewNotice("Managed browser opening. Navigate the employer form yourself; observed questions appear here automatically without a separate capture step. Nothing is filled or submitted from here.");
+              }
+            } catch (error) {
+              setViewNotice(error instanceof Error ? error.message : "The employer browser could not be opened.");
+            } finally { setViewBusy(false); }
+          }}>
+            {viewBusy ? "Opening…" : snapshot.browserActive ? "Return to Application" : "View Application"}
+          </button>
+          <button className="button button-secondary" type="button" disabled={captureBusy || readOnly || !snapshot.editingAllowed || !snapshot.ownsPosting} onClick={async () => {            setCaptureBusy(true);
             setCaptureNotice("");
             try {
               await captureQuestions(jobId);
@@ -682,16 +701,19 @@ export function WritingSection({
       )}
 
       {captureNotice && <p role="status">{captureNotice}</p>}
+      {viewNotice && <p role="status">{viewNotice}</p>}
       <p role="status" aria-label="Question capture status">
         {snapshot.captureState?.phase
           ? `Capture — ${snapshot.captureState.phase}: ${snapshot.captureState.message}`
-          : "Capture is not running. Open the managed browser to observe application questions."}
+          : snapshot.browserActive
+            ? "Managed browser open. New questions appear here as you navigate the employer form; nothing is filled automatically."
+            : "Capture is not running. Select View Application to open the managed browser; observed questions appear here automatically."}
       </p>
       {dirty && <p className="small-muted">Save your answer before refreshing the question list.</p>}
 
       {discoveryStatus === "checking" && <p role="status">Checking for application questions…</p>}
       {!snapshot.ownsPosting && <p className="writing-notice" role="note">Question capture supports saved Ashby, Greenhouse, and Lever postings. This URL cannot yet be safely associated with an employer form. Select Add question manually to prepare answers yourself; automatic Fill remains unavailable.</p>}
-      {discoveryStatus === "unsupported" && snapshot.ownsPosting && answerTasks.length > 0 && <p className="writing-notice">This employer does not offer an early question preview. Select Capture application questions to check managed inspection support.</p>}
+      {discoveryStatus === "unsupported" && snapshot.ownsPosting && answerTasks.length > 0 && <p className="writing-notice">This employer does not offer an early question preview. Questions require live observation: select View Application, then navigate the employer form. Observed questions appear here automatically as you navigate; Refresh questions remains available if anything looks stale.</p>}
       {discoveryStatus === "failed" && <p className="writing-notice">We could not check questions right now. Your saved work is safe. <button className="button button-secondary" type="button" onClick={onRetryDiscovery}>Retry question check</button> You can also select Capture application questions.</p>}
 
       {(snapshot.returnNotice !== "" || snapshot.earlyNotice !== "") && (
@@ -710,7 +732,7 @@ export function WritingSection({
         <div className="empty-state">
           <h3>No questions discovered yet</h3>
           <p>
-            {!snapshot.ownsPosting ? "Automatic capture and Fill are unavailable for this posting. Select Add question manually above, then open the employer site yourself and complete the form." : discoveryStatus === "checking" ? "Checking this posting for questions." : "No early questions are available. Select Capture application questions, then navigate the employer form in the managed browser."}
+            {!snapshot.ownsPosting ? "Automatic capture and Fill are unavailable for this posting. Select Add question manually above, then open the employer site yourself and complete the form." : discoveryStatus === "checking" ? "Checking this posting for questions." : "Questions require live observation for this employer. Select View Application above, then navigate the employer form; observed questions appear here automatically without a separate capture step. Refresh questions remains available as a recovery action."}
           </p>
         </div>
       )}
