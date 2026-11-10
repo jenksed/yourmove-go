@@ -558,24 +558,11 @@ export function OpportunitiesPage(): React.JSX.Element {
                           </label>
                           <div className="job-row-body">
                             <div className="job-row-meta">
+                              <span className="company-label">{job.companyOrHost}</span>
                               <ATSPlatformIcon
                                 provider={job.provider}
                                 providerLabel={job.providerLabel}
-                                decorative
                               />
-                              <span className="company-label">{job.companyOrHost}</span>
-                              {job.provider !== "" ? (
-                                <span
-                                  className="source-badge"
-                                  title={`Source platform: ${job.providerLabel}. This identifies where the posting was saved from; it does not imply automatic question capture or Fill support.`}
-                                >
-                                  {job.providerLabel}
-                                </span>
-                              ) : (
-                                <span className="source-badge source-unknown" title="Source platform not recognized">
-                                  Web
-                                </span>
-                              )}
                               <span className={`status status-${job.stage}`}>{job.stageLabel}</span>
                               {job.priority === "high" && (
                                 <span className="priority-flag">High priority</span>

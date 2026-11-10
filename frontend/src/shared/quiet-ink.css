@@ -245,4 +245,4 @@ button,input,select,textarea {accent-color:var(--color-action)}
 .ats-icon-fallback{background:var(--color-surface-muted);color:var(--color-muted)}
 .ats-icon-fallback svg{display:block;height:15px;width:15px}
 .job-row-meta .ats-icon{margin-right:1px}
-.page-description .ats-icon{margin-right:7px;vertical-align:-6px}
+.page-description .ats-icon{margin-left:7px;vertical-align:-6px}

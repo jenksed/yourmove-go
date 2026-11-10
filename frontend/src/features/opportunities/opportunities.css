@@ -25,12 +25,6 @@
 .job-row-actions{display:flex;align-items:center;gap:17px;flex-shrink:0}.row-secondary{font-size:12px}.row-primary{min-height:36px;font-size:12px;padding:7px 11px}
 .status{border-radius:5px;padding:3px 8px;font-size:11px;font-weight:700;line-height:1.45;display:inline-flex;align-items:center;white-space:nowrap;background:var(--color-surface-muted);color:var(--color-muted)}
 .status-review{background:var(--color-info-soft);color:var(--color-info)}.status-ready{background:var(--color-surface-muted);color:var(--color-text)}.status-applied{background:var(--color-success-soft);color:var(--color-success)}.status-closed{background:var(--color-surface-muted);color:var(--color-muted)}
-/* ATS source indicator: small platform badge beside the employer identity.
-   It names where the posting was saved from and never implies automatic
-   capture or Fill support. Unknown sources stay legible with the neutral
-   variant. */
-.source-badge{border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-muted);border-radius:5px;padding:3px 8px;font-size:11px;font-weight:700;line-height:1.45;display:inline-flex;align-items:center;white-space:nowrap}
-.source-unknown{border-style:dashed}
 .priority-flag{color:var(--color-attention);background:var(--color-attention-soft);font-size:10px;border-radius:5px;padding:3px 8px;font-weight:750}.priority-quiet{color:var(--color-muted);font-size:11px}
 .empty-state{text-align:center;padding:50px 28px;max-width:510px;margin:0 auto}.empty-state h3{font-size:17px}.empty-state p{color:var(--color-muted);margin-bottom:20px}.empty-mark{display:grid;place-items:center;font-size:25px;width:54px;height:54px;border-radius:14px;background:var(--color-primary-soft);color:var(--color-primary);margin:0 auto 15px}
 .step-cta{margin:6px 0 18px 47px}.submission-disclosure{margin:9px 0 0 47px;border:1px solid var(--color-border);border-radius:8px;background:var(--color-surface-muted)}.submission-disclosure>summary{list-style:none;padding:13px 15px;display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:700}.submission-disclosure-body{padding:16px;border-top:1px solid var(--color-border)}.confirmation-note{color:var(--color-attention);background:var(--color-attention-soft);padding:12px;border-radius:7px;font-size:12px;margin-bottom:14px}.submission-form{display:grid;gap:14px}.confirm-row{display:flex;align-items:flex-start;gap:10px;font-size:12px}.confirm-row input{margin:3px 0 0;accent-color:var(--color-primary);width:16px;height:16px;flex:0 0 16px}

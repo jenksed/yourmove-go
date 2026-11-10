@@ -5,11 +5,8 @@ export interface ATSPlatformIconProps {
   // the Opportunities list and the workspace snapshot. Rendered verbatim;
   // never re-derived here.
   provider?: string;
-  // Go-owned accessible name shown beside the icon.
+  // Go-owned accessible name for the platform.
   providerLabel?: string;
-  // Set when the platform name already appears beside the icon (the
-  // Opportunities source badge), so screen readers hear it once.
-  decorative?: boolean;
   className?: string;
 }
 
@@ -32,9 +29,9 @@ export function ATSPlatformIcon(props: ATSPlatformIconProps): React.JSX.Element 
     return (
       <span
         className={`${className} ats-icon-fallback`}
-        role={props.decorative ? undefined : "img"}
-        aria-label={props.decorative ? undefined : name}
-        aria-hidden={props.decorative ? true : undefined}
+        role="img"
+        aria-label={name}
+        title={name}
       >
         <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
           <circle cx="8" cy="8" r="6.2" stroke="currentColor" strokeWidth="1.4" />
@@ -49,8 +46,8 @@ export function ATSPlatformIcon(props: ATSPlatformIconProps): React.JSX.Element 
   }
 
   return (
-    <span className={className} aria-hidden={props.decorative ? true : undefined}>
-      <img src={src} alt={props.decorative ? "" : name} draggable={false} />
+    <span className={className} title={name}>
+      <img src={src} alt={name} draggable={false} />
     </span>
   );
 }
