@@ -143,7 +143,85 @@ func (p earlyQuestionPreparation) WorkbenchQuestions() []earlyApplicationQuestio
 			questions = append(questions, q)
 		}
 	}
-	return questions
+	return collapseDegenerateManualEarly(questions)
+}
+
+// collapseDegenerateManualEarly is the early-discovery mirror of
+// collapseDegenerateManualLive: one employer requirement published as both a
+// choice collection and a degenerate option-less definition presents once.
+// Saved early answers and reconciliation state block merging, so no applicant
+// writing is hidden; the raw preparation behind save and accept paths is
+// untouched.
+func collapseDegenerateManualEarly(questions []earlyApplicationQuestion) []earlyApplicationQuestion {
+	describe := func(q earlyApplicationQuestion) (string, bool) {
+		if q.TriageCategory != "review" {
+			return "", false
+		}
+		if q.Value != "" || q.Revision != 0 {
+			return "", false
+		}
+		wording := reconciliationLabel(q.Field.Label)
+		if wording == "" || inspectorFallbackLabel(wording) {
+			return "", false
+		}
+		if displayQuestionIdentity(q.SourceQuestionID) == "" {
+			return "", false
+		}
+		return wording, true
+	}
+	groups := map[string][]int{}
+	var order []string
+	for i, q := range questions {
+		wording, ok := describe(q)
+		if !ok {
+			continue
+		}
+		if _, seen := groups[wording]; !seen {
+			order = append(order, wording)
+		}
+		groups[wording] = append(groups[wording], i)
+	}
+	drop := make([]bool, len(questions))
+	required := make([]bool, len(questions))
+	for i, q := range questions {
+		required[i] = q.Field.Required
+	}
+	folded := false
+	for _, wording := range order {
+		members := groups[wording]
+		var bearers []int
+		for _, i := range members {
+			if len(questions[i].Field.Options) > 0 {
+				bearers = append(bearers, i)
+			}
+		}
+		if len(bearers) != 1 {
+			continue
+		}
+		target := bearers[0]
+		for _, i := range members {
+			if i == target || len(questions[i].Field.Options) > 0 {
+				continue
+			}
+			drop[i] = true
+			folded = true
+			required[target] = required[target] || questions[i].Field.Required
+		}
+	}
+	if !folded {
+		return questions
+	}
+	out := make([]earlyApplicationQuestion, 0, len(questions))
+	for i, q := range questions {
+		if drop[i] {
+			continue
+		}
+		if required[i] != q.Field.Required {
+			q.Field.Required = required[i]
+		}
+		out = append(out, q)
+	}
+	return out
 }
 
 func (p earlyQuestionPreparation) ActionableQuestions() []earlyApplicationQuestion {

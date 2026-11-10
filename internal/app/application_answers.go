@@ -107,7 +107,94 @@ func (p questionPreparation) WorkbenchQuestions() []preparedQuestion {
 			questions = append(questions, q)
 		}
 	}
-	return questions
+	return collapseDegenerateManualLive(questions)
+}
+
+// collapseDegenerateManualLive folds option-less manual-only rows into the
+// single option-bearing manual-only row that shares their exact normalized
+// wording. One employer requirement observed as both a choice collection and
+// a degenerate control (for example a Lever select-all-that-apply block seen
+// as a radio group plus an option-less checkbox) must present once, with the
+// observed options and manual guidance intact.
+//
+// This is display-only and narrowly scoped: only triage-review rows (never
+// answer tasks, profile facts, documents, or applicant-authored questions)
+// with a stable display identity and no saved values participate. Rows with
+// observer-fallback wording, empty wording, or saved values never merge, and
+// wording groups without exactly one option-bearing row are left untouched,
+// so genuinely distinct same-worded controls stay separate. The underlying
+// records, counts of saved answers, Previous writing, and Fill authority are
+// untouched: review rows carry no values and no transfer eligibility.
+func collapseDegenerateManualLive(questions []preparedQuestion) []preparedQuestion {
+	describe := func(q preparedQuestion) (string, bool) {
+		if writingCategory(q.Field, true, q.Editable) != "review" {
+			return "", false
+		}
+		if q.Value != "" || q.Revision != 0 {
+			return "", false
+		}
+		wording := reconciliationLabel(q.Field.Label)
+		if wording == "" || inspectorFallbackLabel(wording) {
+			return "", false
+		}
+		if displayQuestionIdentity(q.Field.ID) == "" {
+			return "", false
+		}
+		return wording, true
+	}
+	groups := map[string][]int{}
+	var order []string
+	for i, q := range questions {
+		wording, ok := describe(q)
+		if !ok {
+			continue
+		}
+		if _, seen := groups[wording]; !seen {
+			order = append(order, wording)
+		}
+		groups[wording] = append(groups[wording], i)
+	}
+	drop := make([]bool, len(questions))
+	required := make([]bool, len(questions))
+	for i, q := range questions {
+		required[i] = q.Field.Required
+	}
+	folded := false
+	for _, wording := range order {
+		members := groups[wording]
+		var bearers []int
+		for _, i := range members {
+			if len(questions[i].Field.Options) > 0 {
+				bearers = append(bearers, i)
+			}
+		}
+		if len(bearers) != 1 {
+			continue
+		}
+		target := bearers[0]
+		for _, i := range members {
+			if i == target || len(questions[i].Field.Options) > 0 {
+				continue
+			}
+			drop[i] = true
+			folded = true
+			required[target] = required[target] || questions[i].Field.Required
+		}
+	}
+	if !folded {
+		return questions
+	}
+	out := make([]preparedQuestion, 0, len(questions))
+	for i, q := range questions {
+		if drop[i] {
+			continue
+		}
+		if required[i] != q.Field.Required {
+			q.Field.Required = required[i]
+		}
+		out = append(out, q)
+	}
+	return out
 }
 
 // ActionableQuestions are supported application-specific questions. Profile
