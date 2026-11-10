@@ -248,6 +248,22 @@ func earlyQuestionWritable(field schema.Field, unique bool) (bool, string) {
 	if strings.Contains(strings.ToLower(field.Label), "cover letter") {
 		return false, "Use the separate cover-letter editor for this material."
 	}
+	// Résumé and other document controls belong to the Documents workflow,
+	// whatever their control kind is. They are never early writing tasks.
+	if displayDocumentControl(field) {
+		return false, "Use the Documents workflow for this material."
+	}
+	// Observer fallback wording and positional DOM identities never describe
+	// a publishable question, so they stay manual even when the control kind
+	// looks writable. Saved writing is preserved; only new saves are gated.
+	if !stableQuestionIdentity(field, unique) {
+		return false, "This discovered control does not have a reliable question identity. Complete it manually in the employer application."
+	}
+	// Extended pronouns collections have no qualified single-value mapping.
+	// Keep the real question and observed options as manual employer work.
+	if pronounsRequiresManual(field) {
+		return false, "This pronouns selection includes options beyond the approved profile preferences. Complete it manually in the employer application."
+	}
 	switch strings.ToLower(field.Kind) {
 	case "text", "input_text", "email", "tel", "url", "textarea":
 		return true, ""
