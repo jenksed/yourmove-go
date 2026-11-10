@@ -32,33 +32,38 @@ import (
 const workspaceRefreshDisclaimer = "A metadata refresh reports saved posting details only; it does not verify whether the employer is still accepting applications."
 
 type workspaceJobJSON struct {
-	ID               int64    `json:"id"`
-	URL              string   `json:"url"`
-	Host             string   `json:"host"`
-	Title            string   `json:"title"`
-	Company          string   `json:"company"`
-	Description      string   `json:"description"`
-	Stage            string   `json:"stage"`
-	StageLabel       string   `json:"stageLabel"`
-	Priority         string   `json:"priority"`
-	PriorityLabel    string   `json:"priorityLabel"`
-	SalaryText       string   `json:"salaryText"`
-	SalaryOrigin     string   `json:"salaryOrigin"`
-	SalaryOriginLabl string   `json:"salaryOriginLabel"`
-	SourceStatus     string   `json:"sourceStatus"`
-	SourceStatusLabl string   `json:"sourceStatusLabel"`
-	SourceNote       string   `json:"sourceNote"`
-	SourceCheckedAt  string   `json:"sourceCheckedAt"`
-	SelectedResumeID int64    `json:"selectedResumeId"`
-	SubmissionCount  int64    `json:"submissionCount"`
-	LastSubmittedAt  string   `json:"lastSubmittedAt"`
-	CompanyOrHost    string   `json:"companyOrHost"`
-	DisplayTitle     string   `json:"displayTitle"`
-	MissingDetails   []string `json:"missingDetails"`
-	TitleManual      bool     `json:"titleManual"`
-	CompanyManual    bool     `json:"companyManual"`
-	DescriptionMan   bool     `json:"descriptionManual"`
-	SalaryManual     bool     `json:"salaryManual"`
+	ID               int64  `json:"id"`
+	URL              string `json:"url"`
+	Host             string `json:"host"`
+	Title            string `json:"title"`
+	Company          string `json:"company"`
+	Description      string `json:"description"`
+	Stage            string `json:"stage"`
+	StageLabel       string `json:"stageLabel"`
+	Priority         string `json:"priority"`
+	PriorityLabel    string `json:"priorityLabel"`
+	SalaryText       string `json:"salaryText"`
+	SalaryOrigin     string `json:"salaryOrigin"`
+	SalaryOriginLabl string `json:"salaryOriginLabel"`
+	SourceStatus     string `json:"sourceStatus"`
+	SourceStatusLabl string `json:"sourceStatusLabel"`
+	SourceNote       string `json:"sourceNote"`
+	SourceCheckedAt  string `json:"sourceCheckedAt"`
+	SelectedResumeID int64  `json:"selectedResumeId"`
+	SubmissionCount  int64  `json:"submissionCount"`
+	LastSubmittedAt  string `json:"lastSubmittedAt"`
+	CompanyOrHost    string `json:"companyOrHost"`
+	DisplayTitle     string `json:"displayTitle"`
+	// Provider is the Go-owned ATS platform key ("" when unrecognized) with
+	// its accessible label, identical to the Opportunities list verdict.
+	// React renders these verbatim.
+	Provider       string   `json:"provider"`
+	ProviderLabel  string   `json:"providerLabel"`
+	MissingDetails []string `json:"missingDetails"`
+	TitleManual    bool     `json:"titleManual"`
+	CompanyManual  bool     `json:"companyManual"`
+	DescriptionMan bool     `json:"descriptionManual"`
+	SalaryManual   bool     `json:"salaryManual"`
 }
 
 func toWorkspaceJob(job Job) workspaceJobJSON {
@@ -76,6 +81,7 @@ func toWorkspaceJob(job Job) workspaceJobJSON {
 		SourceNote: job.SourceNote, SourceCheckedAt: job.SourceCheckedAt,
 		SelectedResumeID: job.SelectedResumeID, SubmissionCount: job.SubmissionCount,
 		LastSubmittedAt: job.LastSubmittedAt, CompanyOrHost: companyOrHost, DisplayTitle: displayTitle,
+		Provider: job.PostingProvider(), ProviderLabel: job.PostingProviderLabel(),
 		MissingDetails: job.MissingPostingDetails(),
 		TitleManual:    job.TitleManual, CompanyManual: job.CompanyManual,
 		DescriptionMan: job.DescriptionManual, SalaryManual: job.SalaryManual,

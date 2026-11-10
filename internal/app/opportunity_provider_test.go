@@ -1,8 +1,10 @@
 package app
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -48,5 +50,73 @@ func TestOpportunitiesListExposesSourceProvider(t *testing.T) {
 	}
 	if strings.Contains(rendered, "automatic Fill") {
 		t.Fatal("indicator must not imply Fill support")
+	}
+}
+
+// The workspace snapshot must expose the same Go-owned provider verdict as
+// the Opportunities list. Vendor posting infrastructure brands the source
+// even without a posting ID, while corporate marketing hosts and unknown
+// URLs stay unrecognized in both surfaces, so the list and the workspace
+// can never disagree about ATS identity.
+func TestWorkspaceSnapshotExposesSourceProvider(t *testing.T) {
+	a, _ := testWorkspace(t)
+	jobs := []Job{
+		{URL: "https://jobs.lever.co/example/0e4b8b1e-1234-4a5b-8c9d-0e1f2a3b4c5d", Host: "jobs.lever.co", Title: "Lever role"},
+		{URL: "https://job-boards.greenhouse.io/example", Host: "job-boards.greenhouse.io", Title: "Greenhouse board page"},
+		{URL: "https://jobs.lever.co/example", Host: "jobs.lever.co", Title: "Lever board page"},
+		{URL: "https://www.ashbyhq.com/careers", Host: "www.ashbyhq.com", Title: "Ashby corporate page"},
+		{URL: "https://example.com/role", Host: "example.com", Title: "Unknown role"},
+	}
+	for _, job := range jobs {
+		if err := a.saveJob(job); err != nil {
+			t.Fatal(err)
+		}
+	}
+	snapshotProvider := func(id int) (string, string) {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		newMux(a).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "http://localhost/api/jobs/"+strconv.Itoa(id)+"/workspace", nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("workspace %d status=%d body=%s", id, rec.Code, rec.Body.String())
+		}
+		var snapshot struct {
+			Job workspaceJobJSON `json:"job"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &snapshot); err != nil {
+			t.Fatal(err)
+		}
+		return snapshot.Job.Provider, snapshot.Job.ProviderLabel
+	}
+	if provider, label := snapshotProvider(1); provider != "lever" || label != "Lever" {
+		t.Fatalf("lever posting workspace provider=%q label=%q", provider, label)
+	}
+	if provider, label := snapshotProvider(2); provider != "greenhouse" || label != "Greenhouse" {
+		t.Fatalf("greenhouse board workspace provider=%q label=%q", provider, label)
+	}
+	if provider, label := snapshotProvider(3); provider != "lever" || label != "Lever" {
+		t.Fatalf("lever board workspace provider=%q label=%q", provider, label)
+	}
+	for _, id := range []int{4, 5} {
+		if provider, label := snapshotProvider(id); provider != "" || label != "" {
+			t.Fatalf("job %d workspace provider=%q label=%q, want unrecognized", id, provider, label)
+		}
+	}
+	list := httptest.NewRecorder()
+	newMux(a).ServeHTTP(list, httptest.NewRequest(http.MethodGet, "http://localhost/api/opportunities", nil))
+	if list.Code != http.StatusOK {
+		t.Fatalf("list status=%d body=%s", list.Code, list.Body.String())
+	}
+	var listed struct {
+		Jobs []opportunityJobJSON `json:"jobs"`
+	}
+	if err := json.Unmarshal(list.Body.Bytes(), &listed); err != nil {
+		t.Fatal(err)
+	}
+	for _, job := range listed.Jobs {
+		provider, label := snapshotProvider(int(job.ID))
+		if provider != job.Provider || label != job.ProviderLabel {
+			t.Fatalf("job %d list provider=%q label=%q disagrees with workspace provider=%q label=%q",
+				job.ID, job.Provider, job.ProviderLabel, provider, label)
+		}
 	}
 }
