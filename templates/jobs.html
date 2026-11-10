@@ -53,7 +53,7 @@
     {{range .Jobs}}
     <article class="job-row" data-job-row data-stage="{{.Stage}}" data-priority="{{.Priority}}" data-order="{{.ID}}" data-company="{{.Company}}" data-search="{{.Title}} {{.Company}} {{.Host}}">
       <label class="job-select"><input type="checkbox" name="job_ids" value="{{.ID}}" aria-label="Select {{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}} for deletion" {{if gt .SubmissionCount 0}}disabled title="Submitted job: remove individually from its workspace"{{end}}></label>
-      <div class="job-row-body"><div class="job-row-meta"><span class="company-label">{{if .Company}}{{.Company}}{{else}}{{.Host}}{{end}}</span>{{template "status-badge" .}}{{template "priority-badge" .}}</div>
+      <div class="job-row-body"><div class="job-row-meta"><span class="company-label">{{if .Company}}{{.Company}}{{else}}{{.Host}}{{end}}</span>{{if .PostingProvider}}<span class="source-badge" title="Source platform: {{.PostingProviderLabel}}. This identifies where the posting was saved from; it does not imply automatic question capture or Fill support.">{{.PostingProviderLabel}}</span>{{else}}<span class="source-badge source-unknown" title="Source platform not recognized">Web</span>{{end}}{{template "status-badge" .}}{{template "priority-badge" .}}</div>
         <h3><a class="job-title" href="/jobs/{{.ID}}">{{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}}</a></h3>
         <p class="job-row-detail">{{if gt .SelectedResumeID 0}}Resume selected{{else}}{{with index $.Matches .ID}}{{if eq .Status "matched"}}Suggested: {{.ResumeName}}{{else}}No resume selected{{end}}{{else}}No resume selected{{end}}{{end}} <span class="dot-sep" aria-hidden="true">·</span> {{.ActionLabel}}</p>
       </div>

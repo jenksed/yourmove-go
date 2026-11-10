@@ -20,6 +20,10 @@ export interface OpportunityJob {
   sourceStatus: string;
   companyOrHost: string;
   displayTitle: string;
+  // Go-owned ATS platform key ("" when unrecognized) and its accessible
+  // label. Rendered verbatim; never re-derived here.
+  provider: string;
+  providerLabel: string;
 }
 
 export interface NextOpportunity {

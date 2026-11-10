@@ -34,6 +34,10 @@ type opportunityJobJSON struct {
 	SourceStatus     string `json:"sourceStatus"`
 	CompanyOrHost    string `json:"companyOrHost"`
 	DisplayTitle     string `json:"displayTitle"`
+	// Provider is the Go-owned ATS platform key ("" when unrecognized) with
+	// its accessible label. React renders these verbatim.
+	Provider      string `json:"provider"`
+	ProviderLabel string `json:"providerLabel"`
 }
 
 func toOpportunityJSON(job Job) opportunityJobJSON {
@@ -52,6 +56,7 @@ func toOpportunityJSON(job Job) opportunityJobJSON {
 		ActionLabel: job.ActionLabel(), ActionHref: job.ActionHref(), ActionReason: job.ActionReason(),
 		SelectedResumeID: job.SelectedResumeID, SubmissionCount: job.SubmissionCount,
 		SourceStatus: job.SourceStatus, CompanyOrHost: companyOrHost, DisplayTitle: displayTitle,
+		Provider: job.PostingProvider(), ProviderLabel: job.PostingProviderLabel(),
 	}
 }
 

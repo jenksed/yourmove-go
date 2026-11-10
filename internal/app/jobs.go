@@ -81,6 +81,16 @@ func validPriority(s string) bool {
 	return s == PriorityNormal || s == PriorityHigh || s == PriorityLow
 }
 
+// PostingProvider is the Go-owned ATS platform key for this saved posting
+// URL ("lever", "recruitee", … or "" when unrecognized). Both the React
+// Opportunities list and the Go-rendered fallback render this value; React
+// must not re-derive it with its own heuristics.
+func (j Job) PostingProvider() string { return platforms.PostingProvider(j.URL) }
+
+// PostingProviderLabel is the accessible source name for PostingProvider,
+// or "" for unrecognized URLs (rendered with the neutral indicator).
+func (j Job) PostingProviderLabel() string { return platforms.PostingProviderLabel(j.PostingProvider()) }
+
 func (j Job) DisplayDescription() string { return platforms.NormalizeDescription(j.Description) }
 
 func (j Job) SalaryOriginLabel() string {

@@ -13,6 +13,98 @@ var ErrUnsupported = errors.New("unsupported job platform")
 // ErrClosed means the source confirms that the saved posting is no longer available.
 var ErrClosed = errors.New("job closed; no longer hiring")
 
+// PostingProvider identifies the ATS platform for a saved posting URL using
+// the same identity logic as retrieval, without any network use. It reports
+// only the provider key ("ashby", "greenhouse", "lever", "recruitee",
+// "personio", "teamtailor", "smartrecruiters", "workable", "jobvite",
+// "workday", "icims") or "" when the URL is not a recognized posting.
+// React must render this Go-owned value, never its own heuristics.
+func PostingProvider(rawURL string) string {
+	if parsed, err := url.Parse(rawURL); err == nil {
+		if _, err := ICIMSPostingIdentity(rawURL); err == nil {
+			return "icims"
+		}
+		if _, err := PersonioPostingIdentity(rawURL); err == nil {
+			return "personio"
+		}
+		if _, err := TeamtailorPostingIdentity(rawURL); err == nil {
+			return "teamtailor"
+		}
+		if _, err := RecruiteePostingIdentity(rawURL); err == nil {
+			return "recruitee"
+		}
+		host := strings.ToLower(parsed.Hostname())
+		switch host {
+		case "jobs.smartrecruiters.com":
+			if _, _, err := parseSmartRecruitersURL(rawURL); err == nil {
+				return "smartrecruiters"
+			}
+		case "apply.workable.com":
+			if _, _, err := parseWorkableURL(rawURL); err == nil {
+				return "workable"
+			}
+		case "jobs.jobvite.com":
+			if _, _, err := parseJobviteURL(rawURL); err == nil {
+				return "jobvite"
+			}
+		}
+		if workdayJobsHost(host) || workdayMyWorkdaySiteHost(host) {
+			if _, err := WorkdayPostingIdentity(rawURL); err == nil {
+				return "workday"
+			}
+		}
+	}
+	if u, err := url.Parse(rawURL); err == nil && u.Hostname() == "jobs.ashbyhq.com" {
+		if _, _, err := parseAshbyURL(rawURL); err == nil {
+			return "ashby"
+		}
+	}
+	if isAshbyCorporateCareersURL(rawURL) {
+		if _, err := parseAshbyCorporateURL(rawURL); err == nil {
+			return "ashby"
+		}
+	}
+	if _, _, err := parseGreenhouseURL(rawURL); err == nil {
+		return "greenhouse"
+	}
+	if _, _, _, err := parseLeverURL(rawURL); err == nil {
+		return "lever"
+	}
+	return ""
+}
+
+// PostingProviderLabel is the applicant-facing source name for a provider
+// key from PostingProvider. It distinguishes the ATS platform from the
+// employer identity and never implies automatic capture or Fill support.
+func PostingProviderLabel(provider string) string {
+	switch provider {
+	case "ashby":
+		return "Ashby"
+	case "greenhouse":
+		return "Greenhouse"
+	case "lever":
+		return "Lever"
+	case "recruitee":
+		return "Recruitee"
+	case "personio":
+		return "Personio"
+	case "teamtailor":
+		return "Teamtailor"
+	case "smartrecruiters":
+		return "SmartRecruiters"
+	case "workable":
+		return "Workable"
+	case "jobvite":
+		return "Jobvite"
+	case "workday":
+		return "Workday"
+	case "icims":
+		return "iCIMS"
+	default:
+		return ""
+	}
+}
+
 type Metadata struct {
 	Title       string
 	Company     string
