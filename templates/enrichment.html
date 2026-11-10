@@ -8,7 +8,7 @@
  <div class="stat"><span class="stat-label">Failed checks</span><strong>{{.Retryable}}</strong><span class="stat-help">Eligible for retry</span></div>
  <div class="stat"><span class="stat-label">Batch limit</span><strong>30</strong><span class="stat-help">Two requests at once</span></div>
 </section>
-<section class="panel metadata-controller" aria-labelledby="enrichment-control-title"><div class="section-heading"><div><h2 id="enrichment-control-title">Controlled posting checks</h2><p class="section-subtitle">Nothing runs automatically. Checking a source does not verify that the job is still open.</p></div></div>
+<section class="panel metadata-controller" aria-labelledby="enrichment-control-title"><div class="section-heading"><div><h2 id="enrichment-control-title">Controlled posting checks</h2><p class="section-subtitle">New bulk imports start an automatic initial check. You can also start a manual check of unchecked jobs or retry failures below. Retrieved metadata never proves a job is still open.</p></div></div>
  <div class="metadata-controls">
  {{if or (eq .State "idle") (eq .State "complete")}}
  <form method="POST" action="/enrichment/start"><input type="hidden" name="mode" value="pending"><button class="button button-primary" type="submit" {{if eq .Pending 0}}disabled{{end}}>Check next 30 unchecked jobs</button></form>
@@ -24,7 +24,7 @@
 </section>
 {{if ne .State "idle"}}
 <section class="panel metadata-results" aria-labelledby="metadata-results-title">
- <div class="section-heading"><div><p class="eyebrow">{{.Mode}} BATCH</p><h2 id="metadata-results-title">{{.Done}} of {{.Total}} checked</h2><p class="section-subtitle" role="status" aria-live="polite">{{if eq .State "running"}}Checking sources; this page updates automatically.{{else if eq .State "paused"}}Paused. In-flight checks may finish.{{else}}Batch complete.{{end}}</p></div></div>
+   <div class="section-heading"><div><p class="eyebrow">{{if eq .Mode "auto"}}Automatic initial check{{else}}{{.Mode}} batch{{end}}</p><h2 id="metadata-results-title">{{.Done}} of {{.Total}} checked</h2><p class="section-subtitle" role="status" aria-live="polite">{{if eq .State "running"}}Checking sources; this page updates automatically.{{else if eq .State "paused"}}Paused. In-flight checks may finish.{{else}}Batch complete.{{end}}</p></div></div>
  <div class="metadata-progress" role="progressbar" aria-valuemin="0" aria-valuemax="{{.Total}}" aria-valuenow="{{.Done}}" aria-label="Completed source checks"><span style="width:{{if gt .Total 0}}{{.Percent}}{{else}}0{{end}}%"></span></div>
  <div class="metadata-totals"><span>{{.Retrieved}} retrieved</span><span>{{.Unsupported}} unsupported</span><span>{{.Failed}} failed</span>{{if .Removed}}<span>{{.Removed}} deleted during check</span>{{end}}</div>
  <div class="metadata-items">{{range .Items}}<div class="metadata-item"><div><strong>{{if eq .State "removed"}}{{.Title}}{{else}}<a href="/jobs/{{.JobID}}">{{.Title}}</a>{{end}}</strong><span class="muted metadata-url">{{.URL}}</span>{{if .Detail}}<small>{{.Detail}}</small>{{end}}</div><span class="status status-{{.State}}">{{.State}}</span></div>{{end}}</div>

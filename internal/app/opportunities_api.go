@@ -192,6 +192,20 @@ func (a *App) opportunitiesImportAPI(w http.ResponseWriter, r *http.Request) {
 		writeOpportunityError(w, http.StatusInternalServerError, "Unable to import jobs; no changes from this batch were saved")
 		return
 	}
+	// Begin automatic initial metadata checks for the newly added jobs only.
+	// This never delays the import response: workers run in the background,
+	// duplicates and unrelated jobs are untouched, and a busy engine leaves
+	// the new jobs unchecked for the manual pending path.
+	var added []int64
+	for _, item := range results.Items {
+		if item.Status == "added" {
+			added = append(added, item.JobID)
+		}
+	}
+	if len(added) > 0 {
+		_, started := a.queueAutoEnrichment(added)
+		results.Enrichment = &BatchEnrichment{Started: started, Total: len(added)}
+	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	_ = json.NewEncoder(w).Encode(results)

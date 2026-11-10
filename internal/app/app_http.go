@@ -23,6 +23,7 @@ type App struct {
 	intakeMu                  sync.Mutex
 	enrichmentMu              sync.Mutex
 	enrichment                *enrichmentRun
+	autoPending               []int64
 	enrichmentFetch          postingFetcher
 	desktopUnsaved            atomic.Bool
 	db                        *sql.DB

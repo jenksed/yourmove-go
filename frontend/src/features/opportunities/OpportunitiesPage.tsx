@@ -430,8 +430,8 @@ export function OpportunitiesPage(): React.JSX.Element {
                           onChange={(event) => setBulkText(event.target.value)}
                         />
                         <small>
-                          Duplicates are skipped. Batch import saves URLs locally; use Posting
-                          checks to retrieve supported details without opening each job.
+                          After import, YourMove checks supported public job boards for
+                          titles, employers, descriptions, and other available posting details.
                         </small>
                       </div>
                       {bulkError !== "" && (
@@ -451,6 +451,13 @@ export function OpportunitiesPage(): React.JSX.Element {
                           Saved {bulkResult.added} · Already saved {bulkResult.duplicates} · Invalid{" "}
                           {bulkResult.invalid}
                         </p>
+                        {bulkResult.enrichment && bulkResult.enrichment.total > 0 && (
+                          <p role="status">
+                            {bulkResult.enrichment.total} {bulkResult.enrichment.total === 1 ? "opportunity is" : "opportunities are"} checking public posting details
+                            {bulkResult.enrichment.started ? " automatically." : " — another metadata check is already running or paused, so these stay unchecked for now."}{" "}
+                            <a href="/enrichment">Posting checks →</a>
+                          </p>
+                        )}
                         <ul>
                           {bulkResult.items.map((item) => (
                             <li key={`${item.line}-${item.url}`}>

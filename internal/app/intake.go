@@ -122,11 +122,21 @@ type BatchItem struct {
 	JobID  int64  `json:"jobId"`
 }
 
+// BatchEnrichment summarizes the automatic initial metadata check started
+// for newly added imports. Progress and failures are reported under Posting
+// checks; a started=false value means another check was already running or
+// paused, and the new jobs remain unchecked for the manual pending path.
+type BatchEnrichment struct {
+	Started bool `json:"started"`
+	Total   int  `json:"total"`
+}
+
 type BatchResult struct {
 	Items      []BatchItem `json:"items"`
 	Added      int         `json:"added"`
 	Duplicates int         `json:"duplicates"`
 	Invalid    int         `json:"invalid"`
+	Enrichment *BatchEnrichment `json:"enrichment,omitempty"`
 }
 
 // importJobBatch persists all valid new URLs in a single transaction. Invalid
@@ -188,7 +198,7 @@ func (a *App) importJobBatch(raw string) (BatchResult, error) {
 				}
 				item.JobID = id
 				index[cleaned] = id
-				item.Status, item.Detail = "added", "Saved. Review and refresh when ready."
+				item.Status, item.Detail = "added", "Saved. Public posting details are checked automatically where supported; see Posting checks for progress."
 				result.Added++
 			}
 		}

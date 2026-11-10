@@ -70,6 +70,9 @@ func newEnrichmentRun(mode string, jobs []Job) *enrichmentRun {
 			if job.SourceStatus != "failed" {
 				continue
 			}
+		case "auto":
+			// ID-scoped automatic initial checks arrive pre-selected; only
+			// the lifecycle guard above applies.
 		default:
 			continue
 		}
@@ -154,6 +157,114 @@ func (a *App) startEnrichment(mode string) (EnrichmentSnapshot, error) {
 	return run.snapshot(), nil
 }
 
+// queueAutoEnrichment schedules automatic initial metadata checks for newly
+// bulk-imported job IDs. Callers pass IDs committed by the import
+// transaction; nothing runs before the commit. It never blocks the import
+// response, never opens an employer browser, and never sends applicant
+// information: workers reuse the existing bounded public-metadata engine
+// (two concurrent workers, twelve-second per-job budget). Runs are scoped to
+// the given IDs in successive bounded batches; failures are left for
+// explicit retry and never retried automatically. When another check is
+// running or paused, no competing run starts: the IDs stay "not_checked" so
+// the manual pending path and Posting checks present a truthful
+// pending/continuation state. The jobs table source_status is the durable
+// checkpoint, so a restart loses nothing but the in-memory queue.
+func (a *App) queueAutoEnrichment(ids []int64) (EnrichmentSnapshot, bool) {
+	seen := make(map[int64]bool, len(ids))
+	fresh := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if id <= 0 || seen[id] {
+			continue
+		}
+		seen[id] = true
+		fresh = append(fresh, id)
+	}
+	a.enrichmentMu.Lock()
+	defer a.enrichmentMu.Unlock()
+	for _, id := range fresh {
+		duplicate := false
+		for _, pending := range a.autoPending {
+			if pending == id {
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate {
+			a.autoPending = append(a.autoPending, id)
+		}
+	}
+	if a.enrichment != nil {
+		if existing := a.enrichment.snapshot(); existing.State == "running" || existing.State == "paused" {
+			return existing, false
+		}
+	}
+	return a.startAutoBatchLocked(), true
+}
+
+// startAutoBatchLocked starts the next bounded automatic batch. Callers hold
+// enrichmentMu and have confirmed no competing run is active.
+func (a *App) startAutoBatchLocked() EnrichmentSnapshot {
+	for len(a.autoPending) > 0 {
+		count := len(a.autoPending)
+		if count > maxEnrichmentBatch {
+			count = maxEnrichmentBatch
+		}
+		batch := append([]int64(nil), a.autoPending[:count]...)
+		jobs, err := a.allJobs()
+		if err != nil {
+			return EnrichmentSnapshot{State: "idle"}
+		}
+		a.autoPending = append([]int64(nil), a.autoPending[len(batch):]...)
+		byID := make(map[int64]Job, len(jobs))
+		for _, job := range jobs {
+			byID[job.ID] = job
+		}
+		selected := make([]Job, 0, len(batch))
+		for _, id := range batch {
+			if job, ok := byID[id]; ok {
+				selected = append(selected, job)
+			}
+		}
+		run := newEnrichmentRun("auto", selected)
+		a.enrichment = run
+		if run.state != "running" {
+			// Nothing eligible in this batch (all retired or removed);
+			// keep the remainder moving instead of stalling behind it.
+			continue
+		}
+		fetch := a.enrichmentFetch
+		if fetch == nil {
+			fetch = fetchPostingDetails
+		}
+		for i := 0; i < enrichmentWorkers; i++ {
+			go a.enrichmentWorker(run, fetch)
+		}
+		return run.snapshot()
+	}
+	if a.enrichment != nil {
+		return a.enrichment.snapshot()
+	}
+	return EnrichmentSnapshot{State: "idle"}
+}
+
+// continueAutoEnrichment drains the automatic queue after any run completes,
+// so imports larger than one batch are processed in successive bounded
+// batches without abandoning the remainder. It never competes with an active
+// or paused run.
+func (a *App) continueAutoEnrichment() {
+	a.enrichmentMu.Lock()
+	defer a.enrichmentMu.Unlock()
+	if len(a.autoPending) == 0 {
+		return
+	}
+	if a.enrichment != nil {
+		if existing := a.enrichment.snapshot(); existing.State == "running" || existing.State == "paused" {
+			return
+		}
+	}
+	a.startAutoBatchLocked()
+}
+
 func (a *App) enrichmentWorker(r *enrichmentRun, fetch postingFetcher) {
 	for {
 		r.mu.Lock()
@@ -165,7 +276,11 @@ func (a *App) enrichmentWorker(r *enrichmentRun, fetch postingFetcher) {
 				r.state = "complete"
 				r.cond.Broadcast()
 			}
+			completed := r.state == "complete"
 			r.mu.Unlock()
+			if completed {
+				a.continueAutoEnrichment()
+			}
 			return
 		}
 		idx := r.next
@@ -196,11 +311,16 @@ func (a *App) enrichmentWorker(r *enrichmentRun, fetch postingFetcher) {
 		r.items[idx].State = state
 		r.items[idx].Detail = note
 		r.active--
+		completed := false
 		if r.next >= len(r.items) && r.active == 0 {
 			r.state = "complete"
 			r.cond.Broadcast()
+			completed = true
 		}
 		r.mu.Unlock()
+		if completed {
+			a.continueAutoEnrichment()
+		}
 	}
 }
 
