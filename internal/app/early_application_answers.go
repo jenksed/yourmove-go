@@ -148,7 +148,8 @@ func (p earlyQuestionPreparation) WorkbenchQuestions() []earlyApplicationQuestio
 
 // collapseDegenerateManualEarly is the early-discovery mirror of
 // collapseDegenerateManualLive: one employer requirement published as both a
-// choice collection and a degenerate option-less definition presents once.
+// choice collection and a degenerate option-less definition presents once,
+// including the EasyPost-style pronouns split where all rows are option-less.
 // Saved early answers and reconciliation state block merging, so no applicant
 // writing is hidden; the raw preparation behind save and accept paths is
 // untouched.
@@ -195,14 +196,41 @@ func collapseDegenerateManualEarly(questions []earlyApplicationQuestion) []early
 				bearers = append(bearers, i)
 			}
 		}
-		if len(bearers) != 1 {
+		if len(bearers) == 1 {
+			target := bearers[0]
+			for _, i := range members {
+				if i == target || len(questions[i].Field.Options) > 0 {
+					continue
+				}
+				drop[i] = true
+				folded = true
+				required[target] = required[target] || questions[i].Field.Required
+			}
 			continue
 		}
-		target := bearers[0]
+		if len(bearers) != 0 || len(members) < 2 {
+			continue
+		}
+		// Mirror the live EasyPost split for early discovery: multiple
+		// option-less manual rows for one Pronouns requirement fold once.
+		// Pronouns-only and collapsed-group guards keep distinct same-worded
+		// rows separate.
+		hasAmbiguous := false
+		allPronouns := true
 		for _, i := range members {
-			if i == target || len(questions[i].Field.Options) > 0 {
-				continue
+			if questions[i].Field.Kind == "unsupported_ambiguous" {
+				hasAmbiguous = true
 			}
+			if !isPronounsLabel(questions[i].Field.Label) || !pronounsRequiresManual(questions[i].Field) {
+				allPronouns = false
+				break
+			}
+		}
+		if !hasAmbiguous || !allPronouns {
+			continue
+		}
+		target := members[0]
+		for _, i := range members[1:] {
 			drop[i] = true
 			folded = true
 			required[target] = required[target] || questions[i].Field.Required

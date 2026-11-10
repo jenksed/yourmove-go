@@ -112,19 +112,23 @@ func (p questionPreparation) WorkbenchQuestions() []preparedQuestion {
 
 // collapseDegenerateManualLive folds option-less manual-only rows into the
 // single option-bearing manual-only row that shares their exact normalized
-// wording. One employer requirement observed as both a choice collection and
-// a degenerate control (for example a Lever select-all-that-apply block seen
-// as a radio group plus an option-less checkbox) must present once, with the
-// observed options and manual guidance intact.
+// wording, and folds the observed EasyPost split where one Lever Pronouns
+// requirement arrives as multiple option-less manual rows. One employer
+// requirement observed as both a choice collection and a degenerate control
+// (for example a Lever select-all-that-apply block seen as a radio group plus
+// an option-less checkbox) must present once, with the observed options and
+// manual guidance intact.
 //
 // This is display-only and narrowly scoped: only triage-review rows (never
 // answer tasks, profile facts, documents, or applicant-authored questions)
 // with a stable display identity and no saved values participate. Rows with
-// observer-fallback wording, empty wording, or saved values never merge, and
-// wording groups without exactly one option-bearing row are left untouched,
-// so genuinely distinct same-worded controls stay separate. The underlying
-// records, counts of saved answers, Previous writing, and Fill authority are
-// untouched: review rows carry no values and no transfer eligibility.
+// observer-fallback wording, empty wording, or saved values never merge.
+// Wording groups with multiple option-bearing rows stay separate, and
+// option-less groups fold only for the pronouns split (same Pronouns wording,
+// all pronouns-manual, including the collapsed ambiguous group), so genuinely
+// distinct same-worded controls stay separate. The underlying records, counts
+// of saved answers, Previous writing, and Fill authority are untouched:
+// review rows carry no values and no transfer eligibility.
 func collapseDegenerateManualLive(questions []preparedQuestion) []preparedQuestion {
 	describe := func(q preparedQuestion) (string, bool) {
 		if writingCategory(q.Field, true, q.Editable) != "review" {
@@ -168,14 +172,43 @@ func collapseDegenerateManualLive(questions []preparedQuestion) []preparedQuesti
 				bearers = append(bearers, i)
 			}
 		}
-		if len(bearers) != 1 {
+		if len(bearers) == 1 {
+			target := bearers[0]
+			for _, i := range members {
+				if i == target || len(questions[i].Field.Options) > 0 {
+					continue
+				}
+				drop[i] = true
+				folded = true
+				required[target] = required[target] || questions[i].Field.Required
+			}
 			continue
 		}
-		target := bearers[0]
+		if len(bearers) != 0 || len(members) < 2 {
+			continue
+		}
+		// EasyPost split: one Lever Pronouns requirement observed as the
+		// collapsed name=pronouns group (unsupported_ambiguous, nil options)
+		// plus the id=customPronounsOption checkbox (empty options), same
+		// Pronouns wording, both manual-only, no saved values. Fold
+		// pronouns-only option-less groups that include the collapsed group;
+		// all other option-less same-worded rows stay separate.
+		hasAmbiguous := false
+		allPronouns := true
 		for _, i := range members {
-			if i == target || len(questions[i].Field.Options) > 0 {
-				continue
+			if questions[i].Field.Kind == "unsupported_ambiguous" {
+				hasAmbiguous = true
 			}
+			if !isPronounsLabel(questions[i].Field.Label) || !pronounsRequiresManual(questions[i].Field) {
+				allPronouns = false
+				break
+			}
+		}
+		if !hasAmbiguous || !allPronouns {
+			continue
+		}
+		target := members[0]
+		for _, i := range members[1:] {
 			drop[i] = true
 			folded = true
 			required[target] = required[target] || questions[i].Field.Required
