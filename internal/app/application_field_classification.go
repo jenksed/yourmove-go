@@ -29,6 +29,12 @@ func classifyApplicationField(f schema.Field, unique bool) applicationFieldClass
 	if displayDocumentControl(f) {
 		return applicationFieldClassification{Role: fieldDocument}
 	}
+	// Extended Lever-style pronouns collections cannot be represented as a
+	// single profile fact or Yes/No answer. Keep the real question label and
+	// observed options as manual review; never a writing task or Fill target.
+	if pronounsRequiresManual(f) {
+		return applicationFieldClassification{Role: fieldUnsupported}
+	}
 	if employerOnlyQuestion(f) {
 		return applicationFieldClassification{Role: fieldEmployerOnly}
 	}
@@ -67,6 +73,9 @@ func additionalProfileAttribute(f schema.Field) string {
 	}
 
 	pronouns := label == "pronouns" || label == "preferred pronouns" || label == "what are your pronouns?" || label == "what are your pronouns"
+	if pronouns && pronounsRequiresManual(f) {
+		return ""
+	}
 	var value string
 	urlField := false
 	if pronouns {

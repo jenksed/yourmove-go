@@ -259,6 +259,11 @@ func earlyQuestionWritable(field schema.Field, unique bool) (bool, string) {
 	if !stableQuestionIdentity(field, unique) {
 		return false, "This discovered control does not have a reliable question identity. Complete it manually in the employer application."
 	}
+	// Extended pronouns collections have no qualified single-value mapping.
+	// Keep the real question and observed options as manual employer work.
+	if pronounsRequiresManual(field) {
+		return false, "This pronouns selection includes options beyond the approved profile preferences. Complete it manually in the employer application."
+	}
 	switch strings.ToLower(field.Kind) {
 	case "text", "input_text", "email", "tel", "url", "textarea":
 		return true, ""

@@ -16,7 +16,64 @@ const formUUID = `[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`
 var namespacedSystemField = regexp.MustCompile(`(?i)^` + formUUID + `__(systemfield_[a-z_]+)$`)
 var namespacedCustomField = regexp.MustCompile(`(?i)^` + formUUID + `_` + formUUID + `$`)
 
+// isPronounsLabel reports employer wording that asks for the applicant's
+// pronouns, in any of the observed phrasings. It is intentionally broader
+// than the qualified profile set so extended Lever-style controls are still
+// recognized as pronouns and routed to honest manual review.
+func isPronounsLabel(label string) bool {
+	return strings.Contains(candidateProfileLabel(label), "pronoun")
+}
+
+// pronounsRequiresManual reports pronouns controls that the existing
+// question and answer model cannot represent accurately. A single checkbox
+// can never capture a collection of pronoun options (it would render as an
+// incorrect Yes/No), and multi-option, multi-select, custom-text, or
+// "use name only" variants have no qualified single-value profile mapping.
+// Those controls stay manual-only with their observed options preserved;
+// no Fill eligibility is granted and no profile value is silently mapped.
+func pronounsRequiresManual(f schema.Field) bool {
+	if !isPronounsLabel(f.Label) {
+		return false
+	}
+	kind := strings.ToLower(strings.TrimSpace(f.Kind))
+	switch kind {
+	case "select", "radio", "multi_value_single_select":
+		for _, option := range f.Options {
+			low := strings.ToLower(strings.TrimSpace(option))
+			if low == "" {
+				continue
+			}
+			if low == "yes" || low == "no" || low == "true" || low == "false" {
+				return true
+			}
+			// Extended Lever-style pronouns beyond the qualified He/him,
+			// She/her, They/them set. Match full tokens so They/them is
+			// never mistaken for Ey/em.
+			if low == "xe/xem" || low == "ze/hir" || low == "ey/em" ||
+				low == "hir/hir" || low == "fae/faer" || low == "hu/hu" ||
+				strings.Contains(low, "xe/xem") || strings.Contains(low, "ze/hir") ||
+				strings.Contains(low, "ey/em") || strings.Contains(low, "fae/faer") ||
+				strings.Contains(low, "hu/hu") || strings.Contains(low, "hir/hir") ||
+				strings.Contains(low, "hir/") && strings.Contains(low, "/hir") ||
+				strings.Contains(low, "use name") || strings.Contains(low, "custom") {
+				return true
+			}
+		}
+		return false
+	case "text", "textarea", "input_text":
+		return false
+	default:
+		// checkbox, checkbox_group, custom_checkbox*, combobox, listbox,
+		// unsupported_ambiguous, and any other structured kind cannot
+		// represent a pronouns collection as a single Yes/No or profile fact.
+		return true
+	}
+}
+
 func editableQuestion(f schema.Field, unique bool) bool {
+	if pronounsRequiresManual(f) {
+		return false
+	}
 	if !stableQuestionIdentity(f, unique) {
 		return false
 	}
