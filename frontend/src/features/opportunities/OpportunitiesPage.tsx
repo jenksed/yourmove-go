@@ -1,4 +1,5 @@
 import { AppNavigation, AppTopbar } from "../../shared/AppNavigation";
+import { ATSPlatformIcon } from "../../shared/ATSPlatformIcon";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   addOpportunity,
@@ -557,6 +558,13 @@ export function OpportunitiesPage(): React.JSX.Element {
                           </label>
                           <div className="job-row-body">
                             <div className="job-row-meta">
+                              <ATSPlatformIcon
+                                provider={job.provider}
+                                providerLabel={job.providerLabel}
+                                url={job.url}
+                                host={job.host}
+                                decorative
+                              />
                               <span className="company-label">{job.companyOrHost}</span>
                               {job.provider !== "" ? (
                                 <span
