@@ -54,13 +54,15 @@ func TestOpportunitiesListExposesSourceProvider(t *testing.T) {
 }
 
 // The workspace snapshot must expose the same Go-owned provider verdict as
-// the Opportunities list. A recognized host without a recognized posting
-// path (board index, corporate page) is unrecognized in both surfaces, so
-// the list and the workspace can never disagree about ATS identity.
+// the Opportunities list. Vendor posting infrastructure brands the source
+// even without a posting ID, while corporate marketing hosts and unknown
+// URLs stay unrecognized in both surfaces, so the list and the workspace
+// can never disagree about ATS identity.
 func TestWorkspaceSnapshotExposesSourceProvider(t *testing.T) {
 	a, _ := testWorkspace(t)
 	jobs := []Job{
 		{URL: "https://jobs.lever.co/example/0e4b8b1e-1234-4a5b-8c9d-0e1f2a3b4c5d", Host: "jobs.lever.co", Title: "Lever role"},
+		{URL: "https://job-boards.greenhouse.io/example", Host: "job-boards.greenhouse.io", Title: "Greenhouse board page"},
 		{URL: "https://jobs.lever.co/example", Host: "jobs.lever.co", Title: "Lever board page"},
 		{URL: "https://www.ashbyhq.com/careers", Host: "www.ashbyhq.com", Title: "Ashby corporate page"},
 		{URL: "https://example.com/role", Host: "example.com", Title: "Unknown role"},
@@ -88,7 +90,13 @@ func TestWorkspaceSnapshotExposesSourceProvider(t *testing.T) {
 	if provider, label := snapshotProvider(1); provider != "lever" || label != "Lever" {
 		t.Fatalf("lever posting workspace provider=%q label=%q", provider, label)
 	}
-	for _, id := range []int{2, 3, 4} {
+	if provider, label := snapshotProvider(2); provider != "greenhouse" || label != "Greenhouse" {
+		t.Fatalf("greenhouse board workspace provider=%q label=%q", provider, label)
+	}
+	if provider, label := snapshotProvider(3); provider != "lever" || label != "Lever" {
+		t.Fatalf("lever board workspace provider=%q label=%q", provider, label)
+	}
+	for _, id := range []int{4, 5} {
 		if provider, label := snapshotProvider(id); provider != "" || label != "" {
 			t.Fatalf("job %d workspace provider=%q label=%q, want unrecognized", id, provider, label)
 		}
@@ -98,10 +106,17 @@ func TestWorkspaceSnapshotExposesSourceProvider(t *testing.T) {
 	if list.Code != http.StatusOK {
 		t.Fatalf("list status=%d body=%s", list.Code, list.Body.String())
 	}
-	body := list.Body.String()
-	for _, want := range []string{`"provider":"lever"`, `"providerLabel":"Lever"`} {
-		if !strings.Contains(body, want) {
-			t.Fatalf("list missing %s: %s", want, body)
+	var listed struct {
+		Jobs []opportunityJobJSON `json:"jobs"`
+	}
+	if err := json.Unmarshal(list.Body.Bytes(), &listed); err != nil {
+		t.Fatal(err)
+	}
+	for _, job := range listed.Jobs {
+		provider, label := snapshotProvider(int(job.ID))
+		if provider != job.Provider || label != job.ProviderLabel {
+			t.Fatalf("job %d list provider=%q label=%q disagrees with workspace provider=%q label=%q",
+				job.ID, job.Provider, job.ProviderLabel, provider, label)
 		}
 	}
 }

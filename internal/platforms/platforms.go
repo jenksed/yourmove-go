@@ -14,10 +14,17 @@ var ErrUnsupported = errors.New("unsupported job platform")
 var ErrClosed = errors.New("job closed; no longer hiring")
 
 // PostingProvider identifies the ATS platform for a saved posting URL using
-// the same identity logic as retrieval, without any network use. It reports
+// the identity logic as retrieval, without any network use. It reports
 // only the provider key ("ashby", "greenhouse", "lever", "recruitee",
 // "personio", "teamtailor", "smartrecruiters", "workable", "jobvite",
-// "workday", "icims") or "" when the URL is not a recognized posting.
+// "workday", "icims") or "" when the platform cannot be identified.
+// A fully qualified posting identity wins; otherwise vendor-operated
+// posting hosts still brand the source (postingBrand) so saved links from
+// recognizable boards carry their platform even when the link itself is
+// not a complete posting. Corporate marketing hosts never brand: they
+// share a brand name but are not posting infrastructure. Retrieval,
+// browser capture, and Fill keep using the strict identity checks;
+// branding mints no Fill authority and implies no posting support.
 // React must render this Go-owned value, never its own heuristics.
 func PostingProvider(rawURL string) string {
 	if parsed, err := url.Parse(rawURL); err == nil {
@@ -69,6 +76,52 @@ func PostingProvider(rawURL string) string {
 	}
 	if _, _, _, err := parseLeverURL(rawURL); err == nil {
 		return "lever"
+	}
+	return postingBrand(rawURL)
+}
+
+// postingBrand recognizes an ATS provider from sufficiently trustworthy
+// host evidence alone, without requiring a valid posting ID. Every matched
+// host is vendor-operated posting infrastructure: an exact public board
+// host, a single tenant label under a fixed vendor suffix, or a Workday
+// tenant pattern. Bare vendor domains, attacker-controlled suffix games,
+// and corporate marketing hosts (notably www.ashbyhq.com) never match.
+// Display-only: it never alters the strict posting-identity checks used by
+// retrieval, browser capture, and Fill.
+func postingBrand(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" || u.User != nil || u.Port() != "" || u.Opaque != "" {
+		return ""
+	}
+	switch host := strings.ToLower(u.Hostname()); host {
+	case "jobs.ashbyhq.com":
+		return "ashby"
+	case "job-boards.greenhouse.io", "boards.greenhouse.io":
+		return "greenhouse"
+	case "jobs.lever.co", "jobs.eu.lever.co":
+		return "lever"
+	case "jobs.smartrecruiters.com":
+		return "smartrecruiters"
+	case "apply.workable.com":
+		return "workable"
+	case "jobs.jobvite.com":
+		return "jobvite"
+	default:
+		if workdayJobsHost(host) || workdayMyWorkdaySiteHost(host) {
+			return "workday"
+		}
+	}
+	if _, err := vendorPostingURL(raw, ".recruitee.com"); err == nil {
+		return "recruitee"
+	}
+	if _, err := vendorPostingURL(raw, ".teamtailor.com"); err == nil {
+		return "teamtailor"
+	}
+	if _, err := vendorPostingURL(raw, ".icims.com"); err == nil {
+		return "icims"
+	}
+	if _, err := vendorPostingURL(raw, ".jobs.personio.de", ".jobs.personio.com"); err == nil {
+		return "personio"
 	}
 	return ""
 }
