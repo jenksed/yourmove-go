@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/jenksed/yourmove-go/internal/platforms"
@@ -95,5 +96,83 @@ func TestRecruiteeBulkEnrichmentPersistsPublicFacts(t *testing.T) {
 	restored, found, err := loadJobPostingSource(a.db, kept)
 	if err != nil || !found || restored.Invalid || restored.Source == nil {
 		t.Fatalf("source evidence lost after manual edit: %+v", restored)
+	}
+}
+
+// Retired Recruitee posting with no retrievable metadata (job 20 in the
+// acceptance workspace) must show a readable slug fallback, not the entire
+// URL, while stored metadata stays empty and source failure is preserved.
+// The stale indexed copy ("Technical Support Engineer – Scientific
+// Instruments" with en-dash) is never used as verified metadata, manual
+// titles are never overwritten, and the posting is not auto-closed.
+func TestRecruiteeUnavailableTitleFallbackFromSlug(t *testing.T) {
+	a, _ := testWorkspace(t)
+	const postingURL = "https://rbr.recruitee.com/o/technical-support-engineer-scientific-instruments"
+	// Exact persisted state from the acceptance workspace: empty title,
+	// failed source check, review stage.
+	if err := a.saveJob(Job{
+		URL: postingURL, Host: "rbr.recruitee.com", Title: "",
+		SourceStatus: "failed", SourceNote: "Recruitee posting absent from public feed",
+		SourceCheckedAt: "2026-11-10T06:12:23Z",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	job, err := a.jobByID(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.Title != "" || job.TitleManual {
+		t.Fatalf("stored title must stay empty without manual entry: %+v", job)
+	}
+	if job.SourceStatus != "failed" || job.SourceNote != "Recruitee posting absent from public feed" {
+		t.Fatalf("source failure not preserved: %+v", job)
+	}
+	if job.Stage != StageReview {
+		t.Fatalf("unavailable posting auto-classified: stage=%q", job.Stage)
+	}
+
+	out := toOpportunityJSON(job)
+	if out.Title != "" {
+		t.Fatalf("verified Title must stay empty, got %q", out.Title)
+	}
+	if out.DisplayTitle == postingURL {
+		t.Fatalf("DisplayTitle shows entire URL: %q", out.DisplayTitle)
+	}
+	if strings.Contains(out.DisplayTitle, "https://") || strings.Contains(out.DisplayTitle, "rbr.recruitee.com/o/") {
+		t.Fatalf("DisplayTitle leaks URL: %q", out.DisplayTitle)
+	}
+	// Readable slug fallback, not the stale indexed copy with en-dash.
+	if out.DisplayTitle != "Technical Support Engineer Scientific Instruments" {
+		t.Fatalf("DisplayTitle=%q, want slug fallback %q", out.DisplayTitle, "Technical Support Engineer Scientific Instruments")
+	}
+	if out.DisplayTitle == "Technical Support Engineer – Scientific Instruments" {
+		t.Fatal("stale third-party search result used as verified metadata")
+	}
+	if out.URL != postingURL {
+		t.Fatalf("posting URL not preserved: %q", out.URL)
+	}
+	if out.SourceStatus != "failed" {
+		t.Fatalf("source failure not preserved in JSON: %+v", out)
+	}
+	if out.Provider != "recruitee" {
+		t.Fatalf("provider lost: %+v", out)
+	}
+
+	workspace := toWorkspaceJob(job)
+	if workspace.DisplayTitle != out.DisplayTitle {
+		t.Fatalf("workspace DisplayTitle=%q, opportunities DisplayTitle=%q", workspace.DisplayTitle, out.DisplayTitle)
+	}
+	if workspace.Title != "" {
+		t.Fatalf("workspace verified Title must stay empty: %+v", workspace)
+	}
+
+	// Verified and manual titles still pass through unchanged.
+	verified := Job{URL: "https://deephealth.recruitee.com/o/technical-support-engineer-1", Host: "deephealth.recruitee.com", Title: "Technical Support Engineer"}
+	if got := toOpportunityJSON(verified).DisplayTitle; got != "Technical Support Engineer" {
+		t.Fatalf("verified title overwritten: %q", got)
+	}
+	manual := Job{URL: postingURL, Host: "rbr.recruitee.com", Title: "My edited title", TitleManual: true}
+	if got := toOpportunityJSON(manual).DisplayTitle; got != "My edited title" {
+		t.Fatalf("manual title overwritten: %q", got)
 	}
 }

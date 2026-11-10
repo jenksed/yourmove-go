@@ -45,10 +45,7 @@ func toOpportunityJSON(job Job) opportunityJobJSON {
 	if strings.TrimSpace(companyOrHost) == "" {
 		companyOrHost = job.Host
 	}
-	displayTitle := job.Title
-	if strings.TrimSpace(displayTitle) == "" {
-		displayTitle = job.URL
-	}
+	displayTitle := job.DisplayTitle()
 	return opportunityJobJSON{
 		ID: job.ID, URL: job.URL, Host: job.Host, Title: job.Title,
 		Company: job.Company, Description: job.Description, Stage: job.Stage,
