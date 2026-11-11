@@ -2,6 +2,8 @@ package app
 
 import (
 	"database/sql"
+
+	"github.com/jenksed/yourmove-go/internal/answerlibrary"
 	"github.com/jenksed/yourmove-go/internal/application/browser"
 	"strings"
 )
@@ -12,10 +14,11 @@ import (
 // never authorizes employer-side transfer.
 const libraryAutoSource = "Answer Library — review before saving"
 
-// Only case, surrounding whitespace, and repeated whitespace are superficial.
-// Punctuation and word order remain significant; no stemming or synonyms.
+// normalizeLibraryQuestion canonicalizes a question for exact equivalence.
+// Delegates to internal/answerlibrary; punctuation and word order remain
+// significant with no stemming or synonyms.
 func normalizeLibraryQuestion(s string) string {
-	return strings.ToLower(strings.Join(strings.Fields(s), " "))
+	return answerlibrary.Normalize(s)
 }
 
 // libraryAutoForLabel returns the single equivalent library entry for exact
@@ -38,45 +41,13 @@ func (a *App) libraryAutoForLabel(label string) (entry AnswerLibraryEntry, ok bo
 }
 
 func (a *App) libraryAlternatives(id int64) ([]string, error) {
-	rows, err := a.db.Query(`SELECT phrasing FROM answer_library_alternatives WHERE entry_id=? ORDER BY rowid`, id)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []string{}
-	for rows.Next() {
-		var s string
-		if err := rows.Scan(&s); err != nil {
-			return nil, err
-		}
-		out = append(out, s)
-	}
-	return out, rows.Err()
+	return answerlibrary.Alternatives(a.db, id)
 }
 
 func equivalentLibraryIDs(tx interface {
 	Query(string, ...any) (*sql.Rows, error)
 }, question string) ([]int64, error) {
-	rows, err := tx.Query(`SELECT id,original_question FROM answer_library UNION ALL SELECT entry_id,phrasing FROM answer_library_alternatives`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	ids := []int64{}
-	seen := map[int64]bool{}
-	normalized := normalizeLibraryQuestion(question)
-	for rows.Next() {
-		var id int64
-		var label string
-		if err := rows.Scan(&id, &label); err != nil {
-			return nil, err
-		}
-		if normalizeLibraryQuestion(label) == normalized && !seen[id] {
-			ids = append(ids, id)
-			seen[id] = true
-		}
-	}
-	return ids, rows.Err()
+	return answerlibrary.EquivalentIDs(tx, question)
 }
 
 // Called within the application's save transaction. Existing equivalents are

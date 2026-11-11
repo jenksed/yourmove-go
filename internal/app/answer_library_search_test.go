@@ -16,11 +16,7 @@ import (
 )
 
 func answerLibraryDoc(id int64, question, answer string) answerLibrarySearchDocument {
-	return answerLibrarySearchDocument{
-		EntryID: id, OriginalQuestion: question,
-		questionTerms: answerLibraryTermSet(answerLibraryIndexTerms(question), ""),
-		answerTerms:   answerLibraryTermSet(answerLibraryIndexTerms(answer), ""),
-	}
+	return newAnswerLibrarySearchDocument(AnswerLibraryEntry{ID: id, OriginalQuestion: question, Answer: answer})
 }
 
 func TestAnswerLibraryRetrievalUsesRelatedQuestionWording(t *testing.T) {
@@ -30,7 +26,7 @@ func TestAnswerLibraryRetrievalUsesRelatedQuestionWording(t *testing.T) {
 		answerLibraryDoc(12, "Tell us about your experience", "A broad description of my career and experience."),
 	}
 	ranked := rankAnswerLibraryDocuments("Tell us about a challenging Linux incident you investigated", docs, answerLibraryRelatedLimit)
-	if len(ranked) != 1 || ranked[0].document.EntryID != 10 {
+	if len(ranked) != 1 || ranked[0].Document.EntryID != 10 {
 		t.Fatalf("related technical writing was not surfaced: %+v", ranked)
 	}
 	if got := rankAnswerLibraryDocuments("Tell us about your experience", docs, answerLibraryRelatedLimit); len(got) != 0 {
@@ -47,7 +43,7 @@ func TestAnswerLibraryQuestionOverlapOutweighsLongAnswerOverlap(t *testing.T) {
 		answerLibraryDoc(2, "Customer escalation", strings.Repeat("Linux production incident response ", 500)),
 	}
 	ranked := rankAnswerLibraryDocuments("Linux production incident response customer escalation", docs, answerLibraryRelatedLimit)
-	if len(ranked) != 2 || ranked[0].document.EntryID != 1 {
+	if len(ranked) != 2 || ranked[0].Document.EntryID != 1 {
 		t.Fatalf("long answer tokens overwhelmed original-question overlap: %+v", ranked)
 	}
 }
@@ -63,7 +59,7 @@ func TestAnswerLibraryRankingIsStableAndBounded(t *testing.T) {
 	if len(ranked) != answerLibrarySearchPageLimit {
 		t.Fatalf("explicit search result count=%d want %d", len(ranked), answerLibrarySearchPageLimit)
 	}
-	if ranked[0].document.EntryID != 3 || ranked[1].document.EntryID != 5 || ranked[2].document.EntryID != 7 {
+	if ranked[0].Document.EntryID != 3 || ranked[1].Document.EntryID != 5 || ranked[2].Document.EntryID != 7 {
 		t.Fatalf("tie break is not stable by entry ID: %+v", ranked)
 	}
 	if got := rankAnswerLibraryDocuments("Describe the Linux incident", docs, answerLibraryRelatedLimit); len(got) != answerLibraryRelatedLimit {
