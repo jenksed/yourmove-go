@@ -207,8 +207,36 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
   const contactsOnly = browser.active && ["selected", "present"].includes(browser.resume_status) && browser.contact_status === "" && !!snapshot.resume?.valid;
   const activeTransfer = browser.resume_status !== "" || browser.contact_status !== "" || browser.letter_status !== "" || browser.answer_status !== "";
   const filling = busy || browser.phase === "opening" || ["waiting", "checking"].includes(browser.answer_status) || ["waiting", "checking"].includes(browser.letter_status);
-  const heading = !browser.active && !activeTransfer ? "Ready to fill" : filling ? "Filling…" : browser.active ? "Review in the employer browser" : browser.phase === "interrupted" ? "Connection lost" : "Browser closed";
-  const canFill = !busy && !refreshing && loadError === "" && (prep.includeResume || contactsOnly || prep.includeLetter || prep.includeAnswers);
+  // Eligible transfer is the exact Go-derived scope: the same preparation
+  // flags that enable Fill. Unsupported sites never report includes (Go
+  // summarizePreparation returns early with OpenExternally), and handled
+  // materials report includes false, so neither may claim "Ready to fill".
+  const hasEligibleTransfer = prep.includeResume || contactsOnly || prep.includeLetter || prep.includeAnswers;
+  const heading = filling
+    ? "Filling…"
+    : browser.active
+      ? "Review in the employer browser"
+      : browser.phase === "interrupted"
+        ? "Connection lost"
+        : activeTransfer
+          ? "Browser closed"
+          : !snapshot.ownsPosting
+            ? "Apply on the employer website"
+            : !snapshot.editingAllowed
+              ? "Application recorded as complete"
+              : !hasEligibleTransfer
+                ? "Nothing pending transfer"
+                : "Ready to fill";
+  const explanation = !browser.active && !activeTransfer && !snapshot.ownsPosting
+    ? "Automatic filling is unavailable on this site. Use View Application to apply manually; your saved materials are listed below."
+    : !browser.active && !activeTransfer && !snapshot.editingAllowed
+      ? "This application is recorded as complete. Transfer is closed; history remains below."
+      : !browser.active && !activeTransfer && !hasEligibleTransfer
+        ? "All saved material is already handled or none is pending. Nothing will be sent automatically; review the outcomes below and submit yourself."
+        : !browser.active && !activeTransfer
+          ? "Review the included material below, then use Fill Application. Review and submit yourself."
+          : "";
+  const canFill = !busy && !refreshing && loadError === "" && snapshot.ownsPosting && hasEligibleTransfer;
   const stale = loadError !== "";
 
   return (
@@ -217,6 +245,7 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
         <div>
           <h2 id="continuation-title">{heading}</h2>
           <p className="workspace-url">{snapshot.destination}</p>
+          {explanation !== "" && <p className="small-muted">{explanation}</p>}
         </div>
       </div>
 
@@ -365,17 +394,23 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
         </p>
       )}
       <div className="form-actions">
-        <button
-          className="button button-primary"
-          type="button"
-          disabled={!canFill}
-          onClick={() => void runAuthorize()}
-        >
-          {busy ? "Filling…" : "Fill Application"}
-        </button>
+        {snapshot.ownsPosting ? (
+          <button
+            className="button button-primary"
+            type="button"
+            disabled={!canFill}
+            onClick={() => void runAuthorize()}
+          >
+            {busy ? "Filling…" : "Fill Application"}
+          </button>
+        ) : (
+          <p className="small-muted">Fill is unavailable on this site. Use View Application above to apply manually.</p>
+        )}
       </div>
       <p className="small-muted">
-        Fill sends the included saved information to this employer. It does not submit. Review and submit yourself.
+        {snapshot.ownsPosting
+          ? "Fill sends the included saved information to this employer. It does not submit. Review and submit yourself."
+          : "Viewing sends no saved material. YourMove cannot confirm employer receipt; submit yourself on the employer site."}
       </p>
 
       {activeTransfer && (
