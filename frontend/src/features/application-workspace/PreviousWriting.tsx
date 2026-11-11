@@ -174,7 +174,7 @@ export function PreviousWriting({
     <div className="previous-writing" aria-label="Previous writing">
       <h4>Previous writing</h4>
       {suggestions.length === 0 && (
-        <p className="small-muted">No ranked suggestions for this question. Browse all saved answers to look manually.</p>
+        <p className="small-muted">No related answers found.</p>
       )}
       {suggestions.length > 0 && (
         <ul className="writing-suggestions">

@@ -285,6 +285,7 @@
 
 .question-selector {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 4px;
   flex: 1 1 320px;
   min-width: 0;
@@ -299,6 +300,146 @@
   color: var(--color-text);
   padding: 10px 11px;
   font-size: 13px;
+}
+
+/* Slice 2: Base UI question picker. Trigger stays compact (single-line
+   ellipsis + status badge); the popup wraps full employer wording and is
+   bounded so it stays readable at normal and narrow desktop widths. */
+.question-select-trigger {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 7px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding: 10px 11px;
+  font-size: 13px;
+  text-align: start;
+}
+
+.question-select-trigger:hover {
+  background: var(--color-surface-muted);
+}
+
+.question-select-trigger:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 3px;
+}
+
+.question-select-trigger[data-popup-open] {
+  border-color: var(--color-primary);
+}
+
+.question-select-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.question-select-status {
+  flex: 0 0 auto;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--color-muted);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface-muted);
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+
+.question-select-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-muted);
+  transition: transform 0.15s ease;
+}
+
+.question-select-trigger[data-popup-open] .question-select-icon {
+  transform: rotate(180deg);
+}
+
+.question-select-positioner {
+  width: var(--anchor-width);
+  max-width: calc(100vw - 32px);
+  z-index: 60;
+}
+
+.question-select-popup {
+  width: 100%;
+  max-width: min(560px, calc(100vw - 32px));
+  max-height: min(320px, calc(100vh - 96px));
+  overflow-y: auto;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 8px;
+  background: var(--color-surface-elevated);
+  color: var(--color-text);
+  padding: 4px;
+}
+
+.question-select-list {
+  display: grid;
+  gap: 2px;
+  padding: 2px;
+}
+
+.question-select-item {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px 8px 30px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.question-select-item[data-highlighted="true"] {
+  background: var(--color-hover);
+}
+
+.question-select-item[data-selected="true"] {
+  background: var(--color-selected);
+}
+
+.question-select-item:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: -3px;
+}
+
+.question-select-label {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.question-select-check {
+  position: absolute;
+  left: 9px;
+  top: 11px;
+  display: inline-flex;
+  color: var(--color-primary);
+  visibility: hidden;
+}
+
+.question-select-item[data-selected="true"] .question-select-check {
+  visibility: visible;
+}
+
+@media (max-width: 900px) {
+  /* The navigator stacks vertically here, so the row-layout flex-basis
+     must not become a fixed content height. The trigger stays compact
+     and the popup remains bounded by the rules above. */
+  .question-selector {
+    flex: 0 1 auto;
+  }
 }
 
 /* Adjacent explanation when unsaved edits intentionally block navigation. */
@@ -462,6 +603,19 @@
 
 .writing-editor h3 {
   margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Slice 2: action rows inside the desk must wrap. JSX strips whitespace
+   between buttons, so without wrapping the row is a single unbreakable run
+   that forces .writing-editor wider than its grid track and slides heading
+   line-tails beneath Previous Writing. The legacy base rule this mirrors
+   lives in static/styles.css; only the wrap is added for JSX. */
+.writing-desk .form-actions,
+.question-dirty-note .form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .writing-assist {

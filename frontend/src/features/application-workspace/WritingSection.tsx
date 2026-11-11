@@ -3,6 +3,7 @@
 // validation, durable saves, and reuse eligibility.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Select } from "@base-ui/react/select";
 import {
   aiAdoptCheck,
   aiCancel,
@@ -707,14 +708,15 @@ export function WritingSection({
           ? `Capture — ${snapshot.captureState.phase}: ${snapshot.captureState.message}`
           : snapshot.browserActive
             ? "Managed browser open. New questions appear here as you navigate the employer form; nothing is filled automatically."
-            : "Capture is not running. Select View Application to open the managed browser; observed questions appear here automatically."}
+            : snapshot.ownsPosting
+              ? "Capture is not running. Select View Application to open the managed browser; observed questions appear here automatically."
+              : "Automatic capture isn't available for this posting. Add questions manually and enter your answers on the employer site."}
       </p>
       {dirty && <p className="small-muted">Save your answer before refreshing the question list.</p>}
 
       {discoveryStatus === "checking" && <p role="status">Checking for application questions…</p>}
-      {!snapshot.ownsPosting && <p className="writing-notice" role="note">Question capture supports saved Ashby, Greenhouse, and Lever postings. This URL cannot yet be safely associated with an employer form. Select Add question manually to prepare answers yourself; automatic Fill remains unavailable.</p>}
       {discoveryStatus === "unsupported" && snapshot.ownsPosting && answerTasks.length > 0 && <p className="writing-notice">This employer does not offer an early question preview. Questions require live observation: select View Application, then navigate the employer form. Observed questions appear here automatically as you navigate; Refresh questions remains available if anything looks stale.</p>}
-      {discoveryStatus === "failed" && <p className="writing-notice">We could not check questions right now. Your saved work is safe. <button className="button button-secondary" type="button" onClick={onRetryDiscovery}>Retry question check</button> You can also select Capture application questions.</p>}
+      {discoveryStatus === "failed" && <p className="writing-notice">We could not check questions right now. Your saved work is safe. <button className="button button-secondary" type="button" onClick={onRetryDiscovery}>Retry question check</button>{snapshot.ownsPosting && snapshot.editingAllowed && !readOnly && " You can also select Capture application questions."}</p>}
 
       {(snapshot.returnNotice !== "" || snapshot.earlyNotice !== "") && (
         <p className="writing-notice" role="note">
@@ -732,7 +734,7 @@ export function WritingSection({
         <div className="empty-state">
           <h3>No questions discovered yet</h3>
           <p>
-            {!snapshot.ownsPosting ? "Automatic capture and Fill are unavailable for this posting. Select Add question manually above, then open the employer site yourself and complete the form." : discoveryStatus === "checking" ? "Checking this posting for questions." : "Questions require live observation for this employer. Select View Application above, then navigate the employer form; observed questions appear here automatically without a separate capture step. Refresh questions remains available as a recovery action."}
+            {!snapshot.ownsPosting ? "Select Add question manually above to get started." : discoveryStatus === "checking" ? "Checking this posting for questions." : "Questions require live observation for this employer. Select View Application above, then navigate the employer form; observed questions appear here automatically without a separate capture step. Refresh questions remains available as a recovery action."}
           </p>
         </div>
       )}
@@ -748,19 +750,71 @@ export function WritingSection({
             >
               ← Previous
             </button>
-            <label className="question-selector">
-              <span className="small-muted">Question {selectedIndex + 1} of {answerTasks.length}</span>
-              <select value={selectedId} onChange={(event) => {
-                const target = answerTasks.find((q) => questionId(q) === event.target.value);
-                if (target) pickQuestion(target);
-              }}>
-                {answerTasks.map((q) => (
-                  <option key={questionId(q)} value={questionId(q)}>
-                    {q.label.length > 80 ? `${q.label.slice(0, 80)}…` : q.label}{q.value !== "" ? " · prepared" : " · needs answer"}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="question-selector">
+              <span className="small-muted" id="question-position">Question {selectedIndex + 1} of {answerTasks.length}</span>
+              <Select.Root
+                value={selectedId}
+                items={answerTasks.map((q) => ({ value: questionId(q), label: q.label }))}
+                onValueChange={(next) => {
+                  if (typeof next !== "string") return;
+                  const target = answerTasks.find((q) => questionId(q) === next);
+                  if (target) pickQuestion(target);
+                }}
+              >
+                <Select.Trigger
+                  className="question-select-trigger"
+                  aria-labelledby="question-position question-select-value question-select-status"
+                >
+                  <Select.Value id="question-select-value" className="question-select-value">
+                    {(value: string | null) => {
+                      const current = answerTasks.find((q) => questionId(q) === value) ?? selected;
+                      return current ? current.label : "Select a question";
+                    }}
+                  </Select.Value>
+                  <span
+                    id="question-select-status"
+                    className={`question-select-status${selected && selected.value !== "" ? " is-prepared" : " is-open"}`}
+                  >
+                    {selected && selected.value !== "" ? "Prepared" : "Needs answer"}
+                  </span>
+                  <Select.Icon className="question-select-icon" aria-hidden="true">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                      <path d="M3.5 5.25 7 8.75l3.5-3.5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </Select.Icon>
+                </Select.Trigger>
+                <Select.Portal>
+                  <Select.Positioner
+                    className="question-select-positioner"
+                    sideOffset={4}
+                    alignItemWithTrigger={false}
+                  >
+                    <Select.Popup className="question-select-popup">
+                      <Select.List className="question-select-list">
+                        {answerTasks.map((q) => (
+                          <Select.Item
+                            key={questionId(q)}
+                            value={questionId(q)}
+                            label={q.label}
+                            className="question-select-item"
+                          >
+                            <Select.ItemIndicator className="question-select-check" aria-hidden="true">
+                              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                                <path d="m2.5 7.25 3 3 6-6.5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                            </Select.ItemIndicator>
+                            <Select.ItemText className="question-select-label">{q.label}</Select.ItemText>
+                            <span className="small-muted">
+                              {q.value !== "" ? "Prepared" : "Needs answer"}
+                            </span>
+                          </Select.Item>
+                        ))}
+                      </Select.List>
+                    </Select.Popup>
+                  </Select.Positioner>
+                </Select.Portal>
+              </Select.Root>
+            </div>
           <button
             className="button button-secondary"
             type="button"
@@ -792,7 +846,9 @@ export function WritingSection({
                 <>
                   <h3>{selected.label}</h3>
                   <p className="small-muted">
-                    {selected.isEarly ? `Published definition (${selected.discoverySource})` : selected.localStatus}
+                    {selected.isManual && !selected.libraryAutoPrepared
+                      ? selected.value !== "" ? "Answer saved" : "Needs answer"
+                      : selected.isEarly ? `Published definition (${selected.discoverySource})` : selected.localStatus}
                     {selected.revision > 0 ? ` · Saved revision ${selected.revision}` : " · Not saved yet"}
                     {selected.required ? " · Required by employer" : " · Optional"}
                   </p>
@@ -817,7 +873,7 @@ export function WritingSection({
                       The saved answer changed in another window (now revision {selected.revision}). Your edits are kept; saving uses your original revision {baselineRevision} and will ask you to review first.
                     </p>
                   )}
-                  {selected.source !== "" && !selected.isEarly && (
+                  {selected.source !== "" && !selected.isEarly && !selected.isManual && (
                     <p className="small-muted">Source: {selected.source}</p>
                   )}
                   {selected.isEarly && selected.reconciliationStatus !== "" && (
@@ -831,7 +887,7 @@ export function WritingSection({
                       {selected.manualReason !== "" ? selected.manualReason : "This question requires manual completion in Chromium."}
                     </p>
                   )}
-                  {selected.isManual && (
+                  {selected.isManual && snapshot.ownsPosting && (
                     <p className="writing-notice" role="note">
                       Manually added question. It is saved for this application only and never fills the employer site automatically — complete it on the employer website yourself.
                     </p>
