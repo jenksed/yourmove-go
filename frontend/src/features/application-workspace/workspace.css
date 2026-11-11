@@ -606,11 +606,70 @@
   overflow-wrap: anywhere;
 }
 
-/* Slice 2: action rows inside the desk must wrap. JSX strips whitespace
-   between buttons, so without wrapping the row is a single unbreakable run
-   that forces .writing-editor wider than its grid track and slides heading
-   line-tails beneath Previous Writing. The legacy base rule this mirrors
-   lives in static/styles.css; only the wrap is added for JSX. */
+/* Editor-first: capture, refresh, and manual entry stay available but
+   visually secondary beside the primary View Application action. A native
+   disclosure keeps keyboard and no-JavaScript behavior; with no writing
+   tasks the actions render inline and prominent instead. */
+.capture-tools {
+  border: 1px solid var(--color-border-strong);
+  border-radius: 7px;
+  background: var(--color-surface);
+  min-width: 0;
+}
+
+.capture-tools summary {
+  cursor: pointer;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  padding: 10px 11px;
+  font-size: 13px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.capture-tools summary:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 3px;
+}
+
+.capture-tools-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 10px 10px;
+}
+
+/* Editor-first: the active question and editor lead the desk. */
+.writing-editor h3 {
+  font-size: 17px;
+  line-height: 1.4;
+}
+
+.writing-editor textarea {
+  min-height: 180px;
+}
+
+/* Narrow windows: nothing in the desk may force horizontal overflow. */
+#writing .section-heading {
+  flex-wrap: wrap;
+}
+
+#writing .question-navigator > *,
+#writing .writing-desk > *,
+#writing .heading-actions {
+  min-width: 0;
+}
+
+#writing textarea,
+#writing input,
+#writing select {
+  max-width: 100%;
+}
+
+/* Action rows inside the desk must wrap: JSX strips whitespace between
+   buttons, so without wrapping the row is a single unbreakable run that
+   forces .writing-editor wider than its grid track. */
 .writing-desk .form-actions,
 .question-dirty-note .form-actions {
   display: flex;
