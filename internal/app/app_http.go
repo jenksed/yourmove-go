@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"github.com/jenksed/yourmove-go/internal/application/schema"
+	"github.com/jenksed/yourmove-go/internal/updates"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -36,10 +37,7 @@ type App struct {
 	earlyDiscoveryMu          sync.Mutex
 	browsers                  sessionHost
 	coverLetterGenerate       func(context.Context, string) (string, error) // test override; production uses local Ollama
-	updates                   updateState
-	updateCheck               func(context.Context) (UpdateCheckResult, error)
-	updateInstall             func(context.Context) error
-	updateRestart             func(context.Context) error
+	updates                   *updates.Manager
 }
 
 func newMux(app *App) http.Handler {

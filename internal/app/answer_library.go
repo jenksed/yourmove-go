@@ -9,6 +9,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/jenksed/yourmove-go/internal/answerlibrary"
 	"github.com/jenksed/yourmove-go/internal/application/browser"
 	"github.com/jenksed/yourmove-go/internal/application/schema"
 )
@@ -28,32 +29,9 @@ var (
 
 // AnswerLibraryEntry is a curated copy of one saved answer, with enough source
 // metadata to preserve its provenance after the original job is removed.
-type AnswerLibraryEntry struct {
-	Alternatives                []string
-	ID                          int64
-	OriginalQuestion            string
-	Answer                      string
-	SourceEmployer              string
-	SourceJobTitle              string
-	SourceHost                  string
-	SourceJobID                 int64
-	SourceDestination           string
-	SourceProvider              string
-	SourceQuestionKey           string
-	SourceRevision              int64
-	SourceInspectionID          int64
-	SourceInspectionFingerprint string
-	SourceFieldID               string
-	SourceFieldKind             string
-	SourceKind                  string
-	EarlyDiscoverySource        string
-	EarlyFingerprint            string
-	EarlySourceQuestionID       string
-	EarlyAnswerRevision         int64
-	CreatedAt                   string
-	UpdatedAt                   string
-	Revision                    int64
-}
+// Canonical storage lives in internal/answerlibrary; this alias keeps
+// existing handlers, promotion transactions, and tests compiling.
+type AnswerLibraryEntry = answerlibrary.Entry
 
 func validAnswerLibraryText(value string) bool {
 	return len(value) <= answerLibraryMaxText && utf8.ValidString(value) && !strings.ContainsRune(value, 0)
@@ -107,23 +85,7 @@ var answerLibrarySensitivePhrases = []string{
 }
 
 func answerLibraryContainsPhrase(text, phrase string) bool {
-	words, blocked := answerLibraryWords(text), answerLibraryWords(phrase)
-	if len(blocked) == 0 || len(blocked) > len(words) {
-		return false
-	}
-	for start := 0; start <= len(words)-len(blocked); start++ {
-		match := true
-		for offset := range blocked {
-			if words[start+offset] != blocked[offset] {
-				match = false
-				break
-			}
-		}
-		if match {
-			return true
-		}
-	}
-	return false
+	return answerlibrary.ContainsPhrase(text, phrase)
 }
 
 // promoteApplicationAnswer validates and snapshots the authoritative saved row
@@ -306,18 +268,10 @@ func verifiedAnswerLibraryField(tx *sql.Tx, job Job, provider, key string) (sche
 func scanAnswerLibraryEntry(scanner interface {
 	Scan(...any) error
 }, entry *AnswerLibraryEntry) error {
-	return scanner.Scan(
-		&entry.ID, &entry.OriginalQuestion, &entry.Answer, &entry.SourceEmployer, &entry.SourceJobTitle,
-		&entry.SourceHost, &entry.SourceJobID, &entry.SourceDestination, &entry.SourceProvider,
-		&entry.SourceQuestionKey, &entry.SourceRevision, &entry.SourceInspectionID, &entry.SourceInspectionFingerprint, &entry.SourceFieldID,
-		&entry.SourceFieldKind, &entry.SourceKind, &entry.EarlyDiscoverySource, &entry.EarlyFingerprint,
-		&entry.EarlySourceQuestionID, &entry.EarlyAnswerRevision, &entry.CreatedAt, &entry.UpdatedAt, &entry.Revision)
+	return answerlibrary.ScanEntry(scanner, entry)
 }
 
-const answerLibrarySelectColumns = `id,original_question,answer,source_employer,source_job_title,source_host,
-	 source_job_id,source_destination,source_provider,source_question_key,source_revision,source_inspection_id,
-	 source_inspection_fingerprint,source_field_id,source_field_kind,source_kind,early_discovery_source,
-	 early_fingerprint,early_source_question_id,early_answer_revision,created_at,updated_at,revision`
+const answerLibrarySelectColumns = answerlibrary.SelectColumns
 
 func answerLibraryEntryBySource(queryer interface {
 	QueryRow(string, ...any) *sql.Row
@@ -425,12 +379,7 @@ func (a *App) answerLibraryListPage(sort string, page, perPage int) ([]AnswerLib
 func (a *App) answerLibraryBySourceID(queryer interface {
 	QueryRow(string, ...any) *sql.Row
 }, id int64) (AnswerLibraryEntry, error) {
-	var entry AnswerLibraryEntry
-	err := scanAnswerLibraryEntry(queryer.QueryRow(`SELECT `+answerLibrarySelectColumns+` FROM answer_library WHERE id=?`, id), &entry)
-	if err == nil && entry.SourceKind == "" {
-		entry.SourceKind = "live"
-	}
-	return entry, err
+	return answerlibrary.EntryByID(queryer, id)
 }
 
 // promoteEarlyApplicationAnswer curates a saved early narrative as a phrasing
