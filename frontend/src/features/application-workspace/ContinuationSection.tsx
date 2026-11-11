@@ -220,23 +220,31 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
         ? "Connection lost"
         : activeTransfer
           ? "Browser closed"
-          : !snapshot.ownsPosting
-            ? "Apply on the employer website"
-            : !snapshot.editingAllowed
+          : !snapshot.editingAllowed
               ? "Application recorded as complete"
-              : !hasEligibleTransfer
-                ? "Nothing pending transfer"
-                : "Ready to fill";
-  const explanation = !browser.active && !activeTransfer && !snapshot.ownsPosting
-    ? "Automatic filling is unavailable on this site. Use View Application to apply manually; your saved materials are listed below."
-    : !browser.active && !activeTransfer && !snapshot.editingAllowed
-      ? "This application is recorded as complete. Transfer is closed; history remains below."
+              : !snapshot.ownsPosting
+                ? "Apply on the employer website"
+                : !hasEligibleTransfer
+                  ? "Nothing pending transfer"
+                  : "Ready to fill";
+  // Completed takes precedence over unsupported (mirrors Go
+  // summarizePreparation: closed/applied returns before the unsupported
+  // branch), so a recorded-complete job never directs to View Application.
+  const explanation = !browser.active && !activeTransfer && !snapshot.editingAllowed
+    ? "This application is recorded as complete. Transfer is closed; history remains below."
+    : !browser.active && !activeTransfer && !snapshot.ownsPosting
+      ? "Automatic filling is unavailable on this site. Use View Application to apply manually; your saved materials are listed below."
       : !browser.active && !activeTransfer && !hasEligibleTransfer
         ? "All saved material is already handled or none is pending. Nothing will be sent automatically; review the outcomes below and submit yourself."
         : !browser.active && !activeTransfer
           ? "Review the included material below, then use Fill Application. Review and submit yourself."
           : "";
-  const canFill = !busy && !refreshing && loadError === "" && snapshot.ownsPosting && hasEligibleTransfer;
+  // editingAllowed mirrors the backend per-item transfer guards (applied /
+  // closed / submission recorded reject with 409), including the early-answer
+  // path that can set includeAnswers after the completed early return in
+  // summarizePreparation. Active-browser contacts-only transfers remain
+  // available because they occur only when editingAllowed is true.
+  const canFill = !busy && !refreshing && loadError === "" && snapshot.ownsPosting && snapshot.editingAllowed && hasEligibleTransfer;
   const stale = loadError !== "";
 
   return (
@@ -268,11 +276,6 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
       {browser.phase === "attention" && browser.message !== "" && (
         <p className="writing-notice" role="alert">
           {browser.message}
-        </p>
-      )}
-      {!snapshot.ownsPosting && (
-        <p className="writing-notice" role="note">
-          Automatic filling is not available for this job site yet. Open the application and complete the form yourself.
         </p>
       )}
       {stale && (
@@ -394,7 +397,7 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
         </p>
       )}
       <div className="form-actions">
-        {snapshot.ownsPosting ? (
+        {snapshot.ownsPosting && (
           <button
             className="button button-primary"
             type="button"
@@ -403,8 +406,6 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
           >
             {busy ? "Filling…" : "Fill Application"}
           </button>
-        ) : (
-          <p className="small-muted">Fill is unavailable on this site. Use View Application above to apply manually.</p>
         )}
       </div>
       <p className="small-muted">
