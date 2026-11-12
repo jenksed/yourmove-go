@@ -151,9 +151,17 @@ func TestProfileFactsRemainPendingAfterContacts(t *testing.T) {
 		value, source := resolveApplicationAnswer(f, "", false, p, "", false)
 		ready = append(ready, preparedQuestion{Field: f, Value: value, Source: source, Key: f.ID, Editable: true})
 	}
+	// Contact facts are owned by the dedicated contact operation and never
+	// enter answer scope. Additional facts (pronouns, LinkedIn) remain pending
+	// for their own guarded answer-filler path even after contacts complete.
 	pending := pendingAnswers(ready, nil, true)
-	if len(pending) != 0 {
-		t.Fatalf("wrong pending facts: %+v", pending)
+	if len(pending) != 2 {
+		t.Fatalf("additional facts should remain pending after contacts: %+v", pending)
+	}
+	for _, q := range pending {
+		if additionalProfileAttribute(q.Field) == "" {
+			t.Fatalf("contact fact leaked into answer scope: %+v", q)
+		}
 	}
 }
 

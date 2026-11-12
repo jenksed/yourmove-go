@@ -177,6 +177,13 @@ func (a *App) buildContinuation(jobID int64) (map[string]any, error) {
 		}
 		preparation.PendingAnswers = append(preparation.PendingAnswers, preparedQuestion{JobID: job.ID, Destination: q.Destination, Field: q.Field, Key: q.Key, Value: q.Value, Source: "Saved early answer — fills when the same question is found", Revision: q.Revision, Editable: true, IsEarly: true, EarlyAnswerID: q.EarlyAnswerID, DiscoverySource: q.DiscoverySource, DiscoveryFingerprint: q.DiscoveryFingerprint, SourceQuestionID: q.SourceQuestionID})
 	}
+	// Eligible additional profile facts (LinkedIn, location, pronouns, etc.)
+	// enter the same authorized answer scope through the existing guarded
+	// filler. Contact facts stay with the dedicated contact operation.
+	// Unsupported or ambiguous controls have empty values and never appear.
+	for _, f := range live.readyAdditionalProfileFacts() {
+		preparation.PendingAnswers = append(preparation.PendingAnswers, f)
+	}
 	preparation.PendingAnswers = pendingAnswers(preparation.PendingAnswers, state.AnswerAttempted, false)
 	preparation.PendingAnswers = excludePendingAuthorizations(preparation.PendingAnswers, state.AnswerPending)
 	preparation.IncludeAnswers = len(preparation.PendingAnswers) > 0
