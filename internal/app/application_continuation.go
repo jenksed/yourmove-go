@@ -76,9 +76,15 @@ func (a *App) continueApplication(w http.ResponseWriter, r *http.Request) {
 }
 
 func pendingAnswers(ready, attempted []preparedQuestion, contactsHandled bool) []preparedQuestion {
+	_ = contactsHandled
 	var pending []preparedQuestion
 	for _, q := range ready {
-		if q.profileContact() {
+		// Contact facts are never part of answer scope; the dedicated
+		// contact operation owns name/email/phone. Additional profile
+		// facts (LinkedIn, location, pronouns, etc.) remain pending for
+		// their own guarded answer-filler path and are never handled by
+		// contacts, so only contact keys are excluded here.
+		if profileContactKey(q.Field) != "" {
 			continue
 		}
 		seen := false

@@ -162,20 +162,35 @@ func (a *App) buildContinuation(jobID int64) (map[string]any, error) {
 		prepWorkspace.BrowserState.Phase = ""
 	}
 	preparation := summarizePreparation(prepWorkspace)
-	for _, q := range early.Questions {
-		if !q.Editable || q.EarlyAnswerID == 0 || q.Revision == 0 || strings.TrimSpace(q.Value) == "" {
-			continue
-		}
-		if q.Reconciliation.LiveQuestionKey != "" {
-			_, liveErr := a.savedLiveAnswer(job, q.Reconciliation.LiveQuestionKey)
-			if liveErr == nil {
+	// Completed, closed, or submission-recorded jobs expose no transfer
+	// scope: the read-only summary above already returns early with no
+	// includes, and no early answer or profile fact may reintroduce one.
+	// The server-side continue path rejects such jobs before any browser
+	// launch; React's disabled Fill button is presentation only.
+	completed := job.Stage == StageApplied || job.Stage == StageClosed || job.SubmissionCount > 0
+	if !completed {
+		for _, q := range early.Questions {
+			if !q.Editable || q.EarlyAnswerID == 0 || q.Revision == 0 || strings.TrimSpace(q.Value) == "" {
 				continue
 			}
-			if !errors.Is(liveErr, sql.ErrNoRows) {
-				return nil, liveErr
+			if q.Reconciliation.LiveQuestionKey != "" {
+				_, liveErr := a.savedLiveAnswer(job, q.Reconciliation.LiveQuestionKey)
+				if liveErr == nil {
+					continue
+				}
+				if !errors.Is(liveErr, sql.ErrNoRows) {
+					return nil, liveErr
+				}
 			}
+			preparation.PendingAnswers = append(preparation.PendingAnswers, preparedQuestion{JobID: job.ID, Destination: q.Destination, Field: q.Field, Key: q.Key, Value: q.Value, Source: "Saved early answer — fills when the same question is found", Revision: q.Revision, Editable: true, IsEarly: true, EarlyAnswerID: q.EarlyAnswerID, DiscoverySource: q.DiscoverySource, DiscoveryFingerprint: q.DiscoveryFingerprint, SourceQuestionID: q.SourceQuestionID})
 		}
-		preparation.PendingAnswers = append(preparation.PendingAnswers, preparedQuestion{JobID: job.ID, Destination: q.Destination, Field: q.Field, Key: q.Key, Value: q.Value, Source: "Saved early answer — fills when the same question is found", Revision: q.Revision, Editable: true, IsEarly: true, EarlyAnswerID: q.EarlyAnswerID, DiscoverySource: q.DiscoverySource, DiscoveryFingerprint: q.DiscoveryFingerprint, SourceQuestionID: q.SourceQuestionID})
+		// Eligible additional profile facts (LinkedIn, location, pronouns, etc.)
+		// enter the same authorized answer scope through the existing guarded
+		// filler. Contact facts stay with the dedicated contact operation.
+		// Unsupported or ambiguous controls have empty values and never appear.
+		for _, f := range live.readyAdditionalProfileFacts() {
+			preparation.PendingAnswers = append(preparation.PendingAnswers, f)
+		}
 	}
 	preparation.PendingAnswers = pendingAnswers(preparation.PendingAnswers, state.AnswerAttempted, false)
 	preparation.PendingAnswers = excludePendingAuthorizations(preparation.PendingAnswers, state.AnswerPending)
@@ -486,6 +501,14 @@ func (a *App) continuationContinueAPI(w http.ResponseWriter, r *http.Request) {
 		writeResumeError(w, http.StatusConflict, "The employer destination changed. Review Prepare again.")
 		return
 	}
+	// Completed, closed, or submission-recorded jobs accept no transfer.
+	// React disables Fill, but the server must enforce the boundary before
+	// any browser launch: resolvers alone would only downgrade items to
+	// manual after a session starts.
+	if job.Stage == StageApplied || job.Stage == StageClosed || job.SubmissionCount > 0 {
+		writeResumeError(w, http.StatusConflict, "This application is no longer active")
+		return
+	}
 	// React's Fill action carries the displayed profile revision and résumé
 	// identity for material that depends on them. Revalidate both before any
 	// résumé or contact effect. Letter and answer work keeps its own
@@ -526,7 +549,31 @@ func (a *App) continuationContinueAPI(w http.ResponseWriter, r *http.Request) {
 			}
 			answersRefused = "Saved answers changed. Review them before filling."
 		} else {
-			authorizedAnswers = a.reactAnswerTransfer(job, scope, input.ProfileRevision)
+			// Additional Candidate Profile facts carry no answer revision;
+			// their authority is the displayed approved snapshot (approval +
+			// revision). An omitted or stale revision cannot authorize them.
+			// Ordinary answer-only scope keeps its existing behavior.
+			hasProfileFacts := false
+			for _, q := range scope {
+				if additionalProfileAttribute(q.Field) != "" && !q.IsEarly {
+					hasProfileFacts = true
+					break
+				}
+			}
+			if hasProfileFacts {
+				profile, profileErr := a.candidateProfile()
+				if profileErr != nil || input.ProfileRevision == "" || input.ProfileRevision != strconv.FormatInt(profile.Revision, 10) {
+					if !input.IncludeResume && !input.IncludeLetter && !input.TransferContacts {
+						writeResumeError(w, http.StatusConflict, "Candidate Profile changed. Review it before filling.")
+						return
+					}
+					answersRefused = "Candidate Profile changed. Review it before filling."
+				} else {
+					authorizedAnswers = a.reactAnswerTransfer(job, scope, input.ProfileRevision)
+				}
+			} else {
+				authorizedAnswers = a.reactAnswerTransfer(job, scope, input.ProfileRevision)
+			}
 		}
 	}
 	form := continueForm(input)
