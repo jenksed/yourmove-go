@@ -121,9 +121,14 @@ func (a *App) reactAnswerTransfer(job Job, scope []preparedQuestion, profileRevi
 				return q, "manual"
 			}
 			if isProfileFact {
-				// Eligible additional profile facts reuse the guarded answer
-				// filler. Authority is explicit approval + displayed revision;
-				// the live field identity, destination, and unambiguous value
+				// Additional profile facts reuse the guarded answer filler.
+				// Authority is the displayed approved snapshot (approval +
+				// revision); an omitted or stale revision cannot authorize them.
+				// Ordinary saved answers keep their existing revision behavior.
+				if profileRevision == "" || fmt.Sprint(profile.Revision) != profileRevision {
+					return q, "manual"
+				}
+				// The live field identity, destination, and unambiguous value
 				// are revalidated here. Ambiguous location suggestions,
 				// pronoun choices, existing employer values, and uncertain
 				// outcomes stay manual/uncertain via the filler itself.
