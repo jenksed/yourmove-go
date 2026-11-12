@@ -59,9 +59,13 @@ jobs:
           (Get-Item $edge).VersionInfo | Format-List ProductName, ProductVersion, FileVersion
           & $edge --version
 
-      - name: Run Edge feasibility unit checks
+      # The broader Go suite is intentionally not gated here: like the main
+      # Windows job documents, it contains Unix-assuming cases never
+      # exercised on Windows (execute-bit fixtures, extensionless macOS
+      # .app paths). Only the platform-neutral Edge discovery checks run.
+      - name: Run Edge discovery unit checks
         shell: pwsh
-        run: go test -count=1 ./internal/application/browser/... 2>&1
+        run: go test -count=1 -v ./internal/application/browser/chromium -run 'TestEdgePathsFromBases|TestDiscoverEdge' 2>&1
         env:
           YOURMOVE_DATA_DIR: ${{ runner.temp }}/yourmove-edge-workspace
 
