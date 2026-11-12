@@ -20,7 +20,7 @@ ManifestDPIAware true
 !define MUI_ICON "..\icon.ico"
 !define MUI_UNICON "..\icon.ico"
 !define MUI_ABORTWARNING
-!define MUI_WELCOMEPAGE_TEXT "Setup installs YourMove for your Windows account.$\r$\n$\r$\nClose YourMove before upgrading. Saved work is retained.$\r$\n$\r$\nSetup downloads WebView2 if missing. Install Google Chrome separately to use employer-browser Fill."
+!define MUI_WELCOMEPAGE_TEXT "Setup installs YourMove for your Windows account.$\r$\n$\r$\nClose YourMove before upgrading. Saved work is retained.$\r$\n$\r$\nSetup downloads WebView2 if missing. Install Google Chrome or Microsoft Edge separately to use employer-browser Fill."
 !insertmacro MUI_PAGE_WELCOME
 ; A fixed per-user directory prevents installing over applicant documents.
 !insertmacro MUI_PAGE_INSTFILES

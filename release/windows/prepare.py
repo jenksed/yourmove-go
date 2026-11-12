@@ -189,7 +189,7 @@ def main():
     metadata = dict(product, source_commit=commit, architecture="x64", os="windows",
                     installer=filename, installer_sha256=sha256(installer),
                     signing="timestamped-authenticode" if args.sign else "unsigned-qualification-only",
-                    native_acceptance="NOT VERIFIED", browser="separately installed Google Chrome",
+                    native_acceptance="NOT VERIFIED", browser="separately installed Google Chrome or Microsoft Edge",
                     webview2="Evergreen bootstrapper; internet required if runtime missing",
                     tools={"go": capture("go", "version"), "wails": capture(wails, "version"),
                            "nsis": capture("makensis", "-VERSION"), "node": capture("node", "--version"),
