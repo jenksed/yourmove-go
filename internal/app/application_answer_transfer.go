@@ -11,7 +11,19 @@ import (
 	"sort"
 
 	"github.com/jenksed/yourmove-go/internal/application/browser"
+	"github.com/jenksed/yourmove-go/internal/application/schema"
 )
+
+// fillEligibleField reports controls the existing Chromium answer filler can
+// safely attempt: ordinary application questions plus eligible additional
+// profile facts. Contact facts, employer-only, and unsupported controls stay
+// manual and never enter Fill.
+func fillEligibleField(f schema.Field) bool {
+	if classifyApplicationField(f, true).Role == fieldApplicationQuestion {
+		return true
+	}
+	return classifyApplicationField(f, true).Role == fieldCandidateProfile && additionalProfileAttribute(f) != ""
+}
 
 func (p questionPreparation) ReadyAnswers() []preparedQuestion {
 	var ready []preparedQuestion
@@ -37,6 +49,33 @@ func (p questionPreparation) ReviewHash() string {
 	}
 	data, _ := json.Marshal(reviewed)
 	return fmt.Sprintf("%x", sha256.Sum256(data))
+}
+
+// readyAdditionalProfileFacts returns eligible supported additional Candidate
+// Profile facts (LinkedIn, location, pronouns, city/region/country, GitHub,
+// portfolio) that are approved, unambiguous, and Fill-eligible through the
+// existing guarded answer filler. Contact facts (name/email/phone) are
+// excluded: the dedicated contact operation owns them. Unsupported,
+// ambiguous, or manual-only controls have empty values and never appear.
+// Profile facts remain separate from Question Workbench and Answer Library:
+// this scope is transfer-only and never makes a profile fact editable,
+// library-eligible, or an answer task.
+func (p questionPreparation) readyAdditionalProfileFacts() []preparedQuestion {
+	var out []preparedQuestion
+	for _, q := range p.Questions {
+		if additionalProfileAttribute(q.Field) == "" {
+			continue
+		}
+		if q.Value == "" || q.Source != "Approved candidate information" {
+			continue
+		}
+		if classifyApplicationField(q.Field, true).Role != fieldCandidateProfile {
+			continue
+		}
+		out = append(out, q)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
+	return out
 }
 
 type applicationAnswerTransfer struct {
@@ -68,6 +107,10 @@ func (a *App) reactAnswerTransfer(job Job, scope []preparedQuestion, profileRevi
 	up := &applicationAnswerTransfer{hash: reactAnswerScopeHash(scope), status: "waiting", approved: scope, resolve: map[string]func(context.Context, readOnlySession, preparedQuestion) (preparedQuestion, string){}}
 	for _, item := range scope {
 		q := item
+		// Capture whether this scope item is an additional profile fact.
+		// Profile facts carry no answer revision; their authority is the
+		// displayed approved snapshot (approval + revision) validated below.
+		isProfileFact := additionalProfileAttribute(q.Field) != "" && !q.IsEarly
 		up.resolve[q.Key] = func(ctx context.Context, session readOnlySession, q preparedQuestion) (preparedQuestion, string) {
 			latest, err := a.jobByID(job.ID)
 			if err != nil || latest.URL != job.URL || latest.Stage == StageApplied || latest.Stage == StageClosed || latest.SubmissionCount > 0 {
@@ -76,6 +119,45 @@ func (a *App) reactAnswerTransfer(job Job, scope []preparedQuestion, profileRevi
 			profile, err := a.candidateProfile()
 			if err != nil || (profileRevision != "" && fmt.Sprint(profile.Revision) != profileRevision) {
 				return q, "manual"
+			}
+			if isProfileFact {
+				// Eligible additional profile facts reuse the guarded answer
+				// filler. Authority is explicit approval + displayed revision;
+				// the live field identity, destination, and unambiguous value
+				// are revalidated here. Ambiguous location suggestions,
+				// pronoun choices, existing employer values, and uncertain
+				// outcomes stay manual/uncertain via the filler itself.
+				if !profile.Approved || q.Source != "Approved candidate information" || q.Value == "" {
+					return q, "manual"
+				}
+				if q.Destination != "" && q.Destination != job.URL {
+					return q, "manual"
+				}
+				fresh, e := a.prepareQuestions(latest, profile)
+				if e != nil {
+					return q, "manual"
+				}
+				var found *preparedQuestion
+				for i := range fresh.Questions {
+					if fresh.Questions[i].Key == q.Key {
+						candidate := fresh.Questions[i]
+						found = &candidate
+						break
+					}
+				}
+				if found == nil || found.Value != q.Value || found.Source != "Approved candidate information" || additionalProfileAttribute(found.Field) == "" {
+					return q, "manual"
+				}
+				if classifyApplicationField(found.Field, true).Role != fieldCandidateProfile {
+					return q, "manual"
+				}
+				if earlyFieldSnapshot(found.Field) != earlyFieldSnapshot(q.Field) {
+					return q, "manual"
+				}
+				if resolveAdditionalProfileFact(found.Field, profile) != q.Value {
+					return q, "manual"
+				}
+				return q, "ready"
 			}
 			if !q.IsEarly {
 				if q.Revision > 0 {
@@ -306,7 +388,7 @@ func (h *sessionHost) tryAnswers(ctx context.Context, id int64) {
 		if ctx.Err() != nil {
 			waiting = append(waiting, q)
 			continue
-		} else if ok && classifyApplicationField(q.Field, true).Role == fieldApplicationQuestion {
+		} else if ok && fillEligibleField(q.Field) {
 			fill := q
 			if resolve := resolvers[q.Key]; resolve != nil {
 				var status string
@@ -353,7 +435,7 @@ func (h *sessionHost) tryAnswers(ctx context.Context, id int64) {
 					continue
 				}
 			}
-			if classifyApplicationField(fill.Field, true).Role != fieldApplicationQuestion {
+			if !fillEligibleField(fill.Field) {
 				outcomes = append(outcomes, out)
 				continue
 			}
