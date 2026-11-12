@@ -12,8 +12,11 @@ import (
 )
 
 // executable finds a Chrome DevTools-compatible visible browser. Prefer an
-// explicit override, then the system installation, then Playwright's installed
-// Chrome for Testing. Playwright downloads aren't generally on macOS PATH.
+// explicit override, then the system Chrome/Chromium installation, then the
+// commonly present Windows Microsoft Edge installation, then Playwright's
+// installed Chrome for Testing. Playwright downloads aren't generally on macOS
+// PATH. There is no separate Edge engine: Edge serves the existing chromium
+// session through the same CDP transport and launch flags.
 func executable() (string, error) {
 	if chosen := os.Getenv("YOURMOVE_CHROMIUM"); chosen != "" {
 		if !filepath.IsAbs(chosen) {
@@ -54,6 +57,13 @@ func executable() (string, error) {
 			return path, nil
 		}
 	}
+	// Microsoft Edge supports the same DevTools protocol and launch surface.
+	// Chrome keeps absolute precedence; Edge is only a fallback when no Chrome
+	// installation is found, and still precedes developer-only Playwright
+	// caches that end users never have.
+	if found := discoverEdge(); found != "" {
+		return found, nil
+	}
 	// Playwright is already used by the TypeScript R&D application; reuse the
 	// installed browser instead of requiring another several-hundred-MB copy.
 	caches := []string{}
@@ -78,7 +88,47 @@ func executable() (string, error) {
 			return found, nil
 		}
 	}
-	return "", errors.New("Chrome/Chromium not found. Install Google Chrome or Playwright Chromium, or set YOURMOVE_CHROMIUM to the browser executable")
+	return "", errors.New("Chrome/Chromium/Edge not found. Install Google Chrome or Microsoft Edge (or Playwright Chromium), or set YOURMOVE_CHROMIUM to the browser executable")
+}
+
+// edgePaths reports the well-known Windows Microsoft Edge locations. It is
+// empty on other operating systems; this experiment qualifies Edge on Windows
+// only. Callers verify executability.
+func edgePaths() []string {
+	if runtime.GOOS != "windows" {
+		return nil
+	}
+	return edgePathsFromBases([]string{os.Getenv("ProgramFiles"), os.Getenv("ProgramFiles(x86)"), os.Getenv("LOCALAPPDATA")})
+}
+
+// discoverEdge returns the first usable Microsoft Edge executable, or "" when
+// none is found. PATH entries come first, then the well-known Windows
+// installation locations.
+func discoverEdge() string {
+	for _, name := range []string{"msedge", "msedge.exe"} {
+		if path, err := exec.LookPath(name); err == nil {
+			return path
+		}
+	}
+	for _, path := range edgePaths() {
+		if browser.IsExecutableFile(path) {
+			return path
+		}
+	}
+	return ""
+}
+
+// edgePathsFromBases builds the well-known Edge locations from explicit base
+// directories so the layout stays unit-testable on non-Windows hosts.
+func edgePathsFromBases(bases []string) []string {
+	var out []string
+	for _, base := range bases {
+		if base == "" || !filepath.IsAbs(base) {
+			continue
+		}
+		out = append(out, filepath.Join(base, "Microsoft", "Edge", "Application", "msedge.exe"))
+	}
+	return out
 }
 
 // ResolveExecutable reports the browser binary the production session

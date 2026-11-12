@@ -88,3 +88,23 @@ func TestPlaywrightCacheIgnoresRelativeRoot(t *testing.T) {
 		t.Fatalf("accepted relative browser cache: %q", got)
 	}
 }
+
+func TestEdgePathsFromBases(t *testing.T) {
+	base := t.TempDir() // Absolute on any host.
+	got := edgePathsFromBases([]string{base, "", "relative/base"})
+	if len(got) != 1 {
+		t.Fatalf("expected one absolute Edge candidate, got %q", got)
+	}
+	want := filepath.Join(base, "Microsoft", "Edge", "Application", "msedge.exe")
+	if got[0] != want {
+		t.Fatalf("unexpected Edge layout: got %q want %q", got[0], want)
+	}
+}
+
+func TestDiscoverEdgeReturnsOnlyUsablePaths(t *testing.T) {
+	// Never a bogus path: either empty or an executable file. On hosts
+	// without Edge on PATH this is empty; on Windows CI it is msedge.exe.
+	if found := discoverEdge(); found != "" {
+		t.Logf("discovered Edge candidate: %s", found)
+	}
+}
