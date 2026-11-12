@@ -6,7 +6,7 @@ existing installation. Downgrades are refused. Launch from the Start menu.
 
 WebView2: setup uses the installed Microsoft Evergreen Runtime, or runs the
 included Microsoft bootstrapper to download it. Internet is required if missing.
-Employer-browser Fill: install Google Chrome stable separately. YourMove discovers
+Employer-browser Fill: install Google Chrome or Microsoft Edge separately. YourMove discovers
 its standard machine or per-user installation. No developer Playwright cache,
 Node.js, Go, or checkout is required for the Chromium path. Firefox requires a
 separately provisioned Playwright runtime and is not bundled in this installer.

@@ -12,8 +12,11 @@ import (
 )
 
 // executable finds a Chrome DevTools-compatible visible browser. Prefer an
-// explicit override, then the system installation, then Playwright's installed
-// Chrome for Testing. Playwright downloads aren't generally on macOS PATH.
+// explicit override, then the system Chrome/Chromium installation, then the
+// Windows Microsoft Edge installation, then Playwright's installed Chrome
+// for Testing. Playwright downloads aren't generally on macOS PATH. There is
+// no separate Edge engine: Edge serves the existing chromium session through
+// the same CDP transport and launch flags.
 func executable() (string, error) {
 	if chosen := os.Getenv("YOURMOVE_CHROMIUM"); chosen != "" {
 		if !filepath.IsAbs(chosen) {
@@ -24,9 +27,34 @@ func executable() (string, error) {
 		}
 		return chosen, nil
 	}
+	return resolveFallback(discoverChrome(), discoverEdge(), discoverPlaywrightCache())
+}
+
+// resolveFallback picks the production browser in precedence order from
+// already-discovered candidates. An empty candidate means that source found
+// nothing. Chrome keeps absolute precedence; Edge is only a fallback when no
+// Chrome installation is found, and still precedes developer-only Playwright
+// caches that end users never have.
+func resolveFallback(chrome, edge, cached string) (string, error) {
+	switch {
+	case chrome != "":
+		return chrome, nil
+	case edge != "":
+		return edge, nil
+	case cached != "":
+		return cached, nil
+	default:
+		return "", errors.New("Chrome/Chromium/Edge not found. Install Google Chrome or Microsoft Edge (or Playwright Chromium), or set YOURMOVE_CHROMIUM to the browser executable")
+	}
+}
+
+// discoverChrome reports the installed Chrome/Chromium executable, or ""
+// when none is found. PATH entries come first, then well-known system
+// installations.
+func discoverChrome() string {
 	for _, name := range []string{"google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome", "chrome.exe"} {
 		if path, err := exec.LookPath(name); err == nil {
-			return path, nil
+			return path
 		}
 	}
 	home, _ := os.UserHomeDir()
@@ -51,11 +79,60 @@ func executable() (string, error) {
 	}
 	for _, path := range paths {
 		if browser.IsExecutableFile(path) {
-			return path, nil
+			return path
 		}
 	}
-	// Playwright is already used by the TypeScript R&D application; reuse the
-	// installed browser instead of requiring another several-hundred-MB copy.
+	return ""
+}
+
+// discoverEdge returns the first usable Microsoft Edge executable, or "" when
+// none is found. Windows only: macOS and Linux browser selection is
+// unchanged. PATH entries come first, then the well-known Windows
+// installation locations.
+func discoverEdge() string {
+	if runtime.GOOS != "windows" {
+		return ""
+	}
+	for _, name := range []string{"msedge", "msedge.exe"} {
+		if path, err := exec.LookPath(name); err == nil {
+			return path
+		}
+	}
+	for _, path := range edgePaths() {
+		if browser.IsExecutableFile(path) {
+			return path
+		}
+	}
+	return ""
+}
+
+// edgePaths reports the well-known Windows Microsoft Edge locations. It is
+// empty on other operating systems. Callers verify executability.
+func edgePaths() []string {
+	if runtime.GOOS != "windows" {
+		return nil
+	}
+	return edgePathsFromBases([]string{os.Getenv("ProgramFiles"), os.Getenv("ProgramFiles(x86)"), os.Getenv("LOCALAPPDATA")})
+}
+
+// edgePathsFromBases builds the well-known Edge locations from explicit base
+// directories so the layout stays unit-testable on non-Windows hosts.
+func edgePathsFromBases(bases []string) []string {
+	var out []string
+	for _, base := range bases {
+		if base == "" || !filepath.IsAbs(base) {
+			continue
+		}
+		out = append(out, filepath.Join(base, "Microsoft", "Edge", "Application", "msedge.exe"))
+	}
+	return out
+}
+
+// discoverPlaywrightCache reuses the Playwright-installed browser instead of
+// requiring another several-hundred-MB copy. It is already used by the
+// TypeScript R&D application. Returns "" when no usable cached browser exists.
+func discoverPlaywrightCache() string {
+	home, _ := os.UserHomeDir()
 	caches := []string{}
 	if configured := os.Getenv("PLAYWRIGHT_BROWSERS_PATH"); filepath.IsAbs(configured) {
 		caches = append(caches, configured)
@@ -75,10 +152,10 @@ func executable() (string, error) {
 	}
 	for _, cache := range caches {
 		if found := cachedPlaywrightChromium(cache); found != "" {
-			return found, nil
+			return found
 		}
 	}
-	return "", errors.New("Chrome/Chromium not found. Install Google Chrome or Playwright Chromium, or set YOURMOVE_CHROMIUM to the browser executable")
+	return ""
 }
 
 // ResolveExecutable reports the browser binary the production session
