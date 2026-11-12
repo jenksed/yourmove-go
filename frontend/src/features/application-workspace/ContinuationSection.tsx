@@ -365,7 +365,7 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
 
         {snapshot.pendingAnswers.length > 0 ? (
           <div className="continuation-item">
-            <p><strong>{snapshot.pendingAnswers.length} saved {snapshot.pendingAnswers.length === 1 ? "answer" : "answers"}</strong></p>
+            <p><strong>{snapshot.pendingAnswers.length} {snapshot.pendingAnswers.length === 1 ? "item" : "items"} ready to fill</strong></p>
             <dl className="contact-facts pending-answer-scope">
               {snapshot.pendingAnswers.map((answer) => (
                 <div key={answer.key}>
@@ -382,7 +382,7 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
             {!prep.includeAnswers && <small>Answers already handled in this session.</small>}
           </div>
         ) : (
-          <p className="small-muted">No saved answers pending transfer.</p>
+          <p className="small-muted">No items pending transfer.</p>
         )}
       </div>
 
