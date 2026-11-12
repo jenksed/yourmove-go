@@ -46,8 +46,16 @@ jobs:
         shell: pwsh
         run: |
           Get-ComputerInfo -Property OsName, OsVersion, OsArchitecture | Format-List
-          $edge = Join-Path $env:ProgramFiles 'Microsoft\Edge\Application\msedge.exe'
-          if (-not (Test-Path $edge)) { throw "System Edge not found at $edge" }
+          $candidates = @(
+            (Join-Path $env:ProgramFiles 'Microsoft\Edge\Application\msedge.exe'),
+            (Join-Path ${env:ProgramFiles(x86)} 'Microsoft\Edge\Application\msedge.exe'),
+            (Join-Path $env:LOCALAPPDATA 'Microsoft\Edge\Application\msedge.exe')
+          )
+          if (Get-Command msedge -ErrorAction SilentlyContinue) { $candidates = @((Get-Command msedge).Source) + $candidates }
+          $candidates | ForEach-Object { "$_ : $(Test-Path $_)" }
+          $edge = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $edge) { throw 'System Edge not found in any well-known location' }
+          "EDGE_EXE=$edge" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           (Get-Item $edge).VersionInfo | Format-List ProductName, ProductVersion, FileVersion
           & $edge --version
 
