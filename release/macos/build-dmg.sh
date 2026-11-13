@@ -144,7 +144,7 @@ tell application "Finder"
 	set toolbar visible of win to false
 	set statusbar visible of win to false
 	set sidebar width of win to 0
-	set the bounds of win to {100, 100, $((100 + WINDOW_W)), $((140 + WINDOW_H))}
+	set the bounds of win to {100, 100, $((100 + WINDOW_W)), $((100 + WINDOW_H))}
 	set opts to the icon view options of win
 	set arrangement of opts to not arranged
 	set icon size of opts to 96
