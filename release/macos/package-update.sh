@@ -5,6 +5,7 @@
 # Modes (explicit, default safe):
 #   --production (default)  Require Developer ID signature, notarization ticket
 #                           and Gatekeeper acceptance. Refuse ad-hoc artifacts.
+#   --alpha                 Accept an ad-hoc-signed unnotarized technical alpha.
 #   --dev                   Accept an ad-hoc-signed test bundle for controlled
 #                           development fixtures only. Never for public release.
 #                           Output is clearly labeled NONPRODUCTION.
@@ -16,15 +17,16 @@
 set -euo pipefail
 
 mode="production"
-if [[ "${1:-}" == "--dev" || "${1:-}" == "--production" ]]; then
+if [[ "${1:-}" == "--dev" || "${1:-}" == "--alpha" || "${1:-}" == "--production" ]]; then
   case "$1" in
     --dev) mode="dev" ;;
+    --alpha) mode="alpha" ;;
     --production) mode="production" ;;
   esac
   shift
 fi
 if [[ "$(uname -s)" != "Darwin" || $# -ne 2 || "$1" != /* || "$2" != /* ]]; then
-  echo "Usage (macOS): bash release/macos/package-update.sh [--dev|--production] /absolute/YourMove.app /absolute/new/output-directory" >&2
+  echo "Usage (macOS): bash release/macos/package-update.sh [--dev|--alpha|--production] /absolute/YourMove.app /absolute/new/output-directory" >&2
   echo "Default mode is --production (safe). Use --dev only for ad-hoc development fixtures." >&2
   exit 2
 fi
@@ -66,20 +68,20 @@ if [[ "$mode" == "production" ]]; then
   /usr/bin/xcrun stapler validate "$app"
   /usr/sbin/spctl --assess --type execute --verbose=4 "$app"
 else
-  printf 'Mode: DEVELOPMENT TEST ONLY - ad-hoc fixture, NOT FOR PUBLIC RELEASE.\n'
+  printf 'Mode: %s - ad-hoc signed, unnotarized.\n' "$mode"
   if printf '%s\n' "$codesign_detail" | /usr/bin/grep -q 'Authority=Developer ID Application:'; then
-    echo "Developer ID-signed bundle given in --dev mode; use --production for release artifacts to keep channels separate." >&2
+    echo "Developer ID-signed bundle given in ad-hoc mode; use --production." >&2
     exit 1
   fi
   if ! printf '%s\n' "$codesign_detail" | /usr/bin/grep -q 'Signature=adhoc'; then
-    echo "Development mode requires an ad-hoc-signed YourMove.app (codesign --sign -)." >&2
+    echo "This mode requires an ad-hoc-signed YourMove.app (codesign --sign -)." >&2
     exit 1
   fi
   # No stapler/spctl in dev: ad-hoc bundles do not carry tickets or Gatekeeper acceptance.
 fi
 
 mkdir -p "$output"
-if [[ "$mode" == "production" ]]; then
+if [[ "$mode" != "dev" ]]; then
   archive="$output/YourMove-$version-darwin-arm64-update.zip"
 else
   archive="$output/YourMove-$version-darwin-arm64-update-dev.zip"
@@ -132,6 +134,9 @@ if [[ "$mode" == "production" ]]; then
   printf 'Version: %s (%s); Bundle ID: %s\n' "$version" "$build" "$bundle_id"
   printf 'Archive: %s\nChecksums: %s/SHA256SUMS.update\n' "$archive" "$output"
   printf 'Still required: owner-approved signed update manifest and installed-app acceptance.\n'
+elif [[ "$mode" == "alpha" ]]; then
+  printf 'Ad-hoc signed, unnotarized technical-alpha archive created locally (NOT PUBLISHED): %s\n' "$archive"
+  printf 'Still required: installed-app qualification and owner approval for publication.\n'
 else
   cat > "$output/NONPRODUCTION.txt" <<EOF
 DEVELOPMENT TEST ARTIFACT - NOT FOR PUBLIC RELEASE.
