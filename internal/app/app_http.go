@@ -24,7 +24,7 @@ type App struct {
 	enrichmentMu              sync.Mutex
 	enrichment                *enrichmentRun
 	autoPending               []int64
-	enrichmentFetch          postingFetcher
+	enrichmentFetch           postingFetcher
 	desktopUnsaved            atomic.Bool
 	db                        *sql.DB
 	resumeDir                 string
@@ -58,6 +58,7 @@ func newMux(app *App) http.Handler {
 	mux.HandleFunc("POST /api/opportunities/{id}/open", app.opportunityOpenAPI)
 	mux.HandleFunc("GET /utilities", app.utilitiesPage)
 	mux.HandleFunc("POST /utilities/browser", app.saveApplicationBrowser)
+	mux.HandleFunc("POST /utilities/release-notes", app.openReleaseNotes)
 	mux.HandleFunc("POST /utilities/updates/check", app.updateCheckHandler)
 	mux.HandleFunc("POST /utilities/updates/install", app.updateInstallHandler)
 	mux.HandleFunc("POST /utilities/updates/restart", app.updateRestartHandler)

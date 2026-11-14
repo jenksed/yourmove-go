@@ -35,9 +35,9 @@ func TestUtilitiesDescribesRealUpdateBehavior(t *testing.T) {
 
 	idle := renderUtilities(t, a)
 	for _, want := range []string{
-		"Installed version " + AppVersion + " (build " + AppBuild + ")",
-		"checks for new versions automatically",
-		"explicit approval",
+		"Version " + AppVersion + " (build " + AppBuild + ")",
+		"checks automatically",
+		"you choose when to install and restart",
 		"Check for updates",
 		"No update check has run yet",
 	} {
@@ -91,7 +91,7 @@ func TestUtilitiesUnavailableStateIsHonest(t *testing.T) {
 	if strings.Contains(page, "Check for updates") {
 		t.Error("unavailable utilities page must not offer an update check")
 	}
-	if strings.Contains(page, "checks for new versions automatically") {
+	if strings.Contains(page, "checks automatically") {
 		t.Error("unavailable utilities page must not describe automatic checks as active")
 	}
 }
@@ -126,5 +126,16 @@ func TestUtilitiesSurfacesInstallFailureWithoutBreaking(t *testing.T) {
 	phase, _, _, _, enabled := a.updateSnapshot()
 	if !enabled || phase != "error" {
 		t.Fatalf("after failed install enabled=%v phase=%q, want enabled phase=error", enabled, phase)
+	}
+}
+
+func TestReleaseNotesOpensFixedDestination(t *testing.T) {
+	a, _ := testWorkspace(t)
+	var opened string
+	a.openPosting = func(url string) error { opened = url; return nil }
+	rec := httptest.NewRecorder()
+	a.openReleaseNotes(rec, httptest.NewRequest(http.MethodPost, "/utilities/release-notes", nil))
+	if rec.Code != http.StatusSeeOther || opened != "https://www.yourmove.run/docs/releases/" {
+		t.Fatalf("status=%d destination=%q", rec.Code, opened)
 	}
 }

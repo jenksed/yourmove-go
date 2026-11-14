@@ -14,7 +14,7 @@
     <form method="POST" action="/utilities/browser" class="field utility-browser-field"><label for="application-browser">Browser selection</label><select id="application-browser" name="browser">{{range .BrowserEngines}}<option value="{{.Name}}" {{if eq .Name $.BrowserCurrent}}selected{{end}} {{if not .Available}}disabled{{end}}>{{.Label}}{{if not .Available}} — unavailable{{end}}</option>{{end}}</select>{{range .BrowserEngines}}{{if not .Available}}<small>{{.Label}}: {{.Reason}}.</small>{{end}}{{end}}<button class="button button-secondary" type="submit">Save browser</button></form>
   </section>
   <section class="utility-browser" aria-labelledby="utility-updates-heading">
-    <div><h2 id="utility-updates-heading">Software updates</h2>{{if not .UpdateEnabled}}<p>Installed version {{.AppVersion}} (build {{.AppBuild}}).</p><p class="utility-notice">Automatic updates are not available in this build. Download a newer DMG manually when the owner announces one.</p>{{else}}<p>Installed version {{.AppVersion}} (build {{.AppBuild}}). When updates are available, YourMove checks for new versions automatically after startup and once a day, and only tells you when one is ready — checking never downloads or installs anything. Downloading, installing, and restarting each need your explicit approval below. You can also check manually at any time. Updates never touch your applications or documents.</p>
+    <div><h2 id="utility-updates-heading">Software updates</h2>{{if not .UpdateEnabled}}<p>Installed version {{.AppVersion}} (build {{.AppBuild}}).</p><p class="utility-notice">Automatic updates are not available in this build. Download a newer DMG manually when the owner announces one.</p>{{else}}<p>Version {{.AppVersion}} (build {{.AppBuild}}). YourMove checks automatically; you choose when to install and restart.</p>
       {{if .UpdateError}}<p class="utility-notice" role="status">{{.UpdateError}}</p>{{end}}
       {{if eq .UpdatePhase "available"}}{{with .UpdatePending}}<p><strong>Version {{.LatestVersion}} is available</strong>{{if .Name}} — {{.Name}}{{end}}.</p>{{if .Notes}}<details><summary>Release notes</summary><p>{{.Notes}}</p></details>{{end}}
         <form method="POST" action="/utilities/updates/install"><button class="button button-primary" type="submit">Install version {{.LatestVersion}}</button></form>
@@ -29,7 +29,7 @@
       {{else}}<p>No update check has run yet. Checking never blocks your workspace and works offline gracefully.</p>
         <form method="POST" action="/utilities/updates/check"><button class="button button-secondary" type="submit">Check for updates</button></form>
       {{end}}
-    {{end}}</div>
+    {{end}}{{if .Desktop}}<form method="POST" action="/utilities/release-notes"><button class="text-link" type="submit">Release notes ↗</button></form>{{else}}<p><a href="https://www.yourmove.run/docs/releases/" target="_blank" rel="noopener noreferrer">Release notes ↗</a></p>{{end}}</div>
   </section>
 </div>
 {{template "shell-close" .}}</body></html>
