@@ -4,7 +4,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"net/http"
 	"strings"
 	"time"
 
@@ -61,7 +63,7 @@ func configureUpdater(a *app.App, desktop *application.App) {
 		log.Printf("automatic updates disabled: no update public key configured (manual DMG remains available)")
 		return
 	}
-	provider, err := endpoint.New(endpoint.Config{URL: manifestURL, Channel: "stable"})
+	provider, err := endpoint.New(endpoint.Config{URL: manifestURL, Channel: "stable", HTTPClient: &http.Client{Timeout: 30 * time.Second, Transport: updateChannelTransport{http.DefaultTransport}}})
 	if err != nil {
 		a.SetUpdateController(app.UpdateController{})
 		log.Printf("automatic updates disabled: invalid manifest URL: %v", err)
@@ -112,6 +114,19 @@ func configureUpdater(a *app.App, desktop *application.App) {
 		Restart: func(ctx context.Context) error { return desktop.Updater.Restart(ctx) },
 	})
 	log.Printf("automatic updates enabled: manifest configured, current %s (channel stable, headless UI)", app.CurrentAppVersion())
+}
+
+// A missing static channel is an operational failure, not proof that the
+// installed version is current. Wails otherwise treats HTTP 404 as no update.
+type updateChannelTransport struct{ base http.RoundTripper }
+
+func (t updateChannelTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := t.base.RoundTrip(req)
+	if err == nil && resp.StatusCode == http.StatusNotFound {
+		resp.Body.Close()
+		return nil, fmt.Errorf("update channel returned HTTP 404")
+	}
+	return resp, err
 }
 
 func loadUpdatePublicKey() []byte {
