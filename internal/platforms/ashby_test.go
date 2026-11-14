@@ -1,6 +1,7 @@
 package platforms
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -249,6 +250,100 @@ func TestAshbyInvalidUTF8OrNULRichAlternativeDoesNotFailUsablePlainText(t *testi
 				t.Fatalf("NUL source state = %+v", got.Source)
 			}
 		})
+	}
+}
+
+func TestAshbyBoardCapitalizationMismatchStillMatches(t *testing.T) {
+	// Regression: the public board API returns jobUrl board "Ashby" while
+	// saved posting URLs use "ashby". Capitalization alone must not reject
+	// the posting; the UUID and board identity still match exactly.
+	const postingID = "b64e1498-04ae-4747-8930-a42d4ce6c047"
+	data := []byte(`{"jobs":[{"id":"` + postingID + `","jobUrl":"https://jobs.ashbyhq.com/Ashby/` + postingID + `","title":"Product Support Specialist - Americas","descriptionPlain":"Support details"}]}`)
+	for _, board := range []string{"ashby", "Ashby", "ASHBY"} {
+		got, err := extractAshbyMetadata(data, board, postingID)
+		if err != nil {
+			t.Fatalf("board %q: %v", board, err)
+		}
+		if got.Title != "Product Support Specialist - Americas" || got.Description != "Support details" {
+			t.Fatalf("board %q: unexpected metadata %+v", board, got)
+		}
+	}
+}
+
+func TestAshbyGenuinelyDifferentBoardStillRejected(t *testing.T) {
+	const postingID = "b64e1498-04ae-4747-8930-a42d4ce6c047"
+	data := []byte(`{"jobs":[{"id":"` + postingID + `","jobUrl":"https://jobs.ashbyhq.com/other/` + postingID + `","title":"Wrong board","descriptionPlain":"Wrong details"}]}`)
+	if _, err := extractAshbyMetadata(data, "ashby", postingID); err == nil {
+		t.Fatal("different board unexpectedly matched")
+	} else if errors.Is(err, ErrClosed) {
+		t.Fatalf("board conflict misclassified as closed: %v", err)
+	}
+}
+
+func TestParseAshbyCorporateURL(t *testing.T) {
+	const postingID = "f2ba7c39-e5cb-47aa-8b80-74c0426725b7"
+	tests := []struct {
+		name    string
+		url     string
+		wantErr bool
+	}{
+		{name: "corporate careers link", url: "https://www.ashbyhq.com/careers?ashby_jid=" + postingID},
+		{name: "trailing slash and extra params", url: "https://www.ashbyhq.com/careers/?ashby_jid=" + postingID + "&source=linkedin"},
+		{name: "missing ashby_jid", url: "https://www.ashbyhq.com/careers", wantErr: true},
+		{name: "truncated UUID", url: "https://www.ashbyhq.com/careers?ashby_jid=f2ba7c39-e5cb-47aa-8b80", wantErr: true},
+		{name: "wrong path", url: "https://www.ashbyhq.com/about?ashby_jid=" + postingID, wantErr: true},
+		{name: "wrong host", url: "https://careers.example.com/careers?ashby_jid=" + postingID, wantErr: true},
+		{name: "lookalike host", url: "https://www.ashbyhq.com.attacker.example/careers?ashby_jid=" + postingID, wantErr: true},
+		{name: "insecure scheme", url: "http://www.ashbyhq.com/careers?ashby_jid=" + postingID, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseAshbyCorporateURL(tt.url)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("parseAshbyCorporateURL(%q) error = %v, wantErr = %v", tt.url, err, tt.wantErr)
+			}
+			if err == nil && got != postingID {
+				t.Fatalf("parseAshbyCorporateURL(%q) = %q, want %q", tt.url, got, postingID)
+			}
+		})
+	}
+}
+
+func TestAshbyCorporateIdentityRoundTrip(t *testing.T) {
+	const postingID = "f2ba7c39-e5cb-47aa-8b80-74c0426725b7"
+	corporate := "https://www.ashbyhq.com/careers?ashby_jid=" + postingID
+	identity, err := AshbyPostingIdentity(corporate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if identity.Provider != "ashby" || identity.Board != "ashby" || identity.PostingID != postingID {
+		t.Fatalf("unexpected corporate identity: %+v", identity)
+	}
+	if err := identity.ValidateURL(corporate); err != nil {
+		t.Fatalf("corporate identity rejected its own URL: %v", err)
+	}
+	if err := identity.ValidateURL("https://jobs.ashbyhq.com/ashby/" + postingID); err != nil {
+		t.Fatalf("corporate identity rejected the equivalent canonical URL: %v", err)
+	}
+	if err := identity.ValidateURL("https://www.ashbyhq.com/careers?ashby_jid=11111111-1111-4111-8111-111111111111"); err == nil {
+		t.Fatal("different posting unexpectedly validated")
+	}
+}
+
+func TestAshbyCorporateDoesNotInferArbitraryDomains(t *testing.T) {
+	if _, err := AshbyPostingIdentity("https://careers.example.com/open?ashby_jid=f2ba7c39-e5cb-47aa-8b80-74c0426725b7"); err == nil {
+		t.Fatal("unrelated domain unexpectedly treated as Ashby")
+	}
+	if _, err := FetchJob(context.Background(), "https://careers.example.com/open?ashby_jid=f2ba7c39-e5cb-47aa-8b80-74c0426725b7"); !errors.Is(err, ErrUnsupported) {
+		t.Fatalf("unrelated domain error = %v, want unsupported", err)
+	}
+}
+
+func TestAshbyUnavailablePostingIsClosed(t *testing.T) {
+	data := []byte(`{"jobs":[{"id":"22222222-2222-4222-8222-222222222222","jobUrl":"https://jobs.ashbyhq.com/ashby/22222222-2222-4222-8222-222222222222","title":"Another role","descriptionPlain":"Other details"}]}`)
+	_, err := extractAshbyMetadata(data, "ashby", "b64e1498-04ae-4747-8930-a42d4ce6c047")
+	if !errors.Is(err, ErrClosed) {
+		t.Fatalf("missing posting error = %v, want closed", err)
 	}
 }
 

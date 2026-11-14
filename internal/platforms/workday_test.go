@@ -166,6 +166,18 @@ func TestFetchWorkdayUsesExactDetailGETForBothHosts(t *testing.T) {
 			wantHost:     "wd5.myworkdaysite.com",
 			wantEndpoint: "/wday/cxs/uw/UWHires/job/Seattle/Platform-Engineer_R-12345",
 		},
+		{
+			name:         "different tenant and pod with locale and different slug casing",
+			url:          "https://crowdstrike.wd5.myworkdayjobs.com/en-US/crowdstrikecareers/job/usa---remote/technical-support_r30773",
+			wantHost:     "crowdstrike.wd5.myworkdayjobs.com",
+			wantEndpoint: "/wday/cxs/crowdstrike/crowdstrikecareers/job/usa---remote/technical-support_r30773",
+		},
+		{
+			name:         "different pod without locale",
+			url:          "https://acme.wd1.myworkdayjobs.com/Careers/job/Remote/Systems_Analyst-42",
+			wantHost:     "acme.wd1.myworkdayjobs.com",
+			wantEndpoint: "/wday/cxs/acme/Careers/job/Remote/Systems_Analyst-42",
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -181,7 +193,12 @@ func TestFetchWorkdayUsesExactDetailGETForBothHosts(t *testing.T) {
 				if req.URL.RawQuery != "" || req.Header.Get("Accept") != "application/json" {
 					t.Errorf("request carried unvalidated query or omitted JSON Accept: query=%q accept=%q", req.URL.RawQuery, req.Header.Get("Accept"))
 				}
-				return workdayHTTPResponse(req, http.StatusOK, workdaySyntheticDetail(t), nil), nil
+				identity, identityErr := WorkdayPostingIdentity(test.url)
+				if identityErr != nil {
+					t.Errorf("parse expected request identity: %v", identityErr)
+				}
+				body := bytes.Replace(workdaySyntheticDetail(t), []byte("Platform-Engineer_R-12345"), []byte(pathLastSegment(identity.PostingID)), 1)
+				return workdayHTTPResponse(req, http.StatusOK, body, nil), nil
 			})}
 			got, err := fetchWorkdayWithClient(context.Background(), test.url, client)
 			if err != nil {
@@ -210,6 +227,21 @@ func TestWorkdayReturnedPostingIdentityMustMatchURL(t *testing.T) {
 	missingID := []byte(`{"jobPostingInfo":{"title":"Platform Engineer","jobDescription":"<p>Details</p>"}}`)
 	if _, err := extractWorkdayMetadata(missingID, posting); err == nil || !strings.Contains(err.Error(), "identity mismatch") {
 		t.Fatalf("missing posting identity error = %v", err)
+	}
+}
+
+func TestWorkdayPostingIdentityAllowsURLSlugCaseDifference(t *testing.T) {
+	posting, err := parseWorkdayURL("https://crowdstrike.wd5.myworkdayjobs.com/crowdstrikecareers/job/usa---remote/technical-support_r30773")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := []byte(`{"hiringOrganization":{"name":"CrowdStrike, Inc."},"jobPostingInfo":{"title":"Technical Support","jobPostingId":"Technical-Support_R30773","jobReqId":"R30773","jobDescription":"<p>Customer technical support.</p>"}}`)
+	got, err := extractWorkdayMetadata(data, posting)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Title != "Technical Support" || got.Company != "CrowdStrike, Inc." || got.Description != "Customer technical support." || got.Source.Availability != PostingSourceAvailable {
+		t.Fatalf("case-variant valid posting was not recovered: %+v", got)
 	}
 }
 

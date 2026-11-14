@@ -82,6 +82,17 @@ func FetchJob(ctx context.Context, jobURL string) (Metadata, error) {
 		return fetchAshby(ctx, board, postingID)
 	}
 
+	// Ashby's own corporate careers page links postings with an ashby_jid
+	// parameter. Resolve those against Ashby's verified public board; other
+	// hosts carrying an ashby_jid parameter stay unsupported.
+	if isAshbyCorporateCareersURL(jobURL) {
+		postingID, err := parseAshbyCorporateURL(jobURL)
+		if err != nil {
+			return Metadata{}, fmt.Errorf("Ashby URL: %w", err)
+		}
+		return fetchAshby(ctx, ashbyCorporateBoard, postingID)
+	}
+
 	if board, jobID, err := parseGreenhouseURL(jobURL); err == nil {
 		return fetchGreenhouse(ctx, postingClient(), board, jobID)
 	}

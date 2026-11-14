@@ -91,14 +91,16 @@ a.progress-metric:hover span {text-decoration:underline;color:var(--color-primar
 .progress-metric strong,.progress-remaining strong {font-size:20px;letter-spacing:0}
 .queue-details {margin-top:8px;font-size:12px;max-width:560px}
 .queue-details summary {color:var(--color-muted)}
-.dashboard-next {padding:14px 16px;border:1px solid var(--color-border);border-radius:6px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 16px;align-items:center;background:var(--color-surface);min-height:88px;padding-block:12px}
+.dashboard-next {padding:14px 16px;border:1px solid var(--color-border);border-radius:6px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px 20px;align-items:center;background:var(--color-surface);min-height:88px;padding-block:12px}
 .dashboard-next .eyebrow {margin:0 0 4px;letter-spacing:0;text-transform:none}
 .dashboard-next h2 {font-size:17px;overflow-wrap:anywhere}
 .dashboard-next-identity {min-width:0}
+.dashboard-next-reason {margin:0;font-size:13px;line-height:1.55;color:var(--color-muted);min-width:0;overflow-wrap:anywhere;align-self:center}
+@media(min-width:820px){.dashboard-next-identity + .button {grid-column:3}}
 .dashboard-next-company,.dashboard-next .small-muted {margin:3px 0 8px;overflow-wrap:anywhere}
-.dashboard-next .button {min-height:36px;padding:7px 11px;justify-self:end;max-width:220px;white-space:normal;text-align:center}
+.dashboard-next .button {min-height:36px;padding:7px 14px;justify-self:end;max-width:none;white-space:nowrap;text-align:center}
 .dashboard-next .small-muted {margin-bottom:0}
-@media(max-width:819px){.topbar{flex-basis:auto}.dashboard-next{grid-template-columns:minmax(0,1fr)}.dashboard-next .button{justify-self:start;max-width:100%}}
+@media(max-width:819px){.topbar{flex-basis:auto}.dashboard-next{grid-template-columns:minmax(0,1fr)}.dashboard-next .button{justify-self:start;max-width:100%;white-space:normal}}
 .create-panel {margin-bottom:16px}
 .create-panel>summary {padding:0 16px;min-height:46px;display:flex;align-items:center}
 .create-summary-text strong {font-size:14px}

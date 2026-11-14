@@ -1,0 +1,39 @@
+# Unpublished candidate. URL must identify the approved final bytes, after signing.
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.10.0.schema.json
+PackageIdentifier: YourMove.YourMove
+PackageVersion: '@VERSION@'
+MinimumOSVersion: 10.0.22000.0
+InstallerType: nullsoft
+Scope: user
+InstallModes:
+  - interactive
+  - silent
+InstallerSwitches:
+  Silent: /S
+  SilentWithProgress: /S
+UpgradeBehavior: install
+ExpectedReturnCodes:
+  - InstallerReturnCode: 64
+    ReturnResponse: systemNotSupported
+  - InstallerReturnCode: 65
+    ReturnResponse: systemNotSupported
+  - InstallerReturnCode: 66
+    ReturnResponse: downgrade
+  - InstallerReturnCode: 67
+    ReturnResponse: packageInUse
+  - InstallerReturnCode: 70
+    ReturnResponse: missingDependency
+Dependencies:
+  ExternalDependencies:
+    - Google Chrome (for employer-browser Fill)
+AppsAndFeaturesEntries:
+  - DisplayName: YourMove
+    Publisher: '@PUBLISHER@'
+    DisplayVersion: '@VERSION@'
+    ProductCode: com.yourmove.go
+Installers:
+  - Architecture: x64
+    InstallerUrl: '@IMMUTABLE_INSTALLER_URL@'
+    InstallerSha256: '@INSTALLER_SHA256@'
+ManifestType: installer
+ManifestVersion: 1.10.0

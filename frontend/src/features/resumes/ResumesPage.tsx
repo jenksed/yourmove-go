@@ -1,4 +1,4 @@
-import { AppNavigation } from "../../shared/AppNavigation";
+import { AppNavigation, AppTopbar } from "../../shared/AppNavigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   assignJobResume,
@@ -294,6 +294,7 @@ export function ResumesPage(): React.JSX.Element {
       </a>
       <AppNavigation active="documents" />
       <div className="app-main">
+        <AppTopbar />
         <main id="main-content" className="page-container">
           <div className="page-heading">
             <div>

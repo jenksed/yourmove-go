@@ -32,6 +32,63 @@ func parseAshbyURL(rawURL string) (board, postingID string, err error) {
 	return parts[0], parts[1], nil
 }
 
+// ashbyCorporateBoard is the only board served by Ashby's own corporate
+// careers page. Corporate ashby_jid links resolve against this board; board
+// names are never inferred from unrelated custom domains.
+const ashbyCorporateBoard = "ashby"
+
+// isAshbyCorporateCareersURL reports whether rawURL claims to be an Ashby
+// corporate careers posting link. Only this known host and path qualify.
+func isAshbyCorporateCareersURL(rawURL string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil || u == nil {
+		return false
+	}
+	return strings.EqualFold(u.Hostname(), "www.ashbyhq.com") &&
+		strings.Trim(u.Path, "/") == "careers"
+}
+
+func parseAshbyCorporateURL(rawURL string) (string, error) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "", fmt.Errorf("parse Ashby URL: %w", err)
+	}
+
+	if u.Scheme != "https" ||
+		!strings.EqualFold(u.Hostname(), "www.ashbyhq.com") ||
+		u.Port() != "" ||
+		u.User != nil || u.RawPath != "" || u.Opaque != "" {
+		return "", fmt.Errorf("unsupported Ashby URL")
+	}
+	if strings.Trim(u.Path, "/") != "careers" {
+		return "", fmt.Errorf("unsupported Ashby URL")
+	}
+
+	postingID := u.Query().Get("ashby_jid")
+	if postingID == "" || !ashbyUUID(postingID) {
+		return "", fmt.Errorf("invalid Ashby posting URL: expected ashby_jid posting UUID")
+	}
+	return postingID, nil
+}
+
+// ashbyPostingIdentity validates either supported Ashby URL form and returns
+// its exact board/posting association. Query and fragment data on canonical
+// URLs do not identify a posting; the corporate ashby_jid parameter does.
+func ashbyPostingIdentity(rawURL string) (PostingIdentity, error) {
+	if isAshbyCorporateCareersURL(rawURL) {
+		postingID, err := parseAshbyCorporateURL(rawURL)
+		if err != nil {
+			return PostingIdentity{}, fmt.Errorf("Ashby posting identity: %w", err)
+		}
+		return PostingIdentity{Provider: "ashby", Board: ashbyCorporateBoard, PostingID: postingID}, nil
+	}
+	board, postingID, err := parseAshbyURL(rawURL)
+	if err != nil {
+		return PostingIdentity{}, fmt.Errorf("Ashby posting identity: %w", err)
+	}
+	return PostingIdentity{Provider: "ashby", Board: board, PostingID: postingID}, nil
+}
+
 func ashbyUUID(id string) bool {
 	if len(id) != 36 {
 		return false
@@ -197,8 +254,13 @@ func ashbyJobMatchesIdentity(job ashbyJob, requested PostingIdentity) (bool, err
 		return false, nil
 	}
 	urlHasRequestedID := returned.PostingID == requested.PostingID
-	urlMatches := returned.Board == requested.Board && urlHasRequestedID
-	if (idMatch && !urlMatches) || (urlHasRequestedID && returned.Board != requested.Board) {
+	// Ashby's board API may capitalize the board slug differently from the
+	// posting URL (for example "Ashby" versus "ashby"). Board identity is
+	// therefore compared case-insensitively; the posting UUID must still
+	// match exactly, and any genuinely different board remains a conflict.
+	boardsMatch := strings.EqualFold(returned.Board, requested.Board)
+	urlMatches := boardsMatch && urlHasRequestedID
+	if (idMatch && !urlMatches) || (urlHasRequestedID && !boardsMatch) {
 		return false, fmt.Errorf("Ashby selected posting ID/jobUrl conflicts with requested board %q and posting %q", requested.Board, requested.PostingID)
 	}
 	if urlMatches && job.ID != "" && job.ID != requested.PostingID {

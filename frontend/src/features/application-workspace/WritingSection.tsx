@@ -527,7 +527,7 @@ export function WritingSection({
               ? snapshot.activeContext === "live"
                 ? `${snapshot.source}. Your text saves locally in YourMove; nothing is filled on the employer site from here.`
                 : `${snapshot.source}. These questions have not yet been verified on your live form.`
-              : "Questions have not been discovered for this posting yet. Saved writing below is preserved."}
+              : "Saved writing below is preserved."}
             {snapshot.partial ? " Partial inspection; later questions may be missing." : ""}
           </p>
         </div>
@@ -541,7 +541,7 @@ export function WritingSection({
       {dirty && <p className="small-muted">Save your answer before refreshing the question list.</p>}
 
       {discoveryStatus === "checking" && <p role="status">Checking for application questions…</p>}
-      {discoveryStatus === "unsupported" && <p className="writing-notice">This employer does not offer an early question preview. You can continue to Apply; additional questions may appear on the employer form.</p>}
+      {discoveryStatus === "unsupported" && answerTasks.length > 0 && <p className="writing-notice">This employer does not offer an early question preview. You can continue to Apply; additional questions may appear on the employer form.</p>}
       {discoveryStatus === "failed" && <p className="writing-notice">We could not check questions right now. Your saved work is safe. <button className="button button-secondary" type="button" onClick={onRetryDiscovery}>Retry question check</button> You can also continue to Apply.</p>}
 
       {(snapshot.returnNotice !== "" || snapshot.earlyNotice !== "") && (

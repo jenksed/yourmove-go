@@ -1,3 +1,61 @@
+import { useEffect, useState } from "react";
+
+type ThemeChoice = "light" | "dark" | "system";
+
+const THEME_KEY = "yourmove:theme";
+
+function currentTheme(): ThemeChoice {
+  try {
+    const stored = window.localStorage.getItem(THEME_KEY);
+    if (stored === "light" || stored === "dark") return stored;
+  } catch {
+    // Storage unavailable: fall through to system.
+  }
+  return "system";
+}
+
+export function AppTopbar(): React.JSX.Element {
+  const [theme, setTheme] = useState<ThemeChoice>("system");
+
+  useEffect(() => {
+    setTheme(currentTheme());
+  }, []);
+
+  const handleChange = (next: ThemeChoice) => {
+    setTheme(next);
+    if (next === "system") {
+      document.documentElement.removeAttribute("data-theme");
+    } else {
+      document.documentElement.dataset.theme = next;
+    }
+    try {
+      window.localStorage.setItem(THEME_KEY, next);
+    } catch {
+      // Storage unavailable: the explicit choice applies for this load only.
+    }
+  };
+
+  return (
+    <header className="topbar">
+      <div className="mobile-wordmark">
+        <a href="/jobs">YOURMOVE</a>
+      </div>
+      <label className="theme-control">
+        Appearance{" "}
+        <select
+          aria-label="Appearance"
+          value={theme}
+          onChange={(event) => handleChange(event.target.value as ThemeChoice)}
+        >
+          <option value="system">System</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </label>
+    </header>
+  );
+}
+
 export function AppNavigation({ active }: { active?: "opportunities" | "documents" | "discovery" | "studio" }): React.JSX.Element {
   return (
       <aside className="sidebar" aria-label="Primary navigation">

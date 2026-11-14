@@ -98,13 +98,10 @@ func NormalizePostingSourceResult(result PostingSourceResult) PostingSourceResul
 }
 
 // AshbyPostingIdentity validates a saved posting URL and returns its exact
-// board/posting association. Query and fragment data do not identify a posting.
+// board/posting association. Query and fragment data on canonical URLs do
+// not identify a posting; the corporate ashby_jid parameter does.
 func AshbyPostingIdentity(rawURL string) (PostingIdentity, error) {
-	board, postingID, err := parseAshbyURL(rawURL)
-	if err != nil {
-		return PostingIdentity{}, fmt.Errorf("Ashby posting identity: %w", err)
-	}
-	return PostingIdentity{Provider: "ashby", Board: board, PostingID: postingID}, nil
+	return ashbyPostingIdentity(rawURL)
 }
 
 // ValidateURL checks that a supported provider URL identifies this exact

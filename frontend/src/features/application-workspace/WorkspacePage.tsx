@@ -1,4 +1,4 @@
-import { AppNavigation } from "../../shared/AppNavigation";
+import { AppNavigation, AppTopbar } from "../../shared/AppNavigation";
 // YM-004A React Application Workspace: one coherent preparation activity.
 // Reads and writes through Go-owned JSON contracts only. The source URL is
 // displayed, never edited here; resume bytes never enter this client.
@@ -445,7 +445,7 @@ export function WorkspacePage(): React.JSX.Element {
     else if (job.stage === "closed") attention = "This opportunity is closed.";
     else if (snapshot.selectedResumeId === 0) attention = "No résumé selected. Choose one to continue.";
     else if (!snapshot.resumeValid) attention = "Selected résumé unavailable. Review the selected document.";
-    else if (!readiness.questionsAvailable) attention = "Questions not yet established.";
+    else if (!readiness.questionsAvailable) attention = "";
     else if (readiness.needsAnswerCount > 0) attention = `${readiness.needsAnswerCount} available questions without saved answers.`;
     return { resumeText, answersText, answersQualifier, letterText, attention };
   }, [snapshot, discoveryStatus]);
@@ -500,7 +500,8 @@ export function WorkspacePage(): React.JSX.Element {
       </a>
       <AppNavigation active="opportunities" />
       <div className="app-main">
-        <main id="main-content" className="page-container workspace-page">
+        <AppTopbar />
+        <main id="main-content" className={`page-container workspace-page workspace-activity-${activity}`}>
           <nav className="breadcrumbs" aria-label="Breadcrumb">
             <a href="/jobs">Opportunities</a>
             <span aria-hidden="true">/</span>
@@ -542,9 +543,9 @@ export function WorkspacePage(): React.JSX.Element {
                   </div>
                   <div>
                     <dt>Answers</dt>
-                    <dd>
-                      {materials.answersText}
-                      {!snapshot.readiness.questionsAvailable && (
+                      <dd>
+                        {materials.answersText}
+                        {!snapshot.readiness.questionsAvailable && activity !== "questions" && (
                         <>
                           {" "}
                           <button
@@ -635,16 +636,22 @@ export function WorkspacePage(): React.JSX.Element {
                   </div>
                   <div>
                     <dt>Posting</dt>
-                    <dd className="workspace-url">{snapshot.job.url}</dd>
+                    <dd>
+                      <span className="workspace-source-status">{snapshot.job.host !== "" ? snapshot.job.host : snapshot.job.url}</span>
+                      <span className="workspace-url">{snapshot.job.url}</span>
+                    </dd>
                   </div>
                   <div>
                     <dt>Source</dt>
                     <dd>
-                      {snapshot.job.sourceStatusLabel}
-                      {snapshot.job.sourceCheckedAt !== "" && (
-                        <small> · Last checked {snapshot.job.sourceCheckedAt}</small>
+                      <span className="workspace-source-status">{snapshot.job.sourceStatusLabel}</span>
+                      {(snapshot.job.sourceCheckedAt !== "" || snapshot.job.sourceNote !== "") && (
+                        <small className="workspace-source-meta">
+                          {snapshot.job.sourceCheckedAt !== "" ? `Last checked ${snapshot.job.sourceCheckedAt}` : ""}
+                          {snapshot.job.sourceCheckedAt !== "" && snapshot.job.sourceNote !== "" ? " · " : ""}
+                          {snapshot.job.sourceNote}
+                        </small>
                       )}
-                      {snapshot.job.sourceNote !== "" && <small> · {snapshot.job.sourceNote}</small>}
                     </dd>
                   </div>
                 </dl>
@@ -825,12 +832,12 @@ export function WorkspacePage(): React.JSX.Element {
                     )}
                   </div>
                   <button
-                    className="button button-secondary"
+                    className={selectedOption ? "button button-secondary" : "button button-primary"}
                     type="button"
                     disabled={resumeBusy}
                     onClick={openChooser}
                   >
-                    Change résumé
+                    {selectedOption ? "Change résumé" : "Choose résumé"}
                   </button>
                 </div>
                 {snapshot.suggestion.status === "matched" &&
@@ -839,7 +846,7 @@ export function WorkspacePage(): React.JSX.Element {
                       Suggested for {snapshot.suggestion.familyName}:{" "}
                       <strong>{snapshot.suggestion.resumeName}</strong>{" "}
                       <button
-                        className="button button-secondary"
+                        className="button button-primary"
                         type="button"
                         disabled={resumeBusy}
                         onClick={() => void handleAssign(snapshot.suggestion.resumeId)}
@@ -981,13 +988,14 @@ export function WorkspacePage(): React.JSX.Element {
               </div>
 
               <div hidden={activity !== "questions"}>
-                <p>Answer any available questions you choose; the rest can be completed on the employer site.</p>
                 {snapshot.job.id > 0 && <WritingSection jobId={snapshot.job.id} destination={snapshot.job.url} onMaterialSaved={materialSaved} readOnly={applied} active={activity === "questions"} discoveryStatus={discoveryStatus} onRetryDiscovery={retryDiscovery} />}
-                <div className="workspace-secondary-action">
-                  <button className="button button-secondary" type="button" onClick={() => handleActivitySelect("apply")}>
-                    Review application options →
-                  </button>
-                </div>
+                {!showSuggested && (
+                  <div className="workspace-secondary-action">
+                    <button className="button button-secondary" type="button" onClick={() => handleActivitySelect("apply")}>
+                      Review application options →
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div hidden={activity !== "apply"}>

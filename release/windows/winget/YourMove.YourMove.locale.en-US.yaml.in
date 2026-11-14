@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.10.0.schema.json
+PackageIdentifier: YourMove.YourMove
+PackageVersion: '@VERSION@'
+PackageLocale: en-US
+Publisher: '@PUBLISHER@'
+PublisherUrl: https://yourmove.run
+PackageName: YourMove
+PackageUrl: https://yourmove.run
+License: GPL-3.0-only
+ShortDescription: Local-first job application workbench
+ManifestType: defaultLocale
+ManifestVersion: 1.10.0
