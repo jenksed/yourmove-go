@@ -75,6 +75,31 @@ export interface BatchResult {
   enrichment?: BatchEnrichment | null;
 }
 
+// Precise input reconciliation: only lines the server confirms as added or
+// duplicate are safe to remove. Failed (invalid), unprocessed (no matching
+// item, e.g. truncated response), and blank-skipped lines stay verbatim so
+// the user can fix and retry. Unknown outcomes (HTTP/DB failure) never call
+// this helper, so the caller preserves the full input including concurrent
+// edits. Line numbers are the original 1-based source lines, blanks
+// included, matching Go's importJobBatch numbering.
+export function reconcileBulkInput(submitted: string, result: BatchResult): string {
+  const lines = submitted.split("\n");
+  const removable = new Set<number>();
+  for (const item of result.items) {
+    if (item.status === "added" || item.status === "duplicate") {
+      removable.add(item.line);
+    }
+  }
+  const retained: string[] = [];
+  for (let index = 0; index < lines.length; index++) {
+    const lineNumber = index + 1;
+    if (removable.has(lineNumber)) continue;
+    if (lines[index].trim() === "") continue;
+    retained.push(lines[index]);
+  }
+  return retained.join("\n");
+}
+
 async function readError(response: Response): Promise<string> {
   const text = await response.text();
   if (text.trim() !== "") return text.trim();

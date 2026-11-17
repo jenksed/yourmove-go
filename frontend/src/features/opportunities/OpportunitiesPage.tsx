@@ -8,6 +8,7 @@ import {
   importOpportunities,
   moveOpportunities,
   openPosting,
+  reconcileBulkInput,
   type BatchResult,
   type OpportunitiesResponse,
   type OpportunityJob,
@@ -295,14 +296,22 @@ export function OpportunitiesPage(): React.JSX.Element {
   const handleBulkSubmit = useCallback(
     async (event: React.FormEvent) => {
       event.preventDefault();
+      const submitted = bulkText;
       setBulkError("");
       setBulkResult(null);
       setBulkBusy(true);
       try {
-        const result = await importOpportunities(bulkText);
+        const result = await importOpportunities(submitted);
         setBulkResult(result);
         await reload();
+        // Reconcile only on a confirmed result: drop added/duplicate lines,
+        // keep failed/unprocessed lines for fixing and retry. Preserve
+        // concurrent edits made while the request was in flight.
+        const retained = reconcileBulkInput(submitted, result);
+        setBulkText((previous) => (previous === submitted ? retained : previous));
       } catch (error) {
+        // Unknown outcome (network/server failure): preserve the full input
+        // including any concurrent edits; nothing was confirmed saved.
         setBulkError(error instanceof Error ? error.message : "Unable to import jobs");
       } finally {
         setBulkBusy(false);
@@ -598,12 +607,21 @@ export function OpportunitiesPage(): React.JSX.Element {
                         </button>
                       </div>
                     </form>
-                    {bulkResult && (
-                      <section className="batch-results" aria-label="Import results">
-                        <p>
-                          Saved {bulkResult.added} · Already saved {bulkResult.duplicates} · Invalid{" "}
-                          {bulkResult.invalid}
+                      {bulkResult && (
+                        <section className="batch-results" aria-label="Import results">
+                        <p role="status" className="batch-summary">
+                          Saved {bulkResult.added} · Already saved {bulkResult.duplicates} · Needs
+                          fixing {bulkResult.invalid}
                         </p>
+                        {bulkResult.invalid > 0 && (
+                          <p role="alert" className="batch-failures">
+                            {bulkResult.invalid}{" "}
+                            {bulkResult.invalid === 1 ? "line needs fixing" : "lines need fixing"} and{" "}
+                            {bulkResult.invalid === 1 ? "was" : "were"} kept in the box above. Fix the
+                            kept {bulkResult.invalid === 1 ? "line" : "lines"} and retry — saved lines
+                            were removed automatically.
+                          </p>
+                        )}
                         {bulkResult.enrichment && bulkResult.enrichment.total > 0 && (
                           <p role="status">
                             {bulkResult.enrichment.total} {bulkResult.enrichment.total === 1 ? "opportunity is" : "opportunities are"} checking public posting details
@@ -611,20 +629,36 @@ export function OpportunitiesPage(): React.JSX.Element {
                             <a href="/enrichment">Posting checks →</a>
                           </p>
                         )}
-                        <ul>
-                          {bulkResult.items.map((item) => (
-                            <li key={`${item.line}-${item.url}`}>
-                              <span>
-                                Line {item.line} · {item.status}
-                              </span>
-                              <span className="batch-url">{item.url}</span>
-                              <span>{item.detail}</span>
-                              {item.jobId > 0 && <a href={`/jobs/${item.jobId}`}>Open workspace →</a>}
-                            </li>
-                          ))}
-                        </ul>
+                        <details className="batch-details">
+                          <summary>
+                            Details ({bulkResult.items.length}{" "}
+                            {bulkResult.items.length === 1 ? "line" : "lines"}) — expand for workspace
+                            links
+                          </summary>
+                          <ul>
+                            {bulkResult.items.map((item) => (
+                              <li
+                                key={`${item.line}-${item.url}`}
+                                className={
+                                  item.status === "invalid"
+                                    ? "batch-item batch-item-invalid"
+                                    : item.status === "duplicate"
+                                      ? "batch-item batch-item-duplicate"
+                                      : "batch-item batch-item-added"
+                                }
+                              >
+                                <span>
+                                  Line {item.line} · {item.status}
+                                </span>
+                                <span className="batch-url">{item.url}</span>
+                                <span>{item.detail}</span>
+                                {item.jobId > 0 && <a href={`/jobs/${item.jobId}`}>Open workspace →</a>}
+                              </li>
+                            ))}
+                          </ul>
+                        </details>
                       </section>
-                    )}
+                      )}
                   </details>
                 </div>
               </details>
