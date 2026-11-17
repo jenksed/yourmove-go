@@ -77,6 +77,7 @@ func (a *App) resolveApplicationBrowser() (string, error) {
 }
 
 type utilitiesPageData struct {
+	Desktop        bool
 	BrowserCurrent string
 	BrowserEngines []playwright.EngineInfo
 	Notice         string
@@ -119,7 +120,7 @@ func (a *App) renderUtilities(w http.ResponseWriter, notice string) {
 			supported = append(supported, info)
 		}
 	}
-	data := utilitiesPageData{BrowserCurrent: current, BrowserEngines: supported, Notice: notice,
+	data := utilitiesPageData{BrowserCurrent: current, BrowserEngines: supported, Notice: notice, Desktop: a.openPosting != nil,
 		AppVersion: CurrentAppVersion(), AppBuild: CurrentAppBuild()}
 	phase, pending, updateErr, _, enabled := a.updateSnapshot()
 	data.UpdateEnabled = enabled
@@ -140,6 +141,19 @@ func (a *App) saveApplicationBrowser(w http.ResponseWriter, r *http.Request) {
 	engine := r.PostForm.Get("browser")
 	if err := a.saveApplicationBrowserSetting(engine); err != nil {
 		a.renderUtilities(w, "That browser cannot be selected: "+err.Error())
+		return
+	}
+	http.Redirect(w, r, "/utilities", http.StatusSeeOther)
+}
+
+// openReleaseNotes uses a fixed destination with the desktop system browser.
+func (a *App) openReleaseNotes(w http.ResponseWriter, r *http.Request) {
+	if a.openPosting == nil {
+		http.NotFound(w, r)
+		return
+	}
+	if err := a.openPosting("https://www.yourmove.run/docs/releases/"); err != nil {
+		http.Error(w, "Could not open release notes in your browser", http.StatusBadGateway)
 		return
 	}
 	http.Redirect(w, r, "/utilities", http.StatusSeeOther)
