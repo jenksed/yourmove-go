@@ -142,9 +142,29 @@ func TestKan12QuestionsDirtyGuardAndPreviewContext(t *testing.T) {
 	shotEval(t, ctx, ui, page, `Array.from(document.querySelectorAll('.question-select-item'))[1].click()`, nil)
 	shotWait(t, ctx, ui, page, `document.querySelector('#question-position').textContent === 'Question 1 of 2' && document.querySelector('.question-dirty-note')?.innerText.includes('Save or discard them to move')`)
 
+	// Blocked navigation must not touch the durable answer or its revision.
+	var revision int
+	var saved string
+	if err := a.db.QueryRow(`SELECT revision,answer FROM application_answers WHERE job_id=1 AND label LIKE 'Why do you want%'`).Scan(&revision, &saved); err != nil {
+		t.Fatal(err)
+	}
+	if revision != 1 || strings.Contains(saved, "Extra unsaved sentence.") {
+		t.Fatalf("blocked navigation persisted draft: revision=%d answer=%q", revision, saved)
+	}
+
 	// Explicit save, then clean navigation works and the revision advances.
 	shotClick(t, ctx, ui, page, "Save for this application only")
 	shotWait(t, ctx, ui, page, `document.body.innerText.includes('Saved revision 2')`)
+	shotClick(t, ctx, ui, page, "Next →")
+	shotWait(t, ctx, ui, page, `document.body.innerText.includes('Question 2 of 2')`)
+
+	// Returning must restore the explicitly saved answer.
+	shotClick(t, ctx, ui, page, "← Previous")
+	shotWait(t, ctx, ui, page, `document.querySelector('#writing-answer')?.value.includes('Extra unsaved sentence.')`)
+	shotEval(t, ctx, ui, page, `document.querySelector('#writing-answer').value`, &draftAfter)
+	if draftAfter != draftBefore {
+		t.Fatal("return lost saved answer")
+	}
 	shotClick(t, ctx, ui, page, "Next →")
 	shotWait(t, ctx, ui, page, `document.body.innerText.includes('Question 2 of 2')`)
 
@@ -181,6 +201,26 @@ func TestKan12QuestionsDirtyGuardAndPreviewContext(t *testing.T) {
 	shotEval(t, ctx, ui, page, `document.querySelector('#writing-answer').value`, &kept)
 	if kept != draftD1 {
 		t.Fatalf("Keep my draft did not preserve the editor text: %q", kept)
+	}
+
+	// Dirty Previous uses the same guard and preserves the current draft.
+	shotClick(t, ctx, ui, page, "← Previous")
+	shotWait(t, ctx, ui, page, `document.querySelector('.question-dirty-note')?.innerText.includes('Save or discard them to move')`)
+	shotEval(t, ctx, ui, page, `document.querySelector('#question-position').textContent`, &position)
+	shotEval(t, ctx, ui, page, `document.querySelector('#writing-answer').value`, &kept)
+	if position != "Question 2 of 2" || kept != draftD1 {
+		t.Fatal("dirty Previous lost position or draft")
+	}
+
+	shotClick(t, ctx, ui, page, "Use as starting draft")
+	shotWait(t, ctx, ui, page, `document.body.innerText.includes('Replace your unsaved edits?')`)
+	shotClick(t, ctx, ui, page, "Replace editor text")
+	shotWait(t, ctx, ui, page, `document.querySelector('#writing-answer')?.value.startsWith('A poison message stalled')`)
+	if err := a.db.QueryRow(`SELECT revision FROM application_answers WHERE job_id=1 AND label LIKE 'Describe a challenging%'`).Scan(&revision); err != nil {
+		t.Fatal(err)
+	}
+	if revision != 1 {
+		t.Fatalf("Replace unexpectedly saved revision %d", revision)
 	}
 
 	shotCaptureAt(t, ctx, ui, page, 1280, 900, ".question-navigator", "dark", "kan12-dirty-desktop-dark")
