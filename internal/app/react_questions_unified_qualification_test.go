@@ -71,7 +71,6 @@ func TestReactQuestionsUnifiedList(t *testing.T) {
 	}
 	mux := newMux(a)
 	drafts := map[string]string{
-		preview("_d0f9c56d-5a87-4137-9a0a-f0241d0af505"): "https://example.test/portfolio",
 		preview("_e523cd20-b243-4230-9a13-50ac028dd5a0"): "I enjoy using Render because deploys are boring in the best way.",
 	}
 	for id, value := range drafts {
@@ -141,14 +140,13 @@ func TestReactQuestionsUnifiedList(t *testing.T) {
 	// "label · needs answer"). Task inventory reads those options.
 	taskLabels := func() []string {
 		var labels []string
-		if err := eval(`Array.from(document.querySelectorAll('[aria-label="Question navigation"] select option')).map(o=>o.textContent.split(' · ')[0])`, &labels); err != nil {
+		run(`document.querySelector('[aria-label="Question navigation"] .question-select-trigger')?.click()`)
+		wait(`document.querySelectorAll('[role="option"]').length > 0`)
+		if err := eval(`Array.from(document.querySelectorAll('[role="option"] .question-select-label')).map(o=>o.textContent.trim())`, &labels); err != nil {
 			t.Fatal(err)
 		}
+		run(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`)
 		return labels
-	}
-	selectTask := func(fragment string) {
-		t.Helper()
-		run(fmt.Sprintf(`(()=>{const s=document.querySelector('[aria-label="Question navigation"] select');s.value=Array.from(s.options).find(o=>o.textContent.startsWith(%q)).value;s.dispatchEvent(new Event('change',{bubbles:true}))})()`, fragment))
 	}
 	count := func(labels []string, want string) int {
 		n := 0
@@ -162,9 +160,9 @@ func TestReactQuestionsUnifiedList(t *testing.T) {
 
 	wait(`document.body.innerText.includes('Synthetic Render role')`)
 	click("Questions")
-	wait(`Array.from(document.querySelectorAll('[aria-label="Question navigation"] select option')).some(o=>o.textContent.startsWith('Website'))`)
+	wait(`document.querySelector('[aria-label="Question navigation"] .question-select-trigger')!==null`)
 	got := taskLabels()
-	for label, want := range map[string]int{"Website": 1, storyLabel: 1, "Other information": 1} {
+	for label, want := range map[string]int{"Website": 0, storyLabel: 1, "Other information": 1} {
 		if count(got, label) != want {
 			t.Fatalf("phase 1 tasks %q: %v", label, got)
 		}
@@ -183,7 +181,7 @@ func TestReactQuestionsUnifiedList(t *testing.T) {
 			t.Fatalf("phase 1 guidance missing %q: %s", want, guidance)
 		}
 	}
-	for _, absent := range []string{"LinkedIn", "Location"} {
+	for _, absent := range []string{"LinkedIn", "Location", "Website"} {
 		if strings.Contains(guidance, absent) {
 			t.Fatalf("phase 1 profile field listed instead of summarized: %q in %s", absent, guidance)
 		}
@@ -236,9 +234,9 @@ func TestReactQuestionsUnifiedList(t *testing.T) {
 	a.browsers.sessions[1] = &fakeBrowser{url: testAshbyPosting + "/application"}
 	a.browsers.mu.Unlock()
 	click("Refresh questions")
-	wait(`Array.from(document.querySelectorAll('[aria-label="Question navigation"] select option')).filter(o=>o.textContent.startsWith('Other information')).length===2`)
+	wait(`document.querySelector('[aria-label="Question navigation"] .question-select-trigger')!==null`)
 	got = taskLabels()
-	for label, want := range map[string]int{"Website": 1, storyLabel: 1, "Other information": 2, "How did you hear about Render?": 0} {
+	for label, want := range map[string]int{"Website": 0, storyLabel: 1, "Other information": 2, "How did you hear about Render?": 0} {
 		if count(got, label) != want {
 			t.Fatalf("phase 2 tasks %q: %v", label, got)
 		}
@@ -251,7 +249,7 @@ func TestReactQuestionsUnifiedList(t *testing.T) {
 			t.Fatalf("phase 2 guidance missing %q: %s", want, guidance)
 		}
 	}
-	for _, absent := range []string{"LinkedIn", "Location"} {
+	for _, absent := range []string{"LinkedIn", "Location", "Website"} {
 		if strings.Contains(guidance, absent) {
 			t.Fatalf("phase 2 profile field listed instead of summarized: %q in %s", absent, guidance)
 		}
@@ -267,14 +265,5 @@ func TestReactQuestionsUnifiedList(t *testing.T) {
 	if !strings.Contains(notices, "One employer control could not be stably identified; inspect it directly in the employer browser.") {
 		t.Fatalf("phase 2 unidentified notice wrong: %s", notices)
 	}
-	selectTask("Website")
-	wait(`document.querySelector('#writing-answer')?.value === 'https://example.test/portfolio'`)
-	var editor string
-	if err := eval(`document.querySelector('.writing-editor')?.innerText || ''`, &editor); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(editor, "Published definition (preview)") {
-		t.Fatalf("saved draft lost its early editor identity: %s", editor)
-	}
-	t.Log("Unified React list: one task row per distinct question; drafts prepared with early identity; profile fields summarized; employer and manual guidance shown once from the current observation; unidentified controls condensed into one notice.")
+	t.Log("Unified React list: Website remains a Candidate Profile fact outside narrative tasks; narrative drafts retain their early identity; employer and manual guidance shown once from the current observation; unidentified controls condensed into one notice.")
 }

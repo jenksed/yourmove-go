@@ -67,6 +67,10 @@ func additionalProfileAttribute(f schema.Field) string {
 	if linkedin {
 		id = "linkedin"
 	}
+	website := label == "website" || label == "website url" || label == "personal website" || label == "personal website url" || label == "personal website link" || label == "personal site"
+	if website && (f.Kind == "text" || f.Kind == "url") {
+		return "website"
+	}
 	location := label == "location" || label == "current location" || label == "your location"
 	if location && (f.Kind == "text" || f.Kind == "combobox") {
 		return "location"

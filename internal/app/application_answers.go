@@ -369,12 +369,17 @@ func (a *App) prepareQuestions(job Job, p CandidateProfile) (questionPreparation
 		platform = ""
 	}
 	used := map[string]bool{}
+	fields := make([]schema.Field, 0, len(item.Fields))
+	for _, f := range item.Fields {
+		fields = append(fields, f.Field)
+	}
+	hasSeparateGitHubDestination := hasSeparateGitHubProfileDestination(fields)
 	for _, f := range item.Fields {
 		key := questionKey(job.URL, item.Platform, f.Field)
 		answer, exists := saved[key]
 		memoryKey := reusableAnswerKey(job.URL, f.Field)
 		reusable := memory[memoryKey]
-		value, source := resolveApplicationAnswer(f.Field, answer.Value, exists, p, reusable.Value, reusable.Revision > 0)
+		value, source := resolveApplicationAnswerForWebsite(f.Field, answer.Value, exists, p, reusable.Value, reusable.Revision > 0, hasSeparateGitHubDestination)
 		supported := editableQuestionForPlatform(f.Field, counts[f.ID] == 1, platform, p)
 		editable := !isProfileField(f.Field) && supported
 		if !supported {

@@ -384,6 +384,16 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
         ) : (
           <p className="small-muted">No items pending transfer.</p>
         )}
+        {snapshot.manualProfileFacts.length > 0 && (
+          <div className="continuation-item" role="note" aria-label="Required profile fields needing manual completion">
+            <p><strong>Required fields to complete manually</strong></p>
+            <ul>
+              {snapshot.manualProfileFacts.map((fact) => (
+                <li key={fact.label}><strong>{fact.label}:</strong> {fact.detail}</li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
 
       {actionError !== "" && (

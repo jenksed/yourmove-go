@@ -502,9 +502,12 @@ func (a *App) prepareEarlyQuestions(job Job, r *http.Request) (earlyQuestionPrep
 	if err == nil {
 		out.Item = &item
 		counts := make(map[string]int, len(item.Fields))
+		profileFields := make([]schema.Field, 0, len(item.Fields))
 		for _, field := range item.Fields {
 			counts[field.ID]++
+			profileFields = append(profileFields, field.Field)
 		}
+		hasSeparateGitHubDestination := hasSeparateGitHubProfileDestination(profileFields)
 		history, queryErr := a.earlyAnswerHistory(job.ID)
 		if queryErr != nil {
 			return out, queryErr
@@ -526,7 +529,7 @@ func (a *App) prepareEarlyQuestions(job Job, r *http.Request) (earlyQuestionPrep
 				status = "Early answer saved locally; not checked against the employer form."
 			}
 			stableIdentity := stableQuestionIdentity(field.Field, counts[field.ID] == 1)
-			profileValue, profileSource := resolveApplicationAnswer(field.Field, "", false, profile, "", false)
+			profileValue, profileSource := resolveApplicationAnswerForWebsite(field.Field, "", false, profile, "", false, hasSeparateGitHubDestination)
 			profileResolved := stableIdentity && profileSource == "Approved candidate information" && strings.TrimSpace(profileValue) != ""
 			category := writingCategory(field.Field, counts[field.ID] == 1, editable)
 			if category == "employer" && reason == "" {

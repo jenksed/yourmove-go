@@ -10,6 +10,11 @@ export interface ContinuationAnswer {
   source: string;
 }
 
+export interface ContinuationManualProfileFact {
+  label: string;
+  detail: string;
+}
+
 export interface ContinuationPreparation {
   title: string;
   detail: string;
@@ -114,6 +119,7 @@ export interface ContinuationSnapshot {
   profile: ContinuationProfile;
   letter: ContinuationLetter | null;
   pendingAnswers: ContinuationAnswer[];
+  manualProfileFacts: ContinuationManualProfileFact[];
   previousCount: number;
   awaitingReconciliation: number;
   questionsAvailable: boolean;

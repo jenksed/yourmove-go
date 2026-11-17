@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/jenksed/yourmove-go/internal/application/schema"
- "github.com/jenksed/yourmove-go/internal/storage"
+	"github.com/jenksed/yourmove-go/internal/storage"
 )
 
 func writingQuestions(t *testing.T, a *App, jobID int64) map[string]any {
@@ -203,7 +203,10 @@ func TestWritingEarlyAnswerSaveReopen(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("early save status=%d body=%s", rec.Code, rec.Body.String())
 	}
-	entries,err:=a.answerLibraryEntries();if err!=nil||len(entries)!=1 {t.Fatalf("combined early save: %v %v",entries,err)}
+	entries, err := a.answerLibraryEntries()
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("combined early save: %v %v", entries, err)
+	}
 	payload = writingQuestions(t, a, 1)
 	for _, item := range payload["early"].([]any) {
 		q := item.(map[string]any)
@@ -226,8 +229,8 @@ func TestWritingAssistance(t *testing.T) {
 	}
 	var payload struct {
 		Providers       []answerAIProviderOption `json:"providers"`
-		DefaultProvider string                 `json:"defaultProvider"`
-		Sources         *answerAIChoices       `json:"sources"`
+		DefaultProvider string                   `json:"defaultProvider"`
+		Sources         *answerAIChoices         `json:"sources"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
 		t.Fatal(err)
@@ -287,9 +290,9 @@ func TestWritingLettersGenerateSaveReopen(t *testing.T) {
 		t.Fatalf("letters status=%d body=%s", getRec.Code, getRec.Body.String())
 	}
 	var letters struct {
-		Drafts  []map[string]any `json:"drafts"`
+		Drafts          []map[string]any  `json:"drafts"`
 		EvidenceChoices []json.RawMessage `json:"evidenceChoices"`
-		Current *struct {
+		Current         *struct {
 			Body string `json:"body"`
 		} `json:"current"`
 	}
@@ -421,18 +424,18 @@ func TestWritingQuestionsIncludeManualCompletionFields(t *testing.T) {
 	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com", Title: "Render posting"}); err != nil {
 		t.Fatal(err)
 	}
-	// Mirrors the observed Render preview: Website is a supported text field
+	// Mirrors the observed Render preview: a project URL is a supported text field
 	// while "How did you hear about Render?" arrives as an option-less Ashby
 	// combobox that must stay manual-only but still be represented.
 	previewFields := []schema.Field{
-		{ID: "preview:form-namespace-1111-website", Label: "Website", Kind: "text"},
+		{ID: "preview:form-namespace-1111-website", Label: "Project URL", Kind: "text"},
 		{ID: "preview:form-namespace-2222-hear", Label: "How did you hear about Render?", Kind: "combobox"},
 	}
 	if _, err := a.saveInspection(1, schema.Result{Platform: "ashby", Source: "preview", Completeness: "rendered_preview_partial", ApplicationURL: testAshbyPosting + "/application", Fields: previewFields}); err != nil {
 		t.Fatal(err)
 	}
 	liveFields := []schema.Field{
-		{ID: "browser:form-namespace-1111-website", Label: "Website", Kind: "text"},
+		{ID: "browser:form-namespace-1111-website", Label: "Project URL", Kind: "text"},
 		{ID: "browser:form-namespace-2222-hear", Label: "How did you hear about Render?", Kind: "combobox"},
 	}
 	if _, err := a.saveInspection(1, schema.Result{Platform: "ashby", Source: "browser", Completeness: "rendered_partial", ApplicationURL: testAshbyPosting + "/application", Fields: liveFields}); err != nil {
@@ -447,9 +450,9 @@ func TestWritingQuestionsIncludeManualCompletionFields(t *testing.T) {
 	for _, item := range early {
 		q := item.(map[string]any)
 		switch q["label"] {
-		case "Website":
+		case "Project URL":
 			if q["editable"] != true {
-				t.Fatalf("Website should stay editable: %v", q)
+				t.Fatalf("Project URL should stay editable: %v", q)
 			}
 			sawEditable = true
 		case "How did you hear about Render?":
@@ -499,21 +502,21 @@ func TestWritingQuestionsUnifiedProjection(t *testing.T) {
 	previewFields := []schema.Field{
 		{ID: previewID("__systemfield_name"), Label: "Name", Kind: "text", Required: true},
 		{ID: previewID("__systemfield_email"), Label: "Email", Kind: "email", Required: true},
-		{ID: previewID("_"+quid["phone"]), Label: "Phone", Kind: "tel", Required: true},
+		{ID: previewID("_" + quid["phone"]), Label: "Phone", Kind: "tel", Required: true},
 		{ID: previewID("__systemfield_location"), Label: "Location", Kind: "combobox"},
 		{ID: previewID("_fd231a7d-aac9-4546-88f4-7d796da5e281"), Label: "LinkedIn", Kind: "text"},
-		{ID: previewID("_"+quid["web"]), Label: "Website", Kind: "text"},
-		{ID: previewID("_"+quid["story"]), Label: storyLabel, Kind: "text"},
-		{ID: previewID("_"+quid["hear"]), Label: "How did you hear about Render?", Kind: "combobox"},
-		{ID: previewID("_"+quid["pronouns"]), Label: "Pronouns", Kind: "text"},
-		{ID: previewID("_"+quid["race"]), Label: "Race", Kind: "radio", Sensitive: true, Options: []string{"Asian", "Decline to self-identify"}},
-		{ID: previewID("_"+quid["workauth"]), Label: "Work authorization status", Kind: "text"},
-		{ID: previewID("_"+quid["vet"]), Label: "Veteran Status", Kind: "radio", Sensitive: true, Options: []string{"I am not a protected veteran", "I decline to self-identify"}},
+		{ID: previewID("_" + quid["web"]), Label: "Project URL", Kind: "text"},
+		{ID: previewID("_" + quid["story"]), Label: storyLabel, Kind: "text"},
+		{ID: previewID("_" + quid["hear"]), Label: "How did you hear about Render?", Kind: "combobox"},
+		{ID: previewID("_" + quid["pronouns"]), Label: "Pronouns", Kind: "text"},
+		{ID: previewID("_" + quid["race"]), Label: "Race", Kind: "radio", Sensitive: true, Options: []string{"Asian", "Decline to self-identify"}},
+		{ID: previewID("_" + quid["workauth"]), Label: "Work authorization status", Kind: "text"},
+		{ID: previewID("_" + quid["vet"]), Label: "Veteran Status", Kind: "radio", Sensitive: true, Options: []string{"I am not a protected veteran", "I decline to self-identify"}},
 		{ID: previewID("__systemfield_resume"), Label: "Resume", Kind: "file", Required: true},
 		{ID: previewID("_aab326cd-f9c6-4608-9262-4a98b773a08e"), Label: "Cover Letter", Kind: "file"},
 		{ID: "preview:unidentified-controls", Label: "Controls without a stable field identity", Kind: "unsupported_ambiguous"},
-		{ID: previewID("_"+quid["infoA"]), Label: "Other information", Kind: "text"},
-		{ID: previewID("_"+quid["extra"]), Label: "Extra note", Kind: "text"},
+		{ID: previewID("_" + quid["infoA"]), Label: "Other information", Kind: "text"},
+		{ID: previewID("_" + quid["extra"]), Label: "Extra note", Kind: "text"},
 	}
 	if _, err := a.saveInspection(1, schema.Result{Platform: "ashby", Source: "preview", Completeness: "rendered_preview_partial", ApplicationURL: testAshbyPosting + "/application", Fields: previewFields}); err != nil {
 		t.Fatal(err)
@@ -523,7 +526,7 @@ func TestWritingQuestionsUnifiedProjection(t *testing.T) {
 		t.Fatal(err)
 	}
 	mux := newMux(a)
-	drafts := map[string]string{previewID("_"+quid["web"]): "https://example.test/portfolio", previewID("_"+quid["story"]): "I enjoy using Render because deploys are boring in the best way."}
+	drafts := map[string]string{previewID("_" + quid["web"]): "https://example.test/portfolio", previewID("_" + quid["story"]): "I enjoy using Render because deploys are boring in the best way."}
 	for id, value := range drafts {
 		q := earlyQuestionByID(t, a, job, id, "")
 		if rec := postApp(mux, "/jobs/1/answers/early-save", earlySaveValues(job, q, "0", value), "", ""); rec.Code != 303 {
@@ -533,22 +536,22 @@ func TestWritingQuestionsUnifiedProjection(t *testing.T) {
 	liveFields := []schema.Field{
 		{ID: liveID("__systemfield_name"), Label: "Name", Kind: "text", Required: true},
 		{ID: liveID("__systemfield_email"), Label: "Email", Kind: "email", Required: true},
-		{ID: liveID("_"+quid["phone"]), Label: "Phone", Kind: "tel", Required: true},
+		{ID: liveID("_" + quid["phone"]), Label: "Phone", Kind: "tel", Required: true},
 		{ID: liveID("__systemfield_location"), Label: "Location", Kind: "combobox"},
 		{ID: liveID("_fd231a7d-aac9-4546-88f4-7d796da5e281"), Label: "LinkedIn", Kind: "text"},
-		{ID: liveID("_"+quid["web"]), Label: "Website", Kind: "text"},
-		{ID: liveID("_"+quid["story"]), Label: storyLabel, Kind: "text"},
-		{ID: liveID("_"+quid["hear"]), Label: "How did you hear about Render?", Kind: "combobox"},
-		{ID: liveID("_"+quid["pronouns"]), Label: "Pronouns", Kind: "radio", Options: []string{"She/her", "They/them", "He/him", "Decline to state"}},
-		{ID: liveID("_"+quid["race"]), Label: "Race", Kind: "radio", Sensitive: true, Options: []string{"Asian", "Decline to self-identify"}},
-		{ID: liveID("_"+quid["workauth"]), Label: "Work authorization status", Kind: "radio", Options: []string{"Yes", "No"}},
-		{ID: liveID("_"+quid["vet"]), Label: "Veteran Status", Kind: "radio", Sensitive: true, Options: []string{"I am not a protected veteran", "I decline to self-identify"}},
+		{ID: liveID("_" + quid["web"]), Label: "Project URL", Kind: "text"},
+		{ID: liveID("_" + quid["story"]), Label: storyLabel, Kind: "text"},
+		{ID: liveID("_" + quid["hear"]), Label: "How did you hear about Render?", Kind: "combobox"},
+		{ID: liveID("_" + quid["pronouns"]), Label: "Pronouns", Kind: "radio", Options: []string{"She/her", "They/them", "He/him", "Decline to state"}},
+		{ID: liveID("_" + quid["race"]), Label: "Race", Kind: "radio", Sensitive: true, Options: []string{"Asian", "Decline to self-identify"}},
+		{ID: liveID("_" + quid["workauth"]), Label: "Work authorization status", Kind: "radio", Options: []string{"Yes", "No"}},
+		{ID: liveID("_" + quid["vet"]), Label: "Veteran Status", Kind: "radio", Sensitive: true, Options: []string{"I am not a protected veteran", "I decline to self-identify"}},
 		{ID: liveID("__systemfield_resume"), Label: "Resume", Kind: "file", Required: true},
 		{ID: liveID("_aab326cd-f9c6-4608-9262-4a98b773a08e"), Label: "Cover Letter", Kind: "file"},
 		{ID: "browser:unidentified-controls", Label: "Controls without a stable field identity", Kind: "unsupported_ambiguous"},
-		{ID: liveID("_"+quid["infoA"]), Label: "Other information", Kind: "text"},
-		{ID: liveID("_"+quid["infoB"]), Label: "Other information", Kind: "text"},
-		{ID: liveID("_"+quid["extra"]), Label: "Extra note", Kind: "textarea"},
+		{ID: liveID("_" + quid["infoA"]), Label: "Other information", Kind: "text"},
+		{ID: liveID("_" + quid["infoB"]), Label: "Other information", Kind: "text"},
+		{ID: liveID("_" + quid["extra"]), Label: "Extra note", Kind: "textarea"},
 	}
 	liveRowID, err := a.saveInspection(1, schema.Result{Platform: "ashby", Source: "browser", Completeness: "rendered_partial", ApplicationURL: testAshbyPosting + "/application", Fields: liveFields})
 	if err != nil {
@@ -581,7 +584,7 @@ func TestWritingQuestionsUnifiedProjection(t *testing.T) {
 	// early editor identity; profile, employer, and manual rows are categorized.
 	payload := writingQuestions(t, a, 1)
 	byLabel := unifiedByLabel(payload)
-	for label, want := range map[string]int{"Website": 1, storyLabel: 1, "How did you hear about Render?": 1, "Name": 0, "Email": 0, "Phone": 0, "Location": 0, "LinkedIn": 0, "Pronouns": 0, "Race": 1, "Work authorization status": 1, "Veteran Status": 1, "Other information": 2, "Extra note": 2} {
+	for label, want := range map[string]int{"Project URL": 1, storyLabel: 1, "How did you hear about Render?": 1, "Name": 0, "Email": 0, "Phone": 0, "Location": 0, "LinkedIn": 0, "Pronouns": 0, "Race": 1, "Work authorization status": 1, "Veteran Status": 1, "Other information": 2, "Extra note": 2} {
 		if len(byLabel[label]) != want {
 			t.Fatalf("phase 1 %q rows=%d, want %d", label, len(byLabel[label]), want)
 		}
@@ -594,9 +597,9 @@ func TestWritingQuestionsUnifiedProjection(t *testing.T) {
 	if got, _ := payload["unidentifiedCount"].(float64); got != 1 {
 		t.Fatalf("phase 1 unidentifiedCount=%v, want 1", payload["unidentifiedCount"])
 	}
-	for _, row := range byLabel["Website"] {
+	for _, row := range byLabel["Project URL"] {
 		if row["isEarly"] != true || row["value"] != drafts[previewID("_"+quid["web"])] || row["triageCategory"] != "answer" {
-			t.Fatalf("phase 1 Website lost its saved draft: %v", row)
+			t.Fatalf("phase 1 project URL lost its saved draft: %v", row)
 		}
 	}
 	for _, row := range byLabel[storyLabel] {
@@ -631,7 +634,7 @@ func TestWritingQuestionsUnifiedProjection(t *testing.T) {
 	}
 	for _, label := range answerLabels(byLabel) {
 		switch label {
-		case "Website", storyLabel, "Other information", "Extra note":
+		case "Project URL", storyLabel, "Other information", "Extra note":
 		default:
 			t.Fatalf("phase 1 unexpected writing task %q", label)
 		}
@@ -655,7 +658,7 @@ func TestWritingQuestionsUnifiedProjection(t *testing.T) {
 	a.browsers.mu.Unlock()
 	payload = writingQuestions(t, a, 1)
 	byLabel = unifiedByLabel(payload)
-	for label, want := range map[string]int{"Website": 1, storyLabel: 1, "How did you hear about Render?": 1, "Pronouns": 0, "Work authorization status": 1, "Other information": 2, "Extra note": 2} {
+	for label, want := range map[string]int{"Project URL": 1, storyLabel: 1, "How did you hear about Render?": 1, "Pronouns": 0, "Work authorization status": 1, "Other information": 2, "Extra note": 2} {
 		if len(byLabel[label]) != want {
 			t.Fatalf("phase 2 %q rows=%d, want %d", label, len(byLabel[label]), want)
 		}
@@ -668,9 +671,9 @@ func TestWritingQuestionsUnifiedProjection(t *testing.T) {
 			t.Fatalf("phase 2 employer-side wording change should show the live row once: %v", row)
 		}
 	}
-	for _, row := range byLabel["Website"] {
+	for _, row := range byLabel["Project URL"] {
 		if row["isEarly"] != true || row["value"] != drafts[previewID("_"+quid["web"])] {
-			t.Fatalf("phase 2 Website draft identity lost: %v", row)
+			t.Fatalf("phase 2 project URL draft identity lost: %v", row)
 		}
 	}
 	for _, row := range byLabel["Other information"] {
@@ -740,29 +743,65 @@ func TestManualLetterCreationAndValidation(t *testing.T) {
 }
 
 func TestLetterSelectionPersistsAndStaysWithinJob(t *testing.T) {
- a, dir := testWorkspace(t)
- if err := a.saveJob(Job{URL:testAshbyPosting, Host:"jobs.ashbyhq.com",Title:"Selection"}); err != nil { t.Fatal(err) }
- body1 := "Dear hiring team, this first saved letter is the one I choose to use."
- body2 := "Dear hiring team, this second saved letter is not the selected one."
- for _, body := range []string{body1, body2} {
-  r := postWritingJSON(t,a,http.MethodPost,"/api/jobs/1/letters/manual",`{"body":`+jsonString(body)+`}`)
-  if r.Code!=http.StatusOK {t.Fatalf("create: %d %s",r.Code,r.Body.String())}
- }
- if r:=postWritingJSON(t,a,http.MethodPost,"/api/jobs/1/letters/select",`{"draftId":1}`);r.Code!=http.StatusOK {t.Fatalf("select: %d %s",r.Code,r.Body.String())}
- if r:=postWritingJSON(t,a,http.MethodPost,"/api/jobs/1/letters/select",`{"draftId":999}`);r.Code!=http.StatusConflict {t.Fatalf("invalid: %d",r.Code)}
- stale,err:=a.coverLetterByID(1,2);if err!=nil{t.Fatal(err)}
- launches:=0
- a.browsers.factory=func(context.Context,string)(readOnlySession,error){launches++;return nil,errors.New("browser must not start for a stale letter-only request")}
- request := `{"destination":`+jsonString(testAshbyPosting)+`,"include_letter":true,"draft_id":"2","body_hash":`+jsonString(stale.ContentHash())+`,"mode":"file"}`
- rejected:=postWritingJSON(t,a,http.MethodPost,"/api/jobs/1/continue",request)
- if rejected.Code!=http.StatusOK || !strings.Contains(rejected.Body.String(),"selected letter changed") { t.Fatalf("stale selection accepted: %d %s",rejected.Code,rejected.Body.String()) }
- if launches!=0 { t.Fatalf("stale letter-only request launched the browser %d times",launches) }
- if a.browsers.state(1).Active { t.Fatal("stale letter-only request left a browser session behind") }
- if err:=a.db.Close();err!=nil {t.Fatal(err)}
- db,err:=storage.OpenDB(filepath.Join(dir,"jobs.db"));if err!=nil{t.Fatal(err)};defer db.Close()
- reopened:=newTestApp(t,db,filepath.Join(dir,"resumes"))
- letter,err:=reopened.selectedCoverLetter(1);if err!=nil||letter.ID!=1||letter.Body!=body1{t.Fatalf("selection after reopen: %+v %v",letter,err)}
- snapshot,err:=reopened.buildContinuation(1); if err!=nil { t.Fatal(err) }; payload,_:=json.Marshal(snapshot); if !strings.Contains(string(payload), `"id":1`) { t.Fatalf("continuation: %s",payload) }
+	a, dir := testWorkspace(t)
+	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com", Title: "Selection"}); err != nil {
+		t.Fatal(err)
+	}
+	body1 := "Dear hiring team, this first saved letter is the one I choose to use."
+	body2 := "Dear hiring team, this second saved letter is not the selected one."
+	for _, body := range []string{body1, body2} {
+		r := postWritingJSON(t, a, http.MethodPost, "/api/jobs/1/letters/manual", `{"body":`+jsonString(body)+`}`)
+		if r.Code != http.StatusOK {
+			t.Fatalf("create: %d %s", r.Code, r.Body.String())
+		}
+	}
+	if r := postWritingJSON(t, a, http.MethodPost, "/api/jobs/1/letters/select", `{"draftId":1}`); r.Code != http.StatusOK {
+		t.Fatalf("select: %d %s", r.Code, r.Body.String())
+	}
+	if r := postWritingJSON(t, a, http.MethodPost, "/api/jobs/1/letters/select", `{"draftId":999}`); r.Code != http.StatusConflict {
+		t.Fatalf("invalid: %d", r.Code)
+	}
+	stale, err := a.coverLetterByID(1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	launches := 0
+	a.browsers.factory = func(context.Context, string) (readOnlySession, error) {
+		launches++
+		return nil, errors.New("browser must not start for a stale letter-only request")
+	}
+	request := `{"destination":` + jsonString(testAshbyPosting) + `,"include_letter":true,"draft_id":"2","body_hash":` + jsonString(stale.ContentHash()) + `,"mode":"file"}`
+	rejected := postWritingJSON(t, a, http.MethodPost, "/api/jobs/1/continue", request)
+	if rejected.Code != http.StatusOK || !strings.Contains(rejected.Body.String(), "selected letter changed") {
+		t.Fatalf("stale selection accepted: %d %s", rejected.Code, rejected.Body.String())
+	}
+	if launches != 0 {
+		t.Fatalf("stale letter-only request launched the browser %d times", launches)
+	}
+	if a.browsers.state(1).Active {
+		t.Fatal("stale letter-only request left a browser session behind")
+	}
+	if err := a.db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	db, err := storage.OpenDB(filepath.Join(dir, "jobs.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	reopened := newTestApp(t, db, filepath.Join(dir, "resumes"))
+	letter, err := reopened.selectedCoverLetter(1)
+	if err != nil || letter.ID != 1 || letter.Body != body1 {
+		t.Fatalf("selection after reopen: %+v %v", letter, err)
+	}
+	snapshot, err := reopened.buildContinuation(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, _ := json.Marshal(snapshot)
+	if !strings.Contains(string(payload), `"id":1`) {
+		t.Fatalf("continuation: %s", payload)
+	}
 }
 
 func TestWritingQuestionsReportsPostingSupport(t *testing.T) {

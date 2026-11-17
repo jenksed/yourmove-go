@@ -43,7 +43,7 @@ func TestAnswerTransferApprovalAndContinuation(t *testing.T) {
 	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com"}); err != nil {
 		t.Fatal(err)
 	}
-	fields := []schema.Field{{ID: "browser:why", Label: "Why this team?", Kind: "textarea"}, {ID: "browser:site", Label: "Website", Kind: "text"}}
+	fields := []schema.Field{{ID: "browser:why", Label: "Why this team?", Kind: "textarea"}, {ID: "browser:site", Label: "What project URL should we review?", Kind: "text"}}
 	if _, err := a.saveInspection(1, schema.Result{Platform: "ashby", Source: "browser", Completeness: "rendered_partial", ApplicationURL: testAshbyPosting + "/application", Fields: fields}); err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestAnswerTransferApprovalAndContinuation(t *testing.T) {
 			t.Fatal(rec.Code, rec.Body.String())
 		}
 	}
-	f := &fakeAnswerBrowser{fakeBrowser: &fakeBrowser{url: testAshbyPosting + "/application"}, controls: []browser.Control{{ID: "why", Label: "Why this team?", Kind: "textarea"}, {ID: "site", Label: "Website", Kind: "text"}}}
+	f := &fakeAnswerBrowser{fakeBrowser: &fakeBrowser{url: testAshbyPosting + "/application"}, controls: []browser.Control{{ID: "why", Label: "Why this team?", Kind: "textarea"}, {ID: "site", Label: "What project URL should we review?", Kind: "text"}}}
 	a.browsers.factory = func(context.Context, string) (readOnlySession, error) { return f, nil }
 	if err := a.browsers.start(context.Background(), 1, job.URL); err != nil {
 		t.Fatal(err)

@@ -53,7 +53,7 @@ func (p questionPreparation) ReviewHash() string {
 
 // readyAdditionalProfileFacts returns eligible supported additional Candidate
 // Profile facts (LinkedIn, location, pronouns, city/region/country, GitHub,
-// portfolio) that are approved, unambiguous, and Fill-eligible through the
+// portfolio, Website) that are approved, unambiguous, and Fill-eligible through the
 // existing guarded answer filler. Contact facts (name/email/phone) are
 // excluded: the dedicated contact operation owns them. Unsupported,
 // ambiguous, or manual-only controls have empty values and never appear.

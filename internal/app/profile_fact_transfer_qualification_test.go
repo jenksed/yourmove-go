@@ -52,7 +52,8 @@ func TestControlledProfileFactFill(t *testing.T) {
 	profile := CandidateProfile{
 		FirstName: "Alex", LastName: "Fixture", Email: "alex@example.test", Phone: "202-555-0104",
 		City: "Cadillac", Region: "Michigan", Country: "United States",
-		LinkedIn: "https://www.linkedin.com/in/fixture", Pronouns: "He/him", Approved: true,
+		LinkedIn: "https://www.linkedin.com/in/fixture", GitHub: "https://github.com/fixture", Portfolio: "https://portfolio.example.test",
+		Pronouns: "He/him", Approved: true,
 	}
 	if err := a.saveCandidateProfile(profile); err != nil {
 		t.Fatal(err)
@@ -69,6 +70,8 @@ func TestControlledProfileFactFill(t *testing.T) {
 		fmt.Fprint(w, `<!doctype html><div class="ashby-application-form-container"><form class="ashby-application-form">
   <label>First name<input name="first_name"></label><label>Last name<input name="last_name" value="Employer entry"></label><label>Email<input name="email" type="email"></label><label>Phone<input name="phone" type="tel"></label>
   <label>LinkedIn URL<input name="linkedin" type="url"></label>
+  <label>Website<input name="website" type="url" required></label>
+  <label>GitHub profile URL<input name="github" type="url"></label>
   <label>Location<input name="location" role="combobox" aria-controls="places" required></label>
   <div id="places" role="listbox" hidden><div role="option">Cadillac, Michigan, United States</div></div>
   <label>Pronouns<select name="pronouns"><option value="">Select…</option><option>He/him</option><option>She/her</option><option>They/them</option></select></label>
@@ -162,6 +165,8 @@ func TestControlledProfileFactFill(t *testing.T) {
 	// The three restored facts must be visible with approved values.
 	for _, tc := range []struct{ label, value string }{
 		{"LinkedIn URL", "https://www.linkedin.com/in/fixture"},
+		{"Website", "https://portfolio.example.test"},
+		{"GitHub profile URL", "https://github.com/fixture"},
 		{"Location", "Cadillac, Michigan, United States"},
 		{"Pronouns", "He/him"},
 		{"Why this team?", "I enjoy resolving support incidents with clear follow-up."},
@@ -219,7 +224,7 @@ func TestControlledProfileFactFill(t *testing.T) {
 			Value bool `json:"value"`
 		} `json:"result"`
 	}
-	expression := `document.querySelector('[name=first_name]').value==='Alex'&&document.querySelector('[name=last_name]').value==='Employer entry'&&document.querySelector('[name=email]').value==='alex@example.test'&&document.querySelector('[name=phone]').value==='202-555-0104'&&document.querySelector('[name=linkedin]').value==='https://www.linkedin.com/in/fixture'&&document.querySelector('[name=location]').value==='Cadillac, Michigan, United States'&&document.querySelector('[name=location]').validity.valid&&document.querySelector('[name=pronouns]').value==='He/him'&&document.querySelector('[name=motivation]').value==='I enjoy resolving support incidents with clear follow-up.'&&document.querySelector('[name=sponsorship]').value===''&&submits===0`
+	expression := `document.querySelector('[name=first_name]').value==='Alex'&&document.querySelector('[name=last_name]').value==='Employer entry'&&document.querySelector('[name=email]').value==='alex@example.test'&&document.querySelector('[name=phone]').value==='202-555-0104'&&document.querySelector('[name=linkedin]').value==='https://www.linkedin.com/in/fixture'&&document.querySelector('[name=website]').value==='https://portfolio.example.test'&&document.querySelector('[name=github]').value==='https://github.com/fixture'&&document.querySelector('[name=location]').value==='Cadillac, Michigan, United States'&&document.querySelector('[name=location]').validity.valid&&document.querySelector('[name=pronouns]').value==='He/him'&&document.querySelector('[name=motivation]').value==='I enjoy resolving support incidents with clear follow-up.'&&document.querySelector('[name=sponsorship]').value===''&&submits===0`
 	hit := false
 	for deadline := time.Now().Add(20 * time.Second); time.Now().Before(deadline); {
 		if err := chrome.FixtureCall(ctx, base+"/application", "Runtime.evaluate", map[string]any{"expression": expression, "returnByValue": true}, &observed); err == nil && observed.Result.Value {
@@ -246,7 +251,7 @@ func TestControlledProfileFactFill(t *testing.T) {
 	for _, o := range state.AnswerOutcomes {
 		answerStatus[o.Label] = o.Status
 	}
-	for _, label := range []string{"LinkedIn URL", "Location", "Pronouns", "Why this team?"} {
+	for _, label := range []string{"LinkedIn URL", "Website", "GitHub profile URL", "Location", "Pronouns", "Why this team?"} {
 		if status := answerStatus[label]; status != "filled" && status != "correct" {
 			t.Fatalf("answer %q outcome=%q want filled/correct outcomes=%+v", label, status, state.AnswerOutcomes)
 		}
@@ -273,5 +278,5 @@ func TestControlledProfileFactFill(t *testing.T) {
 	if !after.Approved || after.Revision != savedProfile.Revision {
 		t.Fatalf("Fill changed saved approval: %+v", after)
 	}
-	t.Log("React Apply → Fill → Go API → managed Chromium: LinkedIn, Location (Ashby autocomplete selected), and Pronouns filled from approved profile; ordinary answer filled; résumé/cover attached; existing last name preserved; Work authorization left manual; zero submissions.")
+	t.Log("React Apply → Fill → Go API → managed Chromium: Website received Portfolio while separate GitHub received GitHub; LinkedIn, Location (Ashby autocomplete selected), and Pronouns filled from approved profile; ordinary answer filled; résumé/cover attached; existing last name preserved; Work authorization left manual; zero submissions.")
 }

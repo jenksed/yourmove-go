@@ -195,6 +195,10 @@ func candidateLocation(p CandidateProfile) string {
 // resolveApplicationAnswer is pure and uses explicit identity plus compatible
 // labels. Label similarity alone never supplies an answer.
 func resolveApplicationAnswer(f schema.Field, explicit string, hasExplicit bool, p CandidateProfile, memory string, hasMemory bool) (string, string) {
+	return resolveApplicationAnswerForWebsite(f, explicit, hasExplicit, p, memory, hasMemory, false)
+}
+
+func resolveApplicationAnswerForWebsite(f schema.Field, explicit string, hasExplicit bool, p CandidateProfile, memory string, hasMemory, hasSeparateGitHubDestination bool) (string, string) {
 	if hasExplicit {
 		return explicit, "Saved for this application"
 	}
@@ -210,7 +214,7 @@ func resolveApplicationAnswer(f schema.Field, explicit string, hasExplicit bool,
 			}
 		}
 	}
-	if value := resolveAdditionalProfileFact(f, p); value != "" {
+	if value := resolveAdditionalProfileFactForWebsite(f, p, hasSeparateGitHubDestination); value != "" {
 		return value, "Approved candidate information"
 	}
 	if hasMemory && !f.Sensitive {
@@ -221,12 +225,25 @@ func resolveApplicationAnswer(f schema.Field, explicit string, hasExplicit bool,
 
 // Resolve values separately from intrinsic field identity and transfer authority.
 func resolveAdditionalProfileFact(f schema.Field, p CandidateProfile) string {
+	return resolveAdditionalProfileFactForWebsite(f, p, false)
+}
+
+func resolveAdditionalProfileFactForWebsite(f schema.Field, p CandidateProfile, hasSeparateGitHubDestination bool) string {
 	if !p.Approved {
 		return ""
 	}
 	key := additionalProfileAttribute(f)
 	if key == "location" {
 		return candidateLocation(p)
+	}
+	if key == "website" {
+		if value := strings.TrimSpace(p.Portfolio); value != "" {
+			return value
+		}
+		if !hasSeparateGitHubDestination {
+			return strings.TrimSpace(p.GitHub)
+		}
+		return ""
 	}
 	value := map[string]string{"pronouns": p.Pronouns, "city": p.City, "region": p.Region, "country": p.Country, "linkedin": p.LinkedIn, "github": p.GitHub, "portfolio": p.Portfolio}[key]
 	if value == "" {
@@ -245,6 +262,19 @@ func resolveAdditionalProfileFact(f schema.Field, p CandidateProfile) string {
 		}
 	}
 	return match
+}
+
+func hasSeparateGitHubProfileDestination(fields []schema.Field) bool {
+	counts := make(map[string]int, len(fields))
+	for _, field := range fields {
+		counts[field.ID]++
+	}
+	for _, field := range fields {
+		if classifyApplicationField(field, counts[field.ID] == 1).Role == fieldCandidateProfile && additionalProfileAttribute(field) == "github" {
+			return true
+		}
+	}
+	return false
 }
 
 func pronounOption(option, preference string) bool {

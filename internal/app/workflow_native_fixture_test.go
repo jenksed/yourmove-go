@@ -28,7 +28,20 @@ func TestPrepareNativeWorkflowFixture(t *testing.T) {
 	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com", Title: "Synthetic native workflow", Company: "Fixture only"}); err != nil {
 		t.Fatal(err)
 	}
-	fields := []schema.Field{{ID: "browser:name", Label: "Name", Kind: "text"}, {ID: "browser:motivation", Label: "Why this team?", Kind: "textarea"}, {ID: "browser:website", Label: "Website", Kind: "text"}}
+	if err := a.saveCandidateProfile(CandidateProfile{
+		FirstName: "Alex", LastName: "Fixture", Email: "alex@example.test",
+		LinkedIn: "https://www.linkedin.com/in/native-fixture", GitHub: "https://github.com/native-fixture",
+		Portfolio: "https://portfolio.example.test/native-fixture", Approved: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	fields := []schema.Field{
+		{ID: "browser:name", Label: "Name", Kind: "text"},
+		{ID: "browser:linkedin", Label: "LinkedIn URL", Kind: "url"},
+		{ID: "browser:website", Label: "Website", Kind: "url", Required: true},
+		{ID: "browser:github_url", Label: "GitHub profile URL", Kind: "url"},
+		{ID: "browser:motivation", Label: "Why this team?", Kind: "textarea"},
+	}
 	if _, err := a.saveInspection(1, schema.Result{Platform: "ashby", Source: "browser", Completeness: "rendered_partial", ApplicationURL: testAshbyPosting + "/application", Fields: fields}); err != nil {
 		t.Fatal(err)
 	}

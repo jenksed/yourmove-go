@@ -43,6 +43,11 @@ type continuationAnswerJSON struct {
 	Source string `json:"source"`
 }
 
+type continuationManualProfileFactJSON struct {
+	Label  string `json:"label"`
+	Detail string `json:"detail"`
+}
+
 type continuationEarlyAnswerCandidate struct {
 	ID                   int64        `json:"id"`
 	Destination          string       `json:"destination"`
@@ -204,6 +209,14 @@ func (a *App) buildContinuation(jobID int64) (map[string]any, error) {
 	for _, q := range preparation.PendingAnswers {
 		pending = append(pending, continuationAnswerJSON{Key: q.Key, Label: q.Field.Label, Value: q.Value, Source: q.Source})
 	}
+	manualProfileFacts := make([]continuationManualProfileFactJSON, 0)
+	for _, q := range live.ProfileQuestions() {
+		if q.Field.Required && strings.TrimSpace(q.Value) == "" {
+			manualProfileFacts = append(manualProfileFacts, continuationManualProfileFactJSON{
+				Label: q.Field.Label, Detail: "Required; no eligible Candidate Profile value is available. Complete this field manually in the employer form.",
+			})
+		}
+	}
 	var otherJSON *continuationOtherJSON
 	if otherID := a.browsers.otherApplication(jobID); otherID > 0 {
 		if other, loadErr := a.jobByID(otherID); loadErr == nil {
@@ -264,6 +277,7 @@ func (a *App) buildContinuation(jobID int64) (map[string]any, error) {
 		},
 		"letter":                 letterJSON,
 		"pendingAnswers":         pending,
+		"manualProfileFacts":     manualProfileFacts,
 		"answerScopeInternal":    preparation.PendingAnswers,
 		"earlyAnswerCandidates":  candidates,
 		"previousCount":          len(live.Previous),
