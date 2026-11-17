@@ -14,10 +14,10 @@ On a supported Mac with the pinned Go toolchain and Xcode Command Line Tools:
 
 ```sh
 ./release/macos/doctor.sh
-./release/macos/prepare.sh
+env -u YOURMOVE_UPDATE_MANIFEST_URL -u YOURMOVE_UPDATE_PUBLIC_KEY_FILE YOURMOVE_ALLOW_DISABLED_UPDATER=1 ./release/macos/prepare.sh
 ```
 
-`doctor.sh` checks system/compiler requirements, icon, plist, and package scripts. `prepare.sh` requires a **clean Git working tree**, runs both Go test suites with isolated data, builds the Wails `desktop,production` executable through `build.sh`, signs the complete bundle ad hoc, checks metadata/hash integrity, packages the application/source ZIPs, then extracts and verifies the ZIP. It does not access the user's normal applicant workspace or publish anything.
+`doctor.sh` checks system/compiler requirements, icon, plist, and package scripts. The example disables updates for an unreleased local build; approved updater-enabled releases use the configuration in section 6A. `prepare.sh` requires a **clean Git working tree**, runs both Go test suites with isolated data, builds the Wails `desktop,production` executable through `build.sh`, signs the complete bundle ad hoc, checks metadata/hash integrity, packages the application/source ZIPs, then extracts and verifies the ZIP. It does not access the user's normal applicant workspace or publish anything.
 
 Default output is a newly created directory under `~/Projects/yourmove-builds/`. An absolute unused output directory can be supplied as the one argument to `prepare.sh`.
 
@@ -88,7 +88,7 @@ An updater-enabled YourMove installation may offer **user-approved** in-app upda
 
 The updater consumes a separate application ZIP, not the first-installation DMG. For an explicitly unnotarized technical alpha, use `bash release/macos/package-update.sh --alpha /absolute/path/YourMove.app /absolute/new/output`. This verifies ad-hoc signing and archive integrity; it does not establish Gatekeeper trust. The default production mode retains its Developer ID and notarization checks. Neither mode publishes anything.
 
-`release/macos/build.sh` embeds the channel `https://github.com/jenksed/yourmove-go/releases/download/update-channel/stable.json` and `release/macos/update-public-key.pem` by default. The separate `update-channel` release asset must be created and maintained only with owner approval; `/releases/latest` excludes prereleases. Overrides are available for controlled builds. Verify the embedded URL, key and version on the exact distribution executable and safeguard the matching private key outside the repository.
+Unreleased v0.3 local builds disable the updater by setting `YOURMOVE_ALLOW_DISABLED_UPDATER=1` with `YOURMOVE_UPDATE_MANIFEST_URL` and `YOURMOVE_UPDATE_PUBLIC_KEY_FILE` unset or empty. For an approved updater-enabled release, explicitly set those two variables to the stable channel `https://github.com/jenksed/yourmove-go/releases/download/update-channel/stable.json` and `release/macos/update-public-key.pem` (use an absolute key path). The separate `update-channel` release asset must be created and maintained only with owner approval; `/releases/latest` excludes prereleases. Verify the embedded URL, key and version on the exact distribution executable and safeguard the matching private key outside the repository.
 
 The in-repo `release/macos/update-manifest` tool signs the SHA-256 digest of the updater ZIP with Ed25519. Wails verifies the digest and signature using the pinned key before installation. The JSON metadata itself (including version and release notes) is not signed; HTTPS protects transport, and a compromised channel could misrepresent metadata or replay a previously signed artifact. Treat a signature failure as a hard rejection. Never commit private keys or publish a manifest without owner approval.
 

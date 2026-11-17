@@ -34,10 +34,13 @@ app_build="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$release_outpu
   echo "Invalid app version/build in Info.plist: $app_version ($app_build)" >&2; exit 1; }
 ldflags="-s -w -X github.com/jenksed/yourmove-go/internal/app.AppVersion=${app_version} -X github.com/jenksed/yourmove-go/internal/app.AppBuild=${app_build}"
 
-# Default production channel and public key are pinned below. Overrides must
-# provide both values; disabling both requires an explicit local-build opt-out.
-manifest_url="${YOURMOVE_UPDATE_MANIFEST_URL-https://github.com/jenksed/yourmove-go/releases/download/update-channel/stable.json}"
-pubkey_file="${YOURMOVE_UPDATE_PUBLIC_KEY_FILE-$release_repo/release/macos/update-public-key.pem}"
+# Release builds must explicitly provide their approved channel and key.
+# Unreleased local builds use the existing explicit updater opt-out.
+manifest_url="${YOURMOVE_UPDATE_MANIFEST_URL-}"
+pubkey_file="${YOURMOVE_UPDATE_PUBLIC_KEY_FILE-}"
+if [[ "${YOURMOVE_ALLOW_DISABLED_UPDATER:-}" == 1 && ( -n "$manifest_url" || -n "$pubkey_file" ) ]]; then
+  echo 'Updater opt-out cannot be combined with an update channel or key.' >&2; exit 1
+fi
 if [[ -n "$manifest_url" || -n "$pubkey_file" ]]; then
   [[ -n "$manifest_url" && -n "$pubkey_file" ]] || {
     echo 'Set both YOURMOVE_UPDATE_MANIFEST_URL and YOURMOVE_UPDATE_PUBLIC_KEY_FILE, or neither.' >&2; exit 1; }
