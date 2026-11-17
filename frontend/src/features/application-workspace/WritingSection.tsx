@@ -131,6 +131,7 @@ export function WritingSection({
   dirtyRef.current = dirty;
   const [saveError, setSaveError] = useState<string>("");
   const [saveNotice, setSaveNotice] = useState<string>("");
+  const [navNotice, setNavNotice] = useState<string>("");
   const [saving, setSaving] = useState<boolean>(false);
   const [reusable, setReusable] = useState<boolean>(false);
   const [manualFormOpen, setManualFormOpen] = useState<boolean>(false);
@@ -243,6 +244,7 @@ export function WritingSection({
       setReplaceCandidate(null);
       setSaveError("");
       setSaveNotice("");
+      setNavNotice("");
       setReusable(false);
       setEditingQuestionText(false);
       setQuestionDraft(selected.label);
@@ -301,20 +303,27 @@ export function WritingSection({
     dirtyRef.current = false;
     setDirty(false);
     setSaveError("");
+    setNavNotice("");
     setPendingOrigin(null);
     setReplaceCandidate(null);
     setQuestionDraft(selected.label);
     setEditingQuestionText(false);
   }, [selected]);
 
+  // One dirty guard for every navigator: Previous, Next, and the question
+  // selector all keep the current question, draft, and saved revision until
+  // the applicant explicitly saves or discards. The blocked attempt is
+  // announced next to the navigator, where the Save/Discard actions live.
+  // Clean navigation is unchanged.
   const pickQuestion = useCallback(
     (next: WritingQuestion) => {
       const id = questionId(next);
       if (id === selectedId) return;
       if (dirty) {
-        setSaveError("Save or discard your answer before opening another question.");
+        setNavNotice("Unsaved edits on this question. Save or discard them to move to another question.");
         return;
       }
+      setNavNotice("");
       setSelectedId(id);
     },
     [dirty, selectedId],
@@ -372,6 +381,7 @@ export function WritingSection({
           origin_revision: autoRevision || undefined,
         });
         setDirty(false);
+        setNavNotice("");
         dirtyRef.current = false;
         setPendingOrigin(null);
         setReplaceCandidate(null);
@@ -398,6 +408,7 @@ export function WritingSection({
         origin_revision: autoRevision,
       });
       setDirty(false);
+      setNavNotice("");
       setPendingOrigin(null);
       setReplaceCandidate(null);
       setBaselineRevision(result.revision);
@@ -764,7 +775,7 @@ export function WritingSection({
             <button
               className="button button-secondary"
               type="button"
-              disabled={selectedIndex <= 0 || dirty}
+              disabled={selectedIndex <= 0}
               onClick={() => { if (selectedIndex > 0) pickQuestion(answerTasks[selectedIndex - 1]); }}
             >
               ← Previous
@@ -837,15 +848,15 @@ export function WritingSection({
           <button
             className="button button-secondary"
             type="button"
-            disabled={selectedIndex < 0 || selectedIndex >= answerTasks.length - 1 || dirty}
+            disabled={selectedIndex < 0 || selectedIndex >= answerTasks.length - 1}
             onClick={() => { if (selectedIndex >= 0 && selectedIndex < answerTasks.length - 1) pickQuestion(answerTasks[selectedIndex + 1]); }}
           >
             Next →
           </button>
           {dirty && selected && (
             <div className="question-dirty-note">
-              <p className="small-muted" role="note">
-                Unsaved edits on this question — save or discard them to move to another question.
+              <p className="small-muted" role="alert">
+                {navNotice !== "" ? navNotice : "Unsaved edits on this question — save or discard them to move to another question."}
               </p>
               <div className="form-actions">
                 <button className="button button-secondary" type="button" disabled={saving || !canSave} onClick={() => void handleSave()}>

@@ -43,6 +43,8 @@ export function PreviousWriting({
   const [previewRevision, setPreviewRevision] = useState<number>(0);
   const [previewTitle, setPreviewTitle] = useState<string>("");
   const [previewBody, setPreviewBody] = useState<string>("");
+  const [previewEmployer, setPreviewEmployer] = useState<string>("");
+  const [previewJobTitle, setPreviewJobTitle] = useState<string>("");
   const [previewLoading, setPreviewLoading] = useState<boolean>(false);
   const [previewError, setPreviewError] = useState<string>("");
   const [useBusy, setUseBusy] = useState<boolean>(false);
@@ -61,17 +63,21 @@ export function PreviousWriting({
     setPreviewRevision(0);
     setPreviewTitle("");
     setPreviewBody("");
+    setPreviewEmployer("");
+    setPreviewJobTitle("");
     setPreviewError("");
     setUseError("");
   }, [question.key, question.isEarly]);
 
   const openPreview = useCallback(
-    async (entryId: number, revision: number, title: string) => {
+    async (entryId: number, revision: number, title: string, context: { employer: string; jobTitle: string }) => {
       const request = ++requestRef.current;
       setPreviewId(entryId);
       setPreviewRevision(revision);
       setPreviewTitle(title);
       setPreviewBody("");
+      setPreviewEmployer(context.employer);
+      setPreviewJobTitle(context.jobTitle);
       setPreviewError("");
       setUseError("");
       setPreviewLoading(true);
@@ -81,6 +87,10 @@ export function PreviousWriting({
         setPreviewBody(full.answer);
         setPreviewRevision(full.revision);
         setPreviewTitle(full.original_question);
+        // The full record carries authoritative source context; keep the
+        // list context only where the record has none.
+        setPreviewEmployer(full.source_employer !== "" ? full.source_employer : context.employer);
+        setPreviewJobTitle(full.source_job_title !== "" ? full.source_job_title : context.jobTitle);
       } catch (error) {
         if (request !== requestRef.current) return;
         setPreviewError(error instanceof Error ? error.message : "Unable to load the full example");
@@ -97,6 +107,8 @@ export function PreviousWriting({
     setPreviewRevision(0);
     setPreviewTitle("");
     setPreviewBody("");
+    setPreviewEmployer("");
+    setPreviewJobTitle("");
     setPreviewError("");
     setUseError("");
     setUseBusy(false);
@@ -191,7 +203,7 @@ export function PreviousWriting({
                   className="button button-secondary"
                   type="button"
                   disabled={disabled}
-                  onClick={() => void openPreview(s.entryId, s.revision, sourceLabel({ question: s.question, employer: s.employer, jobTitle: s.jobTitle }))}
+                  onClick={() => void openPreview(s.entryId, s.revision, sourceLabel({ question: s.question, employer: s.employer, jobTitle: s.jobTitle }), { employer: s.employer, jobTitle: s.jobTitle })}
                 >
                   Preview full text
                 </button>
@@ -203,6 +215,11 @@ export function PreviousWriting({
       {previewId !== 0 && (
         <div className="writing-preview" aria-label="Full source preview">
           <h5>{previewTitle !== "" ? previewTitle : "Full example"}</h5>
+          {(previewEmployer !== "" || previewJobTitle !== "") && (
+            <p className="small-muted">
+              Saved from {[previewEmployer, previewJobTitle].filter((part) => part !== "").join(" · ")} · revision {previewRevision}
+            </p>
+          )}
           {previewLoading && <p role="status">Loading the complete example…</p>}
           {previewError !== "" && (
             <p className="job-form-error" role="alert">
@@ -291,7 +308,7 @@ export function PreviousWriting({
                         className="button button-secondary"
                         type="button"
                         disabled={disabled}
-                        onClick={() => void openPreview(entry.id, entry.revision, sourceLabel({ question: entry.question, employer: entry.employer, jobTitle: entry.jobTitle }))}
+                        onClick={() => void openPreview(entry.id, entry.revision, sourceLabel({ question: entry.question, employer: entry.employer, jobTitle: entry.jobTitle }), { employer: entry.employer, jobTitle: entry.jobTitle })}
                       >
                         Preview full text
                       </button>
