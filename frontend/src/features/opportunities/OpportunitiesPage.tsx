@@ -616,10 +616,8 @@ export function OpportunitiesPage(): React.JSX.Element {
                         {bulkResult.invalid > 0 && (
                           <p role="alert" className="batch-failures">
                             {bulkResult.invalid}{" "}
-                            {bulkResult.invalid === 1 ? "line needs fixing" : "lines need fixing"} and{" "}
-                            {bulkResult.invalid === 1 ? "was" : "were"} kept in the box above. Fix the
-                            kept {bulkResult.invalid === 1 ? "line" : "lines"} and retry — saved lines
-                            were removed automatically.
+                            {bulkResult.invalid === 1 ? "line needs fixing" : "lines need fixing"}.
+                            Check the details below, correct the input, and retry.
                           </p>
                         )}
                         {bulkResult.enrichment && bulkResult.enrichment.total > 0 && (
