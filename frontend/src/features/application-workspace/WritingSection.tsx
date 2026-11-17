@@ -984,10 +984,10 @@ export function WritingSection({
                     </p>
                   )}
                   <div className="form-actions">
-                    {selected.libraryEligible && <button className="button button-primary" type="button" disabled={saving || !selected.editable || !snapshot.editingAllowed || readOnly || !draft.trim()} onClick={() => void handleSave(true)}>{saving ? "Saving…" : "Save to Answer Library"}</button>}
+                    {selected.libraryEligible && <button className="button button-secondary" type="button" disabled={saving || !selected.editable || !snapshot.editingAllowed || readOnly || !draft.trim()} onClick={() => void handleSave(true)}>{saving ? "Saving…" : "Save to Answer Library"}</button>}
                     {dirty && <button className="button button-secondary" type="button" onClick={discardEdits}>Discard edits</button>}
                     <button
-                      className="button button-secondary"
+                      className="button button-primary"
                       type="button"
                       disabled={saving || !canSave}
                       onClick={() => void handleSave()}

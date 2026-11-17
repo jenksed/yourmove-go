@@ -17,6 +17,9 @@ func TestNativeReactFixtureGuardAndRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("YOURMOVE_DATA_DIR", root)
+	// Pin the default: without the KAN-12 opt-in no answers or library
+	// examples are seeded and the preview path is left untouched.
+	t.Setenv("YOURMOVE_QUALIFY_KAN12", "")
 	if err := os.WriteFile(filepath.Join(root, ".yourmove-react-fixture"), []byte("yourmove-react-fixture-v1\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -67,5 +70,15 @@ func TestNativeReactFixtureGuardAndRestart(t *testing.T) {
 	var count int
 	if err := db.QueryRow("SELECT count(*) FROM jobs").Scan(&count); err != nil || count != 1 {
 		t.Fatalf("unexpected seed count %d: %v", count, err)
+	}
+	var seeded int
+	if err := db.QueryRow("SELECT count(*) FROM application_answers").Scan(&seeded); err != nil || seeded != 0 {
+		t.Fatalf("default fixture seeded answers: %d %v", seeded, err)
+	}
+	if err := db.QueryRow("SELECT count(*) FROM answer_library").Scan(&seeded); err != nil || seeded != 0 {
+		t.Fatalf("default fixture seeded library: %d %v", seeded, err)
+	}
+	if a.previewApplication != nil {
+		t.Fatal("default fixture overrode preview")
 	}
 }

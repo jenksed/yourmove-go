@@ -77,6 +77,12 @@ func ConfigureNativeReactFixture(a *App, root, fixture string) error {
 	if err := a.db.QueryRow("SELECT count(*) FROM jobs").Scan(&count); err != nil {
 		return err
 	}
+	// KAN-12 native qualification (saved answers plus Answer Library
+	// examples) is opt-in via YOURMOVE_QUALIFY_KAN12=1 and seeds only a
+	// freshly created workspace. A restart must never silently repopulate
+	// answers the applicant deleted, so an existing workspace is left alone.
+	kan12Fixture := strings.EqualFold(strings.TrimSpace(os.Getenv("YOURMOVE_QUALIFY_KAN12")), "1")
+	freshWorkspace := count == 0
 	if count == 0 {
 		const description = "A synthetic opportunity for native qualification."
 		if err := a.saveJob(Job{URL: NativeReactFixturePosting, Host: "jobs.ashbyhq.com", Title: "Synthetic Product Engineer", Company: "Fixture Employer", Description: description}); err != nil {
@@ -106,6 +112,16 @@ func ConfigureNativeReactFixture(a *App, root, fixture string) error {
 		var matching int
 		if err := a.db.QueryRow("SELECT count(*) FROM jobs WHERE url=?", NativeReactFixturePosting).Scan(&matching); err != nil || count != 1 || matching != 1 {
 			return errors.New("unexpected qualification workspace")
+		}
+	}
+	if kan12Fixture && freshWorkspace {
+		if err := seedNativeKan12(a); err != nil {
+			return err
+		}
+	}
+	if kan12Fixture {
+		a.previewApplication = func(context.Context, string) (schema.Result, error) {
+			return schema.Result{}, errors.New("synthetic preview disabled")
 		}
 	}
 	a.browsers.factory = func(ctx context.Context, posting string) (readOnlySession, error) {
