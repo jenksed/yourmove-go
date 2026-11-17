@@ -101,6 +101,18 @@ func TestRequiredWebsiteWithoutEligibleProfileURLStaysManual(t *testing.T) {
 	if len(manual) != 1 || manual[0].Label != "Website" {
 		t.Fatalf("required Website not surfaced for manual review: %+v", manual)
 	}
+	for _, stage := range []string{StageApplied, StageClosed} {
+		if _, err := a.db.Exec(`UPDATE jobs SET stage=? WHERE id=1`, stage); err != nil {
+			t.Fatal(err)
+		}
+		projection, err = a.buildContinuation(1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := projection["manualProfileFacts"].([]continuationManualProfileFactJSON); len(got) != 0 {
+			t.Fatalf("completed %q application still has manual transfer requirements: %+v", stage, got)
+		}
+	}
 }
 
 func TestPrepareQuestionsResolvesWebsiteFromWholeObservedForm(t *testing.T) {

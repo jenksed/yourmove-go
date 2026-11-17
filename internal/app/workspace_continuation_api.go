@@ -210,11 +210,13 @@ func (a *App) buildContinuation(jobID int64) (map[string]any, error) {
 		pending = append(pending, continuationAnswerJSON{Key: q.Key, Label: q.Field.Label, Value: q.Value, Source: q.Source})
 	}
 	manualProfileFacts := make([]continuationManualProfileFactJSON, 0)
-	for _, q := range live.ProfileQuestions() {
-		if q.Field.Required && strings.TrimSpace(q.Value) == "" {
-			manualProfileFacts = append(manualProfileFacts, continuationManualProfileFactJSON{
-				Label: q.Field.Label, Detail: "Required; no eligible Candidate Profile value is available. Complete this field manually in the employer form.",
-			})
+	if !completed {
+		for _, q := range live.ProfileQuestions() {
+			if q.Field.Required && strings.TrimSpace(q.Value) == "" {
+				manualProfileFacts = append(manualProfileFacts, continuationManualProfileFactJSON{
+					Label: q.Field.Label, Detail: "Required; no eligible Candidate Profile value is available. Complete this field manually in the employer form.",
+				})
+			}
 		}
 	}
 	var otherJSON *continuationOtherJSON
