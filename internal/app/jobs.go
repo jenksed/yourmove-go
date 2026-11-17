@@ -15,6 +15,11 @@ import (
 
 var ErrAppliedWithoutSubmission = errors.New("cannot mark applied without a confirmed submission")
 
+// ErrAttentionTerminal refuses attention moves for History jobs. Terminal
+// status (applied/closed stage or a confirmed submission) is evaluated inside
+// the move transaction so a stale request never pulls History back to work.
+var ErrAttentionTerminal = errors.New("job is in History and cannot be moved")
+
 // Stage tracks a human's work. "Applied" is deliberately omitted until a
 // separate manual-submission record can establish that outcome.
 const (
@@ -48,6 +53,27 @@ type Job struct {
 	SelectedResumeID  int64
 	SubmissionCount   int64
 	LastSubmittedAt   string
+	ParkedAt          string
+}
+
+// IsTerminal reports History membership: a confirmed submission or an
+// applied/closed stage. Terminal status overrides attention placement, so a
+// later closure automatically leaves Focus/Saved without deleting local work.
+func (j Job) IsTerminal() bool {
+	return j.SubmissionCount > 0 || j.Stage == StageApplied || j.Stage == StageClosed
+}
+
+// Attention is the independent placement contract shared with KAN-16:
+// "focus" (unfinished, parked_at empty), "saved" (unfinished, parked aside),
+// or "history" (terminal regardless of parked_at).
+func (j Job) Attention() string {
+	if j.IsTerminal() {
+		return "history"
+	}
+	if strings.TrimSpace(j.ParkedAt) != "" {
+		return "saved"
+	}
+	return "focus"
 }
 
 func (j Job) StageLabel() string {
@@ -218,12 +244,12 @@ func insertJob(db jobInserter, job Job) (sql.Result, error) {
 	result, err := db.Exec(
 		`INSERT INTO jobs (url, host, title, description, company, stage, priority,
             salary_text, salary_origin, title_manual, description_manual, company_manual, salary_manual,
-            source_status, source_note, source_checked_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            source_status, source_note, source_checked_at, parked_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		job.URL, job.Host, job.Title, job.Description, job.Company,
 		stage, PriorityNormal, job.SalaryText, job.SalaryOrigin,
 		job.TitleManual, job.DescriptionManual, job.CompanyManual, job.SalaryManual,
-		job.SourceStatus, job.SourceNote, job.SourceCheckedAt,
+		job.SourceStatus, job.SourceNote, job.SourceCheckedAt, job.ParkedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("save job: %w", err)
@@ -233,7 +259,7 @@ func insertJob(db jobInserter, job Job) (sql.Result, error) {
 
 func (a *App) allJobs() ([]Job, error) {
 	rows, err := a.db.Query(
-		"SELECT id, url, host, title, description, company, stage, priority, salary_text, salary_origin, title_manual, description_manual, company_manual, salary_manual, source_status, source_note, source_checked_at, COALESCE(selected_resume_id,0), (SELECT COUNT(*) FROM submissions WHERE job_id=jobs.id), COALESCE((SELECT MAX(submitted_at) FROM submissions WHERE job_id=jobs.id),'') FROM jobs ORDER BY id",
+		"SELECT id, url, host, title, description, company, stage, priority, salary_text, salary_origin, title_manual, description_manual, company_manual, salary_manual, source_status, source_note, source_checked_at, COALESCE(selected_resume_id,0), (SELECT COUNT(*) FROM submissions WHERE job_id=jobs.id), COALESCE((SELECT MAX(submitted_at) FROM submissions WHERE job_id=jobs.id),''), COALESCE(parked_at,'') FROM jobs ORDER BY id",
 	)
 	if err != nil {
 		return nil, fmt.Errorf("query jobs: %w", err)
@@ -243,7 +269,7 @@ func (a *App) allJobs() ([]Job, error) {
 	var jobs []Job
 	for rows.Next() {
 		var job Job
-		if err := rows.Scan(&job.ID, &job.URL, &job.Host, &job.Title, &job.Description, &job.Company, &job.Stage, &job.Priority, &job.SalaryText, &job.SalaryOrigin, &job.TitleManual, &job.DescriptionManual, &job.CompanyManual, &job.SalaryManual, &job.SourceStatus, &job.SourceNote, &job.SourceCheckedAt, &job.SelectedResumeID, &job.SubmissionCount, &job.LastSubmittedAt); err != nil {
+		if err := rows.Scan(&job.ID, &job.URL, &job.Host, &job.Title, &job.Description, &job.Company, &job.Stage, &job.Priority, &job.SalaryText, &job.SalaryOrigin, &job.TitleManual, &job.DescriptionManual, &job.CompanyManual, &job.SalaryManual, &job.SourceStatus, &job.SourceNote, &job.SourceCheckedAt, &job.SelectedResumeID, &job.SubmissionCount, &job.LastSubmittedAt, &job.ParkedAt); err != nil {
 			return nil, fmt.Errorf("scan job: %w", err)
 		}
 		jobs = append(jobs, job)
@@ -257,8 +283,8 @@ func (a *App) allJobs() ([]Job, error) {
 func (a *App) jobByID(id int64) (Job, error) {
 	var job Job
 	err := a.db.QueryRow(
-		"SELECT id, url, host, title, description, company, stage, priority, salary_text, salary_origin, title_manual, description_manual, company_manual, salary_manual, source_status, source_note, source_checked_at, COALESCE(selected_resume_id,0), (SELECT COUNT(*) FROM submissions WHERE job_id=jobs.id), COALESCE((SELECT MAX(submitted_at) FROM submissions WHERE job_id=jobs.id),'') FROM jobs WHERE id = ?", id,
-	).Scan(&job.ID, &job.URL, &job.Host, &job.Title, &job.Description, &job.Company, &job.Stage, &job.Priority, &job.SalaryText, &job.SalaryOrigin, &job.TitleManual, &job.DescriptionManual, &job.CompanyManual, &job.SalaryManual, &job.SourceStatus, &job.SourceNote, &job.SourceCheckedAt, &job.SelectedResumeID, &job.SubmissionCount, &job.LastSubmittedAt)
+		"SELECT id, url, host, title, description, company, stage, priority, salary_text, salary_origin, title_manual, description_manual, company_manual, salary_manual, source_status, source_note, source_checked_at, COALESCE(selected_resume_id,0), (SELECT COUNT(*) FROM submissions WHERE job_id=jobs.id), COALESCE((SELECT MAX(submitted_at) FROM submissions WHERE job_id=jobs.id),''), COALESCE(parked_at,'') FROM jobs WHERE id = ?", id,
+	).Scan(&job.ID, &job.URL, &job.Host, &job.Title, &job.Description, &job.Company, &job.Stage, &job.Priority, &job.SalaryText, &job.SalaryOrigin, &job.TitleManual, &job.DescriptionManual, &job.CompanyManual, &job.SalaryManual, &job.SourceStatus, &job.SourceNote, &job.SourceCheckedAt, &job.SelectedResumeID, &job.SubmissionCount, &job.LastSubmittedAt, &job.ParkedAt)
 	if err != nil {
 		return Job{}, fmt.Errorf("load job %d: %w", id, err)
 	}
@@ -301,6 +327,73 @@ func (a *App) updateJob(job Job) error {
 		return sql.ErrNoRows
 	}
 	return nil
+}
+
+// moveJobsAttention atomically moves unfinished jobs between Focus
+// (parked_at empty) and Saved for Later (parked_at timestamp). It never
+// changes stage, priority, resume selection, answers, letters, or submission
+// history. Terminal jobs (applied/closed or with submissions) keep History
+// membership regardless of the stored placement, so a later closure
+// automatically leaves Focus/Saved. Any missing/invalid ID, terminal job, or
+// DB error rolls the whole batch back: no partial moves are committed.
+func (a *App) moveJobsAttention(ids []int64, attention string, now string) (int64, error) {
+	var parkedAt string
+	switch attention {
+	case "focus":
+		parkedAt = ""
+	case "saved":
+		if strings.TrimSpace(now) == "" {
+			parkedAt = time.Now().UTC().Format(time.RFC3339)
+		} else {
+			parkedAt = now
+		}
+	default:
+		return 0, fmt.Errorf("invalid attention placement")
+	}
+	if len(ids) == 0 || len(ids) > maxDeleteBatch {
+		return 0, fmt.Errorf("select 1–%d jobs", maxDeleteBatch)
+	}
+	seen := make(map[int64]bool, len(ids))
+	for _, id := range ids {
+		if id <= 0 || seen[id] {
+			return 0, fmt.Errorf("invalid or duplicate job ID")
+		}
+		seen[id] = true
+	}
+	tx, err := a.db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("move jobs: %w", err)
+	}
+	defer tx.Rollback()
+	for _, id := range ids {
+		var stage string
+		var submissionCount int64
+		err := tx.QueryRow(`SELECT stage, (SELECT COUNT(*) FROM submissions WHERE job_id=jobs.id) FROM jobs WHERE id=?`, id).Scan(&stage, &submissionCount)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return 0, sql.ErrNoRows
+			}
+			return 0, fmt.Errorf("move job %d: %w", id, err)
+		}
+		if stage == StageApplied || stage == StageClosed || submissionCount > 0 {
+			return 0, ErrAttentionTerminal
+		}
+		if _, err := tx.Exec(`UPDATE jobs SET parked_at = ? WHERE id = ?`, parkedAt, id); err != nil {
+			return 0, fmt.Errorf("move job %d: %w", id, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("move jobs: %w", err)
+	}
+	return int64(len(ids)), nil
+}
+
+// setJobAttention moves a single unfinished job between Focus and Saved.
+// Terminal enforcement lives in moveJobsAttention so single and bulk moves
+// share one atomic eligibility contract.
+func (a *App) setJobAttention(id int64, attention string, now string) error {
+	_, err := a.moveJobsAttention([]int64{id}, attention, now)
+	return err
 }
 
 // applyPostingRefresh atomically applies an employer observation without touching manually

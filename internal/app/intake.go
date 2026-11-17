@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/jenksed/yourmove-go/internal/platforms"
 )
@@ -188,7 +189,7 @@ func (a *App) importJobBatch(raw string) (BatchResult, error) {
 				item.Status, item.Detail = "duplicate", "Already in your workspace; existing details retained."
 				result.Duplicates++
 			} else {
-				stored, err := insertJob(tx, Job{URL: cleaned, Host: host, SourceStatus: "not_checked"})
+				stored, err := insertJob(tx, Job{URL: cleaned, Host: host, SourceStatus: "not_checked", ParkedAt: time.Now().UTC().Format(time.RFC3339)})
 				if err != nil {
 					return BatchResult{}, fmt.Errorf("save line %d: %w", line.number, err)
 				}

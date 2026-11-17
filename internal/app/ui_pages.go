@@ -12,6 +12,9 @@ type opportunityPage struct {
 	Jobs          []Job
 	Total         int
 	Remaining     int
+	Focus         int
+	Saved         int
+	History       int
 	Applied       int
 	RecordedToday int
 	Next          *NextAction
@@ -22,17 +25,27 @@ type opportunityPage struct {
 func summarizeJobs(jobs []Job) opportunityPage {
 	page := opportunityPage{Jobs: jobs, Total: len(jobs), Next: recommendNext(jobs)}
 	for _, job := range jobs {
+		switch job.Attention() {
+		case "focus":
+			page.Focus++
+		case "saved":
+			page.Saved++
+		case "history":
+			page.History++
+		}
 		if job.SubmissionCount > 0 {
 			page.Applied++
-		} else if job.Stage != StageClosed && job.Stage != StageApplied {
-			page.Remaining++
 		}
 	}
+	// Remaining keeps its historical meaning for legacy consumers: Focus
+	// jobs left to work on. Saved and History never count as outstanding.
+	page.Remaining = page.Focus
 	return page
 }
 
-// The bar measures recorded applications within the current active/applied
-// queue. Closed opportunities do not make application progress look complete.
+// The bar measures recorded applications within Focus plus recorded
+// submissions. Saved for Later and History without submissions never count
+// as outstanding work, and closed jobs do not make progress look complete.
 func (p opportunityPage) QueueTotal() int { return p.Remaining + p.Applied }
 
 func (p opportunityPage) RecordedPercent() int {

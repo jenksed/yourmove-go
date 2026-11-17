@@ -49,7 +49,8 @@ func initJobsSchema(db *sql.DB) error {
             source_status TEXT NOT NULL DEFAULT 'not_checked',
             source_note TEXT NOT NULL DEFAULT '',
             source_checked_at TEXT NOT NULL DEFAULT '',
-            selected_resume_id INTEGER REFERENCES resumes(id)
+            selected_resume_id INTEGER REFERENCES resumes(id),
+            parked_at TEXT NOT NULL DEFAULT ''
         )
     `); err != nil {
 		return fmt.Errorf("create jobs table: %w", err)
@@ -105,6 +106,7 @@ func initJobsSchema(db *sql.DB) error {
 		{"source_checked_at", `ALTER TABLE jobs ADD COLUMN source_checked_at TEXT NOT NULL DEFAULT ''`},
 		{"selected_resume_id", `ALTER TABLE jobs ADD COLUMN selected_resume_id INTEGER REFERENCES resumes(id)`},
 		{"selected_cover_letter_id", `ALTER TABLE jobs ADD COLUMN selected_cover_letter_id INTEGER`},
+		{"parked_at", `ALTER TABLE jobs ADD COLUMN parked_at TEXT NOT NULL DEFAULT ''`},
 	} {
 		if !columns[column.name] {
 			if _, err := db.Exec(column.ddl); err != nil {

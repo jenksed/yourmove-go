@@ -6,6 +6,7 @@ import {
   deleteOpportunities,
   fetchOpportunities,
   importOpportunities,
+  moveOpportunities,
   openPosting,
   type BatchResult,
   type OpportunitiesResponse,
@@ -13,6 +14,7 @@ import {
 } from "./api";
 
 type StageFilter = "active" | "all" | "review" | "ready" | "applied" | "closed";
+type AttentionFilter = "focus" | "saved" | "history";
 type SortKey = "priority" | "newest" | "company";
 
 const STAGE_FILTERS: { value: StageFilter; label: string }[] = [
@@ -51,7 +53,8 @@ export function OpportunitiesPage(): React.JSX.Element {
   const [loading, setLoading] = useState<boolean>(true);
 
   const [query, setQuery] = useState<string>("");
-  const [stage, setStage] = useState<StageFilter>("active");
+  const [attention, setAttention] = useState<AttentionFilter>("focus");
+  const [stage, setStage] = useState<StageFilter>("all");
   const [sort, setSort] = useState<SortKey>("priority");
   const [createOpen, setCreateOpen] = useState<boolean>(
     () => typeof window !== "undefined" && window.location.hash === "#add-opportunity",
@@ -68,11 +71,14 @@ export function OpportunitiesPage(): React.JSX.Element {
   const [bulkResult, setBulkResult] = useState<BatchResult | null>(null);
   const [bulkBusy, setBulkBusy] = useState<boolean>(false);
 
-  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [moveSelected, setMoveSelected] = useState<Set<number>>(new Set());
+  const [deleteSelected, setDeleteSelected] = useState<Set<number>>(new Set());
   const [deletePhrase, setDeletePhrase] = useState<string>("");
   const [deleteConfirm, setDeleteConfirm] = useState<boolean>(false);
   const [deleteError, setDeleteError] = useState<string>("");
   const [deleteBusy, setDeleteBusy] = useState<boolean>(false);
+  const [moveBusy, setMoveBusy] = useState<boolean>(false);
+  const [moveNotice, setMoveNotice] = useState<string>("");
 
   const [actionError, setActionError] = useState<string>("");
 
@@ -82,10 +88,18 @@ export function OpportunitiesPage(): React.JSX.Element {
     try {
       const next = await fetchOpportunities();
       setData(next);
-      setSelected((previous) => {
+      const existing = new Set(next.jobs.map((job) => job.id));
+      setMoveSelected((previous) => {
         const valid = new Set<number>();
-        for (const job of next.jobs) {
-          if (previous.has(job.id)) valid.add(job.id);
+        for (const id of previous) {
+          if (existing.has(id)) valid.add(id);
+        }
+        return valid;
+      });
+      setDeleteSelected((previous) => {
+        const valid = new Set<number>();
+        for (const id of previous) {
+          if (existing.has(id)) valid.add(id);
         }
         return valid;
       });
@@ -108,10 +122,20 @@ export function OpportunitiesPage(): React.JSX.Element {
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
+  const focusCount = data?.focus ?? data?.remaining ?? 0;
+  const savedCount = data?.saved ?? 0;
+  const historyCount = data?.history ?? 0;
+
   const visibleJobs = useMemo(() => {
     if (!data) return [];
     const needle = query.trim().toLocaleLowerCase();
     const filtered = data.jobs.filter((job) => {
+      const placement = job.attention === "focus" || job.attention === "saved" || job.attention === "history"
+        ? job.attention
+        : isApplied(job) || isClosed(job)
+          ? "history"
+          : "saved";
+      if (placement !== attention) return false;
       if (stage === "active") {
         if (isApplied(job) || isClosed(job)) return false;
       } else if (stage !== "all" && job.stage !== stage) {
@@ -140,10 +164,34 @@ export function OpportunitiesPage(): React.JSX.Element {
       return b.id - a.id;
     });
     return ordered;
-  }, [data, query, stage, sort]);
+  }, [data, query, attention, stage, sort]);
 
-  const toggleSelected = useCallback((id: number, checked: boolean) => {
-    setSelected((previous) => {
+  // Selections never leak across views: only jobs in the current visible
+  // rows/view/filter stay selected, so hidden jobs are never moved or
+  // deleted by accident. Move and delete selections are independent.
+  const visibleIds = useMemo(() => new Set(visibleJobs.map((job) => job.id)), [visibleJobs]);
+
+  useEffect(() => {
+    setMoveSelected((previous) => {
+      if (previous.size === 0) return previous;
+      const scoped = new Set<number>();
+      for (const id of previous) {
+        if (visibleIds.has(id)) scoped.add(id);
+      }
+      return scoped.size === previous.size ? previous : scoped;
+    });
+    setDeleteSelected((previous) => {
+      if (previous.size === 0) return previous;
+      const scoped = new Set<number>();
+      for (const id of previous) {
+        if (visibleIds.has(id)) scoped.add(id);
+      }
+      return scoped.size === previous.size ? previous : scoped;
+    });
+  }, [visibleIds]);
+
+  const toggleMoveSelected = useCallback((id: number, checked: boolean) => {
+    setMoveSelected((previous) => {
       const next = new Set(previous);
       if (checked) next.add(id);
       else next.delete(id);
@@ -151,20 +199,34 @@ export function OpportunitiesPage(): React.JSX.Element {
     });
   }, []);
 
-  const handleSingleSubmit = useCallback(
-    async (event: React.FormEvent) => {
-      event.preventDefault();
+  const toggleDeleteSelected = useCallback((id: number, checked: boolean) => {
+    setDeleteSelected((previous) => {
+      const next = new Set(previous);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }, []);
+
+  const handleSingleSave = useCallback(
+    async (focus: boolean) => {
       setSingleError("");
       setSingleNotice("");
       setSingleBusy(true);
       try {
-        const result = await addOpportunity(singleUrl.trim(), singleTitle.trim());
+        const result = await addOpportunity(singleUrl.trim(), singleTitle.trim(), focus);
         if (result.duplicate) {
-          setSingleNotice("Already in your workspace; existing details retained.");
-        } else {
-          setSingleNotice("Saved to Opportunities. Open it below to review the role and prepare your application.");
+          setSingleNotice("Already in your workspace; existing details and placement retained.");
+        } else if (focus) {
+          setSingleNotice("Saved to Focus. It now counts toward your suggested next opportunity.");
           setSingleUrl("");
           setSingleTitle("");
+          setAttention("focus");
+        } else {
+          setSingleNotice("Saved for Later. Move it to Focus when you are ready to work on it.");
+          setSingleUrl("");
+          setSingleTitle("");
+          setAttention("saved");
         }
         await reload();
       } catch (error) {
@@ -174,6 +236,60 @@ export function OpportunitiesPage(): React.JSX.Element {
       }
     },
     [singleUrl, singleTitle, reload],
+  );
+
+  const handleSingleSubmit = useCallback(
+    async (event: React.FormEvent) => {
+      event.preventDefault();
+      await handleSingleSave(false);
+    },
+    [handleSingleSave],
+  );
+
+  const handleSingleSaveFocus = useCallback(async () => {
+    await handleSingleSave(true);
+  }, [handleSingleSave]);
+
+  const handleMoveSelected = useCallback(
+    async (next: "focus" | "saved") => {
+      setActionError("");
+      setMoveNotice("");
+      if (moveSelected.size === 0) {
+        setActionError("Select at least one job to move.");
+        return;
+      }
+      const count = moveSelected.size;
+      setMoveBusy(true);
+      try {
+        await moveOpportunities([...moveSelected], next);
+        setMoveNotice(
+          next === "focus"
+            ? `Moved ${count} to Focus without changing stages or preparation.`
+            : `Moved ${count} to Saved for Later without changing stages or preparation.`,
+        );
+        setMoveSelected(new Set());
+        setAttention(next);
+        await reload();
+      } catch (error) {
+        setActionError(error instanceof Error ? error.message : "Unable to move selected jobs");
+      } finally {
+        setMoveBusy(false);
+      }
+    },
+    [moveSelected, reload],
+  );
+
+  const handleMoveJob = useCallback(
+    async (job: OpportunityJob, next: "focus" | "saved") => {
+      setActionError("");
+      try {
+        await moveOpportunities([job.id], next);
+        await reload();
+      } catch (error) {
+        setActionError(error instanceof Error ? error.message : "Unable to move job");
+      }
+    },
+    [reload],
   );
 
   const handleBulkSubmit = useCallback(
@@ -199,7 +315,7 @@ export function OpportunitiesPage(): React.JSX.Element {
     async (event: React.FormEvent) => {
       event.preventDefault();
       setDeleteError("");
-      if (selected.size === 0) {
+      if (deleteSelected.size === 0) {
         setDeleteError("Select at least one job to delete.");
         return;
       }
@@ -209,8 +325,8 @@ export function OpportunitiesPage(): React.JSX.Element {
       }
       setDeleteBusy(true);
       try {
-        await deleteOpportunities([...selected]);
-        setSelected(new Set());
+        await deleteOpportunities([...deleteSelected]);
+        setDeleteSelected(new Set());
         setDeletePhrase("");
         setDeleteConfirm(false);
         await reload();
@@ -220,7 +336,7 @@ export function OpportunitiesPage(): React.JSX.Element {
         setDeleteBusy(false);
       }
     },
-    [selected, deleteConfirm, deletePhrase, reload],
+    [deleteSelected, deleteConfirm, deletePhrase, reload],
   );
 
   const handleOpenPosting = useCallback(async (job: OpportunityJob) => {
@@ -284,11 +400,34 @@ export function OpportunitiesPage(): React.JSX.Element {
                       type="button"
                       className="progress-metric progress-remaining"
                       onClick={() => {
-                        setStage("active");
+                        setAttention("focus");
+                        setStage("all");
                         setQuery("");
                       }}
                     >
-                      <strong>{data.remaining}</strong> <span>left to work on</span>
+                      <strong>{focusCount}</strong> <span>in Focus</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="progress-metric"
+                      onClick={() => {
+                        setAttention("saved");
+                        setStage("all");
+                        setQuery("");
+                      }}
+                    >
+                      <strong>{savedCount}</strong> <span>saved for later</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="progress-metric"
+                      onClick={() => {
+                        setAttention("history");
+                        setStage("all");
+                        setQuery("");
+                      }}
+                    >
+                      <strong>{historyCount}</strong> <span>in history</span>
                     </button>
                     <div className="progress-metric">
                       <strong>{data.recordedToday}</strong> <span>recorded today</span>
@@ -309,13 +448,14 @@ export function OpportunitiesPage(): React.JSX.Element {
                           className="queue-progress-bar"
                           value={data.applied}
                           max={data.queueTotal}
-                          aria-label="Applications recorded out of active and applied opportunities"
+                          aria-label="Applications recorded out of Focus plus recorded submissions"
                         >
                           {data.applied} of {data.queueTotal}
                         </progress>
                         <p className="queue-progress-note">
-                          {data.applied} of {data.queueTotal} opportunities in your current queue. Closed
-                          jobs excluded.
+                          {data.applied} of {data.queueTotal} opportunities in Focus plus recorded
+                          submissions. Saved for Later and other History never count as outstanding
+                          work.
                         </p>
                       </>
                     ) : (
@@ -371,7 +511,10 @@ export function OpportunitiesPage(): React.JSX.Element {
                   </span>
                 </summary>
                 <div className="create-body">
-                  <p className="small-muted create-helper">Paste a job posting link to save it locally.</p>
+                  <p className="small-muted create-helper">
+                    Paste a job posting link to save it locally. New postings land in Saved for
+                    Later; move one to Focus when you are ready to work on it.
+                  </p>
                   <form className="job-form" onSubmit={(event) => void handleSingleSubmit(event)}>
                     <div className="field">
                       <label htmlFor="job_url">Job posting URL</label>
@@ -407,8 +550,16 @@ export function OpportunitiesPage(): React.JSX.Element {
                     )}
                     {singleNotice !== "" && <p className="form-notice">{singleNotice}</p>}
                     <div className="form-actions">
-                      <button className="button button-primary" type="submit" disabled={singleBusy}>
-                        {singleBusy ? "Saving…" : "Save opportunity"}
+                      <button className="button button-secondary" type="submit" disabled={singleBusy}>
+                        {singleBusy ? "Saving…" : "Save for Later"}
+                      </button>
+                      <button
+                        className="button button-primary"
+                        type="button"
+                        disabled={singleBusy}
+                        onClick={() => void handleSingleSaveFocus()}
+                      >
+                        {singleBusy ? "Saving…" : "Save & Focus"}
                       </button>
                     </div>
                   </form>
@@ -431,6 +582,7 @@ export function OpportunitiesPage(): React.JSX.Element {
                           onChange={(event) => setBulkText(event.target.value)}
                         />
                         <small>
+                          New imports land in Saved for Later without changing existing records.
                           After import, YourMove checks supported public job boards for
                           titles, employers, descriptions, and other available posting details.
                         </small>
@@ -483,8 +635,35 @@ export function OpportunitiesPage(): React.JSX.Element {
                     <h2 id="saved-jobs-title" className="visually-hidden">
                       Saved opportunities
                     </h2>
+                    <div className="attention-tabs" role="group" aria-label="Opportunity views">
+                      <button
+                        type="button"
+                        className={attention === "focus" ? "button button-primary" : "button button-secondary"}
+                        aria-pressed={attention === "focus"}
+                        onClick={() => setAttention("focus")}
+                      >
+                        Focus · {focusCount}
+                      </button>
+                      <button
+                        type="button"
+                        className={attention === "saved" ? "button button-primary" : "button button-secondary"}
+                        aria-pressed={attention === "saved"}
+                        onClick={() => setAttention("saved")}
+                      >
+                        Saved for Later · {savedCount}
+                      </button>
+                      <button
+                        type="button"
+                        className={attention === "history" ? "button button-primary" : "button button-secondary"}
+                        aria-pressed={attention === "history"}
+                        onClick={() => setAttention("history")}
+                      >
+                        History · {historyCount}
+                      </button>
+                    </div>
                     <p className="small-muted" id="results-status" role="status" aria-live="polite">
-                      {visibleJobs.length} shown · {data.total} saved in total
+                      {visibleJobs.length} shown · {data.total} saved in total · {focusCount} in
+                      Focus · {savedCount} saved · {historyCount} in history
                     </p>
                   </div>
                 </div>
@@ -532,6 +711,25 @@ export function OpportunitiesPage(): React.JSX.Element {
                     {actionError}
                   </p>
                 )}
+                {moveNotice !== "" && <p className="form-notice">{moveNotice}</p>}
+                <div className="bulk-move-actions">
+                  <button
+                    className="button button-secondary"
+                    type="button"
+                    disabled={moveBusy || moveSelected.size === 0}
+                    onClick={() => void handleMoveSelected("focus")}
+                  >
+                    {moveBusy ? "Moving…" : `Move selected to Focus (${moveSelected.size})`}
+                  </button>
+                  <button
+                    className="button button-secondary"
+                    type="button"
+                    disabled={moveBusy || moveSelected.size === 0}
+                    onClick={() => void handleMoveSelected("saved")}
+                  >
+                    {moveBusy ? "Moving…" : `Move selected to Saved (${moveSelected.size})`}
+                  </button>
+                </div>
                 <form
                   className="bulk-delete-form"
                   aria-label="Delete selected test or unwanted jobs"
@@ -545,15 +743,29 @@ export function OpportunitiesPage(): React.JSX.Element {
                           <label className="job-select">
                             <input
                               type="checkbox"
-                              checked={selected.has(job.id)}
+                              checked={moveSelected.has(job.id)}
+                              disabled={job.attention === "history"}
+                              title={
+                                job.attention === "history"
+                                  ? "History jobs stay in History"
+                                  : `Select ${job.displayTitle} for move`
+                              }
+                              aria-label={`Select ${job.displayTitle} for move`}
+                              onChange={(event) => toggleMoveSelected(job.id, event.target.checked)}
+                            />
+                          </label>
+                          <label className="job-select job-select-delete">
+                            <input
+                              type="checkbox"
+                              checked={deleteSelected.has(job.id)}
                               disabled={!deletable}
                               title={
                                 deletable
-                                  ? `Select ${job.displayTitle}`
+                                  ? `Select ${job.displayTitle} for deletion`
                                   : "Submitted job: remove individually from its workspace"
                               }
                               aria-label={`Select ${job.displayTitle} for deletion`}
-                              onChange={(event) => toggleSelected(job.id, event.target.checked)}
+                              onChange={(event) => toggleDeleteSelected(job.id, event.target.checked)}
                             />
                           </label>
                           <div className="job-row-body">
@@ -564,6 +776,12 @@ export function OpportunitiesPage(): React.JSX.Element {
                                 providerLabel={job.providerLabel}
                               />
                               <span className={`status status-${job.stage}`}>{job.stageLabel}</span>
+                              {job.attention === "saved" && (
+                                <span className="priority-quiet">Saved for Later</span>
+                              )}
+                              {job.attention === "focus" && (
+                                <span className="priority-flag">Focus</span>
+                              )}
                               {job.priority === "high" && (
                                 <span className="priority-flag">High priority</span>
                               )}
@@ -585,6 +803,24 @@ export function OpportunitiesPage(): React.JSX.Element {
                             </p>
                           </div>
                           <div className="job-row-actions">
+                            {job.attention === "focus" && (
+                              <button
+                                type="button"
+                                className="text-link row-secondary"
+                                onClick={() => void handleMoveJob(job, "saved")}
+                              >
+                                Save for Later
+                              </button>
+                            )}
+                            {job.attention === "saved" && (
+                              <button
+                                type="button"
+                                className="text-link row-secondary"
+                                onClick={() => void handleMoveJob(job, "focus")}
+                              >
+                                Work on this
+                              </button>
+                            )}
                             {data.desktop ? (
                               <button
                                 type="button"
@@ -635,10 +871,13 @@ export function OpportunitiesPage(): React.JSX.Element {
                       </summary>
                       <div className="bulk-remove-body">
                         <p className="confirmation-note">
-                          Permanent deletion. This removes the selected jobs with their saved answers, manual questions,
-                          and cover-letter drafts. Reusable Answer Library examples and imported resumes are retained.
-                          Jobs with confirmed submissions are excluded here;
-                          remove them individually from their workspace.
+                          Permanent deletion. This removes the jobs checked for deletion below with
+                          their saved answers, manual questions, and cover-letter drafts. Reusable
+                          Answer Library examples and imported resumes are retained. Jobs with
+                          confirmed submissions are excluded here; remove them individually from
+                          their workspace. Deletion checkboxes are separate from move checkboxes
+                          and only cover jobs shown in the current view; hidden jobs are never
+                          included.
                         </p>
                         <div className="field">
                           <label htmlFor="delete_selected_phrase">Type DELETE to confirm</label>

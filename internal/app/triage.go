@@ -66,12 +66,17 @@ func (j Job) ActionReason() string {
 
 func formatJobID(id int64) string { return strconv.FormatInt(id, 10) }
 
-// recommendNext uses only verified local decisions. Priority wins; then ready
-// jobs, then jobs with a chosen resume, then the newest opportunity.
+// recommendNext uses only verified local decisions from the Focus queue.
+// Priority wins; then ready jobs, then jobs with a chosen resume, then the
+// newest opportunity. Saved for Later and terminal (applied/closed) jobs
+// never compete for attention.
 func recommendNext(jobs []Job) *NextAction {
 	var candidates []Job
 	for _, job := range jobs {
-		if job.Stage == StageClosed || job.Stage == StageApplied || job.SubmissionCount > 0 {
+		if job.IsTerminal() {
+			continue
+		}
+		if job.Attention() != "focus" {
 			continue
 		}
 		candidates = append(candidates, job)

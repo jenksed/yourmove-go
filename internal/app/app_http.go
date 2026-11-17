@@ -53,6 +53,7 @@ func newMux(app *App) http.Handler {
 	mux.HandleFunc("POST /api/opportunities", app.opportunitiesAPI)
 	mux.HandleFunc("POST /api/opportunities/import", app.opportunitiesImportAPI)
 	mux.HandleFunc("POST /api/opportunities/delete", app.opportunitiesDeleteAPI)
+	mux.HandleFunc("POST /api/opportunities/attention", app.opportunitiesAttentionAPI)
 	mux.HandleFunc("POST /api/opportunities/{id}/open", app.opportunityOpenAPI)
 	mux.HandleFunc("GET /utilities", app.utilitiesPage)
 	mux.HandleFunc("POST /utilities/browser", app.saveApplicationBrowser)

@@ -1,6 +1,8 @@
 // Narrow React -> Go JSON transport for the Opportunities slice.
 // Go remains authoritative for validation, IDs, stages, and persistence.
 
+export type JobAttention = "focus" | "saved" | "history";
+
 export interface OpportunityJob {
   id: number;
   url: string;
@@ -20,6 +22,8 @@ export interface OpportunityJob {
   sourceStatus: string;
   companyOrHost: string;
   displayTitle: string;
+  attention: JobAttention;
+  parkedAt: string;
   // Go-owned ATS platform key ("" when unrecognized) and its accessible
   // label. Rendered verbatim; never re-derived here.
   provider: string;
@@ -39,6 +43,9 @@ export interface OpportunitiesResponse {
   jobs: OpportunityJob[];
   total: number;
   remaining: number;
+  focus: number;
+  saved: number;
+  history: number;
   applied: number;
   recordedToday: number;
   queueTotal: number;
@@ -85,11 +92,12 @@ export async function fetchOpportunities(): Promise<OpportunitiesResponse> {
 export async function addOpportunity(
   url: string,
   title: string,
+  focus = false,
 ): Promise<{ id: number; added: boolean; duplicate: boolean }> {
   const response = await fetch("/api/opportunities", {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify({ url, title }),
+    body: JSON.stringify({ url, title, focus }),
   });
   if (!response.ok) throw new Error(await readError(response));
   return (await response.json()) as {
@@ -107,6 +115,19 @@ export async function importOpportunities(raw: string): Promise<BatchResult> {
   });
   if (!response.ok) throw new Error(await readError(response));
   return (await response.json()) as BatchResult;
+}
+
+export async function moveOpportunities(
+  ids: number[],
+  attention: "focus" | "saved",
+): Promise<{ moved: number; attention: string }> {
+  const response = await fetch("/api/opportunities/attention", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ ids, attention }),
+  });
+  if (!response.ok) throw new Error(await readError(response));
+  return (await response.json()) as { moved: number; attention: string };
 }
 
 export async function deleteOpportunities(ids: number[]): Promise<{ deleted: number }> {

@@ -16,8 +16,8 @@
     <details class="queue-details"><summary>Progress details</summary>
     {{if .QueueTotal}}
     <div class="queue-progress-caption"><span>Current queue</span><strong>{{.RecordedPercent}}% recorded</strong></div>
-    <progress class="queue-progress-bar" value="{{.Applied}}" max="{{.QueueTotal}}" aria-label="Applications recorded out of active and applied opportunities">{{.Applied}} of {{.QueueTotal}}</progress>
-    <p class="queue-progress-note">{{.Applied}} of {{.QueueTotal}} opportunities in your current queue. Closed jobs excluded.</p>
+    <progress class="queue-progress-bar" value="{{.Applied}}" max="{{.QueueTotal}}" aria-label="Applications recorded out of Focus plus recorded submissions">{{.Applied}} of {{.QueueTotal}}</progress>
+    <p class="queue-progress-note">{{.Applied}} of {{.QueueTotal}} opportunities in Focus plus recorded submissions. Saved for Later and other History never count as outstanding work.</p>
     {{else}}<p class="queue-progress-note">Save an opportunity to start your next application.</p>{{end}}
     </details>
   </div>
