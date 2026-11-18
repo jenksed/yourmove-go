@@ -22,7 +22,7 @@ import (
 const twoJobAshbyPosting = "https://jobs.ashbyhq.com/render/aaaaaaaa-1111-4111-8111-eeeeeeeeeeee"
 
 // TestNativeFixtureGenericQuestionTrace follows the opt-in native fixture's
-// generic question ("Why this team?") from the seed through Go persistence,
+// generic question ("[Synthetic fixture] Why this team?") from the seed through Go persistence,
 // job association, and the Questions projection. The seed bypasses browser
 // observation (saveInspection with Source "browser"), so this test documents
 // that provenance explicitly instead of treating the seeded row as captured
@@ -60,7 +60,7 @@ func TestNativeFixtureGenericQuestionTrace(t *testing.T) {
 		t.Fatalf("fixture letter marker changed: %q", letter)
 	}
 	var fieldID, label, kind string
-	if err := a.db.QueryRow(`SELECT field_id,label,kind FROM application_fields WHERE inspection_id IN (SELECT id FROM application_inspections WHERE job_id=1) AND label='Why this team?'`).Scan(&fieldID, &label, &kind); err != nil {
+	if err := a.db.QueryRow(`SELECT field_id,label,kind FROM application_fields WHERE inspection_id IN (SELECT id FROM application_inspections WHERE job_id=1) AND label='[Synthetic fixture] Why this team?'`).Scan(&fieldID, &label, &kind); err != nil {
 		t.Fatalf("seeded generic question missing from persistence: %v", err)
 	}
 	if fieldID != "browser:motivation" || kind != "textarea" {
@@ -80,7 +80,7 @@ func TestNativeFixtureGenericQuestionTrace(t *testing.T) {
 	}
 	var found *preparedQuestion
 	for i, q := range prep.Questions {
-		if q.Field.Label == "Why this team?" {
+		if q.Field.Label == "[Synthetic fixture] Why this team?" {
 			found = &prep.Questions[i]
 		}
 	}

@@ -75,6 +75,7 @@ export function OpportunitiesPage(): React.JSX.Element {
   // One bulk selection per row. Move and deletion share this set so there
   // is exactly one visually clear control per opportunity; deletion itself
   // stays deliberately invoked inside the collapsed confirmation below.
+  const [selectingMultiple, setSelectingMultiple] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [deleteOpen, setDeleteOpen] = useState<boolean>(false);
   const [deletePhrase, setDeletePhrase] = useState<string>("");
@@ -761,45 +762,65 @@ export function OpportunitiesPage(): React.JSX.Element {
                 )}
                 {moveNotice !== "" && <p className="form-notice">{moveNotice}</p>}
                 <div className="bulk-move-actions">
-                  <p className="small-muted bulk-select-hint">
-                    Tick Select on each row for bulk move or deletion ({selected.size} selected).
-                    Jobs with confirmed submissions cannot be bulk deleted; applied,
-                    closed, or submitted jobs stay in History when moving.
-                  </p>
-                  {selectedHasUnmovable && selected.size > 0 && (
-                    <p className="job-form-error" role="alert">
-                      Selection includes a History job (applied, closed, or with recorded
-                      submissions). It stays in History; uncheck it to move the rest. No
-                      move was attempted. Eligible History jobs without submissions can
-                      still be deleted below.
-                    </p>
+                  <button
+                    className="button button-secondary"
+                    type="button"
+                    onClick={() => {
+                      if (selectingMultiple) {
+                        setSelected(new Set());
+                        setDeleteOpen(false);
+                        setDeletePhrase("");
+                        setDeleteConfirm(false);
+                        setDeleteError("");
+                      }
+                      setSelectingMultiple(!selectingMultiple);
+                    }}
+                  >
+                    {selectingMultiple ? "Done selecting" : "Select multiple"}
+                  </button>
+                  {selectingMultiple && (
+                    <>
+                      <p className="small-muted bulk-select-hint">
+                        Tick Select on each row for bulk move or deletion ({selected.size} selected).
+                        Jobs with confirmed submissions cannot be bulk deleted; applied,
+                        closed, or submitted jobs stay in History when moving.
+                      </p>
+                      {selectedHasUnmovable && selected.size > 0 && (
+                        <p className="job-form-error" role="alert">
+                          Selection includes a History job (applied, closed, or with recorded
+                          submissions). It stays in History; uncheck it to move the rest. No
+                          move was attempted. Eligible History jobs without submissions can
+                          still be deleted below.
+                        </p>
+                      )}
+                      <button
+                        className="button button-secondary"
+                        type="button"
+                        disabled={moveBusy || selected.size === 0 || selectedHasUnmovable}
+                        title={
+                          selectedHasUnmovable
+                            ? "Uncheck History jobs to enable moving"
+                            : undefined
+                        }
+                        onClick={() => void handleMoveSelected("focus")}
+                      >
+                        {moveBusy ? "Moving…" : `Move selected to Focus (${selected.size})`}
+                      </button>
+                      <button
+                        className="button button-secondary"
+                        type="button"
+                        disabled={moveBusy || selected.size === 0 || selectedHasUnmovable}
+                        title={
+                          selectedHasUnmovable
+                            ? "Uncheck History jobs to enable moving"
+                            : undefined
+                        }
+                        onClick={() => void handleMoveSelected("saved")}
+                      >
+                        {moveBusy ? "Moving…" : `Move selected to Saved (${selected.size})`}
+                      </button>
+                    </>
                   )}
-                  <button
-                    className="button button-secondary"
-                    type="button"
-                    disabled={moveBusy || selected.size === 0 || selectedHasUnmovable}
-                    title={
-                      selectedHasUnmovable
-                        ? "Uncheck History jobs to enable moving"
-                        : undefined
-                    }
-                    onClick={() => void handleMoveSelected("focus")}
-                  >
-                    {moveBusy ? "Moving…" : `Move selected to Focus (${selected.size})`}
-                  </button>
-                  <button
-                    className="button button-secondary"
-                    type="button"
-                    disabled={moveBusy || selected.size === 0 || selectedHasUnmovable}
-                    title={
-                      selectedHasUnmovable
-                        ? "Uncheck History jobs to enable moving"
-                        : undefined
-                    }
-                    onClick={() => void handleMoveSelected("saved")}
-                  >
-                    {moveBusy ? "Moving…" : `Move selected to Saved (${selected.size})`}
-                  </button>
                 </div>
                 <form
                   className="bulk-delete-form"
@@ -812,27 +833,29 @@ export function OpportunitiesPage(): React.JSX.Element {
                       const unmovable = isApplied(job) || isClosed(job);
                       return (
                         <article className="job-row" key={job.id}>
-                          <label className="job-select">
-                            <input
-                              type="checkbox"
-                              checked={selected.has(job.id)}
-                              // Submitted jobs are never bulk-deleted here; they
-                              // are removed individually from their workspace.
-                              // Closed History jobs without submissions stay
-                              // selectable so they can still be deleted below.
-                              disabled={!deletable}
-                              title={
-                                !deletable
-                                  ? "Submitted job: remove individually from its workspace"
-                                  : unmovable
-                                    ? "Select for deletion (this History job stays in History when moving)"
-                                    : `Select ${job.displayTitle} for bulk move or deletion`
-                              }
-                              aria-label={`Select ${job.displayTitle} for bulk move or deletion`}
-                              onChange={(event) => toggleSelected(job.id, event.target.checked)}
-                            />
-                            <span aria-hidden="true">Select</span>
-                          </label>
+                          {selectingMultiple && (
+                            <label className="job-select">
+                              <input
+                                type="checkbox"
+                                checked={selected.has(job.id)}
+                                // Submitted jobs are never bulk-deleted here; they
+                                // are removed individually from their workspace.
+                                // Closed History jobs without submissions stay
+                                // selectable so they can still be deleted below.
+                                disabled={!deletable}
+                                title={
+                                  !deletable
+                                    ? "Submitted job: remove individually from its workspace"
+                                    : unmovable
+                                      ? "Select for deletion (this History job stays in History when moving)"
+                                      : `Select ${job.displayTitle} for bulk move or deletion`
+                                }
+                                aria-label={`Select ${job.displayTitle} for bulk move or deletion`}
+                                onChange={(event) => toggleSelected(job.id, event.target.checked)}
+                              />
+                              <span aria-hidden="true">Select</span>
+                            </label>
+                          )}
                           <div className="job-row-body">
                             <div className="job-row-meta">
                               <span className="company-label">{job.companyOrHost}</span>
@@ -929,7 +952,7 @@ export function OpportunitiesPage(): React.JSX.Element {
                       </div>
                     )}
                   </div>
-                  {data.jobs.length > 0 && (
+                  {selectingMultiple && data.jobs.length > 0 && (
                     <details
                       className="bulk-remove"
                       open={deleteOpen}
