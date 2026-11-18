@@ -70,7 +70,7 @@ func (a *App) checkPostingAvailability(ctx context.Context, job Job) (state, det
 		}
 		return postingAvailabilityClosed, "This opportunity is closed in YourMove."
 	}
-	if !browser.OwnsPostingURL(job.URL, job.URL) {
+	if !browser.OwnsPostingURL(job.URL, job.URL) && !platforms.IsClosedBoardRedirect(job.URL) {
 		return postingAvailabilityUnknown, "No automatic posting check supports this site. Availability is unverified; your saved materials are unchanged and manual options remain."
 	}
 	fetchCtx, cancel := context.WithTimeout(ctx, 12*time.Second)

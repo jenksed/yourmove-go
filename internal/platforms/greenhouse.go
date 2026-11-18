@@ -15,6 +15,16 @@ import (
 
 // Greenhouse redirects removed postings to the employer's board with error=true.
 // Other jobs listed on that page do not mean the original posting is still open.
+//
+// IsClosedBoardRedirect reports that deterministic provider redirect. The
+// availability preflight consults it so an unretired saved redirect reaches
+// the same deterministic closed verdict as intake and enrichment; it does not
+// extend posting ownership (bare board URLs stay unowned for browser and
+// transfer scope).
+func IsClosedBoardRedirect(rawURL string) bool {
+	return isGreenhouseErrorBoard(rawURL)
+}
+
 func isGreenhouseErrorBoard(rawURL string) bool {
 	u, err := url.Parse(rawURL)
 	if err != nil || u.Scheme != "https" || u.User != nil || u.Port() != "" ||

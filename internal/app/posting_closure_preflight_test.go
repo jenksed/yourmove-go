@@ -335,3 +335,59 @@ func TestRoutineRecheckRetiresConfirmedClosed(t *testing.T) {
 		t.Fatalf("routine lost prep: %+v", job)
 	}
 }
+
+// An unretired saved Greenhouse error-board redirect carries deterministic
+// provider closure evidence without any network: the same redirect intake and
+// enrichment already retire. The single-click preflight must reach that
+// verdict instead of reporting unknown behind the posting-ownership gate.
+// A bare board URL without the redirect stays unknown and active.
+func TestClosurePreflightUnretiredBoardRedirectCloses(t *testing.T) {
+	a, _ := testWorkspace(t)
+	kan16SeedJob(t, a, "https://job-boards.greenhouse.io/kan16redirect?error=true")
+	if err := a.saveJob(Job{
+		URL: "https://job-boards.greenhouse.io/kan16redirect", Host: "job-boards.greenhouse.io",
+		Title: "Bare board", SourceStatus: "not_checked",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := httptest.NewRecorder()
+	newMux(a).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "http://localhost/api/jobs/1/availability", nil))
+	var availability struct {
+		State         string `json:"state"`
+		Notice        string `json:"notice"`
+		Closed        bool   `json:"closed"`
+		PostingClosed bool   `json:"postingClosed"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &availability); err != nil {
+		t.Fatal(err)
+	}
+	if availability.State != "closed" || availability.Notice != postingClosedNotice || !availability.Closed || !availability.PostingClosed {
+		t.Fatalf("board redirect did not report the persistent closure: %d %s", rec.Code, rec.Body.String())
+	}
+	job, err := a.jobByID(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.Stage != StageClosed || job.SourceStatus != "closed" || job.Attention() != "history" {
+		t.Fatalf("board redirect not retired to History: %+v", job)
+	}
+	if job.Title != "Synthetic role" || !job.TitleManual || job.Description != "Applicant-saved description." {
+		t.Fatalf("prep lost on redirect closure: %+v", job)
+	}
+
+	rec = httptest.NewRecorder()
+	newMux(a).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "http://localhost/api/jobs/2/availability", nil))
+	var control struct {
+		State string `json:"state"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &control); err != nil {
+		t.Fatal(err)
+	}
+	if control.State != "unknown" {
+		t.Fatalf("bare board without redirect must stay unknown: %d %s", rec.Code, rec.Body.String())
+	}
+	if job, err := a.jobByID(2); err != nil || job.Stage == StageClosed {
+		t.Fatalf("control job retired: %+v %v", job, err)
+	}
+}
