@@ -318,7 +318,11 @@ func TestControlledTwoJobGenericQuestionIsolation(t *testing.T) {
 	}
 	// Cross-job isolation: job 1's saved answer never enters job 2's scope.
 	scope2 := twoJobContinuationScope(t, a, 2)
-	if pending, _ := scope2["pendingAnswers"].([]any); len(pending) != 0 {
+	pending, ok := scope2["pendingAnswers"].([]any)
+	if !ok {
+		t.Fatalf("job 2 Fill scope missing pendingAnswers array: %#v", scope2["pendingAnswers"])
+	}
+	if len(pending) != 0 {
 		t.Fatalf("job 1 answer leaked into job 2 Fill scope: %v", pending)
 	}
 	rec = postWritingJSON(t, a, http.MethodPost, "/api/jobs/2/answers", `{"question_key":"`+key2+`","revision":0,"destination":"`+twoJobAshbyPosting+`","answer":"`+answer2+`"}`)
