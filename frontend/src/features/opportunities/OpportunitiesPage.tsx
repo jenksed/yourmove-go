@@ -710,9 +710,8 @@ export function OpportunitiesPage(): React.JSX.Element {
                         History · {historyCount}
                       </button>
                     </div>
-                    <p className="small-muted" id="results-status" role="status" aria-live="polite">
-                      {visibleJobs.length} shown · {data.total} saved in total · {focusCount} in
-                      Focus · {savedCount} saved · {historyCount} in history
+                    <p className="visually-hidden" id="results-status" role="status" aria-live="polite">
+                      {visibleJobs.length} opportunities shown
                     </p>
                   </div>
                 </div>
