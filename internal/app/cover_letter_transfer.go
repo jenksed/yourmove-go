@@ -51,7 +51,15 @@ func (a *App) validateCoverLetterRequest(r *http.Request, id int64) (int, string
 		return http.StatusNotFound, "Opportunity or material unavailable"
 	}
 	if job.Stage == StageClosed || job.Stage == StageApplied || job.SubmissionCount > 0 || !browser.OwnsPostingURL(job.URL, job.URL) {
-		return 409, "This opportunity is not eligible for transfer"
+		return 409, closedBlockMessage(job, "This opportunity is not eligible for transfer")
+	}
+	// KAN-16 availability preflight: a provider-confirmed closure blocks the
+	// letter transfer before anything is armed. A composed continuation
+	// already verified availability and skips the re-fetch.
+	if !preflightAlreadyChecked(r.Context()) {
+		if _, block := a.ensurePostingOpen(r.Context(), id); block != "" {
+			return http.StatusConflict, block
+		}
 	}
 	draftID, _ := strconv.ParseInt(r.PostForm.Get("draft_id"), 10, 64)
 	draft, err := a.coverLetterByID(id, draftID)

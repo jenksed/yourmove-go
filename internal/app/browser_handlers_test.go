@@ -39,6 +39,7 @@ func (f *fakeBrowser) changeURL(u string) { f.mu.Lock(); defer f.mu.Unlock(); f.
 func (f *fakeBrowser) timesClosed() int   { f.mu.Lock(); defer f.mu.Unlock(); return f.closed }
 func TestManagedInspectorBrowserAndWailsWorkflow(t *testing.T) {
 	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com", Title: "Role"}); err != nil {
 		t.Fatal(err)
 	}
@@ -85,6 +86,7 @@ func TestManagedInspectorBrowserAndWailsWorkflow(t *testing.T) {
 }
 func TestManagedInspectorNeverPersistsForeignPage(t *testing.T) {
 	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com"}); err != nil {
 		t.Fatal(err)
 	}
@@ -252,6 +254,7 @@ func (f *attachmentFake) attemptCount() int {
 }
 func TestResumeHandoffPinsSelectedFileAcrossSteps(t *testing.T) {
 	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com", Title: "Support Engineer"}); err != nil {
 		t.Fatal(err)
 	}
@@ -361,6 +364,7 @@ func TestResumeHandoffHTTPRespectsEligibility(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			a, _ := testWorkspace(t)
+			a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 
 			if err := a.saveJob(Job{URL: tt.url, Host: "example.com"}); err != nil {
 				t.Fatal(err)
@@ -431,6 +435,7 @@ func (f *contactFakeBrowser) FillContacts(_ context.Context, values browser.Cont
 }
 func TestContactHandoffApprovalAndNoReplay(t *testing.T) {
 	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com", Title: "Contact fixture"}); err != nil {
 		t.Fatal(err)
 	}
@@ -512,6 +517,7 @@ func TestReadOnlyBrowserNeverFillsContacts(t *testing.T) {
 
 func TestQuestionsCaptureJSONUsesManagedObserver(t *testing.T) {
 	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com", Title: "Synthetic"}); err != nil {
 		t.Fatal(err)
 	}
@@ -563,6 +569,7 @@ func TestQuestionsCaptureUnsupportedExplicitResult(t *testing.T) {
 
 func TestQuestionsCaptureLaunchFailureReturnsError(t *testing.T) {
 	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com", Title: "Synthetic"}); err != nil {
 		t.Fatal(err)
 	}
@@ -581,6 +588,7 @@ func TestQuestionsCaptureLaunchFailureReturnsError(t *testing.T) {
 
 func TestQuestionsCaptureStartOnlyAndStatus(t *testing.T) {
 	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 	for _, u := range []string{testAshbyPosting, "https://jobs.ashbyhq.com/render/00000000-0000-0000-0000-000000000001"} {
 		if err := a.saveJob(Job{URL: u, Host: "jobs.ashbyhq.com", Title: "Synthetic"}); err != nil {
 			t.Fatal(err)

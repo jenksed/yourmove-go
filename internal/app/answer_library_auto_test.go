@@ -20,6 +20,7 @@ import (
 // require selection on conflict, and survive restart.
 func TestAnswerLibraryAutomaticPreparationABC(t *testing.T) {
 	a, dir := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 	labelA := "Describe a production incident you resolved for a customer"
 	answerA := "At 02:14 I reviewed Linux logs, isolated the failing service, restored it, and documented the follow-up for the customer."
 

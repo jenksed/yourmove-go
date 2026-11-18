@@ -58,8 +58,21 @@ func (a *App) browserOperation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if job.Stage == StageApplied || job.Stage == StageClosed || job.SubmissionCount > 0 {
-		fail(409, "Inspection is limited to active jobs")
+		fail(409, closedBlockMessage(job, "Inspection is limited to active jobs"))
 		return
+	}
+	// KAN-16 availability preflight: a provider-confirmed closure blocks
+	// browser launches before any employer effect. Inconclusive outcomes
+	// never block; observation-only actions keep their existing behavior.
+	action := r.PathValue("action")
+	if action == "start" || action == "restart" || action == "retry-resume" {
+		if _, block := a.ensurePostingOpen(r.Context(), id); block != "" {
+			fail(409, block)
+			return
+		}
+		if refreshed, err := a.jobByID(id); err == nil {
+			job = refreshed
+		}
 	}
 	if !browser.OwnsPostingURL(job.URL, job.URL) {
 		fail(422, "Question capture supports saved Ashby, Greenhouse, and Lever postings. This URL cannot yet be safely associated with an employer form. Open the employer site yourself and prepare answers manually; automatic Fill remains unavailable.")
@@ -183,6 +196,17 @@ func (a *App) resumeHandoffForAction(r *http.Request, id int64, profileAuthorize
 	job, err := a.jobByID(id)
 	if err != nil {
 		return http.StatusNotFound, "Opportunity or material unavailable"
+	}
+	// KAN-16 availability preflight: a provider-confirmed closure blocks the
+	// résumé handoff before any browser effect or staged document. A composed
+	// continuation already verified availability and skips the re-fetch.
+	if !preflightAlreadyChecked(r.Context()) {
+		if _, block := a.ensurePostingOpen(r.Context(), id); block != "" {
+			return http.StatusConflict, block
+		}
+		if refreshed, err := a.jobByID(id); err == nil {
+			job = refreshed
+		}
 	}
 	var resume *Resume
 	if job.SelectedResumeID > 0 {

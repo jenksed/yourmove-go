@@ -40,6 +40,7 @@ func (f *uncertainAnswerBrowser) FillAnswer(_ context.Context, v browser.AnswerV
 
 func TestAnswerTransferApprovalAndContinuation(t *testing.T) {
 	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com"}); err != nil {
 		t.Fatal(err)
 	}
@@ -107,6 +108,7 @@ func TestAnswerTransferApprovalAndContinuation(t *testing.T) {
 
 func TestProfileLocationCannotEnterAnswerTransfer(t *testing.T) {
 	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com"}); err != nil {
 		t.Fatal(err)
 	}
@@ -143,6 +145,7 @@ func TestProfileLocationCannotEnterAnswerTransfer(t *testing.T) {
 
 func TestSavedAnswerWaitsForLaterControl(t *testing.T) {
 	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com"}); err != nil {
 		t.Fatal(err)
 	}
@@ -294,6 +297,7 @@ func TestAnswerAuthorizationAddsWhileOtherAnswerWaits(t *testing.T) {
 
 func TestChangedEarlyAnswerCanBeReauthorizedAfterRejectedWithoutDispatch(t *testing.T) {
 	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 	job, discovery := earlyGreenhouseFixture(t, a)
 	if _, err := a.saveInspection(job.ID, discovery); err != nil {
 		t.Fatal(err)

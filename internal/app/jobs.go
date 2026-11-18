@@ -404,6 +404,11 @@ func (a *App) setJobAttention(id int64, attention string, now string) error {
 // from their source. Non-retrieved or non-available results leave existing
 // evidence untouched, and manual descriptions keep their precedence through
 // the confirmed flags.
+//
+// KAN-16 closure protection: a confirmed closure retires an unfinished job to
+// History → Closed, but it must never rewrite an applied stage or a
+// submission-recorded job. Applied and submission-recorded rows keep their
+// stage and history; the closure is recorded as source_status evidence only.
 func (a *App) applyPostingRefresh(id int64, metadata platforms.Metadata, status, note, checkedAt string) error {
 	salaryOrigin := metadata.SalaryOrigin
 	if salaryOrigin == "" {
@@ -415,7 +420,7 @@ func (a *App) applyPostingRefresh(id int64, metadata platforms.Metadata, status,
 	}
 	defer tx.Rollback()
 	result, err := tx.Exec(`UPDATE jobs SET
-			stage = CASE WHEN ? = 'closed' THEN 'closed' ELSE stage END,
+			stage = CASE WHEN ? = 'closed' AND stage <> 'applied' AND NOT EXISTS (SELECT 1 FROM submissions WHERE submissions.job_id = jobs.id) THEN 'closed' ELSE stage END,
             title = CASE WHEN ? = 'retrieved' AND title_manual = 0 AND ? <> '' THEN ? ELSE title END,
             company = CASE WHEN ? = 'retrieved' AND company_manual = 0 AND ? <> '' THEN ? ELSE company END,
             description = CASE WHEN ? = 'retrieved' AND description_manual = 0 AND ? <> '' THEN ? ELSE description END,

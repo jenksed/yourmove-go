@@ -9,6 +9,7 @@ import { openPosting } from "../opportunities/api";
 import {
   authorizeContinue,
   browserAction,
+  checkAvailability,
   fetchContinuation,
   type BrowserAction,
   type ContinuationSnapshot,
@@ -58,6 +59,13 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
   const [busy, setBusy] = useState<boolean>(false);
   const [actionError, setActionError] = useState<string>("");
   const [actionNotice, setActionNotice] = useState<string>("");
+  // KAN-16 single-click availability: "view" or "fill" while Go verifies the
+  // posting, then automatic continuation. A confirmed closure persists here
+  // for the session; the server-derived snapshot notice persists across
+  // reloads and restarts.
+  const [checking, setChecking] = useState<"view" | "fill" | null>(null);
+  const [closureNotice, setClosureNotice] = useState<string>("");
+  const [availabilityWarning, setAvailabilityWarning] = useState<string>("");
   const pollRef = useRef<number | null>(null);
   const requestRef = useRef<number>(0);
 
@@ -83,6 +91,9 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
     setLoadError("");
     setActionError("");
     setActionNotice("");
+    setClosureNotice("");
+    setAvailabilityWarning("");
+    setChecking(null);
     setConfirmStop(false);
   }, [jobId]);
 
@@ -189,6 +200,64 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
     }
   }, [snapshot, jobId, reload]);
 
+  // Single-click View: show "Checking posting…" in this workspace, then
+  // continue automatically. A confirmed closure surfaces the persistent
+  // inline notice (same workspace, no redirect, no browser handoff).
+  // Inconclusive outcomes proceed with a truthful warning and never close.
+  const runViewWithCheck = useCallback(async () => {
+    if (!snapshot) return;
+    // Returning to an already-open session sends nothing; it stays instant
+    // and check-free. Only a fresh launch verifies availability first.
+    if (snapshot.browser.active) {
+      await runBrowser("focus");
+      return;
+    }
+    setActionError("");
+    setAvailabilityWarning("");
+    setChecking("view");
+    try {
+      const availability = await checkAvailability(jobId);
+      if (availability.state === "closed") {
+        setClosureNotice(availability.notice !== "" ? availability.notice : availability.detail);
+        await reload();
+        return;
+      }
+      if (availability.state === "unknown" && availability.detail !== "") {
+        setAvailabilityWarning(availability.detail);
+      }
+      await runBrowser(snapshot.browser.active ? "focus" : "start");
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Could not check the posting.");
+    } finally {
+      setChecking(null);
+    }
+  }, [snapshot, jobId, reload, runBrowser]);
+
+  // Single-click Fill: same preflight, then the ordinary authorized Fill.
+  // A confirmed closure blocks every transfer; unknown stays non-blocking.
+  const runFillWithCheck = useCallback(async () => {
+    if (!snapshot) return;
+    setActionError("");
+    setAvailabilityWarning("");
+    setChecking("fill");
+    try {
+      const availability = await checkAvailability(jobId);
+      if (availability.state === "closed") {
+        setClosureNotice(availability.notice !== "" ? availability.notice : availability.detail);
+        await reload();
+        return;
+      }
+      if (availability.state === "unknown" && availability.detail !== "") {
+        setAvailabilityWarning(availability.detail);
+      }
+      await runAuthorize();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Could not check the posting.");
+    } finally {
+      setChecking(null);
+    }
+  }, [snapshot, jobId, reload, runAuthorize]);
+
   if (loading) return <p role="status">Loading employer continuation…</p>;
   if (loadError !== "" && !snapshot) {
     return (
@@ -246,6 +315,12 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
   // available because they occur only when editingAllowed is true.
   const canFill = !busy && !refreshing && loadError === "" && snapshot.ownsPosting && snapshot.editingAllowed && hasEligibleTransfer;
   const stale = loadError !== "";
+  // A confirmed closure persists: the session notice first, then the
+  // server-derived notice that survives reloads and restarts. This panel
+  // never auto-navigates and never disappears on its own.
+  const persistentClosure = closureNotice !== "" ? closureNotice : (snapshot.closureNotice ?? "");
+  const checkingView = checking === "view";
+  const checkingFill = checking === "fill";
 
   return (
     <section className="panel" aria-labelledby="continuation-title" id="employer">
@@ -286,6 +361,25 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
           </button>
         </p>
       )}
+      {checking !== null && <p role="status">Checking posting…</p>}
+      {persistentClosure !== "" && (
+        <div className="writing-notice" role="alert" aria-label="Posting closed">
+          <p>{persistentClosure}</p>
+          <div className="form-actions">
+            <a className="button button-secondary" href="/jobs#history-closed">
+              View in History → Closed
+            </a>
+            <a className="button button-secondary" href="/jobs#focus">
+              Return to Focus
+            </a>
+          </div>
+        </div>
+      )}
+      {availabilityWarning !== "" && persistentClosure === "" && checking === null && (
+        <p className="writing-notice" role="status">
+          {availabilityWarning}
+        </p>
+      )}
 
       <div className="workspace-source-actions">
         {!snapshot.editingAllowed && !browser.active ? (
@@ -296,8 +390,8 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
           ) : <a className="button button-secondary" href={snapshot.destination} target="_blank" rel="noreferrer">View Application</a>
         ) : (
           <>
-            <button className="button button-secondary" type="button" disabled={busy} onClick={() => void runBrowser(browser.active ? "focus" : "start")}>
-              {busy ? "Opening…" : browser.active ? "Return to Application" : "View Application"}
+            <button className="button button-secondary" type="button" disabled={busy || checking !== null} onClick={() => void runViewWithCheck()}>
+              {checkingView ? "Checking posting…" : busy ? "Opening…" : browser.active ? "Return to Application" : "View Application"}
             </button>
             {browser.active && !confirmStop && (
               <button className="button button-secondary" type="button" disabled={busy} onClick={() => void runBrowser("stop")}>Close browser</button>
@@ -411,10 +505,10 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
           <button
             className="button button-primary"
             type="button"
-            disabled={!canFill}
-            onClick={() => void runAuthorize()}
+            disabled={!canFill || checking !== null}
+            onClick={() => void runFillWithCheck()}
           >
-            {busy ? "Filling…" : "Fill Application"}
+            {checkingFill ? "Checking posting…" : busy ? "Filling…" : "Fill Application"}
           </button>
         )}
       </div>

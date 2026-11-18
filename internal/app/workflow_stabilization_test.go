@@ -14,6 +14,7 @@ import (
 
 func TestEarlySavedAnswersStayExcludedUntilReconciledAndAuthorized(t *testing.T) {
 	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 	job, public := earlyGreenhouseFixture(t, a)
 	second := public.Fields[0]
 	// Use independently identified narrative questions with exact public/live

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -57,6 +58,7 @@ type enrichmentRun struct {
 
 func newEnrichmentRun(mode string, jobs []Job) *enrichmentRun {
 	r := &enrichmentRun{state: "running", mode: mode}
+	now := time.Now().UTC()
 	for _, job := range jobs {
 		if job.Stage == StageApplied || job.Stage == StageClosed || job.SubmissionCount != 0 {
 			continue
@@ -68,6 +70,18 @@ func newEnrichmentRun(mode string, jobs []Job) *enrichmentRun {
 			}
 		case "failed":
 			if job.SourceStatus != "failed" {
+				continue
+			}
+		case "routine":
+			// KAN-16 bounded routine recheck: only unfinished Focus jobs
+			// whose last check is older than ~24h and Saved jobs older than
+			// ~7d. Unsupported sources have no automatic evidence to
+			// recheck, and Applied-protected rows never reach this mode
+			// through the lifecycle guard above.
+			if job.SourceStatus == "unsupported" {
+				continue
+			}
+			if !routineRecheckDue(job, now) {
 				continue
 			}
 		case "auto":
@@ -90,6 +104,34 @@ func newEnrichmentRun(mode string, jobs []Job) *enrichmentRun {
 		r.state = "complete"
 	}
 	return r
+}
+
+// Routine recheck windows: Focus jobs recheck daily, Saved jobs weekly. The
+// recorded source_checked_at is the durable checkpoint; a missing or
+// unparseable timestamp is treated as due so stale evidence never blocks a
+// recheck. Callers hold no locks; jobs carry their own placement and
+// checkpoint values.
+const (
+	routineRecheckFocusAge = 24 * time.Hour
+	routineRecheckSavedAge = 7 * 24 * time.Hour
+)
+
+func routineRecheckDue(job Job, now time.Time) bool {
+	window := routineRecheckFocusAge
+	if strings.TrimSpace(job.ParkedAt) != "" {
+		window = routineRecheckSavedAge
+	}
+	checked := strings.TrimSpace(job.SourceCheckedAt)
+	if checked == "" {
+		return true
+	}
+	parsed, err := time.Parse(time.RFC3339Nano, checked)
+	if err != nil {
+		if parsed, err = time.Parse(time.RFC3339, checked); err != nil {
+			return true
+		}
+	}
+	return now.Sub(parsed.UTC()) >= window
 }
 
 func (r *enrichmentRun) snapshot() EnrichmentSnapshot {
@@ -128,7 +170,7 @@ func (a *App) currentEnrichment() EnrichmentSnapshot {
 }
 
 func (a *App) startEnrichment(mode string) (EnrichmentSnapshot, error) {
-	if mode != "pending" && mode != "failed" {
+	if mode != "pending" && mode != "failed" && mode != "routine" {
 		return EnrichmentSnapshot{}, fmt.Errorf("invalid metadata check mode")
 	}
 	a.enrichmentMu.Lock()

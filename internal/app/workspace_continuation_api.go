@@ -258,6 +258,8 @@ func (a *App) buildContinuation(jobID int64) (map[string]any, error) {
 		"desktop":        a.openPosting != nil,
 		"applied":        job.Stage == StageApplied || job.SubmissionCount > 0,
 		"closed":         job.Stage == StageClosed,
+		"postingClosed":  closureNoticeFor(job) != "",
+		"closureNotice":  closureNoticeFor(job),
 		"editingAllowed": editingAllowed,
 		"preparation": map[string]any{
 			"title": preparation.Title, "detail": preparation.Detail,
@@ -348,8 +350,22 @@ func (a *App) continuationBrowserAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if (job.Stage == StageApplied || job.Stage == StageClosed || job.SubmissionCount > 0) && input.Action != "focus" && input.Action != "stop" {
-		writeResumeError(w, http.StatusConflict, "Inspection is limited to active jobs")
+		writeResumeError(w, http.StatusConflict, closedBlockMessage(job, "Inspection is limited to active jobs"))
 		return
+	}
+	// KAN-16 availability preflight: a provider-confirmed closure blocks
+	// launches and transfer-armed actions before any browser effect. Focus
+	// and stop stay available; inconclusive outcomes never block.
+	if input.Action == "start" || input.Action == "restart" || input.Action == "retry-resume" {
+		if _, block := a.ensurePostingOpen(r.Context(), jobID); block != "" {
+			writeResumeError(w, http.StatusConflict, block)
+			return
+		}
+		job, err = a.jobByID(jobID)
+		if err != nil {
+			writeResumeError(w, http.StatusInternalServerError, "Unable to load opportunity")
+			return
+		}
 	}
 	if !browser.OwnsPostingURL(job.URL, job.URL) {
 		writeResumeError(w, http.StatusUnprocessableEntity, "Managed inspection supports saved Ashby, Greenhouse, and Lever postings")
@@ -522,9 +538,21 @@ func (a *App) continuationContinueAPI(w http.ResponseWriter, r *http.Request) {
 	// any browser launch: resolvers alone would only downgrade items to
 	// manual after a session starts.
 	if job.Stage == StageApplied || job.Stage == StageClosed || job.SubmissionCount > 0 {
-		writeResumeError(w, http.StatusConflict, "This application is no longer active")
+		writeResumeError(w, http.StatusConflict, closedBlockMessage(job, "This application is no longer active"))
 		return
 	}
+	// KAN-16 availability preflight: a provider-confirmed closure blocks all
+	// transfers before any browser launch or armed operation. The retirement
+	// is persisted prep-preserving above; later per-item guards then see the
+	// closed stage without re-fetching.
+	if _, block := a.ensurePostingOpen(r.Context(), jobID); block != "" {
+		writeResumeError(w, http.StatusConflict, block)
+		return
+	}
+	if refreshed, err := a.jobByID(jobID); err == nil {
+		job = refreshed
+	}
+	r = r.WithContext(withPreflightChecked(r.Context()))
 	// React's Fill action carries the displayed profile revision and résumé
 	// identity for material that depends on them. Revalidate both before any
 	// résumé or contact effect. Letter and answer work keeps its own

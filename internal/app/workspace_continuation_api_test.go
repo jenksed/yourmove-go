@@ -94,6 +94,7 @@ func TestContinuationScopeIsTokenFreeAndComplete(t *testing.T) {
 
 func TestContinueRequiresSelectionAndDestination(t *testing.T) {
 	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 	seedContinuationJob(t, a)
 	post := func(body string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodPost, "http://localhost/api/jobs/1/continue", strings.NewReader(body))
@@ -117,6 +118,7 @@ func TestContinueRequiresSelectionAndDestination(t *testing.T) {
 
 func TestContinueAnswersTransferWithFakeBrowser(t *testing.T) {
 	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 	seedContinuationJob(t, a)
 	f := &fakeAnswerBrowser{fakeBrowser: &fakeBrowser{url: testAshbyPosting + "/application"}, controls: []browser.Control{{ID: "why", Label: "Why this team?", Kind: "textarea"}, {ID: "site", Label: "Project URL", Kind: "text"}}}
 	a.browsers.factory = func(context.Context, string) (readOnlySession, error) { return f, nil }
@@ -284,6 +286,7 @@ func TestContinuationNextWithoutSubmission(t *testing.T) {
 
 func TestContinueAuthorizesEachMaterialIndependently(t *testing.T) {
 	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com", Title: "Role", Description: "Resolve production incidents"}); err != nil {
 		t.Fatal(err)
 	}
@@ -368,6 +371,7 @@ func TestContinueAuthorizesEachMaterialIndependently(t *testing.T) {
 
 func TestContinuationBrowserActions(t *testing.T) {
 	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 	seedContinuationJob(t, a)
 	f := &fakeBrowser{url: testAshbyPosting + "/application"}
 	a.browsers.factory = func(context.Context, string) (readOnlySession, error) { return f, nil }
@@ -414,6 +418,7 @@ func TestContinuationBrowserActions(t *testing.T) {
 
 func TestContinuationReportsResumeLaunchFailure(t *testing.T) {
 	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 	seedContinuationJob(t, a)
 	resume, err := a.importResume("resume.pdf", strings.NewReader("%PDF-1.4\nsynthetic"))
 	if err != nil {
@@ -455,6 +460,7 @@ func TestContinuationReportsResumeLaunchFailure(t *testing.T) {
 
 func TestContinuationContactsAfterResumeSelection(t *testing.T) {
 	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 	seedContinuationJob(t, a)
 	resume, err := a.importResume("resume.pdf", strings.NewReader("%PDF-1.4\nsynthetic"))
 	if err != nil {
@@ -640,6 +646,7 @@ func TestContinuationReconcilesEarlyAnswersAcrossAshbyNamespaceRotation(t *testi
 
 func TestContinuationRejectsChangedEarlyAnswerBeforeBrowserLaunch(t *testing.T) {
 	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 	job, discovery := earlyGreenhouseFixture(t, a)
 	if _, err := a.saveInspection(job.ID, discovery); err != nil {
 		t.Fatal(err)
@@ -690,6 +697,7 @@ func TestContinuationRejectsChangedEarlyAnswerBeforeBrowserLaunch(t *testing.T) 
 
 func TestContinueLetterAndAnswersWithoutResume(t *testing.T) {
 	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 	seedContinuationJob(t, a)
 	body := "Dear Hiring Team, I bring verified support experience to this role and welcome the opportunity to contribute."
 	if _, err := a.db.Exec(`INSERT INTO cover_letters(job_id,body,provider,model,master_resume_id,master_sha256,role_resume_id,role_sha256,job_description_sha256,created_at) VALUES(1,?,'fixture','test',1,'master',1,'role','job','now')`, body); err != nil {
@@ -738,6 +746,7 @@ func TestContinueLetterAndAnswersWithoutResume(t *testing.T) {
 
 func TestContinueStaleAnswersDoNotBlockLetter(t *testing.T) {
 	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 	seedContinuationJob(t, a)
 	body := "Dear Hiring Team, I bring verified support experience to this role and welcome the opportunity to contribute."
 	if _, err := a.db.Exec(`INSERT INTO cover_letters(job_id,body,provider,model,master_resume_id,master_sha256,role_resume_id,role_sha256,job_description_sha256,created_at) VALUES(1,?,'fixture','test',1,'master',1,'role','job','now')`, body); err != nil {
@@ -784,6 +793,7 @@ func TestContinueStaleAnswersDoNotBlockLetter(t *testing.T) {
 // own scope hash succeeds; job A's hash is refused before any browser launch.
 func TestContinueRejectsForeignJobReviewHash(t *testing.T) {
 	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 	seedContinuationJob(t, a)
 	const urlB = "https://jobs.ashbyhq.com/render/99999999-9999-4999-8999-999999999999"
 	if err := a.saveJob(Job{URL: urlB, Host: "jobs.ashbyhq.com", Title: "Role B"}); err != nil {

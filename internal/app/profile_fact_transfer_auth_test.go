@@ -94,6 +94,7 @@ func TestCompletedJobExposesNoProfileFactScope(t *testing.T) {
 // ordinary saved-answer transfers keep their existing behavior.
 func TestProfileFactTransferRequiresMatchingRevision(t *testing.T) {
 	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com", Title: "Role"}); err != nil {
 		t.Fatal(err)
 	}

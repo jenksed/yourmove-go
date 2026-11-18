@@ -113,8 +113,20 @@ export function OpportunitiesPage(): React.JSX.Element {
   }, [reload]);
 
   useEffect(() => {
+    const applyPlacementHash = () => {
+      // Closure-notice navigation targets: the workspace links here so a
+      // retired job is one click away without auto-navigation.
+      if (window.location.hash === "#history-closed") {
+        setAttention("history");
+        setStage("closed");
+      } else if (window.location.hash === "#focus") {
+        setAttention("focus");
+      }
+    };
+    applyPlacementHash();
     const onHashChange = () => {
       if (window.location.hash === "#add-opportunity") setCreateOpen(true);
+      applyPlacementHash();
     };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);

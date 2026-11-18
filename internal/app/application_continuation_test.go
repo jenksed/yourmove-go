@@ -99,6 +99,7 @@ func TestCombinedApplicationScopeAndIndependentFailures(t *testing.T) {
 			for _, stale := range []string{"none", "letter", "answers", "destination", "resume only", "uncertain"} {
 				t.Run(stale, func(t *testing.T) {
 					a, _ := testWorkspace(t)
+					a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 					if err := a.saveJob(Job{URL: posting, Host: "jobs.ashbyhq.com", Title: "Controlled role", Company: "Fixture", Description: "Resolve production incidents"}); err != nil {
 						t.Fatal(err)
 					}

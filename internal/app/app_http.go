@@ -138,6 +138,7 @@ func newMux(app *App) http.Handler {
 	mux.HandleFunc("GET /api/cover-letters", app.coverLetterCatalogAPI)
 	mux.HandleFunc("GET /api/cover-letters/{id}", app.coverLetterCatalogDetailAPI)
 	mux.HandleFunc("GET /api/jobs/{id}/continuation", app.continuationAPI)
+	mux.HandleFunc("GET /api/jobs/{id}/availability", app.availabilityAPI)
 	mux.HandleFunc("POST /api/jobs/{id}/browser", app.continuationBrowserAPI)
 	mux.HandleFunc("POST /api/jobs/{id}/continue", app.continuationContinueAPI)
 	mux.HandleFunc("POST /api/jobs/{id}/submission-review", app.continuationReviewAPI)

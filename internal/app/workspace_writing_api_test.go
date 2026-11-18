@@ -744,6 +744,7 @@ func TestManualLetterCreationAndValidation(t *testing.T) {
 
 func TestLetterSelectionPersistsAndStaysWithinJob(t *testing.T) {
 	a, dir := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com", Title: "Selection"}); err != nil {
 		t.Fatal(err)
 	}

@@ -259,7 +259,18 @@ func (a *App) answerTransferForAction(r *http.Request, id int64, profileAuthoriz
 		return http.StatusNotFound, "Opportunity or material unavailable"
 	}
 	if job.Stage == StageApplied || job.Stage == StageClosed || job.SubmissionCount > 0 {
-		return 409, "This application is no longer active"
+		return 409, closedBlockMessage(job, "This application is no longer active")
+	}
+	// KAN-16 availability preflight: a provider-confirmed closure blocks
+	// answer transfer before anything is armed. A composed continuation
+	// already verified availability and skips the re-fetch.
+	if !preflightAlreadyChecked(r.Context()) {
+		if _, block := a.ensurePostingOpen(r.Context(), id); block != "" {
+			return http.StatusConflict, block
+		}
+		if refreshed, err := a.jobByID(id); err == nil {
+			job = refreshed
+		}
 	}
 	profile, err := a.candidateProfile()
 	if err != nil {
