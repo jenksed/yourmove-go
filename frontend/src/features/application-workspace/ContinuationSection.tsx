@@ -363,11 +363,11 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
           <p className="small-muted">Cover letter not included — none selected.</p>
         )}
 
-        {snapshot.pendingAnswers.length > 0 ? (
+        {Array.isArray(snapshot.pendingAnswers) && snapshot.pendingAnswers.length > 0 ? (
           <div className="continuation-item">
             <p><strong>{snapshot.pendingAnswers.length} {snapshot.pendingAnswers.length === 1 ? "item" : "items"} ready to fill</strong></p>
             <dl className="contact-facts pending-answer-scope">
-              {snapshot.pendingAnswers.map((answer) => (
+              {(Array.isArray(snapshot.pendingAnswers) ? snapshot.pendingAnswers : []).map((answer) => (
                 <div key={answer.key}>
                   <dt>{answer.label}</dt>
                   <dd>

@@ -38,7 +38,8 @@
 .batch-disclosure>summary{cursor:pointer;display:flex;align-items:center;gap:13px;font-size:13px}
 .batch-disclosure>summary .muted{font-size:11px}
 .batch-import-form{margin-top:18px}.batch-url{overflow-wrap:anywhere;font-weight:650}
-.job-select{align-self:center;flex:0 0 24px;margin-right:6px}.job-select input{height:17px;width:17px;accent-color:var(--color-primary)}.job-select input:disabled{opacity:.3}
+.job-select{align-self:center;flex:0 0 auto;margin-right:6px;display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:650;color:var(--color-muted)}.job-select input{height:17px;width:17px;accent-color:var(--color-primary)}.job-select input:disabled{opacity:.3}.job-select input:disabled + span{opacity:.45}
+.bulk-move-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px 12px;padding:0 24px 18px}.bulk-select-hint{flex-basis:100%;margin:0}
 .bulk-remove{border-top:1px solid var(--color-border);padding:18px 24px;font-size:12px}
 .bulk-remove summary,.danger-zone summary{cursor:pointer;font-weight:700;color:var(--color-muted)}
 .bulk-remove-body,.danger-zone-body{display:grid;gap:15px;padding-top:16px;max-width:560px}

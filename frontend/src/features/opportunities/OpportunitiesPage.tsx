@@ -72,8 +72,11 @@ export function OpportunitiesPage(): React.JSX.Element {
   const [bulkResult, setBulkResult] = useState<BatchResult | null>(null);
   const [bulkBusy, setBulkBusy] = useState<boolean>(false);
 
-  const [moveSelected, setMoveSelected] = useState<Set<number>>(new Set());
-  const [deleteSelected, setDeleteSelected] = useState<Set<number>>(new Set());
+  // One bulk selection per row. Move and deletion share this set so there
+  // is exactly one visually clear control per opportunity; deletion itself
+  // stays deliberately invoked inside the collapsed confirmation below.
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [deleteOpen, setDeleteOpen] = useState<boolean>(false);
   const [deletePhrase, setDeletePhrase] = useState<string>("");
   const [deleteConfirm, setDeleteConfirm] = useState<boolean>(false);
   const [deleteError, setDeleteError] = useState<string>("");
@@ -90,14 +93,7 @@ export function OpportunitiesPage(): React.JSX.Element {
       const next = await fetchOpportunities();
       setData(next);
       const existing = new Set(next.jobs.map((job) => job.id));
-      setMoveSelected((previous) => {
-        const valid = new Set<number>();
-        for (const id of previous) {
-          if (existing.has(id)) valid.add(id);
-        }
-        return valid;
-      });
-      setDeleteSelected((previous) => {
+      setSelected((previous) => {
         const valid = new Set<number>();
         for (const id of previous) {
           if (existing.has(id)) valid.add(id);
@@ -169,19 +165,12 @@ export function OpportunitiesPage(): React.JSX.Element {
 
   // Selections never leak across views: only jobs in the current visible
   // rows/view/filter stay selected, so hidden jobs are never moved or
-  // deleted by accident. Move and delete selections are independent.
+  // deleted by accident. One shared set keeps the single per-row control
+  // unambiguous for both bulk actions.
   const visibleIds = useMemo(() => new Set(visibleJobs.map((job) => job.id)), [visibleJobs]);
 
   useEffect(() => {
-    setMoveSelected((previous) => {
-      if (previous.size === 0) return previous;
-      const scoped = new Set<number>();
-      for (const id of previous) {
-        if (visibleIds.has(id)) scoped.add(id);
-      }
-      return scoped.size === previous.size ? previous : scoped;
-    });
-    setDeleteSelected((previous) => {
+    setSelected((previous) => {
       if (previous.size === 0) return previous;
       const scoped = new Set<number>();
       for (const id of previous) {
@@ -191,8 +180,8 @@ export function OpportunitiesPage(): React.JSX.Element {
     });
   }, [visibleIds]);
 
-  const toggleMoveSelected = useCallback((id: number, checked: boolean) => {
-    setMoveSelected((previous) => {
+  const toggleSelected = useCallback((id: number, checked: boolean) => {
+    setSelected((previous) => {
       const next = new Set(previous);
       if (checked) next.add(id);
       else next.delete(id);
@@ -200,14 +189,41 @@ export function OpportunitiesPage(): React.JSX.Element {
     });
   }, []);
 
-  const toggleDeleteSelected = useCallback((id: number, checked: boolean) => {
-    setDeleteSelected((previous) => {
-      const next = new Set(previous);
-      if (checked) next.add(id);
-      else next.delete(id);
-      return next;
-    });
-  }, []);
+  // Deletion authorization must never go stale. The typed DELETE phrase and
+  // confirmation checkbox authorize exactly the selection that was reviewed
+  // when they were entered, so any selection change clears both. Closing the
+  // collapsed confirmation also clears both; reopening starts clean.
+  // Filter/view pruning and async reload pruning flow through `selected`,
+  // so they clear authorization the same way.
+  const selectedKey = useMemo(
+    () => [...selected].sort((a, b) => a - b).join(","),
+    [selected],
+  );
+
+  useEffect(() => {
+    setDeletePhrase("");
+    setDeleteConfirm(false);
+  }, [selectedKey]);
+
+  const jobById = useMemo(
+    () => new Map((data?.jobs ?? []).map((job) => [job.id, job] as const)),
+    [data],
+  );
+  const selectedJobs = useMemo(
+    () =>
+      [...selected]
+        .map((id) => jobById.get(id))
+        .filter((job): job is OpportunityJob => job !== undefined),
+    [selected, jobById],
+  );
+  // Go (moveJobsAttention) refuses any batch containing an applied/closed
+  // job or a job with recorded submissions: the whole batch moves nothing.
+  // Disable bulk moves for such selections instead of letting them fail.
+  // Closed History jobs without submissions stay deletable below.
+  const selectedHasUnmovable = useMemo(
+    () => selectedJobs.some((job) => isApplied(job) || isClosed(job)),
+    [selectedJobs],
+  );
 
   const handleSingleSave = useCallback(
     async (focus: boolean) => {
@@ -255,20 +271,20 @@ export function OpportunitiesPage(): React.JSX.Element {
     async (next: "focus" | "saved") => {
       setActionError("");
       setMoveNotice("");
-      if (moveSelected.size === 0) {
+      if (selected.size === 0) {
         setActionError("Select at least one job to move.");
         return;
       }
-      const count = moveSelected.size;
+      const count = selected.size;
       setMoveBusy(true);
       try {
-        await moveOpportunities([...moveSelected], next);
+        await moveOpportunities([...selected], next);
         setMoveNotice(
           next === "focus"
             ? `Moved ${count} to Focus without changing stages or preparation.`
             : `Moved ${count} to Saved for Later without changing stages or preparation.`,
         );
-        setMoveSelected(new Set());
+        setSelected(new Set());
         setAttention(next);
         await reload();
       } catch (error) {
@@ -277,7 +293,7 @@ export function OpportunitiesPage(): React.JSX.Element {
         setMoveBusy(false);
       }
     },
-    [moveSelected, reload],
+    [selected, reload],
   );
 
   const handleMoveJob = useCallback(
@@ -324,7 +340,7 @@ export function OpportunitiesPage(): React.JSX.Element {
     async (event: React.FormEvent) => {
       event.preventDefault();
       setDeleteError("");
-      if (deleteSelected.size === 0) {
+      if (selected.size === 0) {
         setDeleteError("Select at least one job to delete.");
         return;
       }
@@ -334,8 +350,8 @@ export function OpportunitiesPage(): React.JSX.Element {
       }
       setDeleteBusy(true);
       try {
-        await deleteOpportunities([...deleteSelected]);
-        setDeleteSelected(new Set());
+        await deleteOpportunities([...selected]);
+        setSelected(new Set());
         setDeletePhrase("");
         setDeleteConfirm(false);
         await reload();
@@ -345,7 +361,7 @@ export function OpportunitiesPage(): React.JSX.Element {
         setDeleteBusy(false);
       }
     },
-    [deleteSelected, deleteConfirm, deletePhrase, reload],
+    [selected, deleteConfirm, deletePhrase, reload],
   );
 
   const handleOpenPosting = useCallback(async (job: OpportunityJob) => {
@@ -745,21 +761,44 @@ export function OpportunitiesPage(): React.JSX.Element {
                 )}
                 {moveNotice !== "" && <p className="form-notice">{moveNotice}</p>}
                 <div className="bulk-move-actions">
+                  <p className="small-muted bulk-select-hint">
+                    Tick Select on each row for bulk move or deletion ({selected.size} selected).
+                    Jobs with confirmed submissions cannot be bulk deleted; applied,
+                    closed, or submitted jobs stay in History when moving.
+                  </p>
+                  {selectedHasUnmovable && selected.size > 0 && (
+                    <p className="job-form-error" role="alert">
+                      Selection includes a History job (applied, closed, or with recorded
+                      submissions). It stays in History; uncheck it to move the rest. No
+                      move was attempted. Eligible History jobs without submissions can
+                      still be deleted below.
+                    </p>
+                  )}
                   <button
                     className="button button-secondary"
                     type="button"
-                    disabled={moveBusy || moveSelected.size === 0}
+                    disabled={moveBusy || selected.size === 0 || selectedHasUnmovable}
+                    title={
+                      selectedHasUnmovable
+                        ? "Uncheck History jobs to enable moving"
+                        : undefined
+                    }
                     onClick={() => void handleMoveSelected("focus")}
                   >
-                    {moveBusy ? "Moving…" : `Move selected to Focus (${moveSelected.size})`}
+                    {moveBusy ? "Moving…" : `Move selected to Focus (${selected.size})`}
                   </button>
                   <button
                     className="button button-secondary"
                     type="button"
-                    disabled={moveBusy || moveSelected.size === 0}
+                    disabled={moveBusy || selected.size === 0 || selectedHasUnmovable}
+                    title={
+                      selectedHasUnmovable
+                        ? "Uncheck History jobs to enable moving"
+                        : undefined
+                    }
                     onClick={() => void handleMoveSelected("saved")}
                   >
-                    {moveBusy ? "Moving…" : `Move selected to Saved (${moveSelected.size})`}
+                    {moveBusy ? "Moving…" : `Move selected to Saved (${selected.size})`}
                   </button>
                 </div>
                 <form
@@ -770,35 +809,29 @@ export function OpportunitiesPage(): React.JSX.Element {
                   <div className="job-list">
                     {visibleJobs.map((job) => {
                       const deletable = job.submissionCount === 0;
+                      const unmovable = isApplied(job) || isClosed(job);
                       return (
                         <article className="job-row" key={job.id}>
                           <label className="job-select">
                             <input
                               type="checkbox"
-                              checked={moveSelected.has(job.id)}
-                              disabled={job.attention === "history"}
-                              title={
-                                job.attention === "history"
-                                  ? "History jobs stay in History"
-                                  : `Select ${job.displayTitle} for move`
-                              }
-                              aria-label={`Select ${job.displayTitle} for move`}
-                              onChange={(event) => toggleMoveSelected(job.id, event.target.checked)}
-                            />
-                          </label>
-                          <label className="job-select job-select-delete">
-                            <input
-                              type="checkbox"
-                              checked={deleteSelected.has(job.id)}
+                              checked={selected.has(job.id)}
+                              // Submitted jobs are never bulk-deleted here; they
+                              // are removed individually from their workspace.
+                              // Closed History jobs without submissions stay
+                              // selectable so they can still be deleted below.
                               disabled={!deletable}
                               title={
-                                deletable
-                                  ? `Select ${job.displayTitle} for deletion`
-                                  : "Submitted job: remove individually from its workspace"
+                                !deletable
+                                  ? "Submitted job: remove individually from its workspace"
+                                  : unmovable
+                                    ? "Select for deletion (this History job stays in History when moving)"
+                                    : `Select ${job.displayTitle} for bulk move or deletion`
                               }
-                              aria-label={`Select ${job.displayTitle} for deletion`}
-                              onChange={(event) => toggleDeleteSelected(job.id, event.target.checked)}
+                              aria-label={`Select ${job.displayTitle} for bulk move or deletion`}
+                              onChange={(event) => toggleSelected(job.id, event.target.checked)}
                             />
+                            <span aria-hidden="true">Select</span>
                           </label>
                           <div className="job-row-body">
                             <div className="job-row-meta">
@@ -897,19 +930,32 @@ export function OpportunitiesPage(): React.JSX.Element {
                     )}
                   </div>
                   {data.jobs.length > 0 && (
-                    <details className="bulk-remove">
+                    <details
+                      className="bulk-remove"
+                      open={deleteOpen}
+                      onToggle={(event) => {
+                        const open = event.currentTarget.open;
+                        setDeleteOpen(open);
+                        if (!open) {
+                          setDeletePhrase("");
+                          setDeleteConfirm(false);
+                        }
+                      }}
+                    >
                       <summary>
-                        Delete selected jobs <span className="muted">(test and unwanted records)</span>
+                        Delete selected jobs ({selected.size} selected){" "}
+                        <span className="muted">(test and unwanted records)</span>
                       </summary>
                       <div className="bulk-remove-body">
                         <p className="confirmation-note">
-                          Permanent deletion. This removes the jobs checked for deletion below with
-                          their saved answers, manual questions, and cover-letter drafts. Reusable
-                          Answer Library examples and imported resumes are retained. Jobs with
-                          confirmed submissions are excluded here; remove them individually from
-                          their workspace. Deletion checkboxes are separate from move checkboxes
-                          and only cover jobs shown in the current view; hidden jobs are never
-                          included.
+                          Permanent deletion. This removes the jobs ticked with Select above
+                          with their saved answers, manual questions, and cover-letter drafts.
+                          Reusable Answer Library examples and imported resumes are retained.
+                          Jobs with confirmed submissions are excluded here; remove them
+                          individually from their workspace. History jobs without submissions
+                          can be deleted but cannot be moved. Only jobs shown in the current
+                          view stay selected; hidden jobs are never included. Deletion needs
+                          all three steps here: open this section, type DELETE, and confirm.
                         </p>
                         <div className="field">
                           <label htmlFor="delete_selected_phrase">Type DELETE to confirm</label>
@@ -937,7 +983,7 @@ export function OpportunitiesPage(): React.JSX.Element {
                           </p>
                         )}
                         <button className="button button-danger" type="submit" disabled={deleteBusy}>
-                          {deleteBusy ? "Deleting…" : "Delete selected jobs"}
+                          {deleteBusy ? "Deleting…" : `Delete selected jobs (${selected.size})`}
                         </button>
                       </div>
                     </details>
