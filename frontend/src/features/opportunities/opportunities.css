@@ -116,10 +116,9 @@ a.progress-metric:hover span {text-decoration:underline;color:var(--color-primar
 .job-row-body {flex:1 1 240px}
 .job-row-meta {margin:0;gap:4px 8px}
 .job-row-meta .job-row-detail {overflow-wrap:anywhere}
-.job-row-meta .ats-icon {width:18px;height:18px}
 .job-row-actions {flex-wrap:wrap;flex-shrink:1;max-width:100%;gap:6px 10px;margin-inline-start:auto;justify-content:flex-end}
 .job-row h3 {font-size:16px;margin-bottom:3px}
-@media(max-width:480px){.primary-nav{grid-template-columns:1fr}.job-row-actions{justify-content:flex-start}.progress-metric strong,.progress-remaining strong{font-size:18px}}
+@media(max-width:480px){.primary-nav{grid-template-columns:1fr}.job-row-body{flex-basis:auto}.job-row-actions{justify-content:flex-start;margin-inline-start:0}.progress-metric strong,.progress-remaining strong{font-size:18px}}
 
 /* React renders the remaining-queue metric as a <button> where the server
    template uses an anchor; neutralize native button chrome so the Quiet
