@@ -753,16 +753,8 @@ export function OpportunitiesPage(): React.JSX.Element {
                       <option value="company">Company A–Z</option>
                     </select>
                   </div>
-                </div>
-                {actionError !== "" && (
-                  <p className="job-form-error" role="alert">
-                    {actionError}
-                  </p>
-                )}
-                {moveNotice !== "" && <p className="form-notice">{moveNotice}</p>}
-                <div className="bulk-move-actions">
                   <button
-                    className="button button-secondary"
+                    className="button button-secondary list-select-toggle"
                     type="button"
                     onClick={() => {
                       if (selectingMultiple) {
@@ -777,50 +769,56 @@ export function OpportunitiesPage(): React.JSX.Element {
                   >
                     {selectingMultiple ? "Done selecting" : "Select multiple"}
                   </button>
-                  {selectingMultiple && (
-                    <>
-                      <p className="small-muted bulk-select-hint">
-                        Tick Select on each row for bulk move or deletion ({selected.size} selected).
-                        Jobs with confirmed submissions cannot be bulk deleted; applied,
-                        closed, or submitted jobs stay in History when moving.
-                      </p>
-                      {selectedHasUnmovable && selected.size > 0 && (
-                        <p className="job-form-error" role="alert">
-                          Selection includes a History job (applied, closed, or with recorded
-                          submissions). It stays in History; uncheck it to move the rest. No
-                          move was attempted. Eligible History jobs without submissions can
-                          still be deleted below.
-                        </p>
-                      )}
-                      <button
-                        className="button button-secondary"
-                        type="button"
-                        disabled={moveBusy || selected.size === 0 || selectedHasUnmovable}
-                        title={
-                          selectedHasUnmovable
-                            ? "Uncheck History jobs to enable moving"
-                            : undefined
-                        }
-                        onClick={() => void handleMoveSelected("focus")}
-                      >
-                        {moveBusy ? "Moving…" : `Move selected to Focus (${selected.size})`}
-                      </button>
-                      <button
-                        className="button button-secondary"
-                        type="button"
-                        disabled={moveBusy || selected.size === 0 || selectedHasUnmovable}
-                        title={
-                          selectedHasUnmovable
-                            ? "Uncheck History jobs to enable moving"
-                            : undefined
-                        }
-                        onClick={() => void handleMoveSelected("saved")}
-                      >
-                        {moveBusy ? "Moving…" : `Move selected to Saved (${selected.size})`}
-                      </button>
-                    </>
-                  )}
                 </div>
+                {actionError !== "" && (
+                  <p className="job-form-error" role="alert">
+                    {actionError}
+                  </p>
+                )}
+                {moveNotice !== "" && <p className="form-notice">{moveNotice}</p>}
+                {selectingMultiple && (
+                  <div className="bulk-move-actions">
+                    <p className="small-muted bulk-select-hint">
+                      Tick Select on each row for bulk move or deletion ({selected.size} selected).
+                      Jobs with confirmed submissions cannot be bulk deleted; applied,
+                      closed, or submitted jobs stay in History when moving.
+                    </p>
+                    {selectedHasUnmovable && selected.size > 0 && (
+                      <p className="job-form-error" role="alert">
+                        Selection includes a History job (applied, closed, or with recorded
+                        submissions). It stays in History; uncheck it to move the rest. No
+                        move was attempted. Eligible History jobs without submissions can
+                        still be deleted below.
+                      </p>
+                    )}
+                    <button
+                      className="button button-secondary"
+                      type="button"
+                      disabled={moveBusy || selected.size === 0 || selectedHasUnmovable}
+                      title={
+                        selectedHasUnmovable
+                          ? "Uncheck History jobs to enable moving"
+                          : undefined
+                      }
+                      onClick={() => void handleMoveSelected("focus")}
+                    >
+                      {moveBusy ? "Moving…" : `Move selected to Focus (${selected.size})`}
+                    </button>
+                    <button
+                      className="button button-secondary"
+                      type="button"
+                      disabled={moveBusy || selected.size === 0 || selectedHasUnmovable}
+                      title={
+                        selectedHasUnmovable
+                          ? "Uncheck History jobs to enable moving"
+                          : undefined
+                      }
+                      onClick={() => void handleMoveSelected("saved")}
+                    >
+                      {moveBusy ? "Moving…" : `Move selected to Saved (${selected.size})`}
+                    </button>
+                  </div>
+                )}
                 <form
                   className="bulk-delete-form"
                   aria-label="Delete selected test or unwanted jobs"
@@ -856,19 +854,24 @@ export function OpportunitiesPage(): React.JSX.Element {
                             </label>
                           )}
                           <div className="job-row-body">
+                            <h3>
+                              <a className="job-title" href={`/jobs/${job.id}`}>
+                                {job.displayTitle}
+                              </a>
+                            </h3>
                             <div className="job-row-meta">
                               <span className="company-label">{job.companyOrHost}</span>
                               <ATSPlatformIcon
                                 provider={job.provider}
                                 providerLabel={job.providerLabel}
                               />
+                              {job.host && job.host.toLowerCase() !== job.companyOrHost.toLowerCase() && (
+                                <span className="job-row-detail">{job.host}</span>
+                              )}
                               <span className={`status status-${job.stage}`}>{job.stageLabel}</span>
-                              {job.attention === "saved" && (
-                                <span className="priority-quiet">Saved for Later</span>
-                              )}
-                              {job.attention === "focus" && (
-                                <span className="priority-flag">Focus</span>
-                              )}
+                              <span className="job-row-detail">
+                                {job.selectedResumeId > 0 ? "Résumé selected" : "No résumé selected"}
+                              </span>
                               {job.priority === "high" && (
                                 <span className="priority-flag">High priority</span>
                               )}
@@ -876,18 +879,6 @@ export function OpportunitiesPage(): React.JSX.Element {
                                 <span className="priority-quiet">Low priority</span>
                               )}
                             </div>
-                            <h3>
-                              <a className="job-title" href={`/jobs/${job.id}`}>
-                                {job.displayTitle}
-                              </a>
-                            </h3>
-                            <p className="job-row-detail">
-                              {job.selectedResumeId > 0 ? "Resume selected" : "No resume selected"}{" "}
-                              <span className="dot-sep" aria-hidden="true">
-                                ·
-                              </span>{" "}
-                              {job.actionLabel}
-                            </p>
                           </div>
                           <div className="job-row-actions">
                             {job.attention === "focus" && (
@@ -926,7 +917,7 @@ export function OpportunitiesPage(): React.JSX.Element {
                                 Posting ↗
                               </a>
                             )}
-                            <a className="button button-secondary row-primary" href={`/jobs/${job.id}`}>
+                            <a className="button button-primary row-primary" href={`/jobs/${job.id}`}>
                               Open workspace <span aria-hidden="true">→</span>
                             </a>
                           </div>

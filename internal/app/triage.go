@@ -107,7 +107,7 @@ func recommendNext(jobs []Job) *NextAction {
 		return a.ID > b.ID
 	})
 	best := candidates[0]
-	title := best.Title
+	title := best.DisplayTitle()
 	if title == "" {
 		title = "Untitled opportunity"
 	}
