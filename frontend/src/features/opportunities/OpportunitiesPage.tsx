@@ -893,7 +893,7 @@ export function OpportunitiesPage(): React.JSX.Element {
                             {job.attention === "focus" && (
                               <button
                                 type="button"
-                                className="text-link row-secondary"
+                                className="button button-secondary row-primary"
                                 onClick={() => void handleMoveJob(job, "saved")}
                               >
                                 Save for Later
@@ -902,7 +902,7 @@ export function OpportunitiesPage(): React.JSX.Element {
                             {job.attention === "saved" && (
                               <button
                                 type="button"
-                                className="text-link row-secondary"
+                                className="button button-secondary row-primary"
                                 onClick={() => void handleMoveJob(job, "focus")}
                               >
                                 Work on this
