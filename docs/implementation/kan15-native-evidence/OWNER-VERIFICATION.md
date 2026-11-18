@@ -36,3 +36,16 @@ Independent focused review covered selection, deletion, imports and placement pe
 - [Normal Opportunities](opportunities-normal.jpg) and [bulk selection](opportunities-bulk-selection.jpg)
 - [Mixed import](import-mixed-result.jpg) and [unexpected request failure](import-request-failure.jpg)
 - [Prepared job after restart](prepared-after-restart.jpg), [Applied History](history-applied.jpg) and [left-tiled layout](opportunities-narrow.jpg)
+
+## Single-opportunity movement follow-up
+
+The current owner candidate is `/private/tmp/yourmove-workflow-native-A6vr3r/YourMoveWorkflow.app`. It embeds clean source commit `9e0bb36cdfea678525c4e7072ca73d07b5e2379a`. The ad-hoc signed executable SHA-256 is `00d9edd06e580296a8b5ff847f27c5e93511c4962d4618613c6164ddf01d66cf`. This bundle has a distinct name and identifier so it can be selected for verification. The Wails single-instance guard still requires other YourMove windows to be quit before launch.
+
+```sh
+YOURMOVE_DATA_DIR=/private/tmp/yourmove-workflow-native-A6vr3r/prepared-workspace \
+  /private/tmp/yourmove-workflow-native-A6vr3r/YourMoveWorkflow.app/Contents/MacOS/YourMoveWorkflow
+```
+
+On macOS 27.2.1, job 1 moved through **Save for Later** and **Work on this** in the normal list with selection mode off. Both views showed the Review stage and résumé selection. The workspace displayed the same saved answer at revision 1 and the selected letter. A before/after read-only SQLite check confirmed the same stage, selected résumé ID, answer, and letter. SQLite quick check passed. Bulk mode then moved job 1 in both directions separately and showed the protected deletion disclosure closed. Applied and Closed rows offered neither move action.
+
+The diff changes only the presentation of the two existing row buttons. Production TypeScript/Vite build, focused Go tests, diff review and signature verification passed. [Focus row](row-action-focus.jpg) · [Saved for Later row](row-action-saved.jpg)
