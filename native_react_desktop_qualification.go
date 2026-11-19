@@ -23,6 +23,10 @@ import (
 // This executable exists only for an explicitly marked synthetic workspace.
 // The receipt is local fixture evidence and never reaches an employer.
 func main() {
+	if os.Getenv("YOURMOVE_QUALIFY_KAN17") == "1" {
+		runNativeFillQualification()
+		return
+	}
 	root := os.Getenv("YOURMOVE_DATA_DIR")
 	if !filepath.IsAbs(root) || filepath.Clean(root) != root || !strings.HasPrefix(filepath.Base(root), "yourmove-react-native-") {
 		log.Fatal("invalid synthetic workspace")
