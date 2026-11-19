@@ -359,3 +359,42 @@ func TestGreenhouseLinkedInProfileDiscoveryAndCapture(t *testing.T) {
 		}
 	}
 }
+
+func TestGreenhouseWebsiteDiscoveryAndCapture(t *testing.T) {
+	public := schema.Field{ID: "application:question_9225924005", Label: "Website", Kind: "input_text", Required: false, Group: "application"}
+	live := schema.Field{ID: "browser:question_9225924005", Label: "Website", Kind: "text", Required: false, Group: "rendered form"}
+	story := schema.Field{ID: "application:question_9225927005", Label: "Why are you interested in joining Tailscale? Thoughtful responses are encouraged.", Kind: "textarea", Required: true, Group: "application"}
+	for _, f := range []schema.Field{public, live} {
+		if got := classifyApplicationField(f, true); got.Role != fieldCandidateProfile || got.ProfileAttribute != "website" {
+			t.Errorf("%s: classification = %+v, want Candidate Profile website", f.ID, got)
+		}
+		if fillEligibleField(f) {
+			t.Errorf("%s: classification must not qualify an unverified Fill target", f.ID)
+		}
+		if editable, _ := earlyQuestionWritable(f, true); editable {
+			t.Errorf("%s: numbered Website must not be an editable writing task", f.ID)
+		}
+		if category := writingCategory(f, true, false); category != "profile" {
+			t.Errorf("%s: writing category = %q, want profile", f.ID, category)
+		}
+	}
+	editable, _ := earlyQuestionWritable(story, true)
+	publicEditable, _ := earlyQuestionWritable(public, true)
+	early := []earlyApplicationQuestion{
+		{Field: public, SourceQuestionID: public.ID, DiscoverySource: "public_api", Editable: publicEditable, TriageCategory: writingCategory(public, true, publicEditable)},
+		{Field: story, SourceQuestionID: story.ID, DiscoverySource: "public_api", Editable: editable, TriageCategory: writingCategory(story, true, editable)},
+	}
+	rows, _ := unifyQuestionInventories([]preparedQuestion{{Field: live}}, early, true)
+	if len(rows) != 1 || rows[0].Label != story.Label || !rows[0].Editable || rows[0].TriageCategory != "answer" {
+		t.Errorf("Questions should show only the editable employer question, got %+v", rows)
+	}
+	for _, f := range []schema.Field{
+		{ID: live.ID, Label: "Describe your personal website project", Kind: "text"},
+		{ID: live.ID, Label: live.Label, Kind: "unsupported_ambiguous"},
+		{ID: "browser:field_3", Label: live.Label, Kind: "text"},
+	} {
+		if got := classifyApplicationField(f, true).Role; got != fieldUnsupported {
+			t.Errorf("%+v: role = %d, want manual review", f, got)
+		}
+	}
+}
