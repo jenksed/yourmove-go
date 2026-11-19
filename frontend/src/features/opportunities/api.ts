@@ -172,3 +172,38 @@ export async function openPosting(id: number): Promise<void> {
   });
   if (!response.ok) throw new Error(await readError(response));
 }
+
+export type PostingAvailabilityState = "open" | "closed" | "unknown";
+
+export interface PostingAvailability {
+  state: PostingAvailabilityState;
+  detail: string;
+  notice: string;
+}
+
+// KAN-16 availability preflight for the Opportunities list. Go owns the
+// verdict and persists confirmed closures; React renders the returned notice
+// verbatim and never treats unknown as closed.
+export async function checkPostingAvailability(id: number): Promise<PostingAvailability> {
+  const response = await fetch(`/api/jobs/${id}/availability`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error(await readError(response));
+  const data = (await response.json()) as Partial<PostingAvailability> & { state?: string };
+  const state: PostingAvailabilityState =
+    data.state === "closed" || data.state === "open" ? data.state : "unknown";
+  return {
+    state,
+    detail: typeof data.detail === "string" ? data.detail : "",
+    notice: typeof data.notice === "string" ? data.notice : "",
+  };
+}
+
+// Go-authoritative closure phrasing for the manual external open. The
+// persistent retirement notice always contains one of these fragments; other
+// terminal states (e.g. applied) keep their existing generic handling.
+export function isPostingClosedBlock(message: string): boolean {
+  return (
+    message.includes("no longer accepting applications") || message.includes("moved it to History")
+  );
+}

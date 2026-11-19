@@ -3,9 +3,11 @@ import { ATSPlatformIcon } from "../../shared/ATSPlatformIcon";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   addOpportunity,
+  checkPostingAvailability,
   deleteOpportunities,
   fetchOpportunities,
   importOpportunities,
+  isPostingClosedBlock,
   moveOpportunities,
   openPosting,
   reconcileBulkInput,
@@ -86,6 +88,15 @@ export function OpportunitiesPage(): React.JSX.Element {
   const [moveNotice, setMoveNotice] = useState<string>("");
 
   const [actionError, setActionError] = useState<string>("");
+  // KAN-16 closure preflight for every Posting entry. A confirmed closure
+  // stays in this workspace as a persistent notice with History actions and
+  // never navigates away; unknown keeps the manual path with a warning.
+  const [checkingId, setCheckingId] = useState<number | null>(null);
+  const [closureNotice, setClosureNotice] = useState<string>("");
+  const [closedJobId, setClosedJobId] = useState<number | null>(null);
+  const [closedJobTitle, setClosedJobTitle] = useState<string>("");
+  const [postingWarning, setPostingWarning] = useState<string>("");
+  const [manualFallback, setManualFallback] = useState<{ id: number; url: string } | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -377,15 +388,113 @@ export function OpportunitiesPage(): React.JSX.Element {
     [selected, deleteConfirm, deletePhrase, reload],
   );
 
+  // Desktop Posting: Go availability preflight first, then the Go-owned
+  // system-browser open (which re-checks). A 409 closure between the two
+  // refreshes the list and persists the closure notice with History actions;
+  // success navigates to the workspace. Unknown never blocks.
   const handleOpenPosting = useCallback(async (job: OpportunityJob) => {
     setActionError("");
+    setPostingWarning("");
+    setManualFallback(null);
+    setCheckingId(job.id);
     try {
-      await openPosting(job.id);
+      const availability = await checkPostingAvailability(job.id);
+      if (availability.state === "closed") {
+        setClosureNotice(availability.notice !== "" ? availability.notice : availability.detail);
+        setClosedJobId(job.id);
+        setClosedJobTitle(job.displayTitle);
+        await reload();
+        return;
+      }
+      if (availability.state === "unknown" && availability.detail !== "") {
+        setPostingWarning(availability.detail);
+      }
+      try {
+        await openPosting(job.id);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Could not open posting";
+        await reload();
+        if (isPostingClosedBlock(message)) {
+          setClosureNotice(message);
+          setClosedJobId(job.id);
+          setClosedJobTitle(job.displayTitle);
+        } else {
+          setActionError(message);
+        }
+        return;
+      }
       window.location.href = `/jobs/${job.id}`;
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Could not open posting");
+    } finally {
+      setCheckingId(null);
     }
-  }, []);
+  }, [reload]);
+
+  // Browser-mode Posting: the same Go availability gate guards the manual
+  // external open. The tab is pre-opened synchronously in the click gesture
+  // so the async gate does not trigger popup blockers; it is closed on
+  // closure/failure and navigated noopener-safe on success. A blocked popup
+  // surfaces a truthful inline fallback link and never leaks a blank window.
+  // Unknown keeps the manual path with a warning.
+  const handleExternalOpen = useCallback((job: OpportunityJob) => {
+    setActionError("");
+    setPostingWarning("");
+    setManualFallback(null);
+    let pending: Window | null = null;
+    try {
+      pending = window.open("about:blank", "_blank");
+    } catch {
+      pending = null;
+    }
+    if (pending) {
+      try {
+        pending.opener = null;
+      } catch {
+        // about:blank is same-origin; ignore hardening failures.
+      }
+    }
+    setCheckingId(job.id);
+    void (async () => {
+      try {
+        const availability = await checkPostingAvailability(job.id);
+        if (availability.state === "closed") {
+          try {
+            if (pending && !pending.closed) pending.close();
+          } catch {
+            // Ignore close failures; the tab is already gone.
+          }
+          setClosureNotice(availability.notice !== "" ? availability.notice : availability.detail);
+          setClosedJobId(job.id);
+          setClosedJobTitle(job.displayTitle);
+          await reload();
+          return;
+        }
+        if (availability.state === "unknown" && availability.detail !== "") {
+          setPostingWarning(availability.detail);
+        }
+        if (pending && !pending.closed) {
+          pending.location.href = job.url;
+        } else {
+          setManualFallback({ id: job.id, url: job.url });
+          setPostingWarning((previous) =>
+            previous !== ""
+              ? previous
+              : "Your browser blocked the new tab. Use the manual link below to open the posting.",
+          );
+        }
+      } catch (error) {
+        try {
+          if (pending && !pending.closed) pending.close();
+        } catch {
+          // Ignore close failures here as well.
+        }
+        setActionError(error instanceof Error ? error.message : "Could not check the posting.");
+      } finally {
+        setCheckingId(null);
+      }
+    })();
+  }, [reload]);
 
   return (
     <div className="app-shell">
@@ -788,6 +897,54 @@ export function OpportunitiesPage(): React.JSX.Element {
                   </p>
                 )}
                 {moveNotice !== "" && <p className="form-notice">{moveNotice}</p>}
+                {closureNotice !== "" && (
+                  <div className="writing-notice" role="alert" aria-label="Posting closed">
+                    <p>
+                      {closedJobTitle !== "" && <strong>{closedJobTitle} — </strong>}
+                      {closureNotice}
+                    </p>
+                    <div className="form-actions">
+                      <button
+                        className="button button-secondary"
+                        type="button"
+                        onClick={() => {
+                          setAttention("history");
+                          setStage("closed");
+                        }}
+                      >
+                        View in History → Closed
+                      </button>
+                      <button
+                        className="button button-secondary"
+                        type="button"
+                        onClick={() => {
+                          setAttention("focus");
+                        }}
+                      >
+                        Return to Focus
+                      </button>
+                      {closedJobId !== null && (
+                        <a className="button button-secondary" href={`/jobs/${closedJobId}`}>
+                          Open workspace →
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {postingWarning !== "" && closureNotice === "" && checkingId === null && (
+                  <p className="writing-notice" role="status">
+                    {postingWarning}
+                  </p>
+                )}
+                {manualFallback !== null && closureNotice === "" && (
+                  <p className="writing-notice" role="status">
+                    Your browser blocked the new tab.{" "}
+                    <a href={manualFallback.url} target="_blank" rel="noopener noreferrer">
+                      Open the posting manually
+                    </a>{" "}
+                    — viewing sends no saved material.
+                  </p>
+                )}
                 {selectingMultiple && (
                   <div className="bulk-move-actions">
                     <p className="small-muted bulk-select-hint">
@@ -915,19 +1072,20 @@ export function OpportunitiesPage(): React.JSX.Element {
                               <button
                                 type="button"
                                 className="text-link row-secondary posting-open-button"
+                                disabled={checkingId === job.id}
                                 onClick={() => void handleOpenPosting(job)}
                               >
-                                Posting ↗
+                                {checkingId === job.id ? "Checking…" : "Posting ↗"}
                               </button>
                             ) : (
-                              <a
-                                className="text-link row-secondary"
-                                href={job.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
+                              <button
+                                type="button"
+                                className="text-link row-secondary posting-open-button"
+                                disabled={checkingId === job.id}
+                                onClick={() => handleExternalOpen(job)}
                               >
-                                Posting ↗
-                              </a>
+                                {checkingId === job.id ? "Checking…" : "Posting ↗"}
+                              </button>
                             )}
                             <a className="button button-primary row-primary" href={`/jobs/${job.id}`}>
                               Open workspace <span aria-hidden="true">→</span>

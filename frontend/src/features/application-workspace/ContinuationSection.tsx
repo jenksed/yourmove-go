@@ -5,7 +5,7 @@
 // personally completed act recorded separately.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { openPosting } from "../opportunities/api";
+import { isPostingClosedBlock, openPosting } from "../opportunities/api";
 import {
   authorizeContinue,
   browserAction,
@@ -66,6 +66,7 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
   const [checking, setChecking] = useState<"view" | "fill" | null>(null);
   const [closureNotice, setClosureNotice] = useState<string>("");
   const [availabilityWarning, setAvailabilityWarning] = useState<string>("");
+  const [manualFallbackUrl, setManualFallbackUrl] = useState<string>("");
   const pollRef = useRef<number | null>(null);
   const requestRef = useRef<number>(0);
 
@@ -93,6 +94,7 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
     setActionNotice("");
     setClosureNotice("");
     setAvailabilityWarning("");
+    setManualFallbackUrl("");
     setChecking(null);
     setConfirmStop(false);
   }, [jobId]);
@@ -238,14 +240,46 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
   // persists the agreed notice with History/Focus actions and never launches
   // externally. Unknown keeps the applicant's manual path with a truthful
   // warning. Viewing never sends saved material and mints no Fill authority.
+  // The browser tab is pre-opened synchronously in the click gesture so the
+  // later async gate does not trigger popup blockers; it is closed on every
+  // closure/failure path and navigated noopener-safe on success. A blocked
+  // popup surfaces a truthful inline fallback link (second user click) and
+  // never leaks a blank window.
   const runManualOpenWithCheck = useCallback(async () => {
     if (!snapshot) return;
     setActionError("");
     setAvailabilityWarning("");
+    setManualFallbackUrl("");
     setChecking("view");
+    // Desktop uses the Go system-browser open and never needs a tab.
+    const needsTab = !snapshot.desktop && typeof window !== "undefined";
+    let pending: Window | null = null;
+    if (needsTab) {
+      try {
+        pending = window.open("about:blank", "_blank");
+      } catch {
+        pending = null;
+      }
+      if (pending) {
+        try {
+          pending.opener = null;
+        } catch {
+          // about:blank is same-origin; ignore hardening failures.
+        }
+      }
+    }
+    const closePending = () => {
+      try {
+        if (pending && !pending.closed) pending.close();
+      } catch {
+        // Ignore close failures; the tab is already gone or inaccessible.
+      }
+      pending = null;
+    };
     try {
       const availability = await checkAvailability(jobId);
       if (availability.state === "closed") {
+        closePending();
         setClosureNotice(availability.notice !== "" ? availability.notice : availability.detail);
         await reload();
         return;
@@ -254,17 +288,48 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
         setAvailabilityWarning(availability.detail);
       }
       if (snapshot.desktop) {
+        closePending();
         try {
           await openPosting(jobId);
         } catch (error) {
-          setActionError(error instanceof Error ? error.message : "Could not open the application.");
+          const message = error instanceof Error ? error.message : "Could not open the application.";
+          // The Go gate can retire the posting between the preflight and
+          // the open (second check). Surface that as the persistent closure
+          // with a refreshed snapshot, never as a generic error or a launch.
+          if (isPostingClosedBlock(message)) {
+            setClosureNotice(message);
+          } else {
+            setActionError(message);
+          }
+          await reload();
         }
       } else if (typeof window !== "undefined") {
-        window.open(snapshot.destination, "_blank", "noopener,noreferrer");
+        if (pending && !pending.closed) {
+          pending.location.href = snapshot.destination;
+          // Ownership transferred to the navigated tab; the finally block
+          // must not close it.
+          pending = null;
+        } else {
+          pending = null;
+          setManualFallbackUrl(snapshot.destination);
+          setAvailabilityWarning((previous) =>
+            previous !== ""
+              ? previous
+              : "Your browser blocked the new tab. Use the manual link below to open the posting.",
+          );
+        }
       }
     } catch (error) {
+      closePending();
       setActionError(error instanceof Error ? error.message : "Could not check the posting.");
     } finally {
+      // Any retained blank handle is a leak: close it. Navigated tabs were
+      // nulled above so they stay open.
+      try {
+        if (pending && !pending.closed) pending.close();
+      } catch {
+        // Ignore close failures here as well.
+      }
       setChecking(null);
     }
   }, [snapshot, jobId, reload]);
@@ -414,6 +479,15 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
       {availabilityWarning !== "" && persistentClosure === "" && checking === null && (
         <p className="writing-notice" role="status">
           {availabilityWarning}
+        </p>
+      )}
+      {manualFallbackUrl !== "" && persistentClosure === "" && (
+        <p className="writing-notice" role="status">
+          Your browser blocked the new tab.{" "}
+          <a href={manualFallbackUrl} target="_blank" rel="noopener noreferrer">
+            Open the posting manually
+          </a>{" "}
+          — viewing sends no saved material.
         </p>
       )}
 
