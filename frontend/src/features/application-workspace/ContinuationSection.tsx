@@ -391,7 +391,7 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
         : activeTransfer
           ? "Browser closed"
           : !snapshot.editingAllowed
-              ? "Application recorded as complete"
+              ? (snapshot.closed && !snapshot.applied ? "Posting closed" : "Application recorded as complete")
               : !snapshot.ownsPosting
                 ? "Apply on the employer website"
                 : !hasEligibleTransfer
@@ -401,7 +401,7 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
   // summarizePreparation: closed/applied returns before the unsupported
   // branch), so a recorded-complete job never directs to View Application.
   const explanation = !browser.active && !activeTransfer && !snapshot.editingAllowed
-    ? "This application is recorded as complete. Transfer is closed; history remains below."
+    ? (snapshot.closed && !snapshot.applied ? "This posting is closed. Your saved work remains available." : "This application is recorded as complete. Transfer is closed; history remains below.")
     : !browser.active && !activeTransfer && !snapshot.ownsPosting
       ? "Automatic filling is unavailable on this site. Use View Application to apply manually; your saved materials are listed below."
       : !browser.active && !activeTransfer && !hasEligibleTransfer
@@ -493,7 +493,7 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
 
       <div className="workspace-source-actions">
         {!snapshot.editingAllowed && !browser.active ? (
-          <small>This application is recorded as complete.</small>
+          <small>{snapshot.closed && !snapshot.applied ? "This posting is closed." : "This application is recorded as complete."}</small>
         ) : !snapshot.ownsPosting ? (
           <button className="button button-secondary" type="button" disabled={busy || checking !== null} onClick={() => void runManualOpenWithCheck()}>
             {checkingView ? "Checking posting…" : "View Application"}
