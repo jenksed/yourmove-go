@@ -336,6 +336,89 @@ func TestRoutineRecheckRetiresConfirmedClosed(t *testing.T) {
 	}
 }
 
+// A manual external open (ownsPosting=false) behind the workspace "View
+// Application" action runs the same Go availability gate: a confirmed
+// closure blocks every open endpoint before any system-browser effect and
+// persists the History retirement, while an inconclusive lookup keeps the
+// applicant's manual path with no retirement.
+func TestManualExternalOpenClosedBlocksWithoutLaunch(t *testing.T) {
+	a, _ := testWorkspace(t)
+	// Error-board redirect: not owned for browser/transfer scope, but the
+	// provider closure is deterministic through the preflight gate.
+	const manualClosed = "https://job-boards.greenhouse.io/kan16manualclosed?error=true"
+	kan16SeedJob(t, a, manualClosed)
+	a.enrichmentFetch = kan16FixtureFetch("closed", "synthetic provider-confirmed closure")
+	var opened []string
+	a.openPosting = func(link string) error { opened = append(opened, link); return nil }
+
+	// React workspace manual path (desktop JSON API).
+	if rec := kan16PostJSON(a, "/api/opportunities/1/open", `{}`); rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "no longer accepting applications") {
+		t.Fatalf("manual open not blocked: %d %s", rec.Code, rec.Body.String())
+	}
+	// Legacy desktop form open.
+	if rec := postApp(newDesktopMux(a), "/jobs/1/open", url.Values{}, "wails://localhost", "1"); rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "no longer accepting applications") {
+		t.Fatalf("legacy manual open not blocked: %d %s", rec.Code, rec.Body.String())
+	}
+	if len(opened) != 0 {
+		t.Fatalf("closed manual posting launched externally: %v", opened)
+	}
+	job, err := a.jobByID(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.Stage != StageClosed || job.SourceStatus != "closed" || job.Attention() != "history" || closureNoticeFor(job) != postingClosedNotice {
+		t.Fatalf("manual closure not retired with the agreed notice: %+v", job)
+	}
+	if job.Title != "Synthetic role" || !job.TitleManual || job.Description != "Applicant-saved description." {
+		t.Fatalf("manual closure lost prep: %+v", job)
+	}
+}
+
+func TestManualExternalOpenUnknownFallsBack(t *testing.T) {
+	a, _ := testWorkspace(t)
+	const manualUnknown = "https://example.com/jobs/kan16-manual-unknown"
+	if err := a.saveJob(Job{
+		URL: manualUnknown, Host: "example.com",
+		Title: "Synthetic role", TitleManual: true,
+		Company: "Fixture Employer", CompanyManual: true,
+		Description: "Applicant-saved description.", DescriptionManual: true,
+		SourceStatus: "not_checked",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	a.enrichmentFetch = kan16FixtureFetch("unsupported", "synthetic unsupported provider")
+	var opened []string
+	a.openPosting = func(link string) error { opened = append(opened, link); return nil }
+
+	rec := httptest.NewRecorder()
+	newMux(a).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "http://localhost/api/jobs/1/availability", nil))
+	var availability struct {
+		State  string `json:"state"`
+		Detail string `json:"detail"`
+		Closed bool   `json:"closed"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &availability); err != nil {
+		t.Fatal(err)
+	}
+	if availability.State != "unknown" || availability.Closed || !strings.Contains(availability.Detail, "manual") {
+		t.Fatalf("manual unknown misreported: %d %s", rec.Code, rec.Body.String())
+	}
+	// Both open endpoints keep the applicant's manual path: no block, the
+	// exact saved URL launches, and nothing retires.
+	if rec := kan16PostJSON(a, "/api/opportunities/1/open", `{}`); rec.Code != http.StatusOK {
+		t.Fatalf("manual unknown open blocked: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := postApp(newDesktopMux(a), "/jobs/1/open", url.Values{}, "wails://localhost", "1"); rec.Code != http.StatusOK {
+		t.Fatalf("legacy manual unknown open blocked: %d %s", rec.Code, rec.Body.String())
+	}
+	if len(opened) != 2 || opened[0] != manualUnknown || opened[1] != manualUnknown {
+		t.Fatalf("manual fallback did not launch the saved URL: %v", opened)
+	}
+	if job, err := a.jobByID(1); err != nil || job.Stage == StageClosed {
+		t.Fatalf("unknown fallback retired the job: %+v %v", job, err)
+	}
+}
+
 // An unretired saved Greenhouse error-board redirect carries deterministic
 // provider closure evidence without any network: the same redirect intake and
 // enrichment already retire. The single-click preflight must reach that

@@ -328,6 +328,15 @@ func (a *App) opportunityOpenAPI(w http.ResponseWriter, r *http.Request) {
 		writeOpportunityError(w, http.StatusInternalServerError, "Unable to load saved posting")
 		return
 	}
+	// KAN-16 availability preflight: a provider-confirmed closure blocks the
+	// manual external open before any system-browser effect. Inconclusive
+	// outcomes never block the applicant's manual access path.
+	refreshed, block := a.ensurePostingOpen(r.Context(), id)
+	if block != "" {
+		writeOpportunityError(w, http.StatusConflict, block)
+		return
+	}
+	job = refreshed
 	if _, _, err := normalizePostingURL(job.URL); err != nil {
 		writeOpportunityError(w, http.StatusUnprocessableEntity, "Saved job URL is invalid; edit your job data before opening")
 		return

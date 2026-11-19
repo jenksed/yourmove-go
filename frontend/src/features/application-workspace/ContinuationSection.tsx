@@ -233,6 +233,42 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
     }
   }, [snapshot, jobId, reload, runBrowser]);
 
+  // Manual View Application: the same Go availability preflight guards the
+  // external open. Checking appears inline immediately; a confirmed closure
+  // persists the agreed notice with History/Focus actions and never launches
+  // externally. Unknown keeps the applicant's manual path with a truthful
+  // warning. Viewing never sends saved material and mints no Fill authority.
+  const runManualOpenWithCheck = useCallback(async () => {
+    if (!snapshot) return;
+    setActionError("");
+    setAvailabilityWarning("");
+    setChecking("view");
+    try {
+      const availability = await checkAvailability(jobId);
+      if (availability.state === "closed") {
+        setClosureNotice(availability.notice !== "" ? availability.notice : availability.detail);
+        await reload();
+        return;
+      }
+      if (availability.state === "unknown" && availability.detail !== "") {
+        setAvailabilityWarning(availability.detail);
+      }
+      if (snapshot.desktop) {
+        try {
+          await openPosting(jobId);
+        } catch (error) {
+          setActionError(error instanceof Error ? error.message : "Could not open the application.");
+        }
+      } else if (typeof window !== "undefined") {
+        window.open(snapshot.destination, "_blank", "noopener,noreferrer");
+      }
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Could not check the posting.");
+    } finally {
+      setChecking(null);
+    }
+  }, [snapshot, jobId, reload]);
+
   // Single-click Fill: same preflight, then the ordinary authorized Fill.
   // A confirmed closure blocks every transfer; unknown stays non-blocking.
   const runFillWithCheck = useCallback(async () => {
@@ -385,9 +421,9 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
         {!snapshot.editingAllowed && !browser.active ? (
           <small>This application is recorded as complete.</small>
         ) : !snapshot.ownsPosting ? (
-          snapshot.desktop ? (
-            <button className="button button-secondary" type="button" onClick={() => void openPosting(jobId).catch((error: unknown) => setActionError(error instanceof Error ? error.message : "Could not open the application."))}>View Application</button>
-          ) : <a className="button button-secondary" href={snapshot.destination} target="_blank" rel="noreferrer">View Application</a>
+          <button className="button button-secondary" type="button" disabled={busy || checking !== null} onClick={() => void runManualOpenWithCheck()}>
+            {checkingView ? "Checking posting…" : "View Application"}
+          </button>
         ) : (
           <>
             <button className="button button-secondary" type="button" disabled={busy || checking !== null} onClick={() => void runViewWithCheck()}>
