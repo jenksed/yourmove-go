@@ -423,7 +423,8 @@ export function OpportunitiesPage(): React.JSX.Element {
         }
         return;
       }
-      window.location.href = `/jobs/${job.id}`;
+      // Keep an inconclusive result visible after opening the external page.
+      if (availability.state !== "unknown") window.location.href = `/jobs/${job.id}`;
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Could not open posting");
     } finally {
@@ -931,12 +932,12 @@ export function OpportunitiesPage(): React.JSX.Element {
                     </div>
                   </div>
                 )}
-                {postingWarning !== "" && closureNotice === "" && checkingId === null && (
+                {postingWarning !== "" && checkingId === null && (
                   <p className="writing-notice" role="status">
                     {postingWarning}
                   </p>
                 )}
-                {manualFallback !== null && closureNotice === "" && (
+                {manualFallback !== null && (
                   <p className="writing-notice" role="status">
                     Your browser blocked the new tab.{" "}
                     <a href={manualFallback.url} target="_blank" rel="noopener noreferrer">
