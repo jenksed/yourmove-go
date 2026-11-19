@@ -3,6 +3,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -82,6 +83,22 @@ func TestNativeReactFixtureKan16OptIn(t *testing.T) {
 	}
 	if openJob.SelectedResumeID == 0 || closedJob.SelectedResumeID == 0 || appliedJob.SelectedResumeID == 0 {
 		t.Fatalf("resume not assigned: open=%d closed=%d applied=%d", openJob.SelectedResumeID, closedJob.SelectedResumeID, appliedJob.SelectedResumeID)
+	}
+	resume, err := a.resumeByID(closedJob.SelectedResumeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resumePath := filepath.Join(docs, resume.StoredName)
+	resumeBytes, err := os.ReadFile(resumePath)
+	if err != nil || len(resumeBytes) == 0 {
+		t.Fatalf("read selected résumé bytes: %v", err)
+	}
+	assertResumeBytes := func(stage string) {
+		t.Helper()
+		got, err := os.ReadFile(resumePath)
+		if err != nil || !bytes.Equal(got, resumeBytes) {
+			t.Fatalf("selected résumé bytes changed %s: %v", stage, err)
+		}
 	}
 	var answers int
 	if err := db.QueryRow("SELECT count(*) FROM application_answers WHERE job_id=?", openJob.ID).Scan(&answers); err != nil || answers != 1 {
@@ -184,6 +201,7 @@ func TestNativeReactFixtureKan16OptIn(t *testing.T) {
 	if retired.SelectedResumeID != closedJob.SelectedResumeID {
 		t.Fatalf("closed resume changed on retirement: %d vs %d", retired.SelectedResumeID, closedJob.SelectedResumeID)
 	}
+	assertResumeBytes("after retirement")
 	var afterDest, afterProvider, afterKey, afterLabel, afterAnswer string
 	var afterRevision int64
 	if err := db.QueryRow(`SELECT destination,provider,question_key,label,answer,revision FROM application_answers WHERE job_id=?`, closedJob.ID).Scan(&afterDest, &afterProvider, &afterKey, &afterLabel, &afterAnswer, &afterRevision); err != nil {
@@ -226,6 +244,7 @@ func TestNativeReactFixtureKan16OptIn(t *testing.T) {
 	if err != nil || rebound.Stage != StageClosed || rebound.SelectedResumeID != closedJob.SelectedResumeID {
 		t.Fatalf("rebind changed closed retirement: %+v %v", rebound, err)
 	}
+	assertResumeBytes("after rebind")
 	var rebindDest, rebindProvider, rebindKey, rebindLabel, rebindAnswer string
 	var rebindRevision int64
 	if err := db.QueryRow(`SELECT destination,provider,question_key,label,answer,revision FROM application_answers WHERE job_id=?`, closedJob.ID).Scan(&rebindDest, &rebindProvider, &rebindKey, &rebindLabel, &rebindAnswer, &rebindRevision); err != nil {
