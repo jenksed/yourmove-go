@@ -1,9 +1,13 @@
 package app
 
 import (
-	"github.com/jenksed/yourmove-go/internal/application/schema"
+	"regexp"
 	"strings"
+
+	"github.com/jenksed/yourmove-go/internal/application/schema"
 )
+
+var numberedProfileQuestionID = regexp.MustCompile(`^question_[0-9]+$`)
 
 // Field role depends only on the observed control, never on a value, saved
 // answer, provenance, profile approval, or previous Fill. Role grants no
@@ -43,6 +47,14 @@ func classifyApplicationField(f schema.Field, unique bool) applicationFieldClass
 	}
 	if key := additionalProfileAttribute(f); key != "" {
 		return applicationFieldClassification{fieldCandidateProfile, key}
+	}
+	// Greenhouse publishes LinkedIn Profile as a numbered text field and
+	// renders the same name on its text input. Recognize the exact shape for
+	// routing only. Numbered controls still lack a qualified profile Fill target.
+	if candidateProfileLabel(f.Label) == "linkedin profile" && numberedProfileQuestionID.MatchString(profileQuestionIdentity(f.ID)) &&
+		((strings.HasPrefix(f.ID, "application:question_") && f.Kind == "input_text") ||
+			(strings.HasPrefix(f.ID, "browser:question_") && f.Kind == "text")) {
+		return applicationFieldClassification{fieldCandidateProfile, "linkedin"}
 	}
 	if !stableQuestionIdentity(f, unique) {
 		return applicationFieldClassification{Role: fieldUnsupported}
