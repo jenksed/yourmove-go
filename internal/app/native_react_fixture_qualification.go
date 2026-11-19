@@ -291,8 +291,11 @@ func configureNativeKan16Fixture(a *App, root string, count int, fresh bool) err
 			return err
 		}
 	}
-	// One saved answer plus a selected cover letter on the open fixture so
-	// the continuation scope is non-empty during qualification.
+	// Saved answers plus selected cover letters on the open and closable
+	// fixtures so the continuation scope is non-empty during qualification.
+	// The closable fixture mirrors the open fixture's preparation with its
+	// own per-job field identity and destination, so retirement must preserve
+	// exact saved writing and associations.
 	field := schema.Field{ID: "browser:motivation", Label: "Why do you want to join this team?", Kind: "textarea"}
 	if _, err := a.saveInspection(openID, schema.Result{
 		Platform: "greenhouse", Source: "browser", Completeness: "rendered_partial",
@@ -305,9 +308,26 @@ func configureNativeKan16Fixture(a *App, root string, count int, fresh bool) err
 		"I want to join this team because the on-call work matches my reliability experience."); err != nil {
 		return err
 	}
+	if _, err := a.saveInspection(closedID, schema.Result{
+		Platform: "greenhouse", Source: "browser", Completeness: "rendered_partial",
+		ApplicationURL: kan16QualClosedPosting, Fields: []schema.Field{field},
+	}); err != nil {
+		return err
+	}
+	if _, err := a.db.Exec(`INSERT INTO application_answers(job_id,destination,provider,question_key,label,answer,revision) VALUES(?,?, 'greenhouse',?,?,?,1)`,
+		closedID, kan16QualClosedPosting, questionKey(kan16QualClosedPosting, "greenhouse", field), field.Label,
+		"I want to join this team because the on-call work matches my reliability experience."); err != nil {
+		return err
+	}
 	descDigest := sha256.Sum256([]byte(description))
 	if _, err := a.db.Exec(`INSERT INTO cover_letters(job_id,body,provider,model,master_resume_id,master_sha256,role_resume_id,role_sha256,job_description_sha256,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)`,
 		openID, "Dear hiring team,\n\nThis is a synthetic cover letter for KAN-16 closure qualification only.\n\nSynthetic Applicant",
+		"fixture", "none", resume.ID, resume.SHA256, resume.ID, resume.SHA256,
+		fmt.Sprintf("%x", descDigest), time.Now().UTC().Format(time.RFC3339)); err != nil {
+		return err
+	}
+	if _, err := a.db.Exec(`INSERT INTO cover_letters(job_id,body,provider,model,master_resume_id,master_sha256,role_resume_id,role_sha256,job_description_sha256,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)`,
+		closedID, "Dear hiring team,\n\nThis is a synthetic cover letter for KAN-16 closure qualification only.\n\nSynthetic Applicant",
 		"fixture", "none", resume.ID, resume.SHA256, resume.ID, resume.SHA256,
 		fmt.Sprintf("%x", descDigest), time.Now().UTC().Format(time.RFC3339)); err != nil {
 		return err
