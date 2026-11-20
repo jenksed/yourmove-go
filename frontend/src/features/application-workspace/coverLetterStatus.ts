@@ -1,7 +1,7 @@
 export function coverLetterStatusText(letterStatus: string, ownsPosting: boolean): string {
   switch (letterStatus) {
     case "complete":
-      return "Selected and verified in the employer browser; inspect it before submitting personally.";
+      return "A letter was selected and verified in the employer browser earlier in this session. Check the browser copy; it may differ from the current saved letter.";
     case "attention":
       return "Transfer attempted, but its result is uncertain. Inspect it in the employer browser.";
     case "waiting":

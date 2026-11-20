@@ -23,10 +23,19 @@ test("unsupported posting requires manual letter handling", () => {
   assert.match(coverLetterStatusText("", false), /unavailable.*Attach.*manually/i);
 });
 
-test("verified transfer retains accurate per-item feedback", () => {
-  const text = coverLetterStatusText("complete", true);
-  assert.match(text, /Selected and verified in the employer browser/);
-  assert.match(text, /inspect it before submitting personally/);
+test("verified transfer remains historical after the saved letter is edited and Apply is reopened", () => {
+  const savedLetter = { body: "Saved letter revision present at transfer time." };
+  const transfer = { letter_status: "complete" };
+  const transferredBody = savedLetter.body;
+  savedLetter.body = "Edited saved letter revision after the verified transfer.";
+  assert.notEqual(savedLetter.body, transferredBody);
+
+  // The continuation exposes the session outcome but not the transferred
+  // revision hash, so the completed status must describe only that history.
+  const reopenedApplyStatus = coverLetterStatusText(transfer.letter_status, true);
+  assert.match(reopenedApplyStatus, /earlier in this session/);
+  assert.match(reopenedApplyStatus, /may differ from the current saved letter/);
+  assert.doesNotMatch(reopenedApplyStatus, /current saved letter.{0,20}(selected|verified)/i);
 });
 
 test("attempted and pending transfers do not claim success", () => {
