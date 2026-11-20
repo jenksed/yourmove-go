@@ -13,14 +13,14 @@ opportunities, résumés, answers, cover letters, and records of what you person
 </p>
 
 <p align="center">
-  <a href="https://github.com/jenksed/yourmove-go/releases/download/v0.1.0/YourMove-0.1.0-macOS-arm64-installer-r2.dmg"><strong>Download for Mac</strong></a> ·
+  <a href="https://github.com/jenksed/yourmove-go/releases/download/v0.3.0/YourMove-0.3.0-macOS-arm64-unnotarized.zip"><strong>Download for Mac</strong></a> ·
   <a href="https://www.yourmove.run/docs/availability/">Installation guide</a> ·
   <a href="#one-workspace-for-the-whole-application">See how it works</a>
 </p>
 
-<p align="center">v0.2.0 is being revised; downloads currently point to the last publicly available qualified release, v0.1.0.</p>
+<p align="center">v0.3.0 build 1 is available as a manual-install technical alpha. It is not a notarized macOS release.</p>
 
-<p align="center"><sub>macOS Technical Alpha v0.1.0 · Apple Silicon · Unnotarized testers build</sub></p>
+<p align="center"><sub>v0.3.0 build 1 · Apple Silicon · macOS 26+ · Ad-hoc signed / unnotarized</sub></p>
 
 ---
 
@@ -36,7 +36,9 @@ Nothing here applies for you, submits for you, or decides for you. **The applica
 
 ![Opportunities in YourMove: a suggested next step, saved postings, and résumé status at a glance.](docs/images/readme-opportunities.png)
 
-*Genuine interface, synthetic example data.*
+*Interface screenshot from an earlier build, using synthetic data. v0.3.0 includes updated Opportunities and Questions layouts.*
+
+**New in v0.3.0:** Focus, Saved for Later, and History simplify opportunity review; the Questions workspace better protects unsaved writing; posting-closure feedback and explicit profile Fill authorization help keep the next action clear. [Full release notes](https://github.com/jenksed/yourmove-go/releases/tag/v0.3.0).
 
 A guided pass through one application:
 
@@ -62,21 +64,24 @@ A guided pass through one application:
 
 ## Try the alpha
 
-**Requires:** Apple Silicon Mac, macOS 26+. Chrome/Chromium only matters for assisted form filling.
+**Current download:** [YourMove v0.3.0 build 1 for macOS (Apple Silicon)](https://github.com/jenksed/yourmove-go/releases/download/v0.3.0/YourMove-0.3.0-macOS-arm64-unnotarized.zip) · [release notes and checksums](https://github.com/jenksed/yourmove-go/releases/tag/v0.3.0)
 
-1. Download [**YourMove-0.1.0-macOS-arm64-installer-r2.dmg**](https://github.com/jenksed/yourmove-go/releases/download/v0.1.0/YourMove-0.1.0-macOS-arm64-installer-r2.dmg) ([checksum `63c5ede4…11a2d41c`](https://github.com/jenksed/yourmove-go/releases/download/v0.1.0/YourMove-0.1.0-macOS-arm64-installer-r2.dmg.sha256)).
-2. Open the DMG, drag YourMove into Applications.
-3. Open it. macOS will warn that the app is unverified — this alpha is ad-hoc signed, not notarized. Choose **Done** (not Move to Trash).
-4. Open **System Settings → Privacy & Security** and choose **Open Anyway** for YourMove — a per-app approval, not a settings change — then open the app again.
+**Requires:** Apple Silicon Mac running macOS 26.0 or later. A compatible installed Chrome/Chromium browser is required only for assisted employer-form operations. This ZIP is **ad-hoc signed and not notarized**; Intel Macs and Windows/Linux are not supported by this release.
 
-Full steps with screenshots: [installation guide](https://www.yourmove.run/docs/availability/). A plain ZIP of the same build is on the [release page](https://github.com/jenksed/yourmove-go/releases/tag/v0.1.0).
+1. Download the v0.3.0 ZIP. Verify its SHA-256 before installing: `b270101ca81f33a19f7829951c0061976ff73ad2cdcaa35854b43b1467b5c365`. The release also includes `SHA256SUMS-v0.3.0.txt`.
+2. If upgrading, quit YourMove and back up the **entire** workspace (normally `~/Library/Application Support/YourMove`, including `jobs.db` and `resumes/`). Keep the backup until you've verified your data in the new version.
+3. Open the ZIP in Finder and move `YourMove.app` to Applications, replacing the previous installed app if necessary. Keep the workspace directory in place.
+4. Launch YourMove. If macOS blocks the unnotarized application, choose **Done** and, only if you trust the source and verified the checksum, open **System Settings → Privacy & Security → Open Anyway** for YourMove. This is a per-app exception; do not disable Gatekeeper globally. [Apple's guidance](https://support.apple.com/en-us/102445).
+5. After an upgrade, verify your opportunities, résumé attachments, saved answers, and letters. If anything is missing, quit and preserve your full backup.
+
+**Upgrades to v0.3.0 are manual.** The existing stable update channel does not offer v0.3.0 to users of earlier versions. The v0.3.0 application includes an in-app update checker, but any future updater-delivered release must be separately packaged, signed and qualified; installing and restarting require user approval. See the [v0.3.0 release notes](https://github.com/jenksed/yourmove-go/releases/tag/v0.3.0) for details.
 
 ## Trust and transparency
 
 - Your records live on your computer. Posting fetches, AI generations, and form fills are separate network actions that need your explicit request or authorization.
 - AI assistance is optional. Unconfigured providers fail clearly without touching saved work, and no provider becomes the authority over your material.
 - Filling support is qualified on controlled fixtures, not every employer site. Expect manual steps; unsupported fields stay manual.
-- This alpha has no automatic updates and no Developer ID notarization. Career Discovery and Career Studio are parked for a future version; Career Evidence ships and feeds cover letters.
+- This build is ad-hoc signed and unnotarized. It includes an in-app update checker, but v0.3.0 itself is distributed by manual installation. Future updater releases require a signed update package and user approval. Career Discovery and Career Studio are outside this desktop alpha; Career Evidence supports cover-letter work.
 - The project is GPL-3.0-only, including the pinned Career Discovery module source published with the release.
 
 ## Under the hood
@@ -100,28 +105,20 @@ Go owns validation, saved state, document identity, consent, browser effects, an
 | [`internal/storage/`](internal/storage/) | SQLite schema, workspace paths, durable state |
 | [`frontend/src/features/`](frontend/src/features/) | React screens: opportunities, resumes, application workspace, career |
 | [`docs/CODEBASE_GUIDE.md`](docs/CODEBASE_GUIDE.md) | Source map: routes, handlers, persistence, browser commands |
-| [`docs/releases/0.1.0-log.md`](docs/releases/0.1.0-log.md) | Complete v0.1.0 record: scope, evidence, gates, assets, exclusions |
+| [v0.3.0 release notes](https://github.com/jenksed/yourmove-go/releases/tag/v0.3.0) | Published build, install instructions, supported workflows and exclusions |
 
 ```sh
 go test ./...              # browser mode + shared logic
 go test -tags desktop ./...  # macOS desktop build path
 ```
 
-## Build from source
+## Source and development
 
-The published [source archives](https://github.com/jenksed/yourmove-go/releases/tag/v0.1.0) build without private access. Download both the application source and the Career Discovery module source, then point Go at the local copy:
+The [v0.3.0 Git tag](https://github.com/jenksed/yourmove-go/tree/v0.3.0) identifies the published application source. The Go module also depends on a pinned Career Discovery module snapshot, whose [source ZIP was published with v0.2.0](https://github.com/jenksed/yourmove-go/releases/download/v0.2.0/yourmove-career-discovery-v0.0.0-20261027151338-47aa7d49b55e-source.zip). The current v0.3.0 release attachments contain the application ZIP and its checksum file, **not** separately packaged source archives.
 
-```sh
-mkdir yourmove-build && cd yourmove-build
-unzip ../YourMove-0.1.0-source.zip
-unzip ../yourmove-career-discovery-*-source.zip
-go mod edit -replace \
-  github.com/jenksed/yourmove-career-discovery=./yourmove-career-discovery-v0.0.0-20261027151338-47aa7d49b55e
-cd frontend && pnpm install --frozen-lockfile && pnpm run build && cd ..
-go build ./...
-```
+The earlier [v0.1.0 source-archive build procedure](https://github.com/jenksed/yourmove-go/releases/tag/v0.1.0) was verified for that release only. An independent source-archive build of v0.3.0 using the published module snapshot has not been qualified here; don't treat the older build instructions as proof for this release.
 
-This exact path was verified against the published archives. For day-to-day development, see [TRY_IT.md](docs/TRY_IT.md) (note: contributors with access to the private module repository don't need the `replace` step).
+For source setup and native packaging, see [TRY_IT.md](docs/TRY_IT.md), [macOS packaging](release/macos/README.md) and the [release process](docs/RELEASE_PROCESS.md). The v0.3.0 tag specifies Go 1.27.3 and Wails 3.1.0.
 
 ## Related: YourMove Realize
 
@@ -137,4 +134,4 @@ Please keep resumes, answers, credentials, and unredacted employer forms out of 
 
 ## License
 
-Copyright (C) 2026 Joshua Jenks. YourMove's original source code is licensed under the [GNU General Public License version 3 only](LICENSE) (`GPL-3.0-only`). The pinned Career Discovery module snapshot ships under the same terms (see its NOTICE). Third-party dependencies and assets retain their applicable licenses.
+Copyright (C) 2026 Joshua Jenks. YourMove's original source code is licensed under the [GNU General Public License version 3 only](LICENSE) (`GPL-3.0-only`). The pinned Career Discovery module snapshot is separately available from the v0.2.0 release assets under its accompanying notices. Third-party dependencies and assets retain their applicable licenses.
