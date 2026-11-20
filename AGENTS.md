@@ -6,6 +6,8 @@ YourMove is a local-first job application workbench. Applicants approve their ma
 
 Work only on the owner's currently authorized task. Before editing, confirm the assigned worktree, branch/HEAD, dirty or untracked changes, intended result, and scope. `main` is a baseline, not permission to modify it. Do not overwrite unowned work, interfere with another process/worktree, or push, merge, publish, or release without authorization. An architecture plan or skill is not task authorization.
 
+**Product direction and execution tracking.** The canonical strategic roadmap is [`docs/ROADMAP.md`](docs/ROADMAP.md). It records the adopted product direction and release sequence through v1.0.0. A strategic milestone in that roadmap is direction, not authorized implementation work: individual release scope, implementation and publication still require separate owner authorization for the specific task. Execution work is tracked in **Linear**, which is the active task queue. [`docs/BACKLOG.md`](docs/BACKLOG.md) is a short pointer to Linear and to the archived October 2026 backlog; do not treat archived backlog items as assigned work or migrate them automatically.
+
 Modernization has **two goals**: migrate presentation incrementally to React/TypeScript/Vite, and improve Go ownership, navigation, and maintainability. Prefer a small working vertical slice. Refactor Go along the touched path when it fixes demonstrable coupling/confusion. Standalone maintainability work requires explicit authorization and a concrete improvement; folder symmetry, generic scaffolding, and arbitrary file-size targets are not justification.
 
 ## Application architecture
@@ -94,12 +96,13 @@ Start from the assigned behavior. Search the specific route/symbol, inspect its 
 | Task need | Read when needed |
 | --- | --- |
 | Product overview | `README.md` |
+| Approved product direction | `docs/ROADMAP.md` (strategic direction only; not task authorization) |
 | Field roles, capture/Fill authority, Questions workflow | `docs/architecture/APPLICATION_FIELD_CLASSIFICATION.md` |
 | Per-operation ATS platform support | `docs/implementation/ats-platform-integration-notes.md` |
 | Unfamiliar code path | Relevant section of `docs/CODEBASE_GUIDE.md` |
 | Running app or isolated workspace | Relevant section of `docs/TRY_IT.md` |
 | UI composition or styling | Relevant sections of `docs/design/RULES.md` and `docs/design/DESIGN_SYSTEM.md` |
-| Selecting backlog work | Relevant `docs/BACKLOG.md` entry; verify current code/PR |
+| Selecting execution work | The assigned Linear issue; verify current code/PR. `docs/BACKLOG.md` only points to Linear and the archived backlog |
 | Release or beta readiness | `docs/RELEASE_POLICY.md`, `docs/RELEASE_CHECKLIST.md`; specific procedure as needed |
 | Prior qualification/decision | Only the applicable record in `docs/implementation/` |
 

@@ -62,7 +62,7 @@ Never merge a `jobs.db` backup with a different `resumes/` version. Preserve the
 ## Release management references
 
 - [Release policy and gate definitions](../../docs/RELEASE_POLICY.md)
-- [First three release targets](../../docs/ROADMAP.md)
+- [October 23 targets for the first three releases](../../docs/roadmaps/archive/2026-10-23-initial-release-roadmap.md)
 - [Release process](../../docs/RELEASE_PROCESS.md)
 - [Current execution checklist](../../docs/RELEASE_CHECKLIST.md)
 - [v0.1.0 release notes](../../docs/releases/0.1.0-macos.md)

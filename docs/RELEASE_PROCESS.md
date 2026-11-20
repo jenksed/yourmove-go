@@ -1,6 +1,6 @@
 # YourMove release process
 
-The operational runbook for preparing, accepting, and distributing YourMove. The [release policy](RELEASE_POLICY.md) determines whether a candidate may ship; the [roadmap](ROADMAP.md) sets proposed review dates. macOS-specific details are in [release/macos/README.md](../release/macos/README.md).
+The operational runbook for preparing, accepting, and distributing YourMove. The [release policy](RELEASE_POLICY.md) determines whether a candidate may ship. The [strategic roadmap](ROADMAP.md) sets the product direction and release sequence. macOS-specific details are in [release/macos/README.md](../release/macos/README.md).
 
 ## 1. Identify and freeze the candidate
 
