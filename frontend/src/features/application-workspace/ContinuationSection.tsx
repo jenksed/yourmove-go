@@ -14,6 +14,7 @@ import {
   type BrowserAction,
   type ContinuationSnapshot,
 } from "./continuationApi";
+import { coverLetterStatusText } from "./coverLetterStatus";
 
 function letterEditedSuffix(editedAt: string): string {
   if (editedAt === "") return "";
@@ -561,7 +562,9 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
         {snapshot.letter ? (
           <div className="continuation-item">
             <p><strong>Cover letter:</strong> Selected saved letter{letterEditedSuffix(snapshot.letter.editedAt)}</p>
-            {!prep.includeLetter && <small>Already handled in this session.</small>}
+            {!prep.includeLetter && (
+              <small>{coverLetterStatusText(browser.letter_status, snapshot.ownsPosting)}</small>
+            )}
           </div>
         ) : (
           <p className="small-muted">Cover letter not included — none selected.</p>
