@@ -71,6 +71,7 @@ func TestResumeResultCannotReachReplacementSession(t *testing.T) {
 
 func TestResumeHandoffRejectsExistingBrowserForEarlierDestination(t *testing.T) {
 	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com"}); err != nil {
 		t.Fatal(err)
 	}

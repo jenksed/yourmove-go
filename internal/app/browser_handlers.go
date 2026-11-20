@@ -31,29 +31,51 @@ func (a *App) browserStatus(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(a.browsers.state(id))
 }
 func (a *App) browserOperation(w http.ResponseWriter, r *http.Request) {
+	fail := func(status int, message string) {
+		if r.Header.Get("Accept") == "application/json" {
+			writeResumeError(w, status, message)
+		} else {
+			http.Error(w, message, status)
+		}
+	}
 	id, err := parseJobID(r)
 	if err != nil {
-		http.NotFound(w, r)
+		fail(http.StatusNotFound, "Unknown job or browser operation")
 		return
 	}
-	if !parseLocalForm(w, r, 2<<10) {
+	r.Body = http.MaxBytesReader(w, r.Body, 2<<10)
+	if err := r.ParseForm(); err != nil {
+		fail(http.StatusBadRequest, "Invalid or oversized form")
 		return
 	}
 	job, err := a.jobByID(id)
 	if errors.Is(err, sql.ErrNoRows) {
-		http.NotFound(w, r)
+		fail(http.StatusNotFound, "Unknown job or browser operation")
 		return
 	}
 	if err != nil {
-		http.Error(w, "Unable to load opportunity", 500)
+		fail(500, "Unable to load opportunity")
 		return
 	}
 	if job.Stage == StageApplied || job.Stage == StageClosed || job.SubmissionCount > 0 {
-		http.Error(w, "Inspection is limited to active jobs", 409)
+		fail(409, closedBlockMessage(job, "Inspection is limited to active jobs"))
 		return
 	}
+	// KAN-16 availability preflight: a provider-confirmed closure blocks
+	// browser launches before any employer effect. Inconclusive outcomes
+	// never block; observation-only actions keep their existing behavior.
+	action := r.PathValue("action")
+	if action == "start" || action == "restart" || action == "retry-resume" {
+		if _, block := a.ensurePostingOpen(r.Context(), id); block != "" {
+			fail(409, block)
+			return
+		}
+		if refreshed, err := a.jobByID(id); err == nil {
+			job = refreshed
+		}
+	}
 	if !browser.OwnsPostingURL(job.URL, job.URL) {
-		http.Error(w, "Managed inspection supports saved Ashby, Greenhouse, and Lever postings", 422)
+		fail(422, "Question capture supports saved Ashby, Greenhouse, and Lever postings. This URL cannot yet be safely associated with an employer form. Open the employer site yourself and prepare answers manually; automatic Fill remains unavailable.")
 		return
 	}
 	switch r.PathValue("action") {
@@ -98,7 +120,7 @@ func (a *App) browserOperation(w http.ResponseWriter, r *http.Request) {
 		}
 	case "restart":
 		if r.PostForm.Get("confirm_restart") != "yes" {
-			http.Error(w, "Confirm that reopening may lose unsaved employer form changes", 400)
+			fail(400, "Confirm that reopening may lose unsaved employer form changes")
 			return
 		}
 		// Never carry a previous file authorization into a restarted browser.
@@ -124,11 +146,19 @@ func (a *App) browserOperation(w http.ResponseWriter, r *http.Request) {
 		}
 	case "stop":
 		if err = a.browsers.close(id); err != nil {
-			http.Error(w, "Could not close inspection browser", 500)
+			fail(500, "Could not close inspection browser")
 			return
 		}
 	default:
-		http.NotFound(w, r)
+		fail(http.StatusNotFound, "Unknown job or browser operation")
+		return
+	}
+	if r.Header.Get("Accept") == "application/json" {
+		if err != nil {
+			writeResumeError(w, http.StatusConflict, a.browsers.state(id).Message)
+			return
+		}
+		writeResumeJSON(w, http.StatusOK, a.browsers.state(id))
 		return
 	}
 	target := "/jobs/" + strconv.FormatInt(id, 10) + "/inspection"
@@ -166,6 +196,17 @@ func (a *App) resumeHandoffForAction(r *http.Request, id int64, profileAuthorize
 	job, err := a.jobByID(id)
 	if err != nil {
 		return http.StatusNotFound, "Opportunity or material unavailable"
+	}
+	// KAN-16 availability preflight: a provider-confirmed closure blocks the
+	// résumé handoff before any browser effect or staged document. A composed
+	// continuation already verified availability and skips the re-fetch.
+	if !preflightAlreadyChecked(r.Context()) {
+		if _, block := a.ensurePostingOpen(r.Context(), id); block != "" {
+			return http.StatusConflict, block
+		}
+		if refreshed, err := a.jobByID(id); err == nil {
+			job = refreshed
+		}
 	}
 	var resume *Resume
 	if job.SelectedResumeID > 0 {

@@ -43,6 +43,11 @@ type continuationAnswerJSON struct {
 	Source string `json:"source"`
 }
 
+type continuationManualProfileFactJSON struct {
+	Label  string `json:"label"`
+	Detail string `json:"detail"`
+}
+
 type continuationEarlyAnswerCandidate struct {
 	ID                   int64        `json:"id"`
 	Destination          string       `json:"destination"`
@@ -131,11 +136,9 @@ func (a *App) buildContinuation(jobID int64) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	// The explicit Fill action authorizes the displayed profile snapshot, without
-	// changing its separate approval state for other workflows.
-	profileForFill := profile
-	profileForFill.Approved = true
-	live, err := a.prepareQuestions(job, profileForFill)
+	// Contact Fill authorizes the displayed snapshot independently of saved
+	// approval. Reading preparation must not manufacture approved provenance.
+	live, err := a.prepareQuestions(job, profile)
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +159,7 @@ func (a *App) buildContinuation(jobID int64) (map[string]any, error) {
 	state := a.browsers.state(jobID)
 	prepWorkspace := jobWorkspace{
 		Job: job, BrowserState: state, Handoff: handoff,
-		Questions: live, EarlyQuestions: early, Letter: letter, Profile: profileForFill,
+		Questions: live, EarlyQuestions: early, Letter: letter, Profile: profile,
 	}
 	// A failed launch with no transfer can be retried by the React fill action.
 	// Retain interrupted status for display; never re-arm an attempted upload.
@@ -164,20 +167,35 @@ func (a *App) buildContinuation(jobID int64) (map[string]any, error) {
 		prepWorkspace.BrowserState.Phase = ""
 	}
 	preparation := summarizePreparation(prepWorkspace)
-	for _, q := range early.Questions {
-		if !q.Editable || q.EarlyAnswerID == 0 || q.Revision == 0 || strings.TrimSpace(q.Value) == "" {
-			continue
-		}
-		if q.Reconciliation.LiveQuestionKey != "" {
-			_, liveErr := a.savedLiveAnswer(job, q.Reconciliation.LiveQuestionKey)
-			if liveErr == nil {
+	// Completed, closed, or submission-recorded jobs expose no transfer
+	// scope: the read-only summary above already returns early with no
+	// includes, and no early answer or profile fact may reintroduce one.
+	// The server-side continue path rejects such jobs before any browser
+	// launch; React's disabled Fill button is presentation only.
+	completed := job.Stage == StageApplied || job.Stage == StageClosed || job.SubmissionCount > 0
+	if !completed {
+		for _, q := range early.Questions {
+			if !q.Editable || q.EarlyAnswerID == 0 || q.Revision == 0 || strings.TrimSpace(q.Value) == "" {
 				continue
 			}
-			if !errors.Is(liveErr, sql.ErrNoRows) {
-				return nil, liveErr
+			if q.Reconciliation.LiveQuestionKey != "" {
+				_, liveErr := a.savedLiveAnswer(job, q.Reconciliation.LiveQuestionKey)
+				if liveErr == nil {
+					continue
+				}
+				if !errors.Is(liveErr, sql.ErrNoRows) {
+					return nil, liveErr
+				}
 			}
+			preparation.PendingAnswers = append(preparation.PendingAnswers, preparedQuestion{JobID: job.ID, Destination: q.Destination, Field: q.Field, Key: q.Key, Value: q.Value, Source: "Saved early answer — fills when the same question is found", Revision: q.Revision, Editable: true, IsEarly: true, EarlyAnswerID: q.EarlyAnswerID, DiscoverySource: q.DiscoverySource, DiscoveryFingerprint: q.DiscoveryFingerprint, SourceQuestionID: q.SourceQuestionID})
 		}
-		preparation.PendingAnswers = append(preparation.PendingAnswers, preparedQuestion{JobID: job.ID, Destination: q.Destination, Field: q.Field, Key: q.Key, Value: q.Value, Source: "Saved early answer — fills when the same question is found", Revision: q.Revision, Editable: true, IsEarly: true, EarlyAnswerID: q.EarlyAnswerID, DiscoverySource: q.DiscoverySource, DiscoveryFingerprint: q.DiscoveryFingerprint, SourceQuestionID: q.SourceQuestionID})
+		// Eligible additional profile facts (LinkedIn, location, pronouns, etc.)
+		// enter the same authorized answer scope through the existing guarded
+		// filler. Contact facts stay with the dedicated contact operation.
+		// Unsupported or ambiguous controls have empty values and never appear.
+		for _, f := range live.readyAdditionalProfileFacts() {
+			preparation.PendingAnswers = append(preparation.PendingAnswers, f)
+		}
 	}
 	preparation.PendingAnswers = pendingAnswers(preparation.PendingAnswers, state.AnswerAttempted, false)
 	preparation.PendingAnswers = excludePendingAuthorizations(preparation.PendingAnswers, state.AnswerPending)
@@ -190,6 +208,16 @@ func (a *App) buildContinuation(jobID int64) (map[string]any, error) {
 	pending := make([]continuationAnswerJSON, 0, len(preparation.PendingAnswers))
 	for _, q := range preparation.PendingAnswers {
 		pending = append(pending, continuationAnswerJSON{Key: q.Key, Label: q.Field.Label, Value: q.Value, Source: q.Source})
+	}
+	manualProfileFacts := make([]continuationManualProfileFactJSON, 0)
+	if !completed {
+		for _, q := range live.ProfileQuestions() {
+			if q.Field.Required && strings.TrimSpace(q.Value) == "" {
+				manualProfileFacts = append(manualProfileFacts, continuationManualProfileFactJSON{
+					Label: q.Field.Label, Detail: "Required; no eligible Candidate Profile value is available. Complete this field manually in the employer form.",
+				})
+			}
+		}
 	}
 	var otherJSON *continuationOtherJSON
 	if otherID := a.browsers.otherApplication(jobID); otherID > 0 {
@@ -230,6 +258,8 @@ func (a *App) buildContinuation(jobID int64) (map[string]any, error) {
 		"desktop":        a.openPosting != nil,
 		"applied":        job.Stage == StageApplied || job.SubmissionCount > 0,
 		"closed":         job.Stage == StageClosed,
+		"postingClosed":  closureNoticeFor(job) != "",
+		"closureNotice":  closureNoticeFor(job),
 		"editingAllowed": editingAllowed,
 		"preparation": map[string]any{
 			"title": preparation.Title, "detail": preparation.Detail,
@@ -251,6 +281,7 @@ func (a *App) buildContinuation(jobID int64) (map[string]any, error) {
 		},
 		"letter":                 letterJSON,
 		"pendingAnswers":         pending,
+		"manualProfileFacts":     manualProfileFacts,
 		"answerScopeInternal":    preparation.PendingAnswers,
 		"earlyAnswerCandidates":  candidates,
 		"previousCount":          len(live.Previous),
@@ -319,8 +350,22 @@ func (a *App) continuationBrowserAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if (job.Stage == StageApplied || job.Stage == StageClosed || job.SubmissionCount > 0) && input.Action != "focus" && input.Action != "stop" {
-		writeResumeError(w, http.StatusConflict, "Inspection is limited to active jobs")
+		writeResumeError(w, http.StatusConflict, closedBlockMessage(job, "Inspection is limited to active jobs"))
 		return
+	}
+	// KAN-16 availability preflight: a provider-confirmed closure blocks
+	// launches and transfer-armed actions before any browser effect. Focus
+	// and stop stay available; inconclusive outcomes never block.
+	if input.Action == "start" || input.Action == "restart" || input.Action == "retry-resume" {
+		if _, block := a.ensurePostingOpen(r.Context(), jobID); block != "" {
+			writeResumeError(w, http.StatusConflict, block)
+			return
+		}
+		job, err = a.jobByID(jobID)
+		if err != nil {
+			writeResumeError(w, http.StatusInternalServerError, "Unable to load opportunity")
+			return
+		}
 	}
 	if !browser.OwnsPostingURL(job.URL, job.URL) {
 		writeResumeError(w, http.StatusUnprocessableEntity, "Managed inspection supports saved Ashby, Greenhouse, and Lever postings")
@@ -488,6 +533,26 @@ func (a *App) continuationContinueAPI(w http.ResponseWriter, r *http.Request) {
 		writeResumeError(w, http.StatusConflict, "The employer destination changed. Review Prepare again.")
 		return
 	}
+	// Completed, closed, or submission-recorded jobs accept no transfer.
+	// React disables Fill, but the server must enforce the boundary before
+	// any browser launch: resolvers alone would only downgrade items to
+	// manual after a session starts.
+	if job.Stage == StageApplied || job.Stage == StageClosed || job.SubmissionCount > 0 {
+		writeResumeError(w, http.StatusConflict, closedBlockMessage(job, "This application is no longer active"))
+		return
+	}
+	// KAN-16 availability preflight: a provider-confirmed closure blocks all
+	// transfers before any browser launch or armed operation. The retirement
+	// is persisted prep-preserving above; later per-item guards then see the
+	// closed stage without re-fetching.
+	if _, block := a.ensurePostingOpen(r.Context(), jobID); block != "" {
+		writeResumeError(w, http.StatusConflict, block)
+		return
+	}
+	if refreshed, err := a.jobByID(jobID); err == nil {
+		job = refreshed
+	}
+	r = r.WithContext(withPreflightChecked(r.Context()))
 	// React's Fill action carries the displayed profile revision and résumé
 	// identity for material that depends on them. Revalidate both before any
 	// résumé or contact effect. Letter and answer work keeps its own
@@ -528,7 +593,31 @@ func (a *App) continuationContinueAPI(w http.ResponseWriter, r *http.Request) {
 			}
 			answersRefused = "Saved answers changed. Review them before filling."
 		} else {
-			authorizedAnswers = a.reactAnswerTransfer(job, scope, input.ProfileRevision)
+			// Additional Candidate Profile facts carry no answer revision;
+			// their authority is the displayed approved snapshot (approval +
+			// revision). An omitted or stale revision cannot authorize them.
+			// Ordinary answer-only scope keeps its existing behavior.
+			hasProfileFacts := false
+			for _, q := range scope {
+				if additionalProfileAttribute(q.Field) != "" && !q.IsEarly {
+					hasProfileFacts = true
+					break
+				}
+			}
+			if hasProfileFacts {
+				profile, profileErr := a.candidateProfile()
+				if profileErr != nil || input.ProfileRevision == "" || input.ProfileRevision != strconv.FormatInt(profile.Revision, 10) {
+					if !input.IncludeResume && !input.IncludeLetter && !input.TransferContacts {
+						writeResumeError(w, http.StatusConflict, "Candidate Profile changed. Review it before filling.")
+						return
+					}
+					answersRefused = "Candidate Profile changed. Review it before filling."
+				} else {
+					authorizedAnswers = a.reactAnswerTransfer(job, scope, input.ProfileRevision)
+				}
+			} else {
+				authorizedAnswers = a.reactAnswerTransfer(job, scope, input.ProfileRevision)
+			}
 		}
 	}
 	form := continueForm(input)
@@ -707,6 +796,54 @@ func (a *App) continuationSubmitAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeResumeJSON(w, http.StatusOK, map[string]any{"recorded": true, "jobId": jobID})
+}
+
+// POST /api/jobs/{id}/unsubmit removes the most recent local submission
+// record for an accidentally recorded application. It never submits to an
+// employer and never touches saved answers, letters, résumé associations,
+// or unrelated history. Older records stay; when none remain, the
+// opportunity returns to review so editing resumes.
+func (a *App) continuationUnsubmitAPI(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	jobID, err := parseJobID(r)
+	if err != nil {
+		writeResumeError(w, http.StatusNotFound, "Unknown job")
+		return
+	}
+	var input struct {
+		Confirm string `json:"confirm"`
+	}
+	if !decodeResumeJSON(w, r, 4<<10, &input) {
+		return
+	}
+	if input.Confirm != "yes" {
+		writeResumeError(w, http.StatusBadRequest, "Confirm correction of the recorded submission")
+		return
+	}
+	remaining, err := a.correctSubmission(jobID)
+	if errors.Is(err, ErrNoSubmissionToCorrect) {
+		writeResumeJSON(w, http.StatusConflict, map[string]string{
+			"code":    "nothing-to-correct",
+			"message": "There is no submission record to correct for this opportunity.",
+		})
+		return
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		writeResumeError(w, http.StatusNotFound, "Unknown job")
+		return
+	}
+	if err != nil {
+		log.Printf("correct submission: %v", err)
+		writeResumeJSON(w, http.StatusInternalServerError, map[string]string{
+			"code":    "failed",
+			"message": "YourMove could not correct this record. Check submission history before trying again.",
+		})
+		return
+	}
+	writeResumeJSON(w, http.StatusOK, map[string]any{"corrected": true, "jobId": jobID, "remaining": remaining})
 }
 
 // GET /api/jobs/{id}/submissions returns the durable per-job history.

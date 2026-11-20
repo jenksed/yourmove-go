@@ -39,6 +39,7 @@ func (f *fakeBrowser) changeURL(u string) { f.mu.Lock(); defer f.mu.Unlock(); f.
 func (f *fakeBrowser) timesClosed() int   { f.mu.Lock(); defer f.mu.Unlock(); return f.closed }
 func TestManagedInspectorBrowserAndWailsWorkflow(t *testing.T) {
 	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com", Title: "Role"}); err != nil {
 		t.Fatal(err)
 	}
@@ -85,6 +86,7 @@ func TestManagedInspectorBrowserAndWailsWorkflow(t *testing.T) {
 }
 func TestManagedInspectorNeverPersistsForeignPage(t *testing.T) {
 	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com"}); err != nil {
 		t.Fatal(err)
 	}
@@ -252,6 +254,7 @@ func (f *attachmentFake) attemptCount() int {
 }
 func TestResumeHandoffPinsSelectedFileAcrossSteps(t *testing.T) {
 	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com", Title: "Support Engineer"}); err != nil {
 		t.Fatal(err)
 	}
@@ -361,6 +364,7 @@ func TestResumeHandoffHTTPRespectsEligibility(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			a, _ := testWorkspace(t)
+			a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 
 			if err := a.saveJob(Job{URL: tt.url, Host: "example.com"}); err != nil {
 				t.Fatal(err)
@@ -431,6 +435,7 @@ func (f *contactFakeBrowser) FillContacts(_ context.Context, values browser.Cont
 }
 func TestContactHandoffApprovalAndNoReplay(t *testing.T) {
 	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com", Title: "Contact fixture"}); err != nil {
 		t.Fatal(err)
 	}
@@ -507,5 +512,125 @@ func TestReadOnlyBrowserNeverFillsContacts(t *testing.T) {
 	h.tryContacts(context.Background(), 1)
 	if fake.contactCalls != 0 {
 		t.Fatal("read-only browser received contact information")
+	}
+}
+
+func TestQuestionsCaptureJSONUsesManagedObserver(t *testing.T) {
+	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
+	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com", Title: "Synthetic"}); err != nil {
+		t.Fatal(err)
+	}
+	launched := 0
+	a.browsers.factory = func(_ context.Context, raw string) (readOnlySession, error) {
+		launched++
+		return &fakeBrowser{url: raw + "/application"}, nil
+	}
+	defer a.browsers.close(1)
+	h := newMux(a)
+	for _, action := range []string{"start", "observe"} {
+		r := httptest.NewRequest(http.MethodPost, "http://localhost/jobs/1/browser/"+action, strings.NewReader(""))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		r.Header.Set("Accept", "application/json")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != 200 || w.Header().Get("Location") != "" || !strings.Contains(w.Header().Get("Content-Type"), "application/json") {
+			t.Fatalf("capture %s: %d %s", action, w.Code, w.Body.String())
+		}
+	}
+	if launched != 1 {
+		t.Fatalf("managed launches: %d", launched)
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "http://localhost/api/jobs/1/questions", nil))
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "Work authorization") {
+		t.Fatalf("captured inventory: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestQuestionsCaptureUnsupportedExplicitResult(t *testing.T) {
+	a, _ := testWorkspace(t)
+	if err := a.saveJob(Job{URL: "https://example.com/job", Host: "example.com", Title: "Synthetic"}); err != nil {
+		t.Fatal(err)
+	}
+	a.browsers.factory = func(context.Context, string) (readOnlySession, error) {
+		t.Fatal("unsupported posting launched browser")
+		return nil, nil
+	}
+	r := httptest.NewRequest(http.MethodPost, "http://localhost/jobs/1/browser/start", strings.NewReader(""))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Header.Set("Accept", "application/json")
+	w := httptest.NewRecorder()
+	newMux(a).ServeHTTP(w, r)
+	if w.Code != 422 || !strings.Contains(w.Header().Get("Content-Type"), "application/json") || !strings.Contains(w.Body.String(), "prepare answers manually") {
+		t.Fatalf("unsupported result: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestQuestionsCaptureLaunchFailureReturnsError(t *testing.T) {
+	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
+	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com", Title: "Synthetic"}); err != nil {
+		t.Fatal(err)
+	}
+	a.browsers.factory = func(context.Context, string) (readOnlySession, error) {
+		return nil, errors.New("synthetic launch failure")
+	}
+	r := httptest.NewRequest(http.MethodPost, "http://localhost/jobs/1/browser/start", strings.NewReader(""))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Header.Set("Accept", "application/json")
+	w := httptest.NewRecorder()
+	newMux(a).ServeHTTP(w, r)
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "retry") {
+		t.Fatalf("launch failure: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestQuestionsCaptureStartOnlyAndStatus(t *testing.T) {
+	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
+	for _, u := range []string{testAshbyPosting, "https://jobs.ashbyhq.com/render/00000000-0000-0000-0000-000000000001"} {
+		if err := a.saveJob(Job{URL: u, Host: "jobs.ashbyhq.com", Title: "Synthetic"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a.browsers.pollEvery = 10 * time.Millisecond
+	a.browsers.factory = func(_ context.Context, raw string) (readOnlySession, error) {
+		return &fakeBrowser{url: raw + "/application"}, nil
+	}
+	defer a.browsers.close(1)
+	h := newMux(a)
+	start := func(id string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("POST", "http://localhost/jobs/"+id+"/browser/start", strings.NewReader(""))
+		r.Header.Set("Accept", "application/json")
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	if w := start("1"); w.Code != 200 {
+		t.Fatal(w.Body.String())
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for a.browsers.state(1).LatestID == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	state := a.browsers.state(1)
+	if state.LatestID == 0 || state.Contacts != nil || len(state.AnswerPending) > 0 || state.ResumeStatus != "" || state.LetterStatus != "" {
+		t.Fatalf("start-only observation or authority: %+v", state)
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "http://localhost/api/jobs/1/questions", nil))
+	if !strings.Contains(w.Body.String(), "Work authorization") || !strings.Contains(w.Body.String(), "\"captureState\":") {
+		t.Fatal(w.Body.String())
+	}
+	if w = start("2"); w.Code != 409 || !strings.Contains(w.Body.String(), "close the existing managed browser") || strings.Contains(w.Body.String(), "installed") || !strings.Contains(w.Header().Get("Content-Type"), "application/json") {
+		t.Fatalf("busy: %d %s", w.Code, w.Body.String())
+	}
+	a.browsers.interrupt(1, "Browser disconnected. Retry Capture application questions.")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "http://localhost/api/jobs/1/questions", nil))
+	if !strings.Contains(w.Body.String(), "\"phase\":\"interrupted\"") || !strings.Contains(w.Body.String(), "Retry Capture") {
+		t.Fatal(w.Body.String())
 	}
 }

@@ -84,6 +84,12 @@ type earlyApplicationQuestion struct {
 	SavedReconciliationStatus string
 	SavedLiveInspection       string
 	SavedLiveQuestionKey      string
+	// LibraryAuto* mirrors the live exact automatic preparation for
+	// early-discovered eligible questions. Value holds the library answer
+	// for review; Revision stays 0 until explicitly saved.
+	LibraryAutoEntryID  int64
+	LibraryAutoRevision int64
+	LibraryAutoQuestion string
 }
 
 type earlyQuestionPreparation struct {
@@ -137,7 +143,113 @@ func (p earlyQuestionPreparation) WorkbenchQuestions() []earlyApplicationQuestio
 			questions = append(questions, q)
 		}
 	}
-	return questions
+	return collapseDegenerateManualEarly(questions)
+}
+
+// collapseDegenerateManualEarly is the early-discovery mirror of
+// collapseDegenerateManualLive: one employer requirement published as both a
+// choice collection and a degenerate option-less definition presents once,
+// including the EasyPost-style pronouns split where all rows are option-less.
+// Saved early answers and reconciliation state block merging, so no applicant
+// writing is hidden; the raw preparation behind save and accept paths is
+// untouched.
+func collapseDegenerateManualEarly(questions []earlyApplicationQuestion) []earlyApplicationQuestion {
+	describe := func(q earlyApplicationQuestion) (string, bool) {
+		if q.TriageCategory != "review" {
+			return "", false
+		}
+		if q.Value != "" || q.Revision != 0 {
+			return "", false
+		}
+		wording := reconciliationLabel(q.Field.Label)
+		if wording == "" || inspectorFallbackLabel(wording) {
+			return "", false
+		}
+		if displayQuestionIdentity(q.SourceQuestionID) == "" {
+			return "", false
+		}
+		return wording, true
+	}
+	groups := map[string][]int{}
+	var order []string
+	for i, q := range questions {
+		wording, ok := describe(q)
+		if !ok {
+			continue
+		}
+		if _, seen := groups[wording]; !seen {
+			order = append(order, wording)
+		}
+		groups[wording] = append(groups[wording], i)
+	}
+	drop := make([]bool, len(questions))
+	required := make([]bool, len(questions))
+	for i, q := range questions {
+		required[i] = q.Field.Required
+	}
+	folded := false
+	for _, wording := range order {
+		members := groups[wording]
+		var bearers []int
+		for _, i := range members {
+			if len(questions[i].Field.Options) > 0 {
+				bearers = append(bearers, i)
+			}
+		}
+		if len(bearers) == 1 {
+			target := bearers[0]
+			for _, i := range members {
+				if i == target || len(questions[i].Field.Options) > 0 {
+					continue
+				}
+				drop[i] = true
+				folded = true
+				required[target] = required[target] || questions[i].Field.Required
+			}
+			continue
+		}
+		if len(bearers) != 0 || len(members) < 2 {
+			continue
+		}
+		// Mirror the live EasyPost split for early discovery: multiple
+		// option-less manual rows for one Pronouns requirement fold once.
+		// Pronouns-only and collapsed-group guards keep distinct same-worded
+		// rows separate.
+		hasAmbiguous := false
+		allPronouns := true
+		for _, i := range members {
+			if questions[i].Field.Kind == "unsupported_ambiguous" {
+				hasAmbiguous = true
+			}
+			if !isPronounsLabel(questions[i].Field.Label) || !pronounsRequiresManual(questions[i].Field) {
+				allPronouns = false
+				break
+			}
+		}
+		if !hasAmbiguous || !allPronouns {
+			continue
+		}
+		target := members[0]
+		for _, i := range members[1:] {
+			drop[i] = true
+			folded = true
+			required[target] = required[target] || questions[i].Field.Required
+		}
+	}
+	if !folded {
+		return questions
+	}
+	out := make([]earlyApplicationQuestion, 0, len(questions))
+	for i, q := range questions {
+		if drop[i] {
+			continue
+		}
+		if required[i] != q.Field.Required {
+			q.Field.Required = required[i]
+		}
+		out = append(out, q)
+	}
+	return out
 }
 
 func (p earlyQuestionPreparation) ActionableQuestions() []earlyApplicationQuestion {
@@ -230,6 +342,9 @@ var earlyNarrativeMarkers = []string{
 }
 
 func earlyQuestionWritable(field schema.Field, unique bool) (bool, string) {
+	if isProfileField(field) {
+		return false, "Use Candidate Profile or Apply for this field."
+	}
 	if !unique || strings.TrimSpace(field.ID) == "" {
 		return false, "This question has no unique published identity. Write or complete it in the employer application."
 	}
@@ -238,6 +353,22 @@ func earlyQuestionWritable(field schema.Field, unique bool) (bool, string) {
 	}
 	if strings.Contains(strings.ToLower(field.Label), "cover letter") {
 		return false, "Use the separate cover-letter editor for this material."
+	}
+	// Résumé and other document controls belong to the Documents workflow,
+	// whatever their control kind is. They are never early writing tasks.
+	if displayDocumentControl(field) {
+		return false, "Use the Documents workflow for this material."
+	}
+	// Observer fallback wording and positional DOM identities never describe
+	// a publishable question, so they stay manual even when the control kind
+	// looks writable. Saved writing is preserved; only new saves are gated.
+	if !stableQuestionIdentity(field, unique) {
+		return false, "This discovered control does not have a reliable question identity. Complete it manually in the employer application."
+	}
+	// Extended pronouns collections have no qualified single-value mapping.
+	// Keep the real question and observed options as manual employer work.
+	if pronounsRequiresManual(field) {
+		return false, "This pronouns selection includes options beyond the approved profile preferences. Complete it manually in the employer application."
 	}
 	switch strings.ToLower(field.Kind) {
 	case "text", "input_text", "email", "tel", "url", "textarea":
@@ -371,9 +502,12 @@ func (a *App) prepareEarlyQuestions(job Job, r *http.Request) (earlyQuestionPrep
 	if err == nil {
 		out.Item = &item
 		counts := make(map[string]int, len(item.Fields))
+		profileFields := make([]schema.Field, 0, len(item.Fields))
 		for _, field := range item.Fields {
 			counts[field.ID]++
+			profileFields = append(profileFields, field.Field)
 		}
+		hasSeparateGitHubDestination := hasSeparateGitHubProfileDestination(profileFields)
 		history, queryErr := a.earlyAnswerHistory(job.ID)
 		if queryErr != nil {
 			return out, queryErr
@@ -395,28 +529,31 @@ func (a *App) prepareEarlyQuestions(job Job, r *http.Request) (earlyQuestionPrep
 				status = "Early answer saved locally; not checked against the employer form."
 			}
 			stableIdentity := stableQuestionIdentity(field.Field, counts[field.ID] == 1)
-			profileValue, profileSource := resolveApplicationAnswer(field.Field, "", false, profile, "", false)
+			profileValue, profileSource := resolveApplicationAnswerForWebsite(field.Field, "", false, profile, "", false, hasSeparateGitHubDestination)
 			profileResolved := stableIdentity && profileSource == "Approved candidate information" && strings.TrimSpace(profileValue) != ""
-			category := "answer"
-			switch {
-			case profileResolved && !(answer.Revision > 0 && editable):
-				category = "profile"
-			case employerOnlyQuestion(field.Field):
-				category = "employer"
-				if reason == "" {
-					reason = "This question is excluded from early preparation by existing privacy or legal policy. Complete it in the employer application."
-				}
-			case answer.Revision > 0 && editable:
-				category = "answer" // Preserve explicit early work over a profile fact.
-			case !editable || !stableIdentity && answer.Revision == 0:
-				if reason == "" {
-					reason = "This question has no unique, stable identity. Review and complete it manually in the employer application."
-				}
-				category = "review"
+			category := writingCategory(field.Field, counts[field.ID] == 1, editable)
+			if category == "employer" && reason == "" {
+				reason = "Complete this control manually in the employer application."
 			}
-			q := earlyApplicationQuestion{JobID: job.ID, Destination: job.URL, DiscoverySource: item.Source, DiscoveryFingerprint: item.Fingerprint, SourceQuestionID: field.ID, Key: key, Field: field.Field, Value: answer.Answer, ProfileValue: profileValue, ProfileResolved: profileResolved, Revision: answer.Revision, Editable: editable, IsEarly: true, ManualReason: reason, TriageCategory: category, LocalStatus: status, EarlyAnswerID: answer.ID, SavedReconciliationStatus: answer.ReconciliationStatus, SavedLiveInspection: answer.LiveInspection, SavedLiveQuestionKey: answer.LiveQuestionKey}
+
+			value := answer.Answer
+			var autoEntryID, autoRevision int64
+			var autoQuestion string
+			// Exact automatic preparation for early discovery mirrors live:
+			// only when nothing is saved, the row is an editable narrative
+			// answer, and exactly one equivalent library entry exists.
+			if value == "" && answer.Revision == 0 && editable && category == "answer" && earlyPotentialNarrative(field.Field) {
+				if entry, ok := a.libraryAutoForLabel(field.Field.Label); ok {
+					value = entry.Answer
+					status = "Automatically prepared from Answer Library; review and save locally. It has not been checked against the employer form."
+					autoEntryID = entry.ID
+					autoRevision = entry.Revision
+					autoQuestion = entry.OriginalQuestion
+				}
+			}
+			q := earlyApplicationQuestion{JobID: job.ID, Destination: job.URL, DiscoverySource: item.Source, DiscoveryFingerprint: item.Fingerprint, SourceQuestionID: field.ID, Key: key, Field: field.Field, Value: value, ProfileValue: profileValue, ProfileResolved: profileResolved, Revision: answer.Revision, Editable: editable, IsEarly: true, ManualReason: reason, TriageCategory: category, LocalStatus: status, EarlyAnswerID: answer.ID, SavedReconciliationStatus: answer.ReconciliationStatus, SavedLiveInspection: answer.LiveInspection, SavedLiveQuestionKey: answer.LiveQuestionKey, LibraryAutoEntryID: autoEntryID, LibraryAutoRevision: autoRevision, LibraryAutoQuestion: autoQuestion}
 			out.Questions = append(out.Questions, q)
-			seenCurrent[earlyRecordIdentity(job.URL, item.Source, item.Fingerprint, field.ID)] = true
+			seenCurrent[earlyRecordIdentity(job.URL, item.Source, item.Fingerprint, field.ID)] = !isProfileField(field.Field)
 		}
 		for _, question := range out.Questions {
 			if question.Editable {

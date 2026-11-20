@@ -82,11 +82,14 @@ func testProfileQuestionPresentation(t *testing.T, namespaced bool) {
 	// back into the navigator and does not alter the candidate profile.
 	q := p.Questions[1]
 	r := postApp(mux, "/jobs/1/answers/save", url.Values{"question_key": {q.Key}, "revision": {"0"}, "destination": {job.URL}, "answer": {"other@example.test"}}, "", "")
-	if r.Code != 303 {
+	if r.Code != 409 {
 		t.Fatal(r.Code, r.Body.String())
 	}
+	if _, err := a.db.Exec(`INSERT INTO application_answers(job_id,destination,provider,question_key,label,answer,revision) VALUES(?,?,?,?,?,?,1)`, job.ID, job.URL, "ashby", q.Key, q.Field.Label, "other@example.test"); err != nil {
+		t.Fatal(err)
+	}
 	p, _ = a.prepareQuestions(job, profile)
-	if len(p.ProfileQuestions()) != 3 || len(p.EmployerQuestions()) != 2 || p.Questions[1].Value != "other@example.test" {
+	if len(p.ProfileQuestions()) != 4 || len(p.EmployerQuestions()) != 1 || len(p.ReadyAnswers()) != 0 || len(p.Previous) != 1 || p.Questions[1].Value != "other@example.test" {
 		t.Fatal("override lost")
 	}
 	saved, _ := a.candidateProfile()
@@ -96,7 +99,7 @@ func testProfileQuestionPresentation(t *testing.T, namespaced bool) {
 	// Missing/unapproved details and manual controls must remain visible.
 	for _, draft := range []CandidateProfile{{}, {Approved: true}} {
 		pending, _ := a.prepareQuestions(job, draft)
-		if len(pending.ProfileQuestions()) != 0 || len(pending.EmployerQuestions()) != 5 {
+		if len(pending.ProfileQuestions()) != 4 || len(pending.EmployerQuestions()) != 1 {
 			t.Fatal("missing or unapproved profile facts concealed")
 		}
 	}

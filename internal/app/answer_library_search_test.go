@@ -16,11 +16,7 @@ import (
 )
 
 func answerLibraryDoc(id int64, question, answer string) answerLibrarySearchDocument {
-	return answerLibrarySearchDocument{
-		EntryID: id, OriginalQuestion: question,
-		questionTerms: answerLibraryTermSet(answerLibraryIndexTerms(question), ""),
-		answerTerms:   answerLibraryTermSet(answerLibraryIndexTerms(answer), ""),
-	}
+	return newAnswerLibrarySearchDocument(AnswerLibraryEntry{ID: id, OriginalQuestion: question, Answer: answer})
 }
 
 func TestAnswerLibraryRetrievalUsesRelatedQuestionWording(t *testing.T) {
@@ -30,7 +26,7 @@ func TestAnswerLibraryRetrievalUsesRelatedQuestionWording(t *testing.T) {
 		answerLibraryDoc(12, "Tell us about your experience", "A broad description of my career and experience."),
 	}
 	ranked := rankAnswerLibraryDocuments("Tell us about a challenging Linux incident you investigated", docs, answerLibraryRelatedLimit)
-	if len(ranked) != 1 || ranked[0].document.EntryID != 10 {
+	if len(ranked) != 1 || ranked[0].Document.EntryID != 10 {
 		t.Fatalf("related technical writing was not surfaced: %+v", ranked)
 	}
 	if got := rankAnswerLibraryDocuments("Tell us about your experience", docs, answerLibraryRelatedLimit); len(got) != 0 {
@@ -47,7 +43,7 @@ func TestAnswerLibraryQuestionOverlapOutweighsLongAnswerOverlap(t *testing.T) {
 		answerLibraryDoc(2, "Customer escalation", strings.Repeat("Linux production incident response ", 500)),
 	}
 	ranked := rankAnswerLibraryDocuments("Linux production incident response customer escalation", docs, answerLibraryRelatedLimit)
-	if len(ranked) != 2 || ranked[0].document.EntryID != 1 {
+	if len(ranked) != 2 || ranked[0].Document.EntryID != 1 {
 		t.Fatalf("long answer tokens overwhelmed original-question overlap: %+v", ranked)
 	}
 }
@@ -63,7 +59,7 @@ func TestAnswerLibraryRankingIsStableAndBounded(t *testing.T) {
 	if len(ranked) != answerLibrarySearchPageLimit {
 		t.Fatalf("explicit search result count=%d want %d", len(ranked), answerLibrarySearchPageLimit)
 	}
-	if ranked[0].document.EntryID != 3 || ranked[1].document.EntryID != 5 || ranked[2].document.EntryID != 7 {
+	if ranked[0].Document.EntryID != 3 || ranked[1].Document.EntryID != 5 || ranked[2].Document.EntryID != 7 {
 		t.Fatalf("tie break is not stable by entry ID: %+v", ranked)
 	}
 	if got := rankAnswerLibraryDocuments("Describe the Linux incident", docs, answerLibraryRelatedLimit); len(got) != answerLibraryRelatedLimit {
@@ -100,16 +96,17 @@ func TestAnswerLibrarySearchAndStartingPointAreReadOnlyUntilSave(t *testing.T) {
 	}
 
 	result := postApp(newMux(a), "/answer-library/search", url.Values{"query": {"Linux logs customer database diagnostics"}}, "", "")
-	if result.Code != http.StatusOK || !strings.Contains(result.Body.String(), answerLibraryStory) ||
-		!strings.Contains(result.Body.String(), "Fixture Systems") || !strings.Contains(result.Body.String(), "Open full example") {
-		t.Fatalf("explicit library search did not retain context: %d %s", result.Code, result.Body.String())
+	if result.Code != http.StatusSeeOther || !strings.Contains(result.Header().Get("Location"), "/answer-library?q=") {
+		t.Fatalf("explicit library search did not redirect with preserved query: %d %s", result.Code, result.Header().Get("Location"))
 	}
-	if result.Header().Get("Location") != "" {
-		t.Fatalf("search query was exposed in redirect URL: %q", result.Header().Get("Location"))
+	followed := httptestGet(t, newMux(a), result.Header().Get("Location"))
+	if followed.Code != http.StatusOK || !strings.Contains(followed.Body.String(), answerLibraryStory) ||
+		!strings.Contains(followed.Body.String(), "Fixture Systems") || !strings.Contains(followed.Body.String(), "Reusable answer") {
+		t.Fatalf("explicit library search did not retain context: %d %s", followed.Code, followed.Body.String())
 	}
 	desktopSearch := postApp(newDesktopMux(a), "/answer-library/search", url.Values{"query": {"Linux logs customer database diagnostics"}}, "wails://localhost", "1")
-	if desktopSearch.Code != http.StatusOK || desktopSearch.Header().Get("Location") != "" || !strings.Contains(desktopSearch.Body.String(), "Fixture Systems") {
-		t.Fatalf("Wails did not render the local search response: %d %s %s", desktopSearch.Code, desktopSearch.Header().Get("Location"), desktopSearch.Body.String())
+	if desktopSearch.Code != http.StatusSeeOther || desktopSearch.Header().Get("Location") == "" {
+		t.Fatalf("Wails did not redirect the local search response: %d %s %s", desktopSearch.Code, desktopSearch.Header().Get("Location"), desktopSearch.Body.String())
 	}
 
 	destination := Job{URL: "https://jobs.ashbyhq.com/render/00000000-0000-0000-0000-000000000001", Host: "jobs.ashbyhq.com", Title: "Support Engineer", Company: "Other Fixture"}

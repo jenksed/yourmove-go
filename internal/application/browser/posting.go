@@ -13,6 +13,9 @@ var greenhouseID = regexp.MustCompile(`^[1-9][0-9]*$`)
 // PostingPlatform accepts only supported, complete posting identities. A board
 // index, sign-in page, custom employer host, or partial ID stays on the manual path.
 func PostingPlatform(raw string) string {
+	if isNativeFillFixture(raw) {
+		return "synthetic"
+	}
 	u, err := url.Parse(raw)
 	if err != nil || u.Scheme != "https" || u.User != nil || u.Port() != "" || u.RawPath != "" {
 		return ""
@@ -42,6 +45,9 @@ func PostingPlatform(raw string) string {
 // and posting. Greenhouse board/error redirects and neighboring jobs never match.
 func OwnsPostingURL(saved, observed string) bool {
 	platform := PostingPlatform(saved)
+	if platform == "synthetic" {
+		return saved == observed
+	}
 	if platform == "" {
 		return false
 	}

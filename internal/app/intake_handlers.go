@@ -6,8 +6,9 @@ import (
 	"net/http"
 )
 
-// importJobs is a bounded local-only operation. Metadata enrichment remains an
-// explicit per-job action, avoiding dozens of surprise external requests.
+// importJobs is a bounded local-only operation. After the import transaction
+// commits, automatic initial metadata checks begin for the newly added jobs;
+// duplicates and unrelated jobs are untouched.
 func (a *App) importJobs(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 128<<10)
 	if err := r.ParseForm(); err != nil {
@@ -32,6 +33,16 @@ func (a *App) importJobs(w http.ResponseWriter, r *http.Request) {
 		log.Printf("batch intake: %v", err)
 		http.Error(w, "Unable to import jobs; no changes from this batch were saved", http.StatusInternalServerError)
 		return
+	}
+	var added []int64
+	for _, item := range results.Items {
+		if item.Status == "added" {
+			added = append(added, item.JobID)
+		}
+	}
+	if len(added) > 0 {
+		_, started := a.queueAutoEnrichment(added)
+		results.Enrichment = &BatchEnrichment{Started: started, Total: len(added)}
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")

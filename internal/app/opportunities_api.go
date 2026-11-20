@@ -34,6 +34,12 @@ type opportunityJobJSON struct {
 	SourceStatus     string `json:"sourceStatus"`
 	CompanyOrHost    string `json:"companyOrHost"`
 	DisplayTitle     string `json:"displayTitle"`
+	Attention        string `json:"attention"`
+	ParkedAt         string `json:"parkedAt"`
+	// Provider is the Go-owned ATS platform key ("" when unrecognized) with
+	// its accessible label. React renders these verbatim.
+	Provider      string `json:"provider"`
+	ProviderLabel string `json:"providerLabel"`
 }
 
 func toOpportunityJSON(job Job) opportunityJobJSON {
@@ -41,10 +47,7 @@ func toOpportunityJSON(job Job) opportunityJobJSON {
 	if strings.TrimSpace(companyOrHost) == "" {
 		companyOrHost = job.Host
 	}
-	displayTitle := job.Title
-	if strings.TrimSpace(displayTitle) == "" {
-		displayTitle = job.URL
-	}
+	displayTitle := job.DisplayTitle()
 	return opportunityJobJSON{
 		ID: job.ID, URL: job.URL, Host: job.Host, Title: job.Title,
 		Company: job.Company, Description: job.Description, Stage: job.Stage,
@@ -52,6 +55,8 @@ func toOpportunityJSON(job Job) opportunityJobJSON {
 		ActionLabel: job.ActionLabel(), ActionHref: job.ActionHref(), ActionReason: job.ActionReason(),
 		SelectedResumeID: job.SelectedResumeID, SubmissionCount: job.SubmissionCount,
 		SourceStatus: job.SourceStatus, CompanyOrHost: companyOrHost, DisplayTitle: displayTitle,
+		Attention: job.Attention(), ParkedAt: job.ParkedAt,
+		Provider: job.PostingProvider(), ProviderLabel: job.PostingProviderLabel(),
 	}
 }
 
@@ -99,6 +104,7 @@ func (a *App) opportunitiesAPI(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"jobs": out, "total": page.Total, "remaining": page.Remaining,
+			"focus": page.Focus, "saved": page.Saved, "history": page.History,
 			"applied": page.Applied, "recordedToday": recorded,
 			"queueTotal": page.QueueTotal(), "recordedPercent": page.RecordedPercent(),
 			"next": page.Next, "desktop": a.openPosting != nil,
@@ -108,13 +114,16 @@ func (a *App) opportunitiesAPI(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodPost {
 		var payload struct {
-			URL   string `json:"url"`
-			Title string `json:"title"`
+			URL       string `json:"url"`
+			Title     string `json:"title"`
+			Focus     bool   `json:"focus"`
+			Attention string `json:"attention"`
 		}
 		if !decodeOpportunityJSON(w, r, 8<<10, &payload) {
 			return
 		}
-		id, duplicate, err := a.savePostingURL(r.Context(), payload.URL, payload.Title)
+		focus := payload.Focus || payload.Attention == "focus"
+		id, duplicate, err := a.savePostingURLWithFocus(r.Context(), payload.URL, payload.Title, focus)
 		if err != nil {
 			status, message := http.StatusInternalServerError, "Unable to save job"
 			switch {
@@ -187,6 +196,20 @@ func (a *App) opportunitiesImportAPI(w http.ResponseWriter, r *http.Request) {
 		writeOpportunityError(w, http.StatusInternalServerError, "Unable to import jobs; no changes from this batch were saved")
 		return
 	}
+	// Begin automatic initial metadata checks for the newly added jobs only.
+	// This never delays the import response: workers run in the background,
+	// duplicates and unrelated jobs are untouched, and a busy engine leaves
+	// the new jobs unchecked for the manual pending path.
+	var added []int64
+	for _, item := range results.Items {
+		if item.Status == "added" {
+			added = append(added, item.JobID)
+		}
+	}
+	if len(added) > 0 {
+		_, started := a.queueAutoEnrichment(added)
+		results.Enrichment = &BatchEnrichment{Started: started, Total: len(added)}
+	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	_ = json.NewEncoder(w).Encode(results)
@@ -229,6 +252,56 @@ func (a *App) opportunitiesDeleteAPI(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// POST /api/opportunities/attention accepts {ids, attention} and moves
+// unfinished jobs between Focus and Saved without touching stage,
+// preparation, or history. The move is atomic: an unknown ID, invalid ID,
+// terminal (History) job, or DB error moves nothing. Unknown IDs 409 so the
+// client refreshes; terminal selection 409 so History stays put; invalid
+// attention or selection 400.
+func (a *App) opportunitiesAttentionAPI(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var payload struct {
+		IDs       []int64 `json:"ids"`
+		Attention string  `json:"attention"`
+	}
+	if !decodeOpportunityJSON(w, r, 8<<10, &payload) {
+		return
+	}
+	if payload.Attention != "focus" && payload.Attention != "saved" {
+		writeOpportunityError(w, http.StatusBadRequest, "Choose Focus or Saved for Later")
+		return
+	}
+	if len(payload.IDs) == 0 || len(payload.IDs) > maxDeleteBatch {
+		writeOpportunityError(w, http.StatusBadRequest, "Select up to 50 jobs to move")
+		return
+	}
+	for _, id := range payload.IDs {
+		if id <= 0 {
+			writeOpportunityError(w, http.StatusBadRequest, "Invalid job selection; none were moved")
+			return
+		}
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	moved, err := a.moveJobsAttention(payload.IDs, payload.Attention, now)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		writeOpportunityError(w, http.StatusConflict, "A selected job no longer exists. Refresh the list; none were moved.")
+		return
+	case errors.Is(err, ErrAttentionTerminal):
+		writeOpportunityError(w, http.StatusConflict, "Selection includes a History job (applied, closed, or with recorded submissions). It stays in History; uncheck it to move the rest. None were moved.")
+		return
+	case err != nil:
+		log.Printf("move attention api: %v", err)
+		writeOpportunityError(w, http.StatusBadRequest, "Unable to move selected jobs; none were moved")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string]any{"moved": moved, "attention": payload.Attention})
+}
+
 // POST /api/opportunities/{id}/open is desktop-only and opens the saved URL
 // in the system browser without trusting client-provided URLs.
 func (a *App) opportunityOpenAPI(w http.ResponseWriter, r *http.Request) {
@@ -255,6 +328,15 @@ func (a *App) opportunityOpenAPI(w http.ResponseWriter, r *http.Request) {
 		writeOpportunityError(w, http.StatusInternalServerError, "Unable to load saved posting")
 		return
 	}
+	// KAN-16 availability preflight: a provider-confirmed closure blocks the
+	// manual external open before any system-browser effect. Inconclusive
+	// outcomes never block the applicant's manual access path.
+	refreshed, block := a.ensurePostingOpen(r.Context(), id)
+	if block != "" {
+		writeOpportunityError(w, http.StatusConflict, block)
+		return
+	}
+	job = refreshed
 	if _, _, err := normalizePostingURL(job.URL); err != nil {
 		writeOpportunityError(w, http.StatusUnprocessableEntity, "Saved job URL is invalid; edit your job data before opening")
 		return

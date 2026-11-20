@@ -31,6 +31,15 @@ func (a *App) openJobPosting(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unable to load saved posting", http.StatusInternalServerError)
 		return
 	}
+	// KAN-16 availability preflight: a provider-confirmed closure blocks the
+	// manual external open before any system-browser effect. Inconclusive
+	// outcomes never block the applicant's manual access path.
+	refreshed, block := a.ensurePostingOpen(r.Context(), id)
+	if block != "" {
+		http.Error(w, block, http.StatusConflict)
+		return
+	}
+	job = refreshed
 	// Reject stale/malformed schemes, even for data stored before URL validation.
 	_, _, err = normalizePostingURL(job.URL)
 	if err != nil {

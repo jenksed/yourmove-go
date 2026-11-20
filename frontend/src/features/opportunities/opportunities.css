@@ -16,6 +16,7 @@
 .job-form,.job-edit-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.field-full,.form-actions,.form-note{grid-column:1/-1}
 .form-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:5px}.form-note{color:var(--color-muted);font-size:12px;margin:0}
 .list-panel{padding:0;overflow:hidden}.section-heading{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:22px 24px}.section-heading h2{margin:0}.section-subtitle{font-size:12px;margin:5px 0 0}
+.attention-tabs{display:flex;flex-wrap:wrap;gap:8px}
 .list-toolbar{display:flex;align-items:end;gap:10px;padding:0 24px 22px;border-bottom:1px solid var(--color-border)}.search-field{flex:1}.select-field{width:165px}
 .job-row{display:flex;justify-content:space-between;align-items:center;gap:25px;padding:21px 24px;border-bottom:1px solid var(--color-border)}.job-row:last-child{border-bottom:0}
 .job-row:hover{background:var(--color-surface-muted)}.job-row-body{min-width:0;flex:1}.job-row-meta{display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin-bottom:7px}
@@ -38,7 +39,8 @@
 .batch-disclosure>summary{cursor:pointer;display:flex;align-items:center;gap:13px;font-size:13px}
 .batch-disclosure>summary .muted{font-size:11px}
 .batch-import-form{margin-top:18px}.batch-url{overflow-wrap:anywhere;font-weight:650}
-.job-select{align-self:center;flex:0 0 24px;margin-right:6px}.job-select input{height:17px;width:17px;accent-color:var(--color-primary)}.job-select input:disabled{opacity:.3}
+.job-select{align-self:center;flex:0 0 auto;margin-right:6px;display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:650;color:var(--color-muted)}.job-select input{height:17px;width:17px;accent-color:var(--color-primary)}.job-select input:disabled{opacity:.3}.job-select input:disabled + span{opacity:.45}
+.bulk-move-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px 12px;padding:10px 18px}.bulk-select-hint{flex-basis:100%;margin:0}
 .bulk-remove{border-top:1px solid var(--color-border);padding:18px 24px;font-size:12px}
 .bulk-remove summary,.danger-zone summary{cursor:pointer;font-weight:700;color:var(--color-muted)}
 .bulk-remove-body,.danger-zone-body{display:grid;gap:15px;padding-top:16px;max-width:560px}
@@ -106,11 +108,17 @@ a.progress-metric:hover span {text-decoration:underline;color:var(--color-primar
 .create-summary-text strong {font-size:14px}
 .create-helper {margin:0 0 12px}
 .list-panel .section-heading {padding:10px 18px}
-.list-toolbar {padding:0 18px 14px}
-.job-row {padding:16px 18px;gap:14px}
-.job-row-actions {flex-wrap:wrap;justify-content:flex-end}
-.job-row h3 {font-size:16px}
-@media(max-width:480px){.primary-nav{grid-template-columns:1fr}.job-row-actions{justify-content:flex-start}.progress-metric strong,.progress-remaining strong{font-size:18px}}
+.list-toolbar {flex-wrap:wrap;padding:0 18px 10px}
+.list-toolbar .search-field {min-width:160px}
+.list-toolbar .select-field {flex:0 1 165px}
+.list-toolbar .list-select-toggle {min-height:42px;padding:7px 11px}
+.job-row {padding:10px 18px;gap:12px;flex-wrap:wrap}
+.job-row-body {flex:1 1 240px}
+.job-row-meta {margin:0;gap:4px 8px}
+.job-row-meta .job-row-detail {overflow-wrap:anywhere}
+.job-row-actions {flex-wrap:wrap;flex-shrink:1;max-width:100%;gap:6px 10px;margin-inline-start:auto;justify-content:flex-end}
+.job-row h3 {font-size:16px;margin-bottom:3px}
+@media(max-width:480px){.primary-nav{grid-template-columns:1fr}.job-row-body{flex-basis:auto}.job-row-actions{justify-content:flex-start;margin-inline-start:0}.progress-metric strong,.progress-remaining strong{font-size:18px}}
 
 /* React renders the remaining-queue metric as a <button> where the server
    template uses an anchor; neutralize native button chrome so the Quiet
@@ -119,6 +127,11 @@ button.progress-metric{background:none;border:0;padding:0;font:inherit;text-alig
 button.progress-metric:hover span{text-decoration:underline;color:var(--color-primary)}
 
 /* Import results and inline notices (React slice conventions). */
+.batch-summary{font-weight:700}
+.batch-failures{border-inline-start:3px solid var(--color-danger);border-radius:0 6px 6px 0;background:var(--color-danger-soft);padding:10px 12px;font-weight:700}
+.batch-details{margin-top:8px}
+.batch-details>summary{cursor:pointer;font-size:13px;font-weight:650}
 .batch-results ul{list-style:none;margin:12px 0 0;padding:0;display:grid;gap:8px}
 .batch-results li{border:1px solid var(--color-border);border-radius:8px;padding:8px 12px;display:grid;gap:4px}
+.batch-item-invalid{border-color:var(--color-danger);border-width:2px}
 .form-notice{color:var(--color-muted)}

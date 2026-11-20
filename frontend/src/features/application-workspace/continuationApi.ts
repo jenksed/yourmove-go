@@ -10,6 +10,11 @@ export interface ContinuationAnswer {
   source: string;
 }
 
+export interface ContinuationManualProfileFact {
+  label: string;
+  detail: string;
+}
+
 export interface ContinuationPreparation {
   title: string;
   detail: string;
@@ -104,6 +109,8 @@ export interface ContinuationSnapshot {
   desktop: boolean;
   applied: boolean;
   closed: boolean;
+  postingClosed: boolean;
+  closureNotice: string;
   editingAllowed: boolean;
   preparation: ContinuationPreparation;
   handoff: { allowed: boolean; reason: string };
@@ -114,6 +121,7 @@ export interface ContinuationSnapshot {
   profile: ContinuationProfile;
   letter: ContinuationLetter | null;
   pendingAnswers: ContinuationAnswer[];
+  manualProfileFacts: ContinuationManualProfileFact[];
   previousCount: number;
   awaitingReconciliation: number;
   questionsAvailable: boolean;
@@ -192,6 +200,42 @@ export async function authorizeContinue(jobId: number, input: ContinueInput): Pr
   return (await response.json()) as { items: ContinueItem[]; browser: ContinuationBrowser };
 }
 
+export type AvailabilityState = "open" | "closed" | "unknown";
+
+export interface PostingAvailability {
+  state: AvailabilityState;
+  detail: string;
+  notice: string;
+  closed: boolean;
+  postingClosed: boolean;
+  closureNotice: string;
+  editingAllowed: boolean;
+  checkedAt: string;
+}
+
+// KAN-16 single-click preflight behind the "Checking posting…" state. Go
+// owns the verdict and persists confirmed closures; React renders the
+// returned notice verbatim and never treats unknown as closed.
+export async function checkAvailability(jobId: number): Promise<PostingAvailability> {
+  const response = await fetch(`/api/jobs/${jobId}/availability`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error(await readError(response));
+  const data = (await response.json()) as Partial<PostingAvailability> & { state?: string };
+  const state: AvailabilityState =
+    data.state === "closed" || data.state === "open" ? data.state : "unknown";
+  return {
+    state,
+    detail: typeof data.detail === "string" ? data.detail : "",
+    notice: typeof data.notice === "string" ? data.notice : "",
+    closed: data.closed === true,
+    postingClosed: data.postingClosed === true,
+    closureNotice: typeof data.closureNotice === "string" ? data.closureNotice : "",
+    editingAllowed: data.editingAllowed === true,
+    checkedAt: typeof data.checkedAt === "string" ? data.checkedAt : "",
+  };
+}
+
 export interface SubmissionReview {
   token: string;
   jobId: number;
@@ -228,6 +272,20 @@ export interface SubmissionsSnapshot {
   submissions: ContinuationSubmission[];
   count: number;
   next: { jobId: number; title: string; href: string; label: string; reason: string } | null;
+}
+
+export interface UnsubmitResult {
+  remaining: number;
+}
+
+export async function unsubmit(jobId: number): Promise<UnsubmitResult> {
+  const response = await fetch(`/api/jobs/${jobId}/unsubmit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ confirm: "yes" }),
+  });
+  if (!response.ok) throw new Error(await readError(response));
+  return (await response.json()) as UnsubmitResult;
 }
 
 export async function fetchSubmissions(jobId: number): Promise<SubmissionsSnapshot> {

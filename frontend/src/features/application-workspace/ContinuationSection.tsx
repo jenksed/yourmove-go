@@ -5,14 +5,16 @@
 // personally completed act recorded separately.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { openPosting } from "../opportunities/api";
+import { isPostingClosedBlock, openPosting } from "../opportunities/api";
 import {
   authorizeContinue,
   browserAction,
+  checkAvailability,
   fetchContinuation,
   type BrowserAction,
   type ContinuationSnapshot,
 } from "./continuationApi";
+import { coverLetterStatusText } from "./coverLetterStatus";
 
 function letterEditedSuffix(editedAt: string): string {
   if (editedAt === "") return "";
@@ -54,9 +56,18 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [loadError, setLoadError] = useState<string>("");
   const [confirmRestart, setConfirmRestart] = useState<boolean>(false);
+  const [confirmStop, setConfirmStop] = useState<boolean>(false);
   const [busy, setBusy] = useState<boolean>(false);
   const [actionError, setActionError] = useState<string>("");
   const [actionNotice, setActionNotice] = useState<string>("");
+  // KAN-16 single-click availability: "view" or "fill" while Go verifies the
+  // posting, then automatic continuation. A confirmed closure persists here
+  // for the session; the server-derived snapshot notice persists across
+  // reloads and restarts.
+  const [checking, setChecking] = useState<"view" | "fill" | null>(null);
+  const [closureNotice, setClosureNotice] = useState<string>("");
+  const [availabilityWarning, setAvailabilityWarning] = useState<string>("");
+  const [manualFallbackUrl, setManualFallbackUrl] = useState<string>("");
   const pollRef = useRef<number | null>(null);
   const requestRef = useRef<number>(0);
 
@@ -82,6 +93,11 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
     setLoadError("");
     setActionError("");
     setActionNotice("");
+    setClosureNotice("");
+    setAvailabilityWarning("");
+    setManualFallbackUrl("");
+    setChecking(null);
+    setConfirmStop(false);
   }, [jobId]);
 
   useEffect(() => {
@@ -123,7 +139,15 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
 
   const runBrowser = useCallback(
     async (action: BrowserAction) => {
-      if (action === "stop" && !window.confirm("Closing the employer browser may lose unsaved form work. Close it?")) return;
+      // The macOS Wails host does not present window.confirm(), so closing
+      // the managed browser uses this inline confirmation instead.
+      // Canceling leaves the session open; confirming closes it.
+      if (action === "stop" && !confirmStop) {
+        setActionError("");
+        setConfirmStop(true);
+        return;
+      }
+      setConfirmStop(false);
       setActionError("");
       setActionNotice("");
       setBusy(true);
@@ -139,7 +163,7 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
         setBusy(false);
       }
     },
-    [jobId, confirmRestart, reload],
+    [jobId, confirmRestart, confirmStop, reload],
   );
 
   const runAuthorize = useCallback(async () => {
@@ -179,6 +203,163 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
     }
   }, [snapshot, jobId, reload]);
 
+  // Single-click View: show "Checking posting…" in this workspace, then
+  // continue automatically. A confirmed closure surfaces the persistent
+  // inline notice (same workspace, no redirect, no browser handoff).
+  // Inconclusive outcomes proceed with a truthful warning and never close.
+  const runViewWithCheck = useCallback(async () => {
+    if (!snapshot) return;
+    // Returning to an already-open session sends nothing; it stays instant
+    // and check-free. Only a fresh launch verifies availability first.
+    if (snapshot.browser.active) {
+      await runBrowser("focus");
+      return;
+    }
+    setActionError("");
+    setAvailabilityWarning("");
+    setChecking("view");
+    try {
+      const availability = await checkAvailability(jobId);
+      if (availability.state === "closed") {
+        setClosureNotice(availability.notice !== "" ? availability.notice : availability.detail);
+        await reload();
+        return;
+      }
+      if (availability.state === "unknown" && availability.detail !== "") {
+        setAvailabilityWarning(availability.detail);
+      }
+      await runBrowser(snapshot.browser.active ? "focus" : "start");
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Could not check the posting.");
+    } finally {
+      setChecking(null);
+    }
+  }, [snapshot, jobId, reload, runBrowser]);
+
+  // Manual View Application: the same Go availability preflight guards the
+  // external open. Checking appears inline immediately; a confirmed closure
+  // persists the agreed notice with History/Focus actions and never launches
+  // externally. Unknown keeps the applicant's manual path with a truthful
+  // warning. Viewing never sends saved material and mints no Fill authority.
+  // The browser tab is pre-opened synchronously in the click gesture so the
+  // later async gate does not trigger popup blockers; it is closed on every
+  // closure/failure path and navigated noopener-safe on success. A blocked
+  // popup surfaces a truthful inline fallback link (second user click) and
+  // never leaks a blank window.
+  const runManualOpenWithCheck = useCallback(async () => {
+    if (!snapshot) return;
+    setActionError("");
+    setAvailabilityWarning("");
+    setManualFallbackUrl("");
+    setChecking("view");
+    // Desktop uses the Go system-browser open and never needs a tab.
+    const needsTab = !snapshot.desktop && typeof window !== "undefined";
+    let pending: Window | null = null;
+    if (needsTab) {
+      try {
+        pending = window.open("about:blank", "_blank");
+      } catch {
+        pending = null;
+      }
+      if (pending) {
+        try {
+          pending.opener = null;
+        } catch {
+          // about:blank is same-origin; ignore hardening failures.
+        }
+      }
+    }
+    const closePending = () => {
+      try {
+        if (pending && !pending.closed) pending.close();
+      } catch {
+        // Ignore close failures; the tab is already gone or inaccessible.
+      }
+      pending = null;
+    };
+    try {
+      const availability = await checkAvailability(jobId);
+      if (availability.state === "closed") {
+        closePending();
+        setClosureNotice(availability.notice !== "" ? availability.notice : availability.detail);
+        await reload();
+        return;
+      }
+      if (availability.state === "unknown" && availability.detail !== "") {
+        setAvailabilityWarning(availability.detail);
+      }
+      if (snapshot.desktop) {
+        closePending();
+        try {
+          await openPosting(jobId);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Could not open the application.";
+          // The Go gate can retire the posting between the preflight and
+          // the open (second check). Surface that as the persistent closure
+          // with a refreshed snapshot, never as a generic error or a launch.
+          if (isPostingClosedBlock(message)) {
+            setClosureNotice(message);
+          } else {
+            setActionError(message);
+          }
+          await reload();
+        }
+      } else if (typeof window !== "undefined") {
+        if (pending && !pending.closed) {
+          pending.location.href = snapshot.destination;
+          // Ownership transferred to the navigated tab; the finally block
+          // must not close it.
+          pending = null;
+        } else {
+          pending = null;
+          setManualFallbackUrl(snapshot.destination);
+          setAvailabilityWarning((previous) =>
+            previous !== ""
+              ? previous
+              : "Your browser blocked the new tab. Use the manual link below to open the posting.",
+          );
+        }
+      }
+    } catch (error) {
+      closePending();
+      setActionError(error instanceof Error ? error.message : "Could not check the posting.");
+    } finally {
+      // Any retained blank handle is a leak: close it. Navigated tabs were
+      // nulled above so they stay open.
+      try {
+        if (pending && !pending.closed) pending.close();
+      } catch {
+        // Ignore close failures here as well.
+      }
+      setChecking(null);
+    }
+  }, [snapshot, jobId, reload]);
+
+  // Single-click Fill: same preflight, then the ordinary authorized Fill.
+  // A confirmed closure blocks every transfer; unknown stays non-blocking.
+  const runFillWithCheck = useCallback(async () => {
+    if (!snapshot) return;
+    setActionError("");
+    setAvailabilityWarning("");
+    setChecking("fill");
+    try {
+      const availability = await checkAvailability(jobId);
+      if (availability.state === "closed") {
+        setClosureNotice(availability.notice !== "" ? availability.notice : availability.detail);
+        await reload();
+        return;
+      }
+      if (availability.state === "unknown" && availability.detail !== "") {
+        setAvailabilityWarning(availability.detail);
+      }
+      await runAuthorize();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Could not check the posting.");
+    } finally {
+      setChecking(null);
+    }
+  }, [snapshot, jobId, reload, runAuthorize]);
+
   if (loading) return <p role="status">Loading employer continuation…</p>;
   if (loadError !== "" && !snapshot) {
     return (
@@ -197,9 +378,51 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
   const contactsOnly = browser.active && ["selected", "present"].includes(browser.resume_status) && browser.contact_status === "" && !!snapshot.resume?.valid;
   const activeTransfer = browser.resume_status !== "" || browser.contact_status !== "" || browser.letter_status !== "" || browser.answer_status !== "";
   const filling = busy || browser.phase === "opening" || ["waiting", "checking"].includes(browser.answer_status) || ["waiting", "checking"].includes(browser.letter_status);
-  const heading = !browser.active && !activeTransfer ? "Ready to fill" : filling ? "Filling…" : browser.active ? "Review in the employer browser" : browser.phase === "interrupted" ? "Connection lost" : "Browser closed";
-  const canFill = !busy && !refreshing && loadError === "" && (prep.includeResume || contactsOnly || prep.includeLetter || prep.includeAnswers);
+  // Eligible transfer is the exact Go-derived scope: the same preparation
+  // flags that enable Fill. Unsupported sites never report includes (Go
+  // summarizePreparation returns early with OpenExternally), and handled
+  // materials report includes false, so neither may claim "Ready to fill".
+  const hasEligibleTransfer = prep.includeResume || contactsOnly || prep.includeLetter || prep.includeAnswers;
+  const heading = filling
+    ? "Filling…"
+    : browser.active
+      ? "Review in the employer browser"
+      : browser.phase === "interrupted"
+        ? "Connection lost"
+        : activeTransfer
+          ? "Browser closed"
+          : !snapshot.editingAllowed
+              ? (snapshot.closed && !snapshot.applied ? "Posting closed" : "Application recorded as complete")
+              : !snapshot.ownsPosting
+                ? "Apply on the employer website"
+                : !hasEligibleTransfer
+                  ? "Nothing pending transfer"
+                  : "Ready to fill";
+  // Completed takes precedence over unsupported (mirrors Go
+  // summarizePreparation: closed/applied returns before the unsupported
+  // branch), so a recorded-complete job never directs to View Application.
+  const explanation = !browser.active && !activeTransfer && !snapshot.editingAllowed
+    ? (snapshot.closed && !snapshot.applied ? "This posting is closed. Your saved work remains available." : "This application is recorded as complete. Transfer is closed; history remains below.")
+    : !browser.active && !activeTransfer && !snapshot.ownsPosting
+      ? "Automatic filling is unavailable on this site. Use View Application to apply manually; your saved materials are listed below."
+      : !browser.active && !activeTransfer && !hasEligibleTransfer
+        ? "All saved material is already handled or none is pending. Nothing will be sent automatically; review the outcomes below and submit yourself."
+        : !browser.active && !activeTransfer
+          ? "Review the included material below, then use Fill Application. Review and submit yourself."
+          : "";
+  // editingAllowed mirrors the backend per-item transfer guards (applied /
+  // closed / submission recorded reject with 409), including the early-answer
+  // path that can set includeAnswers after the completed early return in
+  // summarizePreparation. Active-browser contacts-only transfers remain
+  // available because they occur only when editingAllowed is true.
+  const canFill = !busy && !refreshing && loadError === "" && snapshot.ownsPosting && snapshot.editingAllowed && hasEligibleTransfer;
   const stale = loadError !== "";
+  // A confirmed closure persists: the session notice first, then the
+  // server-derived notice that survives reloads and restarts. This panel
+  // never auto-navigates and never disappears on its own.
+  const persistentClosure = closureNotice !== "" ? closureNotice : (snapshot.closureNotice ?? "");
+  const checkingView = checking === "view";
+  const checkingFill = checking === "fill";
 
   return (
     <section className="panel" aria-labelledby="continuation-title" id="employer">
@@ -207,6 +430,7 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
         <div>
           <h2 id="continuation-title">{heading}</h2>
           <p className="workspace-url">{snapshot.destination}</p>
+          {explanation !== "" && <p className="small-muted">{explanation}</p>}
         </div>
       </div>
 
@@ -231,11 +455,6 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
           {browser.message}
         </p>
       )}
-      {!snapshot.ownsPosting && (
-        <p className="writing-notice" role="note">
-          Automatic filling is not available for this job site yet. Open the application and complete the form yourself.
-        </p>
-      )}
       {stale && (
         <p className="writing-notice" role="alert">
           Could not refresh saved materials. Refresh before filling.
@@ -244,21 +463,60 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
           </button>
         </p>
       )}
+      {checking !== null && <p role="status">Checking posting…</p>}
+      {persistentClosure !== "" && (
+        <div className="writing-notice" role="alert" aria-label="Posting closed">
+          <p>{persistentClosure}</p>
+          <div className="form-actions">
+            <a className="button button-secondary" href="/jobs#history-closed">
+              View in History → Closed
+            </a>
+            <a className="button button-secondary" href="/jobs#focus">
+              Return to Focus
+            </a>
+          </div>
+        </div>
+      )}
+      {availabilityWarning !== "" && persistentClosure === "" && checking === null && (
+        <p className="writing-notice" role="status">
+          {availabilityWarning}
+        </p>
+      )}
+      {manualFallbackUrl !== "" && persistentClosure === "" && (
+        <p className="writing-notice" role="status">
+          Your browser blocked the new tab.{" "}
+          <a href={manualFallbackUrl} target="_blank" rel="noopener noreferrer">
+            Open the posting manually
+          </a>{" "}
+          — viewing sends no saved material.
+        </p>
+      )}
 
       <div className="workspace-source-actions">
         {!snapshot.editingAllowed && !browser.active ? (
-          <small>This application is recorded as complete.</small>
+          <small>{snapshot.closed && !snapshot.applied ? "This posting is closed." : "This application is recorded as complete."}</small>
         ) : !snapshot.ownsPosting ? (
-          snapshot.desktop ? (
-            <button className="button button-secondary" type="button" onClick={() => void openPosting(jobId).catch((error: unknown) => setActionError(error instanceof Error ? error.message : "Could not open the application."))}>View Application</button>
-          ) : <a className="button button-secondary" href={snapshot.destination} target="_blank" rel="noreferrer">View Application</a>
+          <button className="button button-secondary" type="button" disabled={busy || checking !== null} onClick={() => void runManualOpenWithCheck()}>
+            {checkingView ? "Checking posting…" : "View Application"}
+          </button>
         ) : (
           <>
-            <button className="button button-secondary" type="button" disabled={busy} onClick={() => void runBrowser(browser.active ? "focus" : "start")}>
-              {busy ? "Opening…" : browser.active ? "Return to Application" : "View Application"}
+            <button className="button button-secondary" type="button" disabled={busy || checking !== null} onClick={() => void runViewWithCheck()}>
+              {checkingView ? "Checking posting…" : busy ? "Opening…" : browser.active ? "Return to Application" : "View Application"}
             </button>
-            {browser.active && (
+            {browser.active && !confirmStop && (
               <button className="button button-secondary" type="button" disabled={busy} onClick={() => void runBrowser("stop")}>Close browser</button>
+            )}
+            {browser.active && confirmStop && (
+              <div role="alert" aria-label="Confirm closing the employer browser">
+                <p className="writing-notice">
+                  Closing the employer browser may lose unsaved form work. Close it?
+                </p>
+                <div className="form-actions">
+                  <button className="button button-secondary" type="button" disabled={busy} onClick={() => void runBrowser("stop")}>Close browser</button>
+                  <button className="button button-secondary" type="button" onClick={() => setConfirmStop(false)}>Keep open</button>
+                </div>
+              </div>
             )}
           </>
         )}
@@ -304,17 +562,19 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
         {snapshot.letter ? (
           <div className="continuation-item">
             <p><strong>Cover letter:</strong> Selected saved letter{letterEditedSuffix(snapshot.letter.editedAt)}</p>
-            {!prep.includeLetter && <small>Already handled in this session.</small>}
+            {!prep.includeLetter && (
+              <small>{coverLetterStatusText(browser.letter_status, snapshot.ownsPosting)}</small>
+            )}
           </div>
         ) : (
           <p className="small-muted">Cover letter not included — none selected.</p>
         )}
 
-        {snapshot.pendingAnswers.length > 0 ? (
+        {Array.isArray(snapshot.pendingAnswers) && snapshot.pendingAnswers.length > 0 ? (
           <div className="continuation-item">
-            <p><strong>{snapshot.pendingAnswers.length} saved {snapshot.pendingAnswers.length === 1 ? "answer" : "answers"}</strong></p>
+            <p><strong>{snapshot.pendingAnswers.length} {snapshot.pendingAnswers.length === 1 ? "item" : "items"} ready to fill</strong></p>
             <dl className="contact-facts pending-answer-scope">
-              {snapshot.pendingAnswers.map((answer) => (
+              {(Array.isArray(snapshot.pendingAnswers) ? snapshot.pendingAnswers : []).map((answer) => (
                 <div key={answer.key}>
                   <dt>{answer.label}</dt>
                   <dd>
@@ -329,7 +589,17 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
             {!prep.includeAnswers && <small>Answers already handled in this session.</small>}
           </div>
         ) : (
-          <p className="small-muted">No saved answers pending transfer.</p>
+          <p className="small-muted">No items pending transfer.</p>
+        )}
+        {snapshot.editingAllowed && snapshot.manualProfileFacts.length > 0 && (
+          <div className="continuation-item" role="note" aria-label="Required profile fields needing manual completion">
+            <p><strong>Required fields to complete manually</strong></p>
+            <ul>
+              {snapshot.manualProfileFacts.map((fact) => (
+                <li key={fact.label}><strong>{fact.label}:</strong> {fact.detail}</li>
+              ))}
+            </ul>
+          </div>
         )}
       </div>
 
@@ -344,17 +614,21 @@ export function ContinuationSection({ jobId, materialRevision, active }: { jobId
         </p>
       )}
       <div className="form-actions">
-        <button
-          className="button button-primary"
-          type="button"
-          disabled={!canFill}
-          onClick={() => void runAuthorize()}
-        >
-          {busy ? "Filling…" : "Fill Application"}
-        </button>
+        {snapshot.ownsPosting && (
+          <button
+            className="button button-primary"
+            type="button"
+            disabled={!canFill || checking !== null}
+            onClick={() => void runFillWithCheck()}
+          >
+            {checkingFill ? "Checking posting…" : busy ? "Filling…" : "Fill Application"}
+          </button>
+        )}
       </div>
       <p className="small-muted">
-        Fill sends the included saved information to this employer. It does not submit. Review and submit yourself.
+        {snapshot.ownsPosting
+          ? "Fill sends the included saved information to this employer. It does not submit. Review and submit yourself."
+          : "Viewing sends no saved material. YourMove cannot confirm employer receipt; submit yourself on the employer site."}
       </p>
 
       {activeTransfer && (

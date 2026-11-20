@@ -14,10 +14,10 @@ On a supported Mac with the pinned Go toolchain and Xcode Command Line Tools:
 
 ```sh
 ./release/macos/doctor.sh
-./release/macos/prepare.sh
+env -u YOURMOVE_UPDATE_MANIFEST_URL -u YOURMOVE_UPDATE_PUBLIC_KEY_FILE YOURMOVE_ALLOW_DISABLED_UPDATER=1 ./release/macos/prepare.sh
 ```
 
-`doctor.sh` checks system/compiler requirements, icon, plist, and package scripts. `prepare.sh` requires a **clean Git working tree**, runs both Go test suites with isolated data, builds the Wails `desktop,production` executable through `build.sh`, signs the complete bundle ad hoc, checks metadata/hash integrity, packages the application/source ZIPs, then extracts and verifies the ZIP. It does not access the user's normal applicant workspace or publish anything.
+`doctor.sh` checks system/compiler requirements, icon, plist, and package scripts. The example disables updates for an unreleased local build; approved updater-enabled releases use the configuration in section 6A. `prepare.sh` requires a **clean Git working tree**, runs both Go test suites with isolated data, builds the Wails `desktop,production` executable through `build.sh`, signs the complete bundle ad hoc, checks metadata/hash integrity, packages the application/source ZIPs, then extracts and verifies the ZIP. It does not access the user's normal applicant workspace or publish anything.
 
 Default output is a newly created directory under `~/Projects/yourmove-builds/`. An absolute unused output directory can be supplied as the one argument to `prepare.sh`.
 
@@ -86,17 +86,11 @@ No prepare/distribute script or CI job publishes on its own.
 
 An updater-enabled YourMove installation may offer **user-approved** in-app updates, subject to the same signed-artifact, upgrade, recovery and owner-decision gates as any other release. Existing v0.1.0 DMGs have no updater and require one manual DMG installation of an updater-enabled build.
 
-The updater consumes a **separate signed/notarized application ZIP**, not the first-installation DMG. After the versioned candidate has passed Developer ID signing, Apple notarization, stapling and Gatekeeper verification, package it locally:
+The updater consumes a separate application ZIP, not the first-installation DMG. For an explicitly unnotarized technical alpha, use `bash release/macos/package-update.sh --alpha /absolute/path/YourMove.app /absolute/new/output`. This verifies ad-hoc signing and archive integrity; it does not establish Gatekeeper trust. The default production mode retains its Developer ID and notarization checks. Neither mode publishes anything.
 
-```sh
-bash release/macos/package-update.sh \
-  /absolute/path/to/signed-candidate/YourMove.app \
-  /absolute/new/updater-output
-```
+Unreleased v0.3 local builds disable the updater by setting `YOURMOVE_ALLOW_DISABLED_UPDATER=1` with `YOURMOVE_UPDATE_MANIFEST_URL` and `YOURMOVE_UPDATE_PUBLIC_KEY_FILE` unset or empty. For an approved updater-enabled release, explicitly set those two variables to the stable channel `https://github.com/jenksed/yourmove-go/releases/download/update-channel/stable.json` and `release/macos/update-public-key.pem` (use an absolute key path). The separate `update-channel` release asset must be created and maintained only with owner approval; `/releases/latest` excludes prereleases. Verify the embedded URL, key and version on the exact distribution executable and safeguard the matching private key outside the repository.
 
-This script checks the Developer ID identity, app bundle ID, version/build, arm64 architecture, notarization ticket and Gatekeeper; creates a single-top-level-app ZIP compatible with the Wails updater; extracts and re-verifies it; and writes a SHA-256 file. It does **not** sign, notarize, install or publish. The existing `release/macos/distribute.sh` still has hardcoded v0.1.0 filenames and must be made version-aware as part of S6 before a v0.2 candidate is produced.
-
-**Cryptographic release authentication:** The Wails v3.1.0 GitHub Releases provider fetches SHA256SUMS but not detached signatures. For v0.2 use the framework's signed update-manifest provider with an app-pinned public key, naming the immutable GitHub Release ZIP URL and exact digest. Create/sign/verify it with the pinned Wails CLI and an owner-controlled private signing key. A matching checksum alone is not the equivalent of developer-key authentication. Treat signature failure as a hard rejection. Never commit private keys or publish/update the production signed manifest without owner approval.
+The in-repo `release/macos/update-manifest` tool signs the SHA-256 digest of the updater ZIP with Ed25519. Wails verifies the digest and signature using the pinned key before installation. The JSON metadata itself (including version and release notes) is not signed; HTTPS protects transport, and a compromised channel could misrepresent metadata or replay a previously signed artifact. Treat a signature failure as a hard rejection. Never commit private keys or publish a manifest without owner approval.
 
 Before offering updater support, demonstrate an installed updater-enabled candidate A updating to B on a synthetic workspace, including accurate notice/approval, actual verified replacement and restart, retained SQLite/document bytes and associations, cancellation/failure handling, and manual DMG fallback for read-only locations or failures. The updater stages next to the installed app and therefore needs a writable installation location. Do not silently seek elevated privileges or claim normal /Applications writability without testing.
 

@@ -180,6 +180,15 @@ func TestDeterministicTriageExcludesCompletedAndClosed(t *testing.T) {
 	}
 }
 
+func TestRecommendationUsesOpportunityDisplayTitle(t *testing.T) {
+	job := Job{ID: 1, URL: "https://example.invalid/jobs/screenshot", Host: "example.invalid", Stage: StageReview}
+	next := recommendNext([]Job{job})
+	row := toOpportunityJSON(job)
+	if next == nil || next.JobID != row.ID || next.Title != "Screenshot" || next.Title != row.DisplayTitle || row.Title != "" {
+		t.Fatalf("recommendation and row should share the display fallback without a stored title: next=%+v row=%+v", next, row)
+	}
+}
+
 func TestTriageRouteAndTemplate(t *testing.T) {
 	db, err := storage.OpenDB(filepath.Join(t.TempDir(), "jobs.db"))
 	if err != nil {

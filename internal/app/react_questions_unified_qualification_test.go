@@ -19,11 +19,11 @@ import (
 
 // This drives the production Vite React build in controlled Chromium against
 // a Render-like Ashby discovery set and asserts the actually rendered
-// question list: one row per distinct question, saved drafts prepared with
-// their early identity, profile fields out of the editor, documents out of
-// the list, the unsupported source question shown once as manual, and the
-// unidentified bucket condensed into a notice. No employer browser is
-// launched and nothing is filled or submitted.
+// question desk: one navigator option per distinct answer task, saved drafts
+// prepared with their early identity, profile fields summarized out of the
+// editor, documents out of the task list, the unsupported source question
+// shown once as manual, and the unidentified bucket condensed into a notice.
+// No employer browser is launched and nothing is filled or submitted.
 func TestReactQuestionsUnifiedList(t *testing.T) {
 	if os.Getenv("YOURMOVE_QUALIFY_BROWSER") != "1" {
 		t.Skip("opt-in controlled browser")
@@ -71,7 +71,6 @@ func TestReactQuestionsUnifiedList(t *testing.T) {
 	}
 	mux := newMux(a)
 	drafts := map[string]string{
-		preview("_d0f9c56d-5a87-4137-9a0a-f0241d0af505"): "https://example.test/portfolio",
 		preview("_e523cd20-b243-4230-9a13-50ac028dd5a0"): "I enjoy using Render because deploys are boring in the best way.",
 	}
 	for id, value := range drafts {
@@ -136,11 +135,17 @@ func TestReactQuestionsUnifiedList(t *testing.T) {
 		t.Helper()
 		run(fmt.Sprintf(`Array.from(document.querySelectorAll('button')).find(x=>x.textContent.trim()==%q && x.offsetParent!==null).click()`, label))
 	}
+	// The desk shows one working question at a time; the navigator select
+	// holds one option per distinct answer task ("label · prepared" or
+	// "label · needs answer"). Task inventory reads those options.
 	taskLabels := func() []string {
 		var labels []string
-		if err := eval(`Array.from(document.querySelectorAll('.writing-question strong')).map(x=>x.textContent)`, &labels); err != nil {
+		run(`document.querySelector('[aria-label="Question navigation"] .question-select-trigger')?.click()`)
+		wait(`document.querySelectorAll('[role="option"]').length > 0`)
+		if err := eval(`Array.from(document.querySelectorAll('[role="option"] .question-select-label')).map(o=>o.textContent.trim())`, &labels); err != nil {
 			t.Fatal(err)
 		}
+		run(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`)
 		return labels
 	}
 	count := func(labels []string, want string) int {
@@ -155,9 +160,9 @@ func TestReactQuestionsUnifiedList(t *testing.T) {
 
 	wait(`document.body.innerText.includes('Synthetic Render role')`)
 	click("Questions")
-	wait(`Array.from(document.querySelectorAll('.writing-question strong')).some(x=>x.textContent==='Website')`)
+	wait(`document.querySelector('[aria-label="Question navigation"] .question-select-trigger')!==null`)
 	got := taskLabels()
-	for label, want := range map[string]int{"Website": 1, storyLabel: 1, "Other information": 1} {
+	for label, want := range map[string]int{"Website": 0, storyLabel: 1, "Other information": 1} {
 		if count(got, label) != want {
 			t.Fatalf("phase 1 tasks %q: %v", label, got)
 		}
@@ -168,7 +173,7 @@ func TestReactQuestionsUnifiedList(t *testing.T) {
 		}
 	}
 	var guidance string
-	if err := eval(`document.querySelector('.writing-previous')?.innerText || ''`, &guidance); err != nil {
+	if err := eval(`document.querySelector('[aria-label="Fields outside the writing tasks"]')?.innerText || ''`, &guidance); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{"Candidate Profile fields are handled automatically when authorized.", "Complete on the employer site", "Race", "Needs manual completion", "How did you hear about Render?", "Work authorization status"} {
@@ -176,7 +181,7 @@ func TestReactQuestionsUnifiedList(t *testing.T) {
 			t.Fatalf("phase 1 guidance missing %q: %s", want, guidance)
 		}
 	}
-	for _, absent := range []string{"LinkedIn", "Location"} {
+	for _, absent := range []string{"LinkedIn", "Location", "Website"} {
 		if strings.Contains(guidance, absent) {
 			t.Fatalf("phase 1 profile field listed instead of summarized: %q in %s", absent, guidance)
 		}
@@ -229,14 +234,14 @@ func TestReactQuestionsUnifiedList(t *testing.T) {
 	a.browsers.sessions[1] = &fakeBrowser{url: testAshbyPosting + "/application"}
 	a.browsers.mu.Unlock()
 	click("Refresh questions")
-	wait(`Array.from(document.querySelectorAll('.writing-question strong')).filter(x=>x.textContent==='Other information').length===2`)
+	wait(`document.querySelector('[aria-label="Question navigation"] .question-select-trigger')!==null`)
 	got = taskLabels()
-	for label, want := range map[string]int{"Website": 1, storyLabel: 1, "Other information": 2, "How did you hear about Render?": 0} {
+	for label, want := range map[string]int{"Website": 0, storyLabel: 1, "Other information": 2, "How did you hear about Render?": 0} {
 		if count(got, label) != want {
 			t.Fatalf("phase 2 tasks %q: %v", label, got)
 		}
 	}
-	if err := eval(`document.querySelector('.writing-previous')?.innerText || ''`, &guidance); err != nil {
+	if err := eval(`document.querySelector('[aria-label="Fields outside the writing tasks"]')?.innerText || ''`, &guidance); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{"Candidate Profile fields are handled automatically when authorized.", "Work authorization status", "How did you hear about Render?"} {
@@ -244,7 +249,7 @@ func TestReactQuestionsUnifiedList(t *testing.T) {
 			t.Fatalf("phase 2 guidance missing %q: %s", want, guidance)
 		}
 	}
-	for _, absent := range []string{"LinkedIn", "Location"} {
+	for _, absent := range []string{"LinkedIn", "Location", "Website"} {
 		if strings.Contains(guidance, absent) {
 			t.Fatalf("phase 2 profile field listed instead of summarized: %q in %s", absent, guidance)
 		}
@@ -260,14 +265,5 @@ func TestReactQuestionsUnifiedList(t *testing.T) {
 	if !strings.Contains(notices, "One employer control could not be stably identified; inspect it directly in the employer browser.") {
 		t.Fatalf("phase 2 unidentified notice wrong: %s", notices)
 	}
-	run(`Array.from(document.querySelectorAll('.writing-question')).find(x=>x.textContent.includes('Website')).click()`)
-	wait(`document.querySelector('#writing-answer')?.value === 'https://example.test/portfolio'`)
-	var editor string
-	if err := eval(`document.querySelector('.writing-editor')?.innerText || ''`, &editor); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(editor, "Published definition (preview)") {
-		t.Fatalf("saved draft lost its early editor identity: %s", editor)
-	}
-	t.Log("Unified React list: one task row per distinct question; drafts prepared with early identity; profile fields summarized; employer and manual guidance shown once from the current observation; unidentified controls condensed into one notice.")
+	t.Log("Unified React list: Website remains a Candidate Profile fact outside narrative tasks; narrative drafts retain their early identity; employer and manual guidance shown once from the current observation; unidentified controls condensed into one notice.")
 }
