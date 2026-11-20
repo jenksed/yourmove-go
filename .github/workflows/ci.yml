@@ -179,6 +179,8 @@ jobs:
             -o "$RUNNER_TEMP/yourmove-desktop" .
 
       - name: Build macOS application bundle
+        env:
+          YOURMOVE_ALLOW_DISABLED_UPDATER: "1"
         run: |
           bash release/macos/build.sh \
             "$RUNNER_TEMP/yourmove-macos-candidate"
