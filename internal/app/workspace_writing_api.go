@@ -47,14 +47,15 @@ import (
 )
 
 type writingLibrarySuggestionJSON struct {
-	EntryID        int64  `json:"entryId"`
-	Revision       int64  `json:"revision"`
-	Identity       string `json:"identity"`
-	Question       string `json:"question"`
-	Employer       string `json:"employer"`
-	JobTitle       string `json:"jobTitle"`
-	Host           string `json:"host"`
-	Excerpt        string `json:"excerpt"`
+	MatchKind string `json:"matchKind"`
+	EntryID   int64  `json:"entryId"`
+	Revision  int64  `json:"revision"`
+	Identity  string `json:"identity"`
+	Question  string `json:"question"`
+	Employer  string `json:"employer"`
+	JobTitle  string `json:"jobTitle"`
+	Host      string `json:"host"`
+	Excerpt   string `json:"excerpt"`
 }
 
 type writingEvidenceSuggestionJSON struct {
@@ -68,36 +69,44 @@ type writingEvidenceSuggestionJSON struct {
 }
 
 type writingQuestionJSON struct {
-	Key                string                          `json:"key"`
-	Label              string                          `json:"label"`
-	Kind               string                          `json:"kind"`
-	Required           bool                            `json:"required"`
-	Options            []string                        `json:"options"`
-	Value              string                          `json:"value"`
-	Source             string                          `json:"source"`
-	LocalStatus        string                          `json:"localStatus"`
-	Revision           int64                           `json:"revision"`
-	Editable           bool                            `json:"editable"`
-	LibraryEligible    bool                            `json:"libraryEligible"`
-	HelpEligible       bool                            `json:"helpEligible"`
-	IsEarly            bool                            `json:"isEarly"`
-	DiscoverySource    string                          `json:"discoverySource"`
-	DiscoveryPrint     string                          `json:"discoveryFingerprint"`
-	SourceQuestionID   string                          `json:"sourceQuestionId"`
-	TriageCategory     string                          `json:"triageCategory"`
-	ManualReason       string                          `json:"manualReason"`
-	ReusableKey        string                          `json:"reusableKey"`
-	ReusableRevision   int64                           `json:"reusableRevision"`
-	ReusableEligible   bool                            `json:"reusableEligible"`
-	ReusableAnswer     string                          `json:"reusableAnswer"`
-	ReusableAvailable  bool                            `json:"reusableAvailable"`
-	OriginEntryID      int64                           `json:"originEntryId"`
-	OriginRevision     int64                           `json:"originRevision"`
-	OriginQuestion     string                          `json:"originQuestion"`
-	OriginEmployer     string                          `json:"originEmployer"`
-	OriginRecorded     bool                            `json:"originRecorded"`
-	LibrarySuggestions []writingLibrarySuggestionJSON  `json:"librarySuggestions"`
-	EvidenceSuggestion []writingEvidenceSuggestionJSON `json:"evidenceSuggestions"`
+	Key              string   `json:"key"`
+	Label            string   `json:"label"`
+	Kind             string   `json:"kind"`
+	Required         bool     `json:"required"`
+	Options          []string `json:"options"`
+	Value            string   `json:"value"`
+	Source           string   `json:"source"`
+	LocalStatus      string   `json:"localStatus"`
+	Revision         int64    `json:"revision"`
+	Editable         bool     `json:"editable"`
+	LibraryEligible  bool     `json:"libraryEligible"`
+	HelpEligible     bool     `json:"helpEligible"`
+	IsEarly          bool     `json:"isEarly"`
+	DiscoverySource  string   `json:"discoverySource"`
+	DiscoveryPrint   string   `json:"discoveryFingerprint"`
+	SourceQuestionID string   `json:"sourceQuestionId"`
+	// IsManual marks an applicant-authored question that never describes an
+	// observed employer control. Manual rows are always editable writing
+	// tasks and never enter Fill scope.
+	IsManual            bool                            `json:"isManual"`
+	TriageCategory      string                          `json:"triageCategory"`
+	ManualReason        string                          `json:"manualReason"`
+	ReusableKey         string                          `json:"reusableKey"`
+	ReusableRevision    int64                           `json:"reusableRevision"`
+	ReusableEligible    bool                            `json:"reusableEligible"`
+	ReusableAnswer      string                          `json:"reusableAnswer"`
+	ReusableAvailable   bool                            `json:"reusableAvailable"`
+	OriginEntryID       int64                           `json:"originEntryId"`
+	OriginRevision      int64                           `json:"originRevision"`
+	OriginQuestion      string                          `json:"originQuestion"`
+	OriginEmployer      string                          `json:"originEmployer"`
+	OriginRecorded      bool                            `json:"originRecorded"`
+	LibraryAutoEntryID  int64                           `json:"libraryAutoEntryId"`
+	LibraryAutoRevision int64                           `json:"libraryAutoRevision"`
+	LibraryAutoQuestion string                          `json:"libraryAutoQuestion"`
+	LibraryAutoPrepared bool                            `json:"libraryAutoPrepared"`
+	LibrarySuggestions  []writingLibrarySuggestionJSON  `json:"librarySuggestions"`
+	EvidenceSuggestion  []writingEvidenceSuggestionJSON `json:"evidenceSuggestions"`
 	// Reconciliation is early-only presentation data; acceptance stays server-owned.
 	ReconciliationStatus string `json:"reconciliationStatus"`
 	ReconciliationDetail string `json:"reconciliationDetail"`
@@ -117,7 +126,7 @@ func toWritingLibrarySuggestions(in []answerLibrarySuggestion) []writingLibraryS
 	out := make([]writingLibrarySuggestionJSON, 0, len(in))
 	for _, s := range in {
 		out = append(out, writingLibrarySuggestionJSON{
-			EntryID: s.EntryID, Revision: s.Revision,
+			EntryID: s.EntryID, Revision: s.Revision, MatchKind: s.MatchKind,
 			Identity: fmt.Sprintf("%d:%d", s.EntryID, s.Revision),
 			Question: s.OriginalQuestion, Employer: s.SourceEmployer,
 			JobTitle: s.SourceJobTitle, Host: s.SourceHost, Excerpt: s.Excerpt,
@@ -145,27 +154,31 @@ func toWritingQuestion(q preparedQuestion) writingQuestionJSON {
 	category, manualReason := liveWritingTriage(q)
 	return writingQuestionJSON{
 		Key: q.Key, Label: q.Field.Label, Kind: q.Field.Kind, Required: q.Field.Required,
-		Options:            safePublishedOptions(q.Field.Kind, q.Field.Options),
-		Value:              q.Value,
-		Source:             q.Source,
-		LocalStatus:        q.LocalStatus(),
-		Revision:           q.Revision,
-		Editable:           q.Editable,
-		LibraryEligible:    q.LibraryEligible,
-		HelpEligible:       q.HelpEligible(),
-		IsEarly:            q.IsEarly,
-		DiscoverySource:    q.DiscoverySource,
-		DiscoveryPrint:     q.DiscoveryFingerprint,
-		SourceQuestionID:   q.SourceQuestionID,
-		TriageCategory:     category,
-		ManualReason:       manualReason,
-		ReusableKey:        q.ReusableKey,
-		ReusableRevision:   q.ReusableRevision,
-		ReusableEligible:   q.ReusableKey != "",
-		ReusableAnswer:     q.ReusableAnswer,
-		ReusableAvailable:  q.ReusableAvailable,
-		LibrarySuggestions: toWritingLibrarySuggestions(q.LibrarySuggestions),
-		EvidenceSuggestion: toWritingEvidenceSuggestions(q.CareerEvidenceSuggestions),
+		Options:             safePublishedOptions(q.Field.Kind, q.Field.Options),
+		Value:               q.Value,
+		Source:              q.Source,
+		LocalStatus:         q.LocalStatus(),
+		Revision:            q.Revision,
+		Editable:            q.Editable,
+		LibraryEligible:     q.Editable && answerLibraryEligible(q.Field, true),
+		HelpEligible:        q.HelpEligible(),
+		IsEarly:             q.IsEarly,
+		DiscoverySource:     q.DiscoverySource,
+		DiscoveryPrint:      q.DiscoveryFingerprint,
+		SourceQuestionID:    q.SourceQuestionID,
+		TriageCategory:      category,
+		ManualReason:        manualReason,
+		ReusableKey:         q.ReusableKey,
+		ReusableRevision:    q.ReusableRevision,
+		ReusableEligible:    q.ReusableKey != "",
+		ReusableAnswer:      q.ReusableAnswer,
+		ReusableAvailable:   q.ReusableAvailable,
+		LibraryAutoEntryID:  q.LibraryAutoEntryID,
+		LibraryAutoRevision: q.LibraryAutoRevision,
+		LibraryAutoQuestion: q.LibraryAutoQuestion,
+		LibraryAutoPrepared: q.LibraryAutoEntryID > 0,
+		LibrarySuggestions:  toWritingLibrarySuggestions(q.LibrarySuggestions),
+		EvidenceSuggestion:  toWritingEvidenceSuggestions(q.CareerEvidenceSuggestions),
 	}
 }
 
@@ -174,25 +187,42 @@ func toWritingQuestion(q preparedQuestion) writingQuestionJSON {
 // presentation; save and transfer authority stay with Editable and the
 // server-owned validators.
 func liveWritingTriage(q preparedQuestion) (string, string) {
-	readyProfile := q.Editable && q.Value != "" && q.Source == "Approved candidate information"
-	switch {
-	case readyProfile:
-		return "profile", ""
-	case employerOnlyQuestion(q.Field):
-		return "employer", "This question is excluded from saved-answer transfer by existing privacy or legal policy. Complete it in the employer application."
-	case !q.Editable:
-		return "review", "This published control is unsupported for saved-answer transfer. Complete it manually in the employer application."
+	category := writingCategory(q.Field, true, q.Editable)
+	switch category {
+	case "employer":
+		return category, "Complete this control manually in the employer application."
+	case "review":
+		return category, "This control is unsupported for saved-answer transfer. Complete it manually in the employer application."
 	default:
-		return "answer", ""
+		return category, ""
 	}
+
 }
 
 // displayDocumentControl keeps résumé and cover-letter controls in the
 // Documents workflow: they never appear as applicant writing tasks. This
 // mirrors the live workbench filter, which already excludes them, for the
-// early inventory that preserves them.
+// early inventory that preserves them. File kinds are documents whatever
+// their label says, and the provider's own résumé identities (including the
+// Greenhouse paste-text control) are documents whatever their control kind
+// is. Anything else keeps its own role: narrative wording that merely
+// mentions a résumé stays an applicant-written question.
 func displayDocumentControl(f schema.Field) bool {
-	return f.Kind == "file" || strings.Contains(strings.ToLower(f.Label), "cover letter")
+	if f.Kind == "file" || f.Kind == "input_file" {
+		return true
+	}
+	if strings.Contains(strings.ToLower(f.Label), "cover letter") {
+		return true
+	}
+	switch resumeDocumentIdentity(profileQuestionIdentity(f.ID)) {
+	case "resume", "resumetext", "cv":
+		return true
+	}
+	return false
+}
+
+func resumeDocumentIdentity(id string) string {
+	return strings.NewReplacer("_", "", "-", "", " ", "").Replace(strings.ToLower(id))
 }
 
 // displayUnidentifiedControl reports generic buckets without a stable field
@@ -209,10 +239,15 @@ func displayUnidentifiedControl(id string) bool {
 // transfer authority: every write still revalidates the exact underlying
 // record. Empty means the row must never merge with another context, so two
 // genuinely distinct controls with identical wording stay separate.
+// Applicant-authored manual questions never merge: they are appended after
+// unification with their own application-owned keys.
 func displayQuestionIdentity(id string) string {
 	base := ashbyStableFieldSuffix(id)
 	base = strings.TrimPrefix(base, "application:")
 	if base == "" || base == "unidentified-controls" || strings.HasPrefix(base, "unidentified-") || positionalQuestionID.MatchString(base) {
+		return ""
+	}
+	if strings.HasPrefix(base, "manual-") {
 		return ""
 	}
 	return base
@@ -263,7 +298,7 @@ func unifyQuestionInventories(liveRows []preparedQuestion, earlyRows []earlyAppl
 	liveUnidentified, earlyUnidentified := 0, 0
 	liveKept := make([]preparedQuestion, 0, len(liveRows))
 	for _, q := range liveRows {
-		if displayDocumentControl(q.Field) {
+		if displayDocumentControl(q.Field) || isProfileField(q.Field) {
 			continue
 		}
 		if displayUnidentifiedControl(q.Field.ID) {
@@ -274,7 +309,7 @@ func unifyQuestionInventories(liveRows []preparedQuestion, earlyRows []earlyAppl
 	}
 	earlyKept := make([]earlyApplicationQuestion, 0, len(earlyRows))
 	for _, q := range earlyRows {
-		if displayDocumentControl(q.Field) {
+		if displayDocumentControl(q.Field) || isProfileField(q.Field) {
 			continue
 		}
 		if displayUnidentifiedControl(q.SourceQuestionID) {
@@ -421,22 +456,26 @@ func unifyQuestionInventories(liveRows []preparedQuestion, earlyRows []earlyAppl
 func toWritingEarlyQuestion(q earlyApplicationQuestion) writingQuestionJSON {
 	out := writingQuestionJSON{
 		Key: q.Key, Label: q.Field.Label, Kind: q.Field.Kind, Required: q.Field.Required,
-		Options:            safePublishedOptions(q.Field.Kind, q.Field.Options),
-		Value:              q.Value,
-		Revision:           q.Revision,
-		Editable:           q.Editable,
-		LibraryEligible:    q.Revision > 0 && q.Editable && earlyPotentialNarrative(q.Field),
-		HelpEligible:       q.HelpEligible(),
-		IsEarly:            true,
-		DiscoverySource:    q.DiscoverySource,
-		DiscoveryPrint:     q.DiscoveryFingerprint,
-		SourceQuestionID:   q.SourceQuestionID,
-		TriageCategory:     q.TriageCategory,
-		ManualReason:       q.ManualReason,
-		ReusableEligible:   false,
-		ReusableAvailable:  false,
-		LibrarySuggestions: toWritingLibrarySuggestions(q.LibrarySuggestions),
-		EvidenceSuggestion: toWritingEvidenceSuggestions(q.CareerEvidence),
+		Options:              safePublishedOptions(q.Field.Kind, q.Field.Options),
+		Value:                q.Value,
+		Revision:             q.Revision,
+		Editable:             q.Editable,
+		LibraryEligible:      q.Editable && q.TriageCategory == "answer" && earlyPotentialNarrative(q.Field),
+		HelpEligible:         q.HelpEligible(),
+		IsEarly:              true,
+		DiscoverySource:      q.DiscoverySource,
+		DiscoveryPrint:       q.DiscoveryFingerprint,
+		SourceQuestionID:     q.SourceQuestionID,
+		TriageCategory:       q.TriageCategory,
+		ManualReason:         q.ManualReason,
+		ReusableEligible:     false,
+		ReusableAvailable:    false,
+		LibraryAutoEntryID:   q.LibraryAutoEntryID,
+		LibraryAutoRevision:  q.LibraryAutoRevision,
+		LibraryAutoQuestion:  q.LibraryAutoQuestion,
+		LibraryAutoPrepared:  q.LibraryAutoEntryID > 0,
+		LibrarySuggestions:   toWritingLibrarySuggestions(q.LibrarySuggestions),
+		EvidenceSuggestion:   toWritingEvidenceSuggestions(q.CareerEvidence),
 		ReconciliationStatus: q.Reconciliation.Status,
 		ReconciliationDetail: q.Reconciliation.Detail,
 		ReconciliationAccept: q.Reconciliation.CanAccept,
@@ -445,6 +484,9 @@ func toWritingEarlyQuestion(q earlyApplicationQuestion) writingQuestionJSON {
 	if q.ProfileResolved {
 		out.Source = "Approved candidate information"
 		out.LocalStatus = "Approved candidate information; transfer requires your authorization"
+	} else if q.LibraryAutoEntryID > 0 {
+		out.Source = libraryAutoSource
+		out.LocalStatus = "Automatically prepared from Answer Library; review and save locally. It has not been checked against the employer form."
 	} else if q.Value != "" {
 		out.Source = "Saved early answer"
 		out.LocalStatus = "Saved locally. It has not been verified against the employer form."
@@ -633,6 +675,15 @@ func (a *App) buildWritingQuestions(jobID int64) (map[string]any, error) {
 		apply(unified)
 	}()
 
+	// Applicant-authored questions are appended after unification with their
+	// own application-owned keys. They never merge with observed controls, so
+	// later capture cannot silently merge, overwrite, or authorize them.
+	manual, err := a.manualQuestionProjection(job)
+	if err != nil {
+		return nil, err
+	}
+	unified = append(unified, manual...)
+
 	previous := make([]writingPreviousJSON, 0, len(live.Previous)+len(early.Previous))
 	for _, p := range live.Previous {
 		previous = append(previous, writingPreviousJSON{Key: p.Key, Label: p.Label, Value: p.Value, Revision: p.Revision})
@@ -641,10 +692,12 @@ func (a *App) buildWritingQuestions(jobID int64) (map[string]any, error) {
 		previous = append(previous, writingPreviousJSON{Key: p.SourceQuestionID, Label: p.QuestionLabel, Value: p.Answer, Revision: p.Revision, Early: true})
 	}
 
+	captureState := a.browsers.state(job.ID)
 	editingAllowed := job.Stage != StageApplied && job.Stage != StageClosed && job.SubmissionCount == 0
 	return map[string]any{
-		"browserActive": a.browsers.state(job.ID).Active,
-		"available": snapshot.Available, "source": snapshot.Source,
+		"browserActive": captureState.Active,
+		"captureState":  map[string]any{"phase": captureState.Phase, "message": captureState.Message},
+		"available":     snapshot.Available, "source": snapshot.Source,
 		"partial": snapshot.Partial, "anchor": snapshot.Anchor,
 		"activeContext": activeContext,
 		"inspection": map[string]any{
@@ -669,18 +722,19 @@ func (a *App) buildWritingQuestions(jobID int64) (map[string]any, error) {
 				return ""
 			}(),
 		},
-		"live":     liveJSON,
-		"early":    earlyJSON,
-		"questions": unified,
-		"unidentifiedCount": unidentified,
-		"previous": previous,
-		"profileCount": len(live.ProfileQuestions()),
-		"employerOnlyCount": len(live.EmployerSiteQuestions()),
-		"manualReviewCount": len(live.ManualReviewQuestions()),
-		"earlyNotice": early.Notice,
-		"returnNotice": live.ReturnNotice,
-		"editingAllowed": editingAllowed,
+		"live":                 liveJSON,
+		"early":                earlyJSON,
+		"questions":            unified,
+		"unidentifiedCount":    unidentified,
+		"previous":             previous,
+		"profileCount":         len(live.ProfileQuestions()) + len(early.ProfileQuestions()),
+		"employerOnlyCount":    len(live.EmployerSiteQuestions()),
+		"manualReviewCount":    len(live.ManualReviewQuestions()),
+		"earlyNotice":          early.Notice,
+		"returnNotice":         live.ReturnNotice,
+		"editingAllowed":       editingAllowed,
 		"answerEditingAllowed": editingAllowed,
+		"ownsPosting":          browser.OwnsPostingURL(job.URL, job.URL),
 	}, nil
 }
 
@@ -709,19 +763,20 @@ func (a *App) writingQuestionsAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 type writingSaveInput struct {
-	QuestionKey         string `json:"question_key"`
-	Revision            int64  `json:"revision"`
-	Destination         string `json:"destination"`
-	Answer              string `json:"answer"`
-	Reusable            bool   `json:"reusable"`
-	ReusableRevision    int64  `json:"reusable_revision"`
-	Early               bool   `json:"early"`
-	DiscoverySource     string `json:"discovery_source"`
-	DiscoveryPrint      string `json:"discovery_fingerprint"`
-	SourceQuestionID    string `json:"source_question_id"`
-	OriginEntryID       int64  `json:"origin_entry_id"`
-	OriginRevision      int64  `json:"origin_revision"`
-	OriginClear         bool   `json:"origin_clear"`
+	SaveToLibrary    bool   `json:"save_to_library"`
+	QuestionKey      string `json:"question_key"`
+	Revision         int64  `json:"revision"`
+	Destination      string `json:"destination"`
+	Answer           string `json:"answer"`
+	Reusable         bool   `json:"reusable"`
+	ReusableRevision int64  `json:"reusable_revision"`
+	Early            bool   `json:"early"`
+	DiscoverySource  string `json:"discovery_source"`
+	DiscoveryPrint   string `json:"discovery_fingerprint"`
+	SourceQuestionID string `json:"source_question_id"`
+	OriginEntryID    int64  `json:"origin_entry_id"`
+	OriginRevision   int64  `json:"origin_revision"`
+	OriginClear      bool   `json:"origin_clear"`
 }
 
 // answerReuseOrigin is durable starting-source provenance for a manually
@@ -743,7 +798,7 @@ func buildAnswerReuseOrigin(entry AnswerLibraryEntry, destinationRevision int64)
 		LibraryEntryID: entry.ID, LibraryRevision: entry.Revision,
 		SourceQuestion: entry.OriginalQuestion, SourceEmployer: entry.SourceEmployer,
 		SourceJobTitle: entry.SourceJobTitle, SourceDestination: entry.SourceDestination,
-		SourceHash: fmt.Sprintf("%x", sha256.Sum256([]byte(entry.Answer))),
+		SourceHash:     fmt.Sprintf("%x", sha256.Sum256([]byte(entry.Answer))),
 		DestinationRev: destinationRevision,
 	}
 	data, err := json.Marshal(origin)
@@ -908,6 +963,12 @@ func (a *App) writingSaveAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if input.SaveToLibrary {
+		if err := saveWritingLibrary(tx, job, input, question.Field.Label, question.Field.Kind, answerLibraryEligible(question.Field, true)); err != nil {
+			writeResumeError(w, 409, "Not saved. This question is ineligible or matches conflicting library entries. Review the library, or save for this application only.")
+			return
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		writeResumeError(w, http.StatusInternalServerError, "Unable to save the answer")
 		return
@@ -980,8 +1041,27 @@ func (a *App) writingSaveEarly(w http.ResponseWriter, job Job, input writingSave
 			return
 		}
 	}
+	libraryEligible := false
+	if input.SaveToLibrary {
+		prepared, err := a.prepareEarlyQuestions(job, nil)
+		if err != nil {
+			writeResumeError(w, 500, "Unable to verify this question")
+			return
+		}
+		for _, q := range prepared.Questions {
+			if q.Key == question.Key {
+				libraryEligible = q.Editable && q.TriageCategory == "answer" && earlyPotentialNarrative(q.Field)
+			}
+		}
+	}
+	tx, err := a.db.Begin()
+	if err != nil {
+		writeResumeError(w, 500, "Unable to save answer")
+		return
+	}
+	defer tx.Rollback()
 	now := answerLibraryTimestamp()
-	result, err := a.db.Exec(`INSERT INTO early_application_answers(job_id,destination,discovery_source,source_question_id,question_label,field_snapshot_json,discovery_fingerprint,answer,revision,reconciliation_status,created_at,updated_at)
+	result, err := tx.Exec(`INSERT INTO early_application_answers(job_id,destination,discovery_source,source_question_id,question_label,field_snapshot_json,discovery_fingerprint,answer,revision,reconciliation_status,created_at,updated_at)
 		VALUES(?,?,?,?,?,?,?,?,1,'unreconciled',?,?)
 		ON CONFLICT(job_id,destination,discovery_source,discovery_fingerprint,source_question_id)
 		DO UPDATE SET question_label=excluded.question_label,field_snapshot_json=excluded.field_snapshot_json,answer=excluded.answer,revision=early_application_answers.revision+1,reconciliation_status='unreconciled',live_inspection_fingerprint='',live_question_key='',reconciled_at='',updated_at=excluded.updated_at
@@ -1001,23 +1081,33 @@ func (a *App) writingSaveEarly(w http.ResponseWriter, job Job, input writingSave
 			writeResumeError(w, http.StatusInternalServerError, "Unable to save this early answer.")
 			return
 		}
-		if _, err := a.db.Exec(`UPDATE early_application_answers SET reuse_source_json=? WHERE job_id=? AND destination=? AND discovery_source=? AND discovery_fingerprint=? AND source_question_id=?`,
+		if _, err := tx.Exec(`UPDATE early_application_answers SET reuse_source_json=? WHERE job_id=? AND destination=? AND discovery_source=? AND discovery_fingerprint=? AND source_question_id=?`,
 			earlyOriginJSON, job.ID, job.URL, input.DiscoverySource, input.DiscoveryPrint, input.SourceQuestionID); err != nil {
 			writeResumeError(w, http.StatusInternalServerError, "Unable to save this early answer.")
 			return
 		}
 	}
+	if input.SaveToLibrary {
+		if err := saveWritingLibrary(tx, job, input, question.Field.Label, question.Field.Kind, libraryEligible); err != nil {
+			writeResumeError(w, 409, "Not saved. This question is ineligible or matches conflicting library entries. Review the library, or save for this application only.")
+			return
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		writeResumeError(w, 500, "Unable to save answer")
+		return
+	}
 	writeResumeJSON(w, http.StatusOK, map[string]any{"saved": true, "key": input.QuestionKey, "revision": question.Revision + 1, "early": true})
 }
 
 type writingAssistInput struct {
-	QuestionKey       string `json:"question_key"`
-	Revision          int64  `json:"revision"`
-	Destination       string `json:"destination"`
-	Early             bool   `json:"early"`
-	DiscoverySource   string `json:"discovery_source"`
-	DiscoveryPrint    string `json:"discovery_fingerprint"`
-	SourceQuestionID  string `json:"source_question_id"`
+	QuestionKey      string `json:"question_key"`
+	Revision         int64  `json:"revision"`
+	Destination      string `json:"destination"`
+	Early            bool   `json:"early"`
+	DiscoverySource  string `json:"discovery_source"`
+	DiscoveryPrint   string `json:"discovery_fingerprint"`
+	SourceQuestionID string `json:"source_question_id"`
 }
 
 // POST /api/jobs/{id}/assistance returns suggestions, AI source choices, and
@@ -1145,30 +1235,30 @@ func (a *App) writingAssistAPI(w http.ResponseWriter, r *http.Request) {
 // ---- Cover letters ----
 
 type writingLetterJSON struct {
-	ID           int64  `json:"id"`
-	JobID        int64  `json:"jobId"`
-	Provider     string `json:"provider"`
-	Model        string `json:"model"`
-	Body         string `json:"body"`
-	CreatedAt    string `json:"createdAt"`
-	EditedAt     string `json:"editedAt"`
-	EvidenceRefs []letterEvidenceRef `json:"evidenceRefs"`
-	EvidenceStale bool               `json:"evidenceStale"`
-	ContentHash  string               `json:"contentHash"`
-	MasterResumeID int64 `json:"masterResumeId"`
-	MasterSHA string `json:"masterSha"`
-	MasterName string `json:"masterName"`
-	MasterVersion int `json:"masterVersion"`
-	RoleResumeID int64 `json:"roleResumeId"`
-	RoleSHA string `json:"roleSha"`
-	RoleName string `json:"roleName"`
-	RoleVersion int `json:"roleVersion"`
-	ManualSource bool `json:"manualSource"`
-	OriginRecorded bool `json:"originRecorded"`
-	OriginSourceLetterID int64 `json:"originSourceLetterId"`
-	OriginSourceJobID int64 `json:"originSourceJobId"`
-	OriginEmployer string `json:"originEmployer"`
-	OriginJobTitle string `json:"originJobTitle"`
+	ID                   int64               `json:"id"`
+	JobID                int64               `json:"jobId"`
+	Provider             string              `json:"provider"`
+	Model                string              `json:"model"`
+	Body                 string              `json:"body"`
+	CreatedAt            string              `json:"createdAt"`
+	EditedAt             string              `json:"editedAt"`
+	EvidenceRefs         []letterEvidenceRef `json:"evidenceRefs"`
+	EvidenceStale        bool                `json:"evidenceStale"`
+	ContentHash          string              `json:"contentHash"`
+	MasterResumeID       int64               `json:"masterResumeId"`
+	MasterSHA            string              `json:"masterSha"`
+	MasterName           string              `json:"masterName"`
+	MasterVersion        int                 `json:"masterVersion"`
+	RoleResumeID         int64               `json:"roleResumeId"`
+	RoleSHA              string              `json:"roleSha"`
+	RoleName             string              `json:"roleName"`
+	RoleVersion          int                 `json:"roleVersion"`
+	ManualSource         bool                `json:"manualSource"`
+	OriginRecorded       bool                `json:"originRecorded"`
+	OriginSourceLetterID int64               `json:"originSourceLetterId"`
+	OriginSourceJobID    int64               `json:"originSourceJobId"`
+	OriginEmployer       string              `json:"originEmployer"`
+	OriginJobTitle       string              `json:"originJobTitle"`
 }
 
 func (a *App) toWritingLetter(d CoverLetter) writingLetterJSON {
@@ -1357,11 +1447,11 @@ func (a *App) writingLetterAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 type writingLetterSaveInput struct {
-	Body         string `json:"body"`
-	BodyHash     string `json:"expected_hash"`
-	PriorLetter  int64  `json:"prior_letter_id"`
-	PriorJob     int64  `json:"prior_job_id"`
-	PriorHash    string `json:"prior_body_hash"`
+	Body        string `json:"body"`
+	BodyHash    string `json:"expected_hash"`
+	PriorLetter int64  `json:"prior_letter_id"`
+	PriorJob    int64  `json:"prior_job_id"`
+	PriorHash   string `json:"prior_body_hash"`
 }
 
 // POST /api/jobs/{id}/letters/{draft} edits an existing draft in place.
@@ -1410,14 +1500,27 @@ func (a *App) writingLetterSaveAPI(w http.ResponseWriter, r *http.Request) {
 // Select only an existing draft belonging to this editable application.
 func (a *App) writingLetterSelectAPI(w http.ResponseWriter, r *http.Request) {
 	jobID, err := parseJobID(r)
-	if err != nil { writeResumeError(w, http.StatusNotFound, "Unknown job"); return }
-	var input struct { DraftID int64 `json:"draftId"` }
-	if !decodeResumeJSON(w, r, 4096, &input) { return }
+	if err != nil {
+		writeResumeError(w, http.StatusNotFound, "Unknown job")
+		return
+	}
+	var input struct {
+		DraftID int64 `json:"draftId"`
+	}
+	if !decodeResumeJSON(w, r, 4096, &input) {
+		return
+	}
 	result, err := a.db.Exec(`UPDATE jobs SET selected_cover_letter_id=? WHERE id=? AND stage NOT IN ('applied','closed') AND NOT EXISTS(SELECT 1 FROM submissions WHERE job_id=jobs.id) AND EXISTS(SELECT 1 FROM cover_letters WHERE id=? AND job_id=jobs.id)`, input.DraftID, jobID, input.DraftID)
-	if err != nil { writeResumeError(w, http.StatusInternalServerError, "Unable to select the letter."); return }
+	if err != nil {
+		writeResumeError(w, http.StatusInternalServerError, "Unable to select the letter.")
+		return
+	}
 	n, err := result.RowsAffected()
-	if err != nil || n != 1 { writeResumeError(w, http.StatusConflict, "This letter cannot be selected for this application."); return }
-	writeResumeJSON(w, http.StatusOK, map[string]bool{"saved":true})
+	if err != nil || n != 1 {
+		writeResumeError(w, http.StatusConflict, "This letter cannot be selected for this application.")
+		return
+	}
+	writeResumeJSON(w, http.StatusOK, map[string]bool{"saved": true})
 }
 
 // A manual draft has no AI or résumé source. It shares the existing letter
@@ -1476,18 +1579,36 @@ func (a *App) writingLetterManualAPI(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	tx, err := a.db.Begin()
-	if err != nil { writeResumeError(w, http.StatusInternalServerError, "Unable to save the letter."); return }
+	if err != nil {
+		writeResumeError(w, http.StatusInternalServerError, "Unable to save the letter.")
+		return
+	}
 	defer tx.Rollback()
 	result, err := tx.Exec(`INSERT INTO cover_letters(job_id,body,provider,model,master_resume_id,master_sha256,role_resume_id,role_sha256,job_description_sha256,created_at,reuse_source_json) VALUES(?,?,'manual','',NULL,'',NULL,'','',?,?)`, jobID, input.Body, time.Now().UTC().Format(time.RFC3339), originJSON)
-	if err != nil { log.Printf("save manual letter: %v", err); writeResumeError(w, http.StatusInternalServerError, "Unable to save the letter."); return }
+	if err != nil {
+		log.Printf("save manual letter: %v", err)
+		writeResumeError(w, http.StatusInternalServerError, "Unable to save the letter.")
+		return
+	}
 	id, err := result.LastInsertId()
 	if err == nil {
 		var selection sql.Result
 		selection, err = tx.Exec(`UPDATE jobs SET selected_cover_letter_id=? WHERE id=? AND stage NOT IN ('applied','closed') AND NOT EXISTS(SELECT 1 FROM submissions WHERE job_id=jobs.id)`, id, jobID)
-		if err == nil { var n int64; n, err = selection.RowsAffected(); if err == nil && n != 1 { err = errors.New("application no longer editable") } }
+		if err == nil {
+			var n int64
+			n, err = selection.RowsAffected()
+			if err == nil && n != 1 {
+				err = errors.New("application no longer editable")
+			}
+		}
 	}
-	if err == nil { err = tx.Commit() }
-	if err != nil { writeResumeError(w, http.StatusInternalServerError, "Unable to save the letter."); return }
+	if err == nil {
+		err = tx.Commit()
+	}
+	if err != nil {
+		writeResumeError(w, http.StatusInternalServerError, "Unable to save the letter.")
+		return
+	}
 	writeResumeJSON(w, http.StatusOK, map[string]any{"saved": true, "draftId": id})
 }
 
@@ -1502,16 +1623,16 @@ type writingLetterGenerateInput struct {
 
 func writingLetterFail(w http.ResponseWriter, code string) {
 	messages := map[string]string{
-		"model":                  "Enter a model supported by this provider. See AI connections for its default and setup.",
-		"sources":                "Select current reviewed Career Evidence or a readable resume. Shorten oversized evidence and review it again.",
-		"source-description":     "Add a saved job description before generating a cover letter.",
-		"source-resume-missing":  "Choose an active role-specific resume for this job.",
-		"source-master-missing":  "Designate an active master resume in the document library.",
+		"model":                    "Enter a model supported by this provider. See AI connections for its default and setup.",
+		"sources":                  "Select current reviewed Career Evidence or a readable resume. Shorten oversized evidence and review it again.",
+		"source-description":       "Add a saved job description before generating a cover letter.",
+		"source-resume-missing":    "Choose an active role-specific resume for this job.",
+		"source-master-missing":    "Designate an active master resume in the document library.",
 		"source-master-unreadable": "The master resume text could not be read. Use another DOCX or PDF master.",
-		"source-resume-invalid":  "Choose an active non-master role resume for this letter.",
+		"source-resume-invalid":    "Choose an active non-master role resume for this letter.",
 		"source-resume-unreadable": "The role resume text could not be read. Use another DOCX or PDF resume.",
-		"failed":                 "The provider could not complete this request. Prior drafts are unchanged; try again.",
-		"invalid":                "Confirm external transmission, or local-only handling for Ollama, before generating.",
+		"failed":                   "The provider could not complete this request. Prior drafts are unchanged; try again.",
+		"invalid":                  "Confirm external transmission, or local-only handling for Ollama, before generating.",
 	}
 	message, ok := messages[code]
 	if !ok {
@@ -1872,6 +1993,6 @@ func (a *App) coverLetterCatalogDetailAPI(w http.ResponseWriter, r *http.Request
 	job, _ := a.jobByID(jobID)
 	writeResumeJSON(w, http.StatusOK, map[string]any{
 		"letter": detail,
-		"job": map[string]any{"id": job.ID, "employer": job.Company, "host": job.Host, "title": job.Title},
+		"job":    map[string]any{"id": job.ID, "employer": job.Company, "host": job.Host, "title": job.Title},
 	})
 }

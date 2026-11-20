@@ -6,6 +6,8 @@ YourMove is a local-first job application workbench. Applicants approve their ma
 
 Work only on the owner's currently authorized task. Before editing, confirm the assigned worktree, branch/HEAD, dirty or untracked changes, intended result, and scope. `main` is a baseline, not permission to modify it. Do not overwrite unowned work, interfere with another process/worktree, or push, merge, publish, or release without authorization. An architecture plan or skill is not task authorization.
 
+**Product direction and execution tracking.** The canonical strategic roadmap is [`docs/ROADMAP.md`](docs/ROADMAP.md). It records the adopted product direction and release sequence through v1.0.0. A strategic milestone in that roadmap is direction, not authorized implementation work: individual release scope, implementation and publication still require separate owner authorization for the specific task. Execution work is tracked in **Linear**, which is the active task queue. [`docs/BACKLOG.md`](docs/BACKLOG.md) is a short pointer to Linear and to the archived October 2026 backlog; do not treat archived backlog items as assigned work or migrate them automatically.
+
 Modernization has **two goals**: migrate presentation incrementally to React/TypeScript/Vite, and improve Go ownership, navigation, and maintainability. Prefer a small working vertical slice. Refactor Go along the touched path when it fixes demonstrable coupling/confusion. Standalone maintainability work requires explicit authorization and a concrete improvement; folder symmetry, generic scaffolding, and arbitrary file-size targets are not justification.
 
 ## Application architecture
@@ -49,6 +51,44 @@ Treat each screen migration as one usable React → Go → persistent-state capa
 - Preserve job/source IDs, manual edits, résumé bytes/associations, saved answers, letters and application history. No silent overwrites or misassociation.
 - Use only isolated synthetic workspaces selected through `YOURMOVE_DATA_DIR` for tests/qualification. Never access real applicant data. Respect the single SQLite writer. Employer-browser sessions do not survive restart.
 
+## Application integrity (must preserve)
+
+Authoritative references: `docs/architecture/APPLICATION_FIELD_CLASSIFICATION.md`
+(field roles, capture/Fill stages, Questions workflow, qualification status) and
+`docs/implementation/ats-platform-integration-notes.md` (per-operation ATS support).
+Follow them instead of reconstructing boundaries from history.
+
+- Make field-role decisions only through the existing authoritative Go classifier
+  (`internal/app/application_field_classification.go: classifyApplicationField`).
+  Do not duplicate classification rules in React or another Go subsystem.
+- Do not classify profile fields by value presence, value absence, or provenance
+  strings. Role is intrinsic to the observed control.
+- Keep profile/contact Fill separate from answer Fill: separate authorization,
+  scope, and revision checks. Historical answers on profile-kind controls stay
+  preserved under Previous writing and gain no transfer authority.
+- Keep browser observation separate from transfer authorization. Capture, preview,
+  and discovery never mint Fill authority.
+- Explicit authorization of the displayed, revision-validated profile snapshot is
+  sufficient on the React continuation path; saved profile approval is not an
+  additional prerequisite there. Never silently mark a stored profile approved
+  during Fill.
+- Keep final employer submission manual. Preserve field identity, revision checks,
+  posting-ownership checks, and existing-value protection on every transfer.
+- Distinguish ATS support by operation (intake ≠ discovery ≠ capture ≠ Fill), not
+  by a blanket supported/unsupported label. Do not assume a captured question can
+  be automatically filled; custom dropdowns and other unsupported controls stay
+  manual. Preserve useful manual behavior where automatic capabilities are
+  unavailable.
+
+When extending capture or Fill: (1) trace the real observed control through
+normalization, classification, API projection, and transfer; (2) reuse the
+established ownership and authorization mechanisms; (3) prefer provider-neutral
+semantic control handling when the failure is not provider-specific; (4) verify
+with controlled browser fixtures, never a live submission; (5) update the
+capability documentation when support changes. Scope qualification to the touched
+path plus one material failure/recovery case; do not perform exhaustive acceptance
+for unrelated changes.
+
 ## Read documentation and skills only when useful
 
 Start from the assigned behavior. Search the specific route/symbol, inspect its Go owner and tests, then consult **only the relevant documentation section** when necessary. Source/tests outrank outdated prose. Do not pre-read all docs, all skills, or historical evidence.
@@ -56,10 +96,13 @@ Start from the assigned behavior. Search the specific route/symbol, inspect its 
 | Task need | Read when needed |
 | --- | --- |
 | Product overview | `README.md` |
+| Approved product direction | `docs/ROADMAP.md` (strategic direction only; not task authorization) |
+| Field roles, capture/Fill authority, Questions workflow | `docs/architecture/APPLICATION_FIELD_CLASSIFICATION.md` |
+| Per-operation ATS platform support | `docs/implementation/ats-platform-integration-notes.md` |
 | Unfamiliar code path | Relevant section of `docs/CODEBASE_GUIDE.md` |
 | Running app or isolated workspace | Relevant section of `docs/TRY_IT.md` |
 | UI composition or styling | Relevant sections of `docs/design/RULES.md` and `docs/design/DESIGN_SYSTEM.md` |
-| Selecting backlog work | Relevant `docs/BACKLOG.md` entry; verify current code/PR |
+| Selecting execution work | The assigned Linear issue; verify current code/PR. `docs/BACKLOG.md` only points to Linear and the archived backlog |
 | Release or beta readiness | `docs/RELEASE_POLICY.md`, `docs/RELEASE_CHECKLIST.md`; specific procedure as needed |
 | Prior qualification/decision | Only the applicable record in `docs/implementation/` |
 

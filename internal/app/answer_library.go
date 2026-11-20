@@ -9,6 +9,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/jenksed/yourmove-go/internal/answerlibrary"
 	"github.com/jenksed/yourmove-go/internal/application/browser"
 	"github.com/jenksed/yourmove-go/internal/application/schema"
 )
@@ -28,31 +29,9 @@ var (
 
 // AnswerLibraryEntry is a curated copy of one saved answer, with enough source
 // metadata to preserve its provenance after the original job is removed.
-type AnswerLibraryEntry struct {
-	ID                          int64
-	OriginalQuestion            string
-	Answer                      string
-	SourceEmployer              string
-	SourceJobTitle              string
-	SourceHost                  string
-	SourceJobID                 int64
-	SourceDestination           string
-	SourceProvider              string
-	SourceQuestionKey           string
-	SourceRevision              int64
-	SourceInspectionID          int64
-	SourceInspectionFingerprint string
-	SourceFieldID               string
-	SourceFieldKind             string
-	SourceKind                  string
-	EarlyDiscoverySource        string
-	EarlyFingerprint            string
-	EarlySourceQuestionID       string
-	EarlyAnswerRevision         int64
-	CreatedAt                   string
-	UpdatedAt                   string
-	Revision                    int64
-}
+// Canonical storage lives in internal/answerlibrary; this alias keeps
+// existing handlers, promotion transactions, and tests compiling.
+type AnswerLibraryEntry = answerlibrary.Entry
 
 func validAnswerLibraryText(value string) bool {
 	return len(value) <= answerLibraryMaxText && utf8.ValidString(value) && !strings.ContainsRune(value, 0)
@@ -62,7 +41,7 @@ func validAnswerLibraryText(value string) bool {
 // only stable, free-text narrative prompts can be promoted. Sensitive flags and
 // conservative label checks are barriers, not a claim that arbitrary prose is safe.
 func answerLibraryEligible(f schema.Field, unique bool) bool {
-	if !stableQuestionIdentity(f, unique) || (f.Kind != "text" && f.Kind != "textarea") {
+	if classifyApplicationField(f, unique).Role != fieldApplicationQuestion || (f.Kind != "text" && f.Kind != "textarea") {
 		return false
 	}
 	for _, blocked := range answerLibrarySensitivePhrases {
@@ -106,23 +85,7 @@ var answerLibrarySensitivePhrases = []string{
 }
 
 func answerLibraryContainsPhrase(text, phrase string) bool {
-	words, blocked := answerLibraryWords(text), answerLibraryWords(phrase)
-	if len(blocked) == 0 || len(blocked) > len(words) {
-		return false
-	}
-	for start := 0; start <= len(words)-len(blocked); start++ {
-		match := true
-		for offset := range blocked {
-			if words[start+offset] != blocked[offset] {
-				match = false
-				break
-			}
-		}
-		if match {
-			return true
-		}
-	}
-	return false
+	return answerlibrary.ContainsPhrase(text, phrase)
 }
 
 // promoteApplicationAnswer validates and snapshots the authoritative saved row
@@ -305,18 +268,10 @@ func verifiedAnswerLibraryField(tx *sql.Tx, job Job, provider, key string) (sche
 func scanAnswerLibraryEntry(scanner interface {
 	Scan(...any) error
 }, entry *AnswerLibraryEntry) error {
-	return scanner.Scan(
-		&entry.ID, &entry.OriginalQuestion, &entry.Answer, &entry.SourceEmployer, &entry.SourceJobTitle,
-		&entry.SourceHost, &entry.SourceJobID, &entry.SourceDestination, &entry.SourceProvider,
-		&entry.SourceQuestionKey, &entry.SourceRevision, &entry.SourceInspectionID, &entry.SourceInspectionFingerprint, &entry.SourceFieldID,
-		&entry.SourceFieldKind, &entry.SourceKind, &entry.EarlyDiscoverySource, &entry.EarlyFingerprint,
-		&entry.EarlySourceQuestionID, &entry.EarlyAnswerRevision, &entry.CreatedAt, &entry.UpdatedAt, &entry.Revision)
+	return answerlibrary.ScanEntry(scanner, entry)
 }
 
-const answerLibrarySelectColumns = `id,original_question,answer,source_employer,source_job_title,source_host,
-	 source_job_id,source_destination,source_provider,source_question_key,source_revision,source_inspection_id,
-	 source_inspection_fingerprint,source_field_id,source_field_kind,source_kind,early_discovery_source,
-	 early_fingerprint,early_source_question_id,early_answer_revision,created_at,updated_at,revision`
+const answerLibrarySelectColumns = answerlibrary.SelectColumns
 
 func answerLibraryEntryBySource(queryer interface {
 	QueryRow(string, ...any) *sql.Row
@@ -348,15 +303,83 @@ func (a *App) answerLibraryEntries() ([]AnswerLibraryEntry, error) {
 	return entries, rows.Err()
 }
 
+func (a *App) answerLibraryCount() (int64, error) {
+	var total int64
+	if err := a.db.QueryRow(`SELECT COUNT(*) FROM answer_library`).Scan(&total); err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
+func (a *App) answerLibraryAltCounts(ids []int64) (map[int64]int, error) {
+	counts := make(map[int64]int, len(ids))
+	if len(ids) == 0 {
+		return counts, nil
+	}
+	placeholders := make([]string, len(ids))
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	rows, err := a.db.Query(`SELECT entry_id,COUNT(*) FROM answer_library_alternatives WHERE entry_id IN (`+strings.Join(placeholders, ",")+`) GROUP BY entry_id`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var count int
+		if err := rows.Scan(&id, &count); err != nil {
+			return nil, err
+		}
+		counts[id] = count
+	}
+	return counts, rows.Err()
+}
+
+// answerLibraryListPage serves the library-wide browse list only. Sort is
+// "recent" (updated_at DESC, id DESC) or "alpha" (question A-Z). Paging is
+// offset-based with a bounded page size; the ranked application suggestions
+// keep their own top-3 path and are unaffected.
+func (a *App) answerLibraryListPage(sort string, page, perPage int) ([]AnswerLibraryEntry, int64, error) {
+	if perPage < 1 || perPage > answerLibraryLibrarySearchLimit {
+		perPage = answerLibraryLibraryPageSize
+	}
+	if page < 1 {
+		page = 1
+	}
+	total, err := a.answerLibraryCount()
+	if err != nil {
+		return nil, 0, err
+	}
+	order := `ORDER BY updated_at DESC,id DESC`
+	if sort == "alpha" {
+		order = `ORDER BY original_question COLLATE NOCASE ASC,id ASC`
+	}
+	rows, err := a.db.Query(`SELECT `+answerLibrarySelectColumns+` FROM answer_library `+order+` LIMIT ? OFFSET ?`, perPage, (page-1)*perPage)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var entries []AnswerLibraryEntry
+	for rows.Next() {
+		var entry AnswerLibraryEntry
+		if err := scanAnswerLibraryEntry(rows, &entry); err != nil {
+			return nil, 0, err
+		}
+		if entry.SourceKind == "" {
+			entry.SourceKind = "live"
+		}
+		entries = append(entries, entry)
+	}
+	return entries, total, rows.Err()
+}
+
 func (a *App) answerLibraryBySourceID(queryer interface {
 	QueryRow(string, ...any) *sql.Row
 }, id int64) (AnswerLibraryEntry, error) {
-	var entry AnswerLibraryEntry
-	err := scanAnswerLibraryEntry(queryer.QueryRow(`SELECT `+answerLibrarySelectColumns+` FROM answer_library WHERE id=?`, id), &entry)
-	if err == nil && entry.SourceKind == "" {
-		entry.SourceKind = "live"
-	}
-	return entry, err
+	return answerlibrary.EntryByID(queryer, id)
 }
 
 // promoteEarlyApplicationAnswer curates a saved early narrative as a phrasing
@@ -473,6 +496,10 @@ func (a *App) promoteEarlyApplicationAnswer(jobID int64, key string, expectedRev
 }
 
 func (a *App) updateAnswerLibrary(id, expectedRevision int64, answer string) error {
+	return a.updateAnswerLibraryWithAlternatives(id, expectedRevision, answer, nil)
+}
+
+func (a *App) updateAnswerLibraryWithAlternatives(id, expectedRevision int64, answer string, alternatives []string) error {
 	if id <= 0 || expectedRevision < 1 || !validAnswerLibraryText(answer) || strings.TrimSpace(answer) == "" {
 		return ErrAnswerLibraryInvalid
 	}
@@ -491,6 +518,26 @@ func (a *App) updateAnswerLibrary(id, expectedRevision int64, answer string) err
 		return err
 	}
 	if count == 1 {
+		if alternatives != nil {
+			if len(alternatives) > 30 {
+				return ErrAnswerLibraryInvalid
+			}
+			if _, err := tx.Exec("DELETE FROM answer_library_alternatives WHERE entry_id=?", id); err != nil {
+				return err
+			}
+			for _, phrase := range alternatives {
+				phrase = strings.TrimSpace(phrase)
+				if phrase == "" {
+					continue
+				}
+				if len(phrase) > 1000 || !validAnswerLibraryText(phrase) {
+					return ErrAnswerLibraryInvalid
+				}
+				if _, err := tx.Exec("INSERT OR IGNORE INTO answer_library_alternatives(entry_id,phrasing,normalized) VALUES(?,?,?)", id, phrase, normalizeLibraryQuestion(phrase)); err != nil {
+					return err
+				}
+			}
+		}
 		return tx.Commit()
 	}
 	var exists bool

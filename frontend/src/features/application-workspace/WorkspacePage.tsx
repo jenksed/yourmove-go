@@ -1,4 +1,7 @@
 import { AppNavigation, AppTopbar } from "../../shared/AppNavigation";
+import { ATSPlatformIcon } from "../../shared/ATSPlatformIcon";
+import { useLeaveGuard } from "../../shared/leaveGuard";
+import { setUnsaved } from "../../shared/unsaved";
 // YM-004A React Application Workspace: one coherent preparation activity.
 // Reads and writes through Go-owned JSON contracts only. The source URL is
 // displayed, never edited here; resume bytes never enter this client.
@@ -107,6 +110,7 @@ export function WorkspacePage(): React.JSX.Element {
   // responses never touch snapshot, drafts, or baseline.
   const requestRef = useRef(0);
   const prevActivity = useRef<Activity>("job");
+  const { intercept: interceptLeave, banner: leaveBanner } = useLeaveGuard();
 
   const refreshSummary = useCallback(async () => {
     if (jobId === null) return;
@@ -195,6 +199,9 @@ export function WorkspacePage(): React.JSX.Element {
     priority !== baseline.priority;
 
   useEffect(() => {
+    // Report job-detail edits to the desktop close guard; saving stays
+    // explicit through the details form.
+    setUnsaved("details", detailsDirty);
     if (!detailsDirty) return;
     const guard = (event: BeforeUnloadEvent) => { event.preventDefault(); };
     window.addEventListener("beforeunload", guard);
@@ -399,6 +406,17 @@ export function WorkspacePage(): React.JSX.Element {
     materialSaved();
   }, [jobId, refreshSummary, materialSaved]);
 
+  const correctionApplied = useCallback(() => {
+    if (jobId === null) return;
+    requestRef.current++;
+    // A fully corrected record returns the opportunity to review; all other
+    // unsaved job edits and child drafts are preserved.
+    setStage("review");
+    setBaseline((previous) => ({ ...previous, stage: "review" }));
+    void refreshSummary();
+    materialSaved();
+  }, [jobId, refreshSummary, materialSaved]);
+
   const materials = useMemo(() => {
     if (!snapshot) return null;
     const { job, readiness } = snapshot;
@@ -501,12 +519,13 @@ export function WorkspacePage(): React.JSX.Element {
       <AppNavigation active="opportunities" />
       <div className="app-main">
         <AppTopbar />
-        <main id="main-content" className={`page-container workspace-page workspace-activity-${activity}`}>
+        <main id="main-content" className={`page-container workspace-page workspace-activity-${activity}`} onClick={interceptLeave}>
           <nav className="breadcrumbs" aria-label="Breadcrumb">
             <a href="/jobs">Opportunities</a>
             <span aria-hidden="true">/</span>
             <span>Workspace</span>
           </nav>
+          {leaveBanner}
 
           {loading && <p role="status">Loading application workspace…</p>}
           {loadError !== "" && (
@@ -524,8 +543,9 @@ export function WorkspacePage(): React.JSX.Element {
                 <div>
                   <h1>{snapshot.job.displayTitle}</h1>
                   <p className="page-description">
-                    {snapshot.job.companyOrHost} <span className="dot-sep" aria-hidden="true">·</span>{" "}
-                    {snapshot.job.stageLabel}
+                    {snapshot.job.companyOrHost}
+                    <ATSPlatformIcon provider={snapshot.job.provider} providerLabel={snapshot.job.providerLabel} />{" "}
+                    <span className="dot-sep" aria-hidden="true">·</span> {snapshot.job.stageLabel}
                   </p>
                 </div>
                 <div className="heading-actions">
@@ -701,7 +721,7 @@ export function WorkspacePage(): React.JSX.Element {
                       value={title}
                       maxLength={200}
                       disabled={detailsBusy}
-                      onChange={(event) => setTitle(event.target.value)}
+                      onChange={(event) => { setUnsaved("details", true); setTitle(event.target.value); }}
                     />
                   </div>
                   <div className="field">
@@ -711,7 +731,7 @@ export function WorkspacePage(): React.JSX.Element {
                       value={company}
                       maxLength={200}
                       disabled={detailsBusy}
-                      onChange={(event) => setCompany(event.target.value)}
+                      onChange={(event) => { setUnsaved("details", true); setCompany(event.target.value); }}
                     />
                   </div>
                   {applied ? (
@@ -755,7 +775,7 @@ export function WorkspacePage(): React.JSX.Element {
                       value={salary}
                       maxLength={500}
                       disabled={detailsBusy}
-                      onChange={(event) => setSalary(event.target.value)}
+                      onChange={(event) => { setUnsaved("details", true); setSalary(event.target.value); }}
                     />
                     <small>Current source: {snapshot.job.salaryOriginLabel}</small>
                   </div>
@@ -766,7 +786,7 @@ export function WorkspacePage(): React.JSX.Element {
                       rows={8}
                       value={description}
                       disabled={detailsBusy}
-                      onChange={(event) => setDescription(event.target.value)}
+                      onChange={(event) => { setUnsaved("details", true); setDescription(event.target.value); }}
                     />
                   </div>
                   <p className="field-full form-note">
@@ -1003,7 +1023,7 @@ export function WorkspacePage(): React.JSX.Element {
               </div>
 
               <div hidden={activity !== "apply" && activity !== "applied"} id="history">
-                {snapshot.job.id > 0 && <SubmissionSection jobId={snapshot.job.id} onRecorded={completionRecorded} />}
+                {snapshot.job.id > 0 && <SubmissionSection jobId={snapshot.job.id} onRecorded={completionRecorded} onCorrected={correctionApplied} />}
                 <a className="button button-secondary" href="/jobs">Back to Opportunities</a>
               </div>
 

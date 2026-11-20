@@ -5,23 +5,24 @@ const ContactResolver = `(function(origin, base) {
  const visible = el => !el.closest('[inert],[aria-hidden="true"]') && getComputedStyle(el).visibility !== 'hidden' && el.getClientRects().length > 0;
  const norm = s => String(s || '').toLowerCase().replace(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}__(systemfield_[a-z_]+)$/, '$1').replace(/[\s_-]/g, '');
  const ids = {name:'name',fullname:'name',systemfieldname:'name',firstname:'first_name',givenname:'first_name',systemfieldfirstname:'first_name',lastname:'last_name',familyname:'last_name',surname:'last_name',systemfieldlastname:'last_name',email:'email',emailaddress:'email',systemfieldemail:'email',phone:'phone',phonenumber:'phone',mobilephone:'phone',systemfieldphone:'phone'};
- const auto = {'name':'name','given-name':'first_name','family-name':'last_name','email':'email','tel':'phone'};
  const labels = {name:['name','full name','full legal name','your name'],first_name:['first name','given name'],last_name:['last name','family name','surname'],email:['email','email address'],phone:['phone','phone number','mobile phone','mobile number']};
  const forms = () => [...document.querySelectorAll('form,.ashby-application-form-container')].filter(f => visible(f) && !f.querySelector('input[type=password]') && !f.parentElement?.closest('form,.ashby-application-form-container') && (f.classList.contains('ashby-application-form-container') || f.classList.contains('ashby-application-form') || f.querySelector('input[type=file]')));
  const identity = el => {
    if (!['text','email','tel'].includes(el.type) || !visible(el) || el.closest('.awli-application-row,.awli-button-container')) return '';
    const group = el.closest('[data-field-entry-id]');
    const signals = [el.name,el.id,group?.getAttribute('data-field-entry-id')].map(x=>ids[norm(x)]).filter(Boolean);
-   const ac = (el.getAttribute('autocomplete') || '').trim().toLowerCase().split(/\s+/);
-   if (ac.length === 1 || (ac.length === 2 && ac[0].startsWith('section-'))) {
-     if (auto[ac.at(-1)]) signals.push(auto[ac.at(-1)]);
-   }
-   if (!signals.length && el.type === 'tel') signals.push('phone');
+   // Require the same captured identity as Go. Autocomplete alone cannot
+   // authorize a control that Questions sees under an unrelated identity.
+   const captured = group?.getAttribute('data-field-entry-id') || el.name || el.id || '';
+   const customPhone = el.type === 'tel' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(captured);
+   const capturedKey = ids[norm(captured)] || (customPhone ? 'phone' : '');
+   if (!capturedKey) return '';
+   signals.push(capturedKey);
    if (!signals.length || new Set(signals).size !== 1) return '';
    const key = signals[0];
    const rawLabels = [group?.querySelector('.ashby-application-form-question-title')?.textContent, ...[...(el.labels || [])].map(x=>x.textContent), el.getAttribute('aria-label')].filter(x=>x?.trim());
    const clean = s => s.toLowerCase().replace(/\((required|optional)\)/g,'').replace(/[*✱]/g,'').replace(/\s+/g,' ').trim();
-   if ((el.type === 'tel' && !rawLabels.length) || rawLabels.some(x=>!labels[key].includes(clean(x)))) return '';
+   if (!rawLabels.length || rawLabels.some(x=>!labels[key].includes(clean(x)))) return '';
    if ((key === 'email' && !['text','email'].includes(el.type)) || (key === 'phone' && !['text','tel'].includes(el.type))) return '';
    return key;
  };

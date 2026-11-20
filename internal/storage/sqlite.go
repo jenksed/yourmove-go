@@ -49,7 +49,8 @@ func initJobsSchema(db *sql.DB) error {
             source_status TEXT NOT NULL DEFAULT 'not_checked',
             source_note TEXT NOT NULL DEFAULT '',
             source_checked_at TEXT NOT NULL DEFAULT '',
-            selected_resume_id INTEGER REFERENCES resumes(id)
+            selected_resume_id INTEGER REFERENCES resumes(id),
+            parked_at TEXT NOT NULL DEFAULT ''
         )
     `); err != nil {
 		return fmt.Errorf("create jobs table: %w", err)
@@ -105,6 +106,7 @@ func initJobsSchema(db *sql.DB) error {
 		{"source_checked_at", `ALTER TABLE jobs ADD COLUMN source_checked_at TEXT NOT NULL DEFAULT ''`},
 		{"selected_resume_id", `ALTER TABLE jobs ADD COLUMN selected_resume_id INTEGER REFERENCES resumes(id)`},
 		{"selected_cover_letter_id", `ALTER TABLE jobs ADD COLUMN selected_cover_letter_id INTEGER`},
+		{"parked_at", `ALTER TABLE jobs ADD COLUMN parked_at TEXT NOT NULL DEFAULT ''`},
 	} {
 		if !columns[column.name] {
 			if _, err := db.Exec(column.ddl); err != nil {
@@ -321,6 +323,23 @@ func initJobsSchema(db *sql.DB) error {
 		 updated_at TEXT NOT NULL,
 		 UNIQUE(job_id,destination,discovery_source,discovery_fingerprint,source_question_id))`,
 		`CREATE INDEX IF NOT EXISTS early_answers_by_job ON early_application_answers(job_id,destination,updated_at DESC,id DESC)`,
+		// Manually created questions belong to one application and never
+		// describe an observed employer control. They use application-owned
+		// keys, stay out of every transfer scope, and are removed with the job
+		// while Answer Library snapshots survive independently.
+		`CREATE TABLE IF NOT EXISTS manual_application_questions (
+		 id INTEGER PRIMARY KEY,
+		 job_id INTEGER NOT NULL REFERENCES jobs(id),
+		 destination TEXT NOT NULL,
+		 question_key TEXT NOT NULL,
+		 question TEXT NOT NULL,
+		 answer TEXT NOT NULL,
+		 revision INTEGER NOT NULL,
+		 reuse_source_json TEXT NOT NULL DEFAULT '',
+		 created_at TEXT NOT NULL,
+		 updated_at TEXT NOT NULL,
+		 UNIQUE(job_id,destination,question_key))`,
+		`CREATE INDEX IF NOT EXISTS manual_questions_by_job ON manual_application_questions(job_id,destination,updated_at DESC,id DESC)`,
 		// Answer Library entries are independent snapshots. Source IDs and URLs are
 		// audit/deduplication metadata, deliberately without a jobs foreign key.
 		`CREATE TABLE IF NOT EXISTS answer_library (
@@ -347,6 +366,8 @@ func initJobsSchema(db *sql.DB) error {
 		 revision INTEGER NOT NULL DEFAULT 1,
 		 UNIQUE(source_job_id,source_destination,source_provider,source_question_key,source_revision))`,
 		`CREATE INDEX IF NOT EXISTS answer_library_updated ON answer_library(updated_at DESC,id DESC)`,
+		`CREATE TABLE IF NOT EXISTS answer_library_alternatives (entry_id INTEGER NOT NULL REFERENCES answer_library(id) ON DELETE CASCADE, phrasing TEXT NOT NULL, normalized TEXT NOT NULL, UNIQUE(entry_id,normalized))`,
+		`CREATE INDEX IF NOT EXISTS answer_library_alternative_lookup ON answer_library_alternatives(normalized)`,
 		// Career Evidence belongs to the applicant independently of jobs and saved answers.
 		// Answer Library source fields are snapshots, not foreign keys.
 		`CREATE TABLE IF NOT EXISTS career_evidence (

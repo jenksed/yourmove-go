@@ -10,7 +10,7 @@ From a clean checkout on a supported Mac with the Go version in `go.mod`, Python
 
 ```sh
 ./release/macos/doctor.sh
-./release/macos/prepare.sh
+env -u YOURMOVE_UPDATE_MANIFEST_URL -u YOURMOVE_UPDATE_PUBLIC_KEY_FILE YOURMOVE_ALLOW_DISABLED_UPDATER=1 ./release/macos/prepare.sh
 ```
 
 `doctor.sh` performs a read-only prerequisite check and reports whether an optional Developer ID signing certificate is available. Lack of Developer ID does **not** prevent an ad-hoc-signed local build.
@@ -22,7 +22,7 @@ Its outputs include `candidate/YourMove.app`, `candidate/source-manifest.json`, 
 For a lower-level build only:
 
 ```sh
-bash release/macos/build.sh /private/tmp/yourmove-local-candidate-001
+env -u YOURMOVE_UPDATE_MANIFEST_URL -u YOURMOVE_UPDATE_PUBLIC_KEY_FILE YOURMOVE_ALLOW_DISABLED_UPDATER=1 bash release/macos/build.sh /private/tmp/yourmove-local-candidate-001
 ```
 
 The output path must be new, absolute, and outside the checkout. `build.sh` embeds templates/static assets, copies `YourMove.icns` into `Contents/Resources`, uses `desktop,production`, sets macOS 26.0 minimum deployment target, captures source/toolchain metadata, and ad-hoc signs/verifies the assembled bundle. Source-manifest comparison detects source changes during the build. Signing/timestamps mean separately signed artifacts need not be byte-identical; preserve source and binary hashes for identification.
@@ -62,7 +62,7 @@ Never merge a `jobs.db` backup with a different `resumes/` version. Preserve the
 ## Release management references
 
 - [Release policy and gate definitions](../../docs/RELEASE_POLICY.md)
-- [First three release targets](../../docs/ROADMAP.md)
+- [October 23 targets for the first three releases](../../docs/roadmaps/archive/2026-10-23-initial-release-roadmap.md)
 - [Release process](../../docs/RELEASE_PROCESS.md)
 - [Current execution checklist](../../docs/RELEASE_CHECKLIST.md)
 - [v0.1.0 release notes](../../docs/releases/0.1.0-macos.md)

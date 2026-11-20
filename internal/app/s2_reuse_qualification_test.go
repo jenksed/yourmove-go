@@ -42,8 +42,8 @@ func TestS2EarlyHelpEligibleExposed(t *testing.T) {
 			if q["helpEligible"] != true {
 				t.Fatalf("early narrative helpEligible not exposed: %v", q)
 			}
-			if q["libraryEligible"] != false {
-				t.Fatalf("unsaved early should not be library eligible: %v", q)
+			if q["libraryEligible"] != true {
+				t.Fatalf("unsaved eligible narrative should support combined library saving: %v", q)
 			}
 		}
 	}
@@ -75,10 +75,10 @@ func TestS2AnswerBrowseAndSearch(t *testing.T) {
 	if browse.LibraryEmpty || len(browse.Entries) != 1 {
 		t.Fatalf("browse entries: %+v", browse)
 	}
-	// Search delegates to ranker and labels bounded results.
+	// Search delegates to the library-wide ranker and labels bounded results.
 	search := httptest.NewRecorder()
 	newMux(a).ServeHTTP(search, httptest.NewRequest(http.MethodGet, "http://localhost/api/answer-library?query=Linux+logs", nil))
-	if search.Code != http.StatusOK || !strings.Contains(search.Body.String(), `"bounded":true`) {
+	if search.Code != http.StatusOK || !strings.Contains(search.Body.String(), `"bounded":true`) || !strings.Contains(search.Body.String(), `"bound":50`) {
 		t.Fatalf("search bounded: %d %s", search.Code, search.Body.String())
 	}
 	empty := httptest.NewRecorder()

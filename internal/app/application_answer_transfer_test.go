@@ -40,10 +40,11 @@ func (f *uncertainAnswerBrowser) FillAnswer(_ context.Context, v browser.AnswerV
 
 func TestAnswerTransferApprovalAndContinuation(t *testing.T) {
 	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com"}); err != nil {
 		t.Fatal(err)
 	}
-	fields := []schema.Field{{ID: "browser:why", Label: "Why this team?", Kind: "textarea"}, {ID: "browser:site", Label: "Website", Kind: "text"}}
+	fields := []schema.Field{{ID: "browser:why", Label: "Why this team?", Kind: "textarea"}, {ID: "browser:site", Label: "What project URL should we review?", Kind: "text"}}
 	if _, err := a.saveInspection(1, schema.Result{Platform: "ashby", Source: "browser", Completeness: "rendered_partial", ApplicationURL: testAshbyPosting + "/application", Fields: fields}); err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +56,7 @@ func TestAnswerTransferApprovalAndContinuation(t *testing.T) {
 			t.Fatal(rec.Code, rec.Body.String())
 		}
 	}
-	f := &fakeAnswerBrowser{fakeBrowser: &fakeBrowser{url: testAshbyPosting + "/application"}, controls: []browser.Control{{ID: "why", Label: "Why this team?", Kind: "textarea"}, {ID: "site", Label: "Website", Kind: "text"}}}
+	f := &fakeAnswerBrowser{fakeBrowser: &fakeBrowser{url: testAshbyPosting + "/application"}, controls: []browser.Control{{ID: "why", Label: "Why this team?", Kind: "textarea"}, {ID: "site", Label: "What project URL should we review?", Kind: "text"}}}
 	a.browsers.factory = func(context.Context, string) (readOnlySession, error) { return f, nil }
 	if err := a.browsers.start(context.Background(), 1, job.URL); err != nil {
 		t.Fatal(err)
@@ -105,8 +106,9 @@ func TestAnswerTransferApprovalAndContinuation(t *testing.T) {
 	}
 }
 
-func TestUncertainLocationTransferIsNotReplayed(t *testing.T) {
+func TestProfileLocationCannotEnterAnswerTransfer(t *testing.T) {
 	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com"}); err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +125,7 @@ func TestUncertainLocationTransferIsNotReplayed(t *testing.T) {
 		t.Fatal(err)
 	}
 	prepared, err := a.prepareQuestions(job, profile)
-	if err != nil || len(prepared.ReadyAnswers()) != 1 {
+	if err != nil || len(prepared.ReadyAnswers()) != 0 {
 		t.Fatalf("location not prepared: %+v %v", prepared.Questions, err)
 	}
 	filler := &uncertainAnswerBrowser{fakeBrowser: &fakeBrowser{url: testAshbyPosting + "/application"}}
@@ -132,25 +134,18 @@ func TestUncertainLocationTransferIsNotReplayed(t *testing.T) {
 	a.browsers.states = map[int64]browserRunState{1: {Destination: job.URL}}
 	values := url.Values{"review_hash": {prepared.ReviewHash()}, "destination": {job.URL}}
 	mux := newMux(a)
-	if rec := postApp(mux, "/jobs/1/answers/transfer", values, "", ""); rec.Code != 303 {
+	if rec := postApp(mux, "/jobs/1/answers/transfer", values, "", ""); rec.Code != 409 {
 		t.Fatal(rec.Code, rec.Body.String())
 	}
 	a.browsers.tryAnswers(context.Background(), 1)
-	a.browsers.tryAnswers(context.Background(), 1)
-	state := a.browsers.state(1)
-	if filler.calls != 1 || state.AnswerStatus != "complete" || len(state.AnswerOutcomes) != 1 || state.AnswerOutcomes[0].Status != "uncertain" {
-		t.Fatalf("uncertain location outcome was lost or replayed: calls=%d state=%+v", filler.calls, state)
-	}
-	if rec := postApp(mux, "/jobs/1/answers/transfer", values, "", ""); rec.Code != 409 {
-		t.Fatal("uncertain location remained eligible for automatic replay", rec.Code)
-	}
-	if filler.calls != 1 {
-		t.Fatalf("uncertain location replayed %d times", filler.calls)
+	if filler.calls != 0 {
+		t.Fatal("profile dispatched as answer")
 	}
 }
 
 func TestSavedAnswerWaitsForLaterControl(t *testing.T) {
 	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com"}); err != nil {
 		t.Fatal(err)
 	}
@@ -302,6 +297,7 @@ func TestAnswerAuthorizationAddsWhileOtherAnswerWaits(t *testing.T) {
 
 func TestChangedEarlyAnswerCanBeReauthorizedAfterRejectedWithoutDispatch(t *testing.T) {
 	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 	job, discovery := earlyGreenhouseFixture(t, a)
 	if _, err := a.saveInspection(job.ID, discovery); err != nil {
 		t.Fatal(err)

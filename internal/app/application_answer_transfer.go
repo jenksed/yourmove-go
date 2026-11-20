@@ -11,14 +11,32 @@ import (
 	"sort"
 
 	"github.com/jenksed/yourmove-go/internal/application/browser"
+	"github.com/jenksed/yourmove-go/internal/application/schema"
 )
+
+// fillEligibleField reports controls the existing Chromium answer filler can
+// safely attempt: ordinary application questions plus eligible additional
+// profile facts. Contact facts, employer-only, and unsupported controls stay
+// manual and never enter Fill.
+func fillEligibleField(f schema.Field) bool {
+	if classifyApplicationField(f, true).Role == fieldApplicationQuestion {
+		return true
+	}
+	return classifyApplicationField(f, true).Role == fieldCandidateProfile && additionalProfileAttribute(f) != ""
+}
 
 func (p questionPreparation) ReadyAnswers() []preparedQuestion {
 	var ready []preparedQuestion
 	for _, q := range p.Questions {
-		if q.Editable && q.Value != "" {
-			ready = append(ready, q)
+		if !q.Editable || q.Value == "" || classifyApplicationField(q.Field, true).Role != fieldApplicationQuestion {
+			continue
 		}
+		// Exact library automatic preparation is review-only until the
+		// applicant explicitly saves. It must never enter Fill scope.
+		if q.LibraryAutoEntryID > 0 && q.Revision == 0 {
+			continue
+		}
+		ready = append(ready, q)
 	}
 	sort.Slice(ready, func(i, j int) bool { return ready[i].Key < ready[j].Key })
 	return ready
@@ -31,6 +49,33 @@ func (p questionPreparation) ReviewHash() string {
 	}
 	data, _ := json.Marshal(reviewed)
 	return fmt.Sprintf("%x", sha256.Sum256(data))
+}
+
+// readyAdditionalProfileFacts returns eligible supported additional Candidate
+// Profile facts (LinkedIn, location, pronouns, city/region/country, GitHub,
+// portfolio, Website) that are approved, unambiguous, and Fill-eligible through the
+// existing guarded answer filler. Contact facts (name/email/phone) are
+// excluded: the dedicated contact operation owns them. Unsupported,
+// ambiguous, or manual-only controls have empty values and never appear.
+// Profile facts remain separate from Question Workbench and Answer Library:
+// this scope is transfer-only and never makes a profile fact editable,
+// library-eligible, or an answer task.
+func (p questionPreparation) readyAdditionalProfileFacts() []preparedQuestion {
+	var out []preparedQuestion
+	for _, q := range p.Questions {
+		if additionalProfileAttribute(q.Field) == "" {
+			continue
+		}
+		if q.Value == "" || q.Source != "Approved candidate information" {
+			continue
+		}
+		if classifyApplicationField(q.Field, true).Role != fieldCandidateProfile {
+			continue
+		}
+		out = append(out, q)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
+	return out
 }
 
 type applicationAnswerTransfer struct {
@@ -62,6 +107,10 @@ func (a *App) reactAnswerTransfer(job Job, scope []preparedQuestion, profileRevi
 	up := &applicationAnswerTransfer{hash: reactAnswerScopeHash(scope), status: "waiting", approved: scope, resolve: map[string]func(context.Context, readOnlySession, preparedQuestion) (preparedQuestion, string){}}
 	for _, item := range scope {
 		q := item
+		// Capture whether this scope item is an additional profile fact.
+		// Profile facts carry no answer revision; their authority is the
+		// displayed approved snapshot (approval + revision) validated below.
+		isProfileFact := additionalProfileAttribute(q.Field) != "" && !q.IsEarly
 		up.resolve[q.Key] = func(ctx context.Context, session readOnlySession, q preparedQuestion) (preparedQuestion, string) {
 			latest, err := a.jobByID(job.ID)
 			if err != nil || latest.URL != job.URL || latest.Stage == StageApplied || latest.Stage == StageClosed || latest.SubmissionCount > 0 {
@@ -71,6 +120,50 @@ func (a *App) reactAnswerTransfer(job Job, scope []preparedQuestion, profileRevi
 			if err != nil || (profileRevision != "" && fmt.Sprint(profile.Revision) != profileRevision) {
 				return q, "manual"
 			}
+			if isProfileFact {
+				// Additional profile facts reuse the guarded answer filler.
+				// Authority is the displayed approved snapshot (approval +
+				// revision); an omitted or stale revision cannot authorize them.
+				// Ordinary saved answers keep their existing revision behavior.
+				if profileRevision == "" || fmt.Sprint(profile.Revision) != profileRevision {
+					return q, "manual"
+				}
+				// The live field identity, destination, and unambiguous value
+				// are revalidated here. Ambiguous location suggestions,
+				// pronoun choices, existing employer values, and uncertain
+				// outcomes stay manual/uncertain via the filler itself.
+				if !profile.Approved || q.Source != "Approved candidate information" || q.Value == "" {
+					return q, "manual"
+				}
+				if q.Destination != "" && q.Destination != job.URL {
+					return q, "manual"
+				}
+				fresh, e := a.prepareQuestions(latest, profile)
+				if e != nil {
+					return q, "manual"
+				}
+				var found *preparedQuestion
+				for i := range fresh.Questions {
+					if fresh.Questions[i].Key == q.Key {
+						candidate := fresh.Questions[i]
+						found = &candidate
+						break
+					}
+				}
+				if found == nil || found.Value != q.Value || found.Source != "Approved candidate information" || additionalProfileAttribute(found.Field) == "" {
+					return q, "manual"
+				}
+				if classifyApplicationField(found.Field, true).Role != fieldCandidateProfile {
+					return q, "manual"
+				}
+				if earlyFieldSnapshot(found.Field) != earlyFieldSnapshot(q.Field) {
+					return q, "manual"
+				}
+				if resolveAdditionalProfileFact(found.Field, profile) != q.Value {
+					return q, "manual"
+				}
+				return q, "ready"
+			}
 			if !q.IsEarly {
 				if q.Revision > 0 {
 					saved, e := a.savedLiveAnswer(latest, q.Key)
@@ -78,7 +171,7 @@ func (a *App) reactAnswerTransfer(job Job, scope []preparedQuestion, profileRevi
 						return q, "manual"
 					}
 				} else {
-					profile.Approved = true
+					// Profile approval is not answer-transfer authority.
 					prep, e := a.prepareQuestions(latest, profile)
 					valid := false
 					if e == nil {
@@ -166,7 +259,18 @@ func (a *App) answerTransferForAction(r *http.Request, id int64, profileAuthoriz
 		return http.StatusNotFound, "Opportunity or material unavailable"
 	}
 	if job.Stage == StageApplied || job.Stage == StageClosed || job.SubmissionCount > 0 {
-		return 409, "This application is no longer active"
+		return 409, closedBlockMessage(job, "This application is no longer active")
+	}
+	// KAN-16 availability preflight: a provider-confirmed closure blocks
+	// answer transfer before anything is armed. A composed continuation
+	// already verified availability and skips the re-fetch.
+	if !preflightAlreadyChecked(r.Context()) {
+		if _, block := a.ensurePostingOpen(r.Context(), id); block != "" {
+			return http.StatusConflict, block
+		}
+		if refreshed, err := a.jobByID(id); err == nil {
+			job = refreshed
+		}
 	}
 	profile, err := a.candidateProfile()
 	if err != nil {
@@ -177,7 +281,7 @@ func (a *App) answerTransferForAction(r *http.Request, id int64, profileAuthoriz
 		if r.PostForm.Get("profile_revision") != fmt.Sprint(profile.Revision) {
 			return http.StatusConflict, "Candidate Profile changed. Review it before filling."
 		}
-		profile.Approved = true
+		// Profile approval is not answer-transfer authority.
 	}
 	prepared, err := a.prepareQuestions(job, profile)
 	if err != nil {
@@ -202,7 +306,7 @@ func (a *App) answerTransferForAction(r *http.Request, id int64, profileAuthoriz
 			if p.Revision != profileRevision {
 				return false
 			}
-			p.Approved = true
+			// Profile approval is not answer-transfer authority.
 		}
 		if q.Revision > 0 {
 			saved, e := a.savedLiveAnswer(latest, q.Key)
@@ -300,7 +404,7 @@ func (h *sessionHost) tryAnswers(ctx context.Context, id int64) {
 		if ctx.Err() != nil {
 			waiting = append(waiting, q)
 			continue
-		} else if ok {
+		} else if ok && fillEligibleField(q.Field) {
 			fill := q
 			if resolve := resolvers[q.Key]; resolve != nil {
 				var status string
@@ -346,6 +450,10 @@ func (h *sessionHost) tryAnswers(ctx context.Context, id int64) {
 					outcomes = append(outcomes, out)
 					continue
 				}
+			}
+			if !fillEligibleField(fill.Field) {
+				outcomes = append(outcomes, out)
+				continue
 			}
 			// Record the attempt before the external effect. A concurrent reader
 			// must never interpret an in-flight write as safe to replay.

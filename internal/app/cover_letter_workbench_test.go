@@ -64,6 +64,7 @@ func TestLetterSaveReturnsToExactScopeWithoutBrowserAuthority(t *testing.T) {
 	for _, state := range []string{"initial", "late", "combined", "complete", "uncertain", "uncertain with answers", "unavailable", "closed", "submitted", "unsupported"} {
 		t.Run(state, func(t *testing.T) {
 			a, f := scopeFirstWorkspace(t)
+			a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 			job, _ := a.jobByID(1)
 			active := state != "initial" && state != "unavailable"
 			if active {

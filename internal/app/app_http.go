@@ -4,11 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"github.com/jenksed/yourmove-go/internal/application/schema"
+	"github.com/jenksed/yourmove-go/internal/updates"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 type App struct {
@@ -22,7 +24,9 @@ type App struct {
 	intakeMu                  sync.Mutex
 	enrichmentMu              sync.Mutex
 	enrichment                *enrichmentRun
+	autoPending               []int64
 	enrichmentFetch           postingFetcher
+	desktopUnsaved            atomic.Bool
 	db                        *sql.DB
 	resumeDir                 string
 	pickResume                func() (string, error)
@@ -33,10 +37,7 @@ type App struct {
 	earlyDiscoveryMu          sync.Mutex
 	browsers                  sessionHost
 	coverLetterGenerate       func(context.Context, string) (string, error) // test override; production uses local Ollama
-	updates                   updateState
-	updateCheck               func(context.Context) (UpdateCheckResult, error)
-	updateInstall             func(context.Context) error
-	updateRestart             func(context.Context) error
+	updates                   *updates.Manager
 }
 
 func newMux(app *App) http.Handler {
@@ -52,9 +53,11 @@ func newMux(app *App) http.Handler {
 	mux.HandleFunc("POST /api/opportunities", app.opportunitiesAPI)
 	mux.HandleFunc("POST /api/opportunities/import", app.opportunitiesImportAPI)
 	mux.HandleFunc("POST /api/opportunities/delete", app.opportunitiesDeleteAPI)
+	mux.HandleFunc("POST /api/opportunities/attention", app.opportunitiesAttentionAPI)
 	mux.HandleFunc("POST /api/opportunities/{id}/open", app.opportunityOpenAPI)
 	mux.HandleFunc("GET /utilities", app.utilitiesPage)
 	mux.HandleFunc("POST /utilities/browser", app.saveApplicationBrowser)
+	mux.HandleFunc("POST /utilities/release-notes", app.openReleaseNotes)
 	mux.HandleFunc("POST /utilities/updates/check", app.updateCheckHandler)
 	mux.HandleFunc("POST /utilities/updates/install", app.updateInstallHandler)
 	mux.HandleFunc("POST /utilities/updates/restart", app.updateRestartHandler)
@@ -121,6 +124,10 @@ func newMux(app *App) http.Handler {
 	mux.HandleFunc("POST /api/jobs/{id}/questions/discover", app.writingDiscoverAPI)
 	mux.HandleFunc("POST /api/jobs/{id}/answers", app.writingSaveAPI)
 	mux.HandleFunc("POST /api/jobs/{id}/assistance", app.writingAssistAPI)
+	mux.HandleFunc("POST /api/jobs/{id}/manual-questions", app.manualQuestionsCreateAPI)
+	mux.HandleFunc("POST /api/jobs/{id}/manual-questions/{key}", app.manualQuestionSaveAPI)
+	mux.HandleFunc("DELETE /api/jobs/{id}/manual-questions/{key}", app.manualQuestionDeleteAPI)
+	mux.HandleFunc("POST /api/jobs/{id}/manual-questions/{key}/starting-point", app.manualQuestionStartingPointAPI)
 	mux.HandleFunc("GET /api/jobs/{id}/letters", app.writingLettersAPI)
 	mux.HandleFunc("POST /api/jobs/{id}/letters", app.writingLetterGenerateAPI)
 	mux.HandleFunc("POST /api/jobs/{id}/letters/manual", app.writingLetterManualAPI)
@@ -131,12 +138,15 @@ func newMux(app *App) http.Handler {
 	mux.HandleFunc("GET /api/cover-letters", app.coverLetterCatalogAPI)
 	mux.HandleFunc("GET /api/cover-letters/{id}", app.coverLetterCatalogDetailAPI)
 	mux.HandleFunc("GET /api/jobs/{id}/continuation", app.continuationAPI)
+	mux.HandleFunc("GET /api/jobs/{id}/availability", app.availabilityAPI)
 	mux.HandleFunc("POST /api/jobs/{id}/browser", app.continuationBrowserAPI)
 	mux.HandleFunc("POST /api/jobs/{id}/continue", app.continuationContinueAPI)
 	mux.HandleFunc("POST /api/jobs/{id}/submission-review", app.continuationReviewAPI)
 	mux.HandleFunc("POST /api/jobs/{id}/submit", app.continuationSubmitAPI)
+	mux.HandleFunc("POST /api/jobs/{id}/unsubmit", app.continuationUnsubmitAPI)
 	mux.HandleFunc("GET /api/jobs/{id}/submissions", app.continuationSubmissionsAPI)
 	mux.HandleFunc("POST /api/jobs/{id}/next", app.continuationNextAPI)
+	mux.HandleFunc("POST /api/desktop/unsaved", app.desktopUnsavedAPI)
 	mux.HandleFunc("GET /api/resumes", app.resumesAPI)
 	mux.HandleFunc("GET /api/jobs/{id}/resume-options", app.resumeOptionsAPI)
 	mux.HandleFunc("POST /api/jobs/{id}/resume", app.setJobResumeAPI)

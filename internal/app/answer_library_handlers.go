@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -12,31 +13,261 @@ import (
 	"github.com/jenksed/yourmove-go/internal/application/schema"
 )
 
+// answerLibraryListItem is the compact master-list row. The full answer stays
+// in the detail pane so hundreds of entries remain browsable.
+type answerLibraryListItem struct {
+	ID        int64
+	Question  string
+	Employer  string
+	JobTitle  string
+	Host      string
+	AltCount  int
+	UpdatedAt string
+	Selected  bool
+	Link      string
+}
+
 type answerLibraryPage struct {
 	Entries         []AnswerLibraryEntry
 	SearchResults   []answerLibrarySuggestion
 	SearchQuery     string
 	SearchPerformed bool
 	Notice          string
+	// Master-detail browse state. List holds the compact current page;
+	// Selected holds the full detail entry without discarding search/sort.
+	List         []answerLibraryListItem
+	AltCounts    map[int64]int
+	Sort         string
+	Page         int
+	PerPage      int
+	Total        int64
+	TotalPages   int
+	HasPrev      bool
+	HasNext      bool
+	PrevLink     string
+	NextLink     string
+	Selected     *AnswerLibraryEntry
+	SelectedLink string
+	BaseQuery    string
 }
 
-func (a *App) answerLibrary(w http.ResponseWriter, r *http.Request) {
-	entries, err := a.answerLibraryEntries()
-	if err != nil {
-		http.Error(w, "Unable to load the Answer Library", http.StatusInternalServerError)
-		return
+func answerLibrarySortParam(raw string) string {
+	if strings.TrimSpace(raw) == "alpha" {
+		return "alpha"
 	}
+	return "recent"
+}
+
+func answerLibraryPageParam(raw string) int {
+	page, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || page < 1 {
+		return 1
+	}
+	if page > 10000 {
+		return 10000
+	}
+	return page
+}
+
+func answerLibraryDetailLink(query, sort string, page, selected int64) string {
+	values := url.Values{}
+	if strings.TrimSpace(query) != "" {
+		values.Set("q", strings.TrimSpace(query))
+	}
+	if sort == "alpha" {
+		values.Set("sort", "alpha")
+	}
+	if page > 1 {
+		values.Set("page", strconv.FormatInt(page, 10))
+	}
+	if selected > 0 {
+		values.Set("selected", strconv.FormatInt(selected, 10))
+	}
+	encoded := values.Encode()
+	if encoded == "" {
+		return "/answer-library"
+	}
+	return "/answer-library?" + encoded
+}
+
+func (a *App) renderAnswerLibraryList(w http.ResponseWriter, r *http.Request, query, sort string, page int, selectedID int64) {
+	const perPage = answerLibraryLibraryPageSize
 	notice := map[string]string{
 		"saved":    "Saved as a separate Answer Library example. The employer-specific answer remains unchanged.",
 		"existing": "This saved answer revision is already in the Answer Library. Its existing library copy was left unchanged.",
 		"edited":   "The Answer Library copy was updated. The original application answer was left unchanged.",
 		"deleted":  "The Answer Library example was deleted. Application history was left unchanged.",
 	}[r.URL.Query().Get("notice")]
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "private, no-store")
-	if err := a.resources.answerLibraryTemplate.Execute(w, answerLibraryPage{Entries: entries, Notice: notice}); err != nil {
-		http.Error(w, "Unable to render the Answer Library", http.StatusInternalServerError)
+	data := answerLibraryPage{
+		SearchQuery: query, SearchPerformed: strings.TrimSpace(query) != "",
+		Notice: notice, Sort: sort, Page: page, PerPage: perPage,
+		AltCounts: map[int64]int{},
 	}
+	if data.Sort == "" {
+		data.Sort = "recent"
+	}
+	if data.Page < 1 {
+		data.Page = 1
+	}
+	if data.SearchPerformed {
+		if len(data.SearchQuery) > 1000 || !utf8.ValidString(data.SearchQuery) || strings.ContainsRune(data.SearchQuery, 0) {
+			http.Error(w, "Search text is invalid or too long", http.StatusBadRequest)
+			return
+		}
+		results, err := a.searchAnswerLibraryPaged(data.SearchQuery, answerLibraryLibrarySearchLimit)
+		if err != nil {
+			http.Error(w, "Unable to search the Answer Library", http.StatusInternalServerError)
+			return
+		}
+		total := len(results)
+		data.Total = int64(total)
+		data.TotalPages = (total + perPage - 1) / perPage
+		if data.TotalPages < 1 {
+			data.TotalPages = 1
+		}
+		if data.Page > data.TotalPages {
+			data.Page = data.TotalPages
+		}
+		start := (data.Page - 1) * perPage
+		if start > total {
+			start = total
+		}
+		end := start + perPage
+		if end > total {
+			end = total
+		}
+		pageResults := results[start:end]
+		data.SearchResults = pageResults
+		data.Total = int64(total)
+		ids := make([]int64, 0, len(pageResults)+1)
+		for _, item := range pageResults {
+			ids = append(ids, item.EntryID)
+		}
+		if selectedID > 0 {
+			ids = append(ids, selectedID)
+		}
+		if counts, err := a.answerLibraryAltCounts(ids); err == nil {
+			data.AltCounts = counts
+		}
+		for _, item := range pageResults {
+			employer := item.SourceEmployer
+			if employer == "" {
+				employer = item.SourceHost
+			}
+			data.List = append(data.List, answerLibraryListItem{
+				ID: item.EntryID, Question: item.OriginalQuestion,
+				Employer: employer, JobTitle: item.SourceJobTitle, Host: item.SourceHost,
+				AltCount: data.AltCounts[item.EntryID], Selected: item.EntryID == selectedID,
+				Link: answerLibraryDetailLink(data.SearchQuery, data.Sort, int64(data.Page), item.EntryID),
+			})
+		}
+	} else {
+		entries, total, err := a.answerLibraryListPage(data.Sort, data.Page, perPage)
+		if err != nil {
+			http.Error(w, "Unable to load the Answer Library", http.StatusInternalServerError)
+			return
+		}
+		data.Total = total
+		data.TotalPages = int((total + int64(perPage) - 1) / int64(perPage))
+		if data.TotalPages < 1 {
+			data.TotalPages = 1
+		}
+		if data.Page > data.TotalPages {
+			data.Page = data.TotalPages
+			entries, total, err = a.answerLibraryListPage(data.Sort, data.Page, perPage)
+			if err != nil {
+				http.Error(w, "Unable to load the Answer Library", http.StatusInternalServerError)
+				return
+			}
+			data.Total = total
+		}
+		data.Entries = entries
+		ids := make([]int64, 0, len(entries)+1)
+		for _, entry := range entries {
+			ids = append(ids, entry.ID)
+		}
+		if selectedID > 0 {
+			ids = append(ids, selectedID)
+		}
+		if counts, err := a.answerLibraryAltCounts(ids); err == nil {
+			data.AltCounts = counts
+		}
+		for _, entry := range entries {
+			employer := entry.SourceEmployer
+			if employer == "" {
+				employer = entry.SourceHost
+			}
+			data.List = append(data.List, answerLibraryListItem{
+				ID: entry.ID, Question: entry.OriginalQuestion,
+				Employer: employer, JobTitle: entry.SourceJobTitle, Host: entry.SourceHost,
+				AltCount: data.AltCounts[entry.ID], UpdatedAt: entry.UpdatedAt,
+				Selected: entry.ID == selectedID,
+				Link:     answerLibraryDetailLink("", data.Sort, int64(data.Page), entry.ID),
+			})
+		}
+	}
+	if selectedID > 0 {
+		entry, err := a.answerLibraryBySourceID(a.db, selectedID)
+		if err == nil {
+			alternatives, err := a.libraryAlternatives(entry.ID)
+			if err == nil {
+				entry.Alternatives = alternatives
+				data.Selected = &entry
+				data.SelectedLink = answerLibraryDetailLink(data.SearchQuery, data.Sort, int64(data.Page), 0)
+			}
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "Unable to load this Answer Library example", http.StatusInternalServerError)
+			return
+		}
+	}
+	// Default detail keeps the full answer visible without a selection round
+	// trip and preserves the existing single-entry rendering expectation.
+	if data.Selected == nil && len(data.List) > 0 {
+		first := data.List[0].ID
+		if entry, err := a.answerLibraryBySourceID(a.db, first); err == nil {
+			if alternatives, err := a.libraryAlternatives(entry.ID); err == nil {
+				entry.Alternatives = alternatives
+				data.Selected = &entry
+				data.SelectedLink = answerLibraryDetailLink(data.SearchQuery, data.Sort, int64(data.Page), 0)
+				data.List[0].Selected = true
+				selectedID = first
+			}
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "Unable to load this Answer Library example", http.StatusInternalServerError)
+			return
+		}
+	}
+	data.HasPrev = data.Page > 1
+	data.HasNext = data.Page < data.TotalPages
+	if data.HasPrev {
+		data.PrevLink = answerLibraryDetailLink(data.SearchQuery, data.Sort, int64(data.Page-1), selectedID)
+	}
+	if data.HasNext {
+		data.NextLink = answerLibraryDetailLink(data.SearchQuery, data.Sort, int64(data.Page+1), selectedID)
+	}
+	values := url.Values{}
+	if data.SearchPerformed {
+		values.Set("q", data.SearchQuery)
+	}
+	if data.Sort == "alpha" {
+		values.Set("sort", "alpha")
+	}
+	if data.Page > 1 {
+		values.Set("page", strconv.Itoa(data.Page))
+	}
+	data.BaseQuery = values.Encode()
+	a.renderAnswerLibrary(w, data)
+}
+
+func (a *App) answerLibrary(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+	a.renderAnswerLibraryList(w, r, strings.TrimSpace(query.Get("q")), answerLibrarySortParam(query.Get("sort")), answerLibraryPageParam(query.Get("page")), func() int64 {
+		selected, _ := strconv.ParseInt(strings.TrimSpace(query.Get("selected")), 10, 64)
+		if selected < 0 {
+			return 0
+		}
+		return selected
+	}())
 }
 
 func (a *App) renderAnswerLibrary(w http.ResponseWriter, data answerLibraryPage) {
@@ -57,23 +288,11 @@ func (a *App) searchAnswerLibraryHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	query := strings.TrimSpace(values[0])
-	data := answerLibraryPage{SearchQuery: query, SearchPerformed: query != ""}
 	if query == "" {
-		entries, err := a.answerLibraryEntries()
-		if err != nil {
-			http.Error(w, "Unable to load the Answer Library", http.StatusInternalServerError)
-			return
-		}
-		data.Entries = entries
-	} else {
-		results, err := a.searchAnswerLibrary(query, answerLibrarySearchPageLimit)
-		if err != nil {
-			http.Error(w, "Unable to search the Answer Library", http.StatusInternalServerError)
-			return
-		}
-		data.SearchResults = results
+		http.Redirect(w, r, "/answer-library", http.StatusSeeOther)
+		return
 	}
-	a.renderAnswerLibrary(w, data)
+	http.Redirect(w, r, "/answer-library?q="+url.QueryEscape(query), http.StatusSeeOther)
 }
 
 func (a *App) answerLibraryEntryHandler(w http.ResponseWriter, r *http.Request) {
@@ -82,20 +301,15 @@ func (a *App) answerLibraryEntryHandler(w http.ResponseWriter, r *http.Request) 
 		http.NotFound(w, r)
 		return
 	}
-	entry, err := a.answerLibraryBySourceID(a.db, id)
-	if errors.Is(err, sql.ErrNoRows) {
+	if _, err := a.answerLibraryBySourceID(a.db, id); errors.Is(err, sql.ErrNoRows) {
 		http.NotFound(w, r)
 		return
-	}
-	if err != nil {
+	} else if err != nil {
 		http.Error(w, "Unable to load this Answer Library example", http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "private, no-store")
-	if err := a.resources.answerLibraryTemplate.Execute(w, answerLibraryPage{Entries: []AnswerLibraryEntry{entry}}); err != nil {
-		http.Error(w, "Unable to render this Answer Library example", http.StatusInternalServerError)
-	}
+	query := r.URL.Query()
+	a.renderAnswerLibraryList(w, r, strings.TrimSpace(query.Get("q")), answerLibrarySortParam(query.Get("sort")), answerLibraryPageParam(query.Get("page")), id)
 }
 
 func (a *App) answerLibraryEntryContentHandler(w http.ResponseWriter, r *http.Request) {
@@ -337,15 +551,15 @@ func (a *App) promoteEarlyApplicationAnswerHandler(w http.ResponseWriter, r *htt
 }
 
 type answerLibraryBrowseJSON struct {
-	ID             int64  `json:"id"`
-	Revision       int64  `json:"revision"`
-	Question       string `json:"question"`
-	Employer       string `json:"employer"`
-	JobTitle       string `json:"jobTitle"`
-	Host           string `json:"host"`
-	Excerpt        string `json:"excerpt"`
-	SourceKind     string `json:"sourceKind"`
-	UpdatedAt      string `json:"updatedAt"`
+	ID         int64  `json:"id"`
+	Revision   int64  `json:"revision"`
+	Question   string `json:"question"`
+	Employer   string `json:"employer"`
+	JobTitle   string `json:"jobTitle"`
+	Host       string `json:"host"`
+	Excerpt    string `json:"excerpt"`
+	SourceKind string `json:"sourceKind"`
+	UpdatedAt  string `json:"updatedAt"`
 }
 
 // GET /api/answer-library browses retained curated examples with bounded
@@ -385,7 +599,7 @@ func (a *App) answerLibraryBrowseAPI(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Search text is invalid or too long", http.StatusBadRequest)
 			return
 		}
-		results, err := a.searchAnswerLibrary(query, limit)
+		results, err := a.searchAnswerLibraryPaged(query, limit)
 		if err != nil {
 			http.Error(w, "Unable to search saved writing", http.StatusInternalServerError)
 			return
@@ -409,7 +623,7 @@ func (a *App) answerLibraryBrowseAPI(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"entries": entries, "nextCursor": 0, "hasMore": false,
 			"libraryEmpty": libraryTotal == 0, "query": query,
-			"bounded": true, "bound": answerLibrarySearchPageLimit,
+			"bounded": true, "bound": answerLibraryLibrarySearchLimit,
 		})
 		return
 	}
@@ -479,7 +693,7 @@ func (a *App) editAnswerLibraryHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid Answer Library revision", http.StatusBadRequest)
 		return
 	}
-	if err := a.updateAnswerLibrary(id, revision, answerValues[0]); err != nil {
+	if err := a.updateAnswerLibraryWithAlternatives(id, revision, answerValues[0], strings.Split(r.PostForm.Get("alternatives"), "\n")); err != nil {
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
 			http.NotFound(w, r)

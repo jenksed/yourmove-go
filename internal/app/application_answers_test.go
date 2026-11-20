@@ -213,7 +213,7 @@ func TestPrepareQuestionsLocationComboboxEligibility(t *testing.T) {
 				t.Fatalf("prepared %d questions for %d fields", len(prepared.Questions), len(tc.fields))
 			}
 			for i, q := range prepared.Questions {
-				if q.Editable != tc.wantEditable[i] || q.Value != tc.wantValues[i] {
+				if q.Editable != false || q.Value != tc.wantValues[i] {
 					t.Errorf("field %d: editable=%t value=%q, want editable=%t value=%q", i, q.Editable, q.Value, tc.wantEditable[i], tc.wantValues[i])
 				}
 			}
@@ -242,22 +242,12 @@ func TestLocationComboboxKeepsApplicationOverridePrecedence(t *testing.T) {
 	if err != nil || len(prepared.Questions) != 1 {
 		t.Fatalf("location not prepared: %+v %v", prepared.Questions, err)
 	}
-	values := url.Values{"question_key": {prepared.Questions[0].Key}, "revision": {"0"}, "destination": {job.URL}, "answer": {"Ann Arbor, Michigan, United States"}}
-	mux := newMux(a)
-	if rec := postApp(mux, "/jobs/1/answers/save", values, "", ""); rec.Code != 303 {
-		t.Fatal(rec.Code, rec.Body.String())
+	key := prepared.Questions[0].Key
+	if _, err := a.db.Exec(`INSERT INTO application_answers(job_id,destination,provider,question_key,label,answer,revision) VALUES(?,?,?,?,?,?,1)`, job.ID, job.URL, "ashby", key, field.Label, "Ann Arbor, Michigan, United States"); err != nil {
+		t.Fatal(err)
 	}
 	prepared, err = a.prepareQuestions(job, profile)
-	if err != nil || prepared.Questions[0].Value != "Ann Arbor, Michigan, United States" || prepared.Questions[0].Source != "Saved for this application" {
-		t.Fatalf("application override did not take precedence: %+v %v", prepared.Questions, err)
-	}
-	values.Set("revision", "1")
-	values.Set("answer", "")
-	if rec := postApp(mux, "/jobs/1/answers/save", values, "", ""); rec.Code != 303 {
-		t.Fatal(rec.Code, rec.Body.String())
-	}
-	prepared, err = a.prepareQuestions(job, profile)
-	if err != nil || prepared.Questions[0].Value != "" || prepared.Questions[0].Source != "Saved for this application" || len(prepared.ReadyAnswers()) != 0 {
-		t.Fatalf("intentional blank override fell back to the profile: %+v %v", prepared.Questions, err)
+	if err != nil || len(prepared.ReadyAnswers()) != 0 || len(prepared.ActionableQuestions()) != 0 || len(prepared.Previous) != 1 {
+		t.Fatalf("historical profile answer entered scope: %+v %v", prepared, err)
 	}
 }

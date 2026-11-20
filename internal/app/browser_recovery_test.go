@@ -32,6 +32,7 @@ func (b *lostTabBrowser) closedCount() int { b.mu.Lock(); defer b.mu.Unlock(); r
 
 func TestClosedAshbyTabRecoversWithoutDeadEnd(t *testing.T) {
 	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com", Title: "Role"}); err != nil {
 		t.Fatal(err)
 	}

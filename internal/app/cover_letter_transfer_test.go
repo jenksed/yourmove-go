@@ -97,6 +97,7 @@ func TestCoverLetterTransferPinsRevisionAndContinuesSession(t *testing.T) {
 	for _, mode := range []string{"file", "text"} {
 		t.Run(mode, func(t *testing.T) {
 			a, _ := testWorkspace(t)
+			a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 			if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com"}); err != nil {
 				t.Fatal(err)
 			}
@@ -178,6 +179,7 @@ func TestPendingCoverLetterChangeRevokesTransfer(t *testing.T) {
 	for _, change := range []string{"body", "destination", "stage"} {
 		t.Run(change, func(t *testing.T) {
 			a, _ := testWorkspace(t)
+			a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 			if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com"}); err != nil {
 				t.Fatal(err)
 			}
@@ -218,6 +220,7 @@ func TestPendingCoverLetterChangeRevokesTransfer(t *testing.T) {
 
 func TestCoverLetterAutoPrefersFileFallsBackToText(t *testing.T) {
 	a, _ := testWorkspace(t)
+	a.enrichmentFetch = kan16FixtureFetch("retrieved", "synthetic open posting")
 	if err := a.saveJob(Job{URL: testAshbyPosting, Host: "jobs.ashbyhq.com"}); err != nil {
 		t.Fatal(err)
 	}

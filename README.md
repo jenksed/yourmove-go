@@ -105,6 +105,7 @@ Go owns validation, saved state, document identity, consent, browser effects, an
 | [`internal/storage/`](internal/storage/) | SQLite schema, workspace paths, durable state |
 | [`frontend/src/features/`](frontend/src/features/) | React screens: opportunities, resumes, application workspace, career |
 | [`docs/CODEBASE_GUIDE.md`](docs/CODEBASE_GUIDE.md) | Source map: routes, handlers, persistence, browser commands |
+| [`docs/ROADMAP.md`](docs/ROADMAP.md) | Product direction and planned release sequence through v1.0.0 |
 | [v0.3.0 release notes](https://github.com/jenksed/yourmove-go/releases/tag/v0.3.0) | Published build, install instructions, supported workflows and exclusions |
 
 ```sh

@@ -3,13 +3,14 @@ package app
 import (
 	"errors"
 	"net/http"
+	"time"
 )
 
 func (a *App) enrichmentPage(w http.ResponseWriter, r *http.Request) {
 	view := struct {
 		EnrichmentSnapshot
-		Pending, Retryable int
-		Percent            int
+		Pending, Retryable, RoutineDue int
+		Percent                        int
 	}{EnrichmentSnapshot: a.currentEnrichment()}
 	if view.Total > 0 {
 		view.Percent = 100 * view.Done / view.Total
@@ -28,6 +29,12 @@ func (a *App) enrichmentPage(w http.ResponseWriter, r *http.Request) {
 		}
 		if j.SourceStatus == "failed" {
 			view.Retryable++
+		}
+		// KAN-16 routine rechecks reuse this engine: unfinished Focus jobs
+		// due after ~24h and Saved jobs due after ~7d, skipping unsupported
+		// sources and Applied-protected rows.
+		if j.SourceStatus != "unsupported" && routineRecheckDue(j, time.Now().UTC()) {
+			view.RoutineDue++
 		}
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

@@ -2,56 +2,101 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f7f7f4"><title>Answer Library · YourMove</title><link rel="stylesheet" href="/static/styles.css"><script defer src="/static/ui.js"></script></head><body>
 {{template "shell-open" "answer-library"}}
 <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/jobs">Opportunities</a><span aria-hidden="true">/</span><span>Answer Library</span></nav>
-<div class="page-heading"><div><p class="eyebrow">PREVIOUS WRITING</p><h1>Answer Library</h1><p class="page-description">Examples you chose to keep. Each stays with the question and application it came from; review and adapt it before using it elsewhere.</p></div></div>
+<div class="page-heading"><div><p class="eyebrow">PREVIOUS WRITING</p><h1>Answer Library</h1><p class="page-description">Examples you chose to keep. Select an entry to review the full reusable answer; editing the library copy never changes application history or transfers anything to an employer.</p></div></div>
 {{if .Notice}}<p class="local-save-confirmation" role="status">{{.Notice}}</p>{{end}}
-<form method="POST" action="/answer-library/search" class="answer-library-search" role="search">
-  <div class="field"><label for="answer-library-query">Search saved questions and writing</label><input id="answer-library-query" name="query" type="search" maxlength="1000" value="{{.SearchQuery}}" placeholder="Try Linux incident, customer escalation, or performance"></div>
+<form method="GET" action="/answer-library" class="answer-library-search" role="search" data-library-search>
+  <div class="field"><label for="answer-library-query">Search saved questions and writing</label><input id="answer-library-query" name="q" type="search" maxlength="1000" value="{{.SearchQuery}}" placeholder="Try Linux incident, customer escalation, or performance"></div>
+  <div class="field"><label for="answer-library-sort">Sort</label><select id="answer-library-sort" name="sort"><option value="recent"{{if ne .Sort "alpha"}} selected{{end}}>Recently updated</option><option value="alpha"{{if eq .Sort "alpha"}} selected{{end}}>Alphabetical</option></select></div>
   <button class="button button-secondary" type="submit">Search library</button>
 </form>
 {{if .SearchPerformed}}
-<section class="answer-library-search-results" aria-label="Related previous writing search results">
-  <h2>Related previous writing</h2>
-  {{if .SearchResults}}
-  {{range .SearchResults}}
-  <article class="answer-library-entry">
-    <h3 class="answer-library-question">{{.OriginalQuestion}}</h3>
-    <div class="answer-library-context"><strong>{{if .SourceJobTitle}}{{.SourceJobTitle}}{{else}}Untitled job{{end}}</strong><span>{{if .SourceEmployer}}{{.SourceEmployer}}{{else}}{{.SourceHost}}{{end}}</span></div>
-    <p class="related-writing-excerpt"><strong>Previous writing excerpt</strong> · {{.Excerpt}}</p>
-    <p><a href="/answer-library/{{.EntryID}}">Open full example and source context →</a></p>
-  </article>
-  {{end}}
-  {{else}}<p class="small-muted">No related writing surfaced for this search. Try a more specific phrase from the original question.</p>{{end}}
-</section>
-<p><a class="text-link" href="/answer-library">Browse all saved examples →</a></p>
-{{else if .Entries}}
-<section class="answer-library-list" aria-label="Saved writing examples">
-  {{range .Entries}}
-  <article class="answer-library-entry" id="library-entry-{{.ID}}">
+<p class="small-muted" role="status">{{.Total}} result{{if ne .Total 1}}s{{end}} for &ldquo;{{.SearchQuery}}&rdquo; · page {{.Page}} of {{.TotalPages}} · searches questions, alternative phrasings, answer text, and source context</p>
+{{else}}
+<p class="small-muted" role="status">{{.Total}} saved example{{if ne .Total 1}}s{{end}} in total{{if gt .TotalPages 1}} · page {{.Page}} of {{.TotalPages}}{{end}}</p>
+{{end}}
+{{if .List}}
+<div class="library-layout">
+  <nav class="library-master" aria-label="Saved examples">
+    <ul>
+    {{range .List}}
+      <li><a href="{{.Link}}" data-library-link{{if .Selected}} aria-current="true"{{end}}>
+        <span class="library-master-question">{{.Question}}</span>
+        <span class="library-master-context">{{if .JobTitle}}{{.JobTitle}}{{else}}Untitled job{{end}} · {{if .Employer}}{{.Employer}}{{else}}{{.Host}}{{end}}</span>
+        <span class="library-master-count">{{if .AltCount}}{{.AltCount}} alternative phrasing{{if ne .AltCount 1}}s{{end}}{{else}}No alternatives yet{{end}}</span>
+      </a></li>
+    {{end}}
+    </ul>
+    {{if or .HasPrev .HasNext}}
+    <div class="library-pagination">
+      {{if .HasPrev}}<a class="button button-secondary" data-library-link href="{{.PrevLink}}">← Previous page</a>{{end}}
+      <span class="small-muted">Page {{.Page}} of {{.TotalPages}}</span>
+      {{if .HasNext}}<a class="button button-secondary" data-library-link href="{{.NextLink}}">Next page →</a>{{end}}
+    </div>
+    {{end}}
+  </nav>
+  {{if .Selected}}
+  {{with .Selected}}
+  <section class="library-detail" aria-label="Selected example">
     <h2 class="answer-library-question">{{.OriginalQuestion}}</h2>
-    <div class="answer-library-context"><strong>{{if .SourceJobTitle}}{{.SourceJobTitle}}{{else}}Untitled job{{end}}</strong><span>{{if .SourceEmployer}}{{.SourceEmployer}}{{else}}{{.SourceHost}}{{end}}</span></div>
-    <details class="answer-library-full-answer" open><summary>Read the complete saved answer</summary><pre class="evidence-text">{{.Answer}}</pre></details>
-    <p class="small-muted">Previous writing from {{if .SourceEmployer}}{{.SourceEmployer}}{{else}}{{.SourceHost}}{{end}} · saved {{.CreatedAt}}{{if ne .UpdatedAt .CreatedAt}} · library copy edited {{.UpdatedAt}}{{end}}</p>
+    <p class="library-detail-context">{{if .SourceJobTitle}}{{.SourceJobTitle}}{{else}}Untitled job{{end}} · {{if .SourceEmployer}}{{.SourceEmployer}}{{else}}{{.SourceHost}}{{end}}</p>
+    <h3>Reusable answer</h3>
+    <pre class="evidence-text library-detail-answer">{{.Answer}}</pre>
+    <form method="POST" action="/answer-library/{{.ID}}/edit" class="answer-library-edit" data-library-edit>
+      <input type="hidden" name="revision" value="{{.Revision}}">
+      <div class="field"><label for="library-answer-{{.ID}}">Saved answer</label><textarea id="library-answer-{{.ID}}" name="answer" rows="8" maxlength="12000" required>{{.Answer}}</textarea><small>Up to 12,000 bytes. Editing this copy does not change any application answer.</small></div>
+      <div class="field"><label for="alternatives-{{.ID}}">Alternative question phrasings</label><textarea id="alternatives-{{.ID}}" name="alternatives" rows="4">{{range .Alternatives}}{{.}}
+{{end}}</textarea><small>One equivalent question per line. Add, edit, or remove lines to manage explicit equivalences.</small></div>
+      <button type="submit" class="button button-secondary">Update reusable answer and alternatives</button>
+    </form>
+    <details class="library-provenance"><summary>Source context</summary>
+      <p class="small-muted">Previous writing from {{if .SourceEmployer}}{{.SourceEmployer}}{{else}}{{.SourceHost}}{{end}} · saved {{.CreatedAt}}{{if ne .UpdatedAt .CreatedAt}} · library copy edited {{.UpdatedAt}}{{end}}</p>
+    </details>
     <form method="POST" action="/answer-library/{{.ID}}/career-evidence" class="answer-library-evidence-source">
       <button type="submit" class="button button-secondary">Create career evidence from this writing</button>
       <p class="small-muted">Opens an editable draft with the original question and writing saved as a source snapshot. No facts are extracted.</p>
     </form>
-    <details class="answer-library-manage"><summary>Edit or delete this library copy</summary>
-      <p class="small-muted">The original question and source context stay attached. Editing or deleting this copy does not change application history.</p>
-      <form method="POST" action="/answer-library/{{.ID}}/edit" class="answer-library-edit">
-        <input type="hidden" name="revision" value="{{.Revision}}">
-        <div class="field"><label for="library-answer-{{.ID}}">Saved answer</label><textarea id="library-answer-{{.ID}}" name="answer" rows="8" maxlength="12000" required>{{.Answer}}</textarea><small>Up to 12,000 bytes. Keep line breaks as needed.</small></div>
-        <button type="submit" class="button button-secondary">Save library copy</button>
-      </form>
+    <details class="answer-library-manage"><summary>Delete this library copy</summary>
+      <p class="small-muted">Deleting this copy does not change application history.</p>
       <form method="POST" action="/answer-library/{{.ID}}/delete" class="answer-library-delete">
         <input type="hidden" name="revision" value="{{.Revision}}">
         <label class="confirm-row"><input type="checkbox" name="confirm" value="yes" required><span>Delete this saved example from the Answer Library.</span></label>
         <button type="submit" class="button button-danger">Delete example</button>
       </form>
     </details>
-  </article>
+  </section>
   {{end}}
-</section>
+  {{end}}
+</div>
+<script>
+(function() {
+  var form = document.querySelector('[data-library-edit]');
+  if (!form) return;
+  var initial = new URLSearchParams(new FormData(form)).toString();
+  var dirty = function() { return new URLSearchParams(new FormData(form)).toString() !== initial; };
+  form.addEventListener('input', function() {
+    form.dataset.dirty = dirty() ? 'true' : 'false';
+  });
+  document.addEventListener('click', function(event) {
+    var link = event.target.closest && event.target.closest('a[data-library-link]');
+    if (!link || form.dataset.dirty !== 'true') return;
+    if (!window.confirm('Switch entries without saving? Unsaved edits to this library copy will be lost.')) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+  }, true);
+  var search = document.querySelector('[data-library-search]');
+  if (search) search.addEventListener('submit', function(event) {
+    if (form.dataset.dirty === 'true' && !window.confirm('Search without saving? Unsaved edits to this library copy will be lost.')) {
+      event.preventDefault();
+    }
+  });
+})();
+</script>
+{{else}}
+{{if .SearchPerformed}}
+<section class="inline-empty answer-library-empty"><h2>No matching examples</h2><p>No saved writing surfaced for this search. Try a more specific phrase from the original question, an alternative phrasing, or answer wording.</p><a class="button button-secondary" data-library-link href="/answer-library">Browse all saved examples</a></section>
 {{else}}
 <section class="inline-empty answer-library-empty"><h2>No saved examples yet</h2><p>After saving an eligible narrative answer in Prepare, choose <strong>Save to Answer Library</strong> to keep a separate copy for future writing.</p><a class="button button-secondary" href="/jobs">Open opportunities</a></section>
+{{end}}
 {{end}}
 {{template "shell-close" .}}</body></html>

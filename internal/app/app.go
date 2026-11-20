@@ -7,6 +7,8 @@ import (
 	"io/fs"
 	"net/http"
 	"strings"
+
+	"github.com/jenksed/yourmove-go/internal/updates"
 )
 
 // Config supplies workspace dependencies, embedded resources, and native callbacks.
@@ -89,6 +91,7 @@ func New(config Config) (*App, error) {
 		db: config.DB, resumeDir: config.ResumeDir, resources: resources,
 		pickResume: config.PickResume, chooseExportPath: config.ChooseExportPath,
 		openPosting: config.OpenPosting,
+		updates:     updates.NewManager(CurrentAppVersion()),
 	}
 	a.browsers.engine = a.resolveApplicationBrowser
 	return a, nil

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   browseLibrary,
   fetchLibraryExample,
+  fetchManualStartingPoint,
   fetchStartingPoint,
   type LibraryBrowseEntry,
   type LibraryBrowseResult,
@@ -42,6 +43,8 @@ export function PreviousWriting({
   const [previewRevision, setPreviewRevision] = useState<number>(0);
   const [previewTitle, setPreviewTitle] = useState<string>("");
   const [previewBody, setPreviewBody] = useState<string>("");
+  const [previewEmployer, setPreviewEmployer] = useState<string>("");
+  const [previewJobTitle, setPreviewJobTitle] = useState<string>("");
   const [previewLoading, setPreviewLoading] = useState<boolean>(false);
   const [previewError, setPreviewError] = useState<string>("");
   const [useBusy, setUseBusy] = useState<boolean>(false);
@@ -60,17 +63,21 @@ export function PreviousWriting({
     setPreviewRevision(0);
     setPreviewTitle("");
     setPreviewBody("");
+    setPreviewEmployer("");
+    setPreviewJobTitle("");
     setPreviewError("");
     setUseError("");
   }, [question.key, question.isEarly]);
 
   const openPreview = useCallback(
-    async (entryId: number, revision: number, title: string) => {
+    async (entryId: number, revision: number, title: string, context: { employer: string; jobTitle: string }) => {
       const request = ++requestRef.current;
       setPreviewId(entryId);
       setPreviewRevision(revision);
       setPreviewTitle(title);
       setPreviewBody("");
+      setPreviewEmployer(context.employer);
+      setPreviewJobTitle(context.jobTitle);
       setPreviewError("");
       setUseError("");
       setPreviewLoading(true);
@@ -80,6 +87,10 @@ export function PreviousWriting({
         setPreviewBody(full.answer);
         setPreviewRevision(full.revision);
         setPreviewTitle(full.original_question);
+        // The full record carries authoritative source context; keep the
+        // list context only where the record has none.
+        setPreviewEmployer(full.source_employer !== "" ? full.source_employer : context.employer);
+        setPreviewJobTitle(full.source_job_title !== "" ? full.source_job_title : context.jobTitle);
       } catch (error) {
         if (request !== requestRef.current) return;
         setPreviewError(error instanceof Error ? error.message : "Unable to load the full example");
@@ -96,6 +107,8 @@ export function PreviousWriting({
     setPreviewRevision(0);
     setPreviewTitle("");
     setPreviewBody("");
+    setPreviewEmployer("");
+    setPreviewJobTitle("");
     setPreviewError("");
     setUseError("");
     setUseBusy(false);
@@ -106,18 +119,30 @@ export function PreviousWriting({
     setUseBusy(true);
     setUseError("");
     try {
-      const validated = await fetchStartingPoint(jobId, {
-        library_entry_id: previewId,
-        library_revision: previewRevision,
-        question_key: question.key,
-        revision: baselineRevision,
-        destination,
-        early: question.isEarly,
-        discovery_source: question.discoverySource,
-        discovery_fingerprint: question.discoveryFingerprint,
-        source_question_id: question.sourceQuestionId,
-      });
-      onUseAsDraft(validated.answer, { entryId: validated.entry_id, revision: validated.library_revision, label: previewTitle }, previewTitle);
+      // Manual questions validate against their application-owned key; the
+      // returned text is still an unsaved draft, never a transfer.
+      if (question.isManual) {
+        const validated = await fetchManualStartingPoint(jobId, question.key, {
+          library_entry_id: previewId,
+          library_revision: previewRevision,
+          revision: baselineRevision,
+          destination,
+        });
+        onUseAsDraft(validated.answer, { entryId: validated.library_entry_id, revision: validated.library_revision, label: previewTitle }, previewTitle);
+      } else {
+        const validated = await fetchStartingPoint(jobId, {
+          library_entry_id: previewId,
+          library_revision: previewRevision,
+          question_key: question.key,
+          revision: baselineRevision,
+          destination,
+          early: question.isEarly,
+          discovery_source: question.discoverySource,
+          discovery_fingerprint: question.discoveryFingerprint,
+          source_question_id: question.sourceQuestionId,
+        });
+        onUseAsDraft(validated.answer, { entryId: validated.entry_id, revision: validated.library_revision, label: previewTitle }, previewTitle);
+      }
     } catch (error) {
       setUseError(error instanceof Error ? error.message : "Unable to use this example");
     } finally {
@@ -161,7 +186,7 @@ export function PreviousWriting({
     <div className="previous-writing" aria-label="Previous writing">
       <h4>Previous writing</h4>
       {suggestions.length === 0 && (
-        <p className="small-muted">No ranked suggestions for this question. Browse all saved answers to look manually.</p>
+        <p className="small-muted">No related answers found.</p>
       )}
       {suggestions.length > 0 && (
         <ul className="writing-suggestions">
@@ -170,7 +195,7 @@ export function PreviousWriting({
               <strong>{s.question}</strong>
               <small>
                 {[s.employer, s.jobTitle].filter((part) => part !== "").join(" · ")}
-                {s.employer !== "" || s.jobTitle !== "" ? " · " : ""}revision {s.revision} · Related — review for this question
+                {s.employer !== "" || s.jobTitle !== "" ? " · " : ""}revision {s.revision} · {s.matchKind || "Related — review for this question"}
               </small>
               <p>{s.excerpt}</p>
               <div className="form-actions">
@@ -178,7 +203,7 @@ export function PreviousWriting({
                   className="button button-secondary"
                   type="button"
                   disabled={disabled}
-                  onClick={() => void openPreview(s.entryId, s.revision, sourceLabel({ question: s.question, employer: s.employer, jobTitle: s.jobTitle }))}
+                  onClick={() => void openPreview(s.entryId, s.revision, sourceLabel({ question: s.question, employer: s.employer, jobTitle: s.jobTitle }), { employer: s.employer, jobTitle: s.jobTitle })}
                 >
                   Preview full text
                 </button>
@@ -190,6 +215,11 @@ export function PreviousWriting({
       {previewId !== 0 && (
         <div className="writing-preview" aria-label="Full source preview">
           <h5>{previewTitle !== "" ? previewTitle : "Full example"}</h5>
+          {(previewEmployer !== "" || previewJobTitle !== "") && (
+            <p className="small-muted">
+              Saved from {[previewEmployer, previewJobTitle].filter((part) => part !== "").join(" · ")} · revision {previewRevision}
+            </p>
+          )}
           {previewLoading && <p role="status">Loading the complete example…</p>}
           {previewError !== "" && (
             <p className="job-form-error" role="alert">
@@ -251,7 +281,7 @@ export function PreviousWriting({
               {browseError} Your editor is unchanged.
             </p>
           )}
-          {browseResult && browseResult.libraryEmpty && <p className="small-muted">The Answer Library is empty. Save an answer on a narrative question, then choose “Save a copy to Answer Library” to reuse it here.</p>}
+          {browseResult && browseResult.libraryEmpty && <p className="small-muted">The Answer Library is empty. Choose “Save to Answer Library” on a narrative question to reuse it here.</p>}
           {browseResult && !browseResult.libraryEmpty && browseResult.entries.length === 0 && (
             <p className="small-muted">
               {browseResult.query !== "" ? `No ranked matches for “${browseResult.query}”. Try different wording or browse the full list.` : "No saved answers yet."}
@@ -278,7 +308,7 @@ export function PreviousWriting({
                         className="button button-secondary"
                         type="button"
                         disabled={disabled}
-                        onClick={() => void openPreview(entry.id, entry.revision, sourceLabel({ question: entry.question, employer: entry.employer, jobTitle: entry.jobTitle }))}
+                        onClick={() => void openPreview(entry.id, entry.revision, sourceLabel({ question: entry.question, employer: entry.employer, jobTitle: entry.jobTitle }), { employer: entry.employer, jobTitle: entry.jobTitle })}
                       >
                         Preview full text
                       </button>

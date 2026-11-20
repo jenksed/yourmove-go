@@ -14,10 +14,16 @@ var (
 )
 
 // savePostingURL owns single-URL intake for both HTML and JSON transports.
-// Existing URLs bypass metadata retrieval and retain all saved work. The
+// New postings land in Saved for Later by default; callers pass focus=true
+// for the explicit Save & Focus choice. Existing URLs bypass metadata
+// retrieval and retain all saved work including attention placement. The
 // duplicate result describes this pre-fetch check; storeJobIfNew still guards
 // against an intervening intake, preserving the existing response semantics.
 func (a *App) savePostingURL(ctx context.Context, rawURL, rawTitle string) (id int64, duplicate bool, err error) {
+	return a.savePostingURLWithFocus(ctx, rawURL, rawTitle, false)
+}
+
+func (a *App) savePostingURLWithFocus(ctx context.Context, rawURL, rawTitle string, focus bool) (id int64, duplicate bool, err error) {
 	jobURL, host, err := normalizePostingURL(rawURL)
 	title := strings.TrimSpace(rawTitle)
 	if err != nil || len(title) > 200 {
@@ -43,12 +49,17 @@ func (a *App) savePostingURL(ctx context.Context, rawURL, rawTitle string) (id i
 	if metadata.SalaryText != "" && salaryOrigin == "" {
 		salaryOrigin = "employer"
 	}
+	parkedAt := time.Now().UTC().Format(time.RFC3339)
+	if focus {
+		parkedAt = ""
+	}
 	job := Job{
 		URL: jobURL, Host: host, Title: title, Company: metadata.Company,
 		Description: metadata.Description, SalaryText: metadata.SalaryText,
 		SalaryOrigin: salaryOrigin, TitleManual: manualTitle,
 		SourceStatus: status, SourceNote: note,
 		SourceCheckedAt: time.Now().UTC().Format(time.RFC3339),
+		ParkedAt:        parkedAt,
 	}
 	if status != "retrieved" {
 		id, _, err = a.storeJobIfNew(job)

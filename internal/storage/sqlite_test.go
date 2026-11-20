@@ -96,6 +96,18 @@ func TestAnswerLibrarySearchIndexMigrationPreservesCuratedSnapshot(t *testing.T)
 			&question, &answer, &employer, &revision, &sourceRevision, &questionTerms, &answerTerms, &indexVersion); err != nil {
 			t.Fatal(err)
 		}
+		var alternatives int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM answer_library_alternatives WHERE entry_id=7`).Scan(&alternatives); err != nil {
+			t.Fatal(err)
+		}
+		if alternatives != attempt {
+			t.Fatalf("alternative migration/reopen: %d", alternatives)
+		}
+		if attempt == 0 {
+			if _, err := db.Exec(`INSERT INTO answer_library_alternatives VALUES(7,'Describe an outage','describe an outage')`); err != nil {
+				t.Fatal(err)
+			}
+		}
 		if question != "Describe a production issue" || answer != "Synthetic saved snapshot" || employer != "Fixture Employer" || revision != 3 || sourceRevision != 2 || questionTerms != "" || answerTerms != "" || indexVersion != 0 {
 			t.Fatalf("phase-one snapshot changed during index migration: %q %q %q rev=%d source=%d terms=%q/%q index=%d", question, answer, employer, revision, sourceRevision, questionTerms, answerTerms, indexVersion)
 		}

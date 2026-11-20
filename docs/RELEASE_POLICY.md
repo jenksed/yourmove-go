@@ -1,27 +1,22 @@
 # YourMove release policy
 
-**Policy established:** October 23, 2026. Applies to the first macOS beta and subsequent desktop releases.
+**Policy established:** October 23, 2026. Applies to desktop release candidates.
 
 ## Purpose
 
-Dates cause release reviews; **evidence decides whether to ship**. The release owner may ship early when every applicable gate passes. A scheduled date never overrides data integrity, applicant authority, privacy, installability, or a blocked core workflow.
+A target date can prompt a review. The release owner may authorize shipment when the frozen candidate meets the applicable gates for its advertised scope and audience. A scheduled date never overrides data integrity, applicant authority, privacy, installability, or a blocked core workflow.
 
-Use the [roadmap](ROADMAP.md) for proposed release targets, [release process](RELEASE_PROCESS.md) for the commands, [release checklist](RELEASE_CHECKLIST.md) for current execution status, and `release/decisions/` for a decision tied to a specific artifact.
+The [strategic roadmap](ROADMAP.md) sets product direction and release sequence. [Linear](BACKLOG.md) tracks execution. Use the [release process](RELEASE_PROCESS.md) for commands, the [release checklist](RELEASE_CHECKLIST.md) for readiness checks, and `release/decisions/` for the owner’s decision on a specific artifact.
 
 ## Versions and audiences
 
-| Release class | Purpose | Expected audience |
-| --- | --- | --- |
-| `0.1.0` | First demonstrably usable macOS application journey | Small, invited beta after acceptance |
-| `0.1.1` | Correct observed reliability and interaction blockers | Existing testers |
-| `0.2.0` | Make repeated applications materially easier | Wider macOS beta only if qualified |
-| Patch/hotfix | Resolve an urgent regression in an already qualified capability | Affected users, without waiting for the next feature cycle |
+Define the intended outcome, audience and supported configuration for each candidate. Wider distribution requires evidence for that audience. The [October 23 plan](roadmaps/archive/2026-10-23-initial-release-roadmap.md) records the original v0.1–v0.2 targets.
 
 Before v1.0, the version numbers describe intended scope rather than compatibility promises. Increment the `CFBundleVersion` build number for each external candidate even when the public version is unchanged. Maintain the installed-app identity and test upgrades against existing workspaces.
 
-## Cadence and early release
+## Review and release timing
 
-Plan around a two-week feature cycle and a **weekly Friday release decision**. These are review checkpoints, not mandatory ship days. Release early when a frozen candidate has passing evidence for its advertised scope. Hold when an essential gate fails. A hotfix may release outside the cadence after relevant regression testing and a recorded decision.
+Schedule a review when there is evidence for a decision. Two-week planning cycles and Friday reviews are optional. Hold when an essential gate fails. An urgent hotfix may be reviewed as soon as the relevant regression checks pass and requires its own recorded release decision.
 
 **Scope reduction is the preferred alternative to guessing.** If an ATS workflow or optional AI provider is not qualified, exclude its claim or disable/omit that offering. Do not claim that passing one provider fixture proves the others.
 
@@ -48,7 +43,7 @@ Record each gate as **PASS**, **RESTRICTED**, or **BLOCKED**, with an evidence l
 
 Cosmetic imperfections, unsupported fields with a clear manual fallback, or an optional slow feature can be acceptable in an invited beta **if users can still complete the promised journey**. Do not convert these categories into a weighted score that could outweigh a safety blocker.
 
-## v0.1.0 initial evidence minimum
+## Historical evidence minimum for v0.1.0
 
 - Both CI jobs passing for the exact candidate source.
 - At least two distinct application-preparation journeys reaching a reviewable employer form, with supported scope documented.
@@ -67,4 +62,4 @@ Review preparation completion, time to reviewable form, manual corrections, bloc
 
 ## Decision and authority
 
-The release owner records a decision per frozen artifact using `release/decisions/v<version>.md`: **SHIP**, **SHIP RESTRICTED**, or **HOLD**. Include the supported audience, evidence, known defects, exclusions, and date. No script, CI job, or proposed roadmap date authorizes distribution by itself.
+The release owner records a decision per frozen artifact using `release/decisions/v<version>.md`: **SHIP**, **SHIP RESTRICTED**, or **HOLD**. Include the supported audience, evidence, known defects, exclusions, and date. Distribution requires the release owner’s explicit authorization for that artifact.

@@ -449,6 +449,6 @@ Legend: **0.2 candidate** = plausibly supports the v0.2 repeat-application outco
 - [Repository](https://github.com/jenksed/yourmove-go)
 - [v0.1.0 published technical-alpha release](https://github.com/jenksed/yourmove-go/releases/tag/v0.1.0)
 - [v0.1.0 release log](https://github.com/jenksed/yourmove-go/blob/main/docs/releases/0.1.0-log.md)
-- [Roadmap](https://github.com/jenksed/yourmove-go/blob/main/docs/ROADMAP.md)
+- [Roadmap](https://github.com/jenksed/yourmove-go/blob/fd835f3258cfb7ca928f27cd5ae16058678219a7/docs/ROADMAP.md)
 - [Feature ownership](https://github.com/jenksed/yourmove-go/blob/main/docs/architecture/FEATURE_OWNERSHIP.md)
-- [Existing backlog](https://github.com/jenksed/yourmove-go/blob/main/docs/BACKLOG.md) (older snapshot; reconcile before promoting candidates to issues)
+- [Existing backlog](https://github.com/jenksed/yourmove-go/blob/fd835f3258cfb7ca928f27cd5ae16058678219a7/docs/BACKLOG.md) (older snapshot; reconcile before promoting candidates to issues)

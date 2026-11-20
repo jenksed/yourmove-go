@@ -4,12 +4,21 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
+	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/jenksed/yourmove-go/internal/platforms"
 )
 
 var ErrAppliedWithoutSubmission = errors.New("cannot mark applied without a confirmed submission")
+
+// ErrAttentionTerminal refuses attention moves for History jobs. Terminal
+// status (applied/closed stage or a confirmed submission) is evaluated inside
+// the move transaction so a stale request never pulls History back to work.
+var ErrAttentionTerminal = errors.New("job is in History and cannot be moved")
 
 // Stage tracks a human's work. "Applied" is deliberately omitted until a
 // separate manual-submission record can establish that outcome.
@@ -44,6 +53,27 @@ type Job struct {
 	SelectedResumeID  int64
 	SubmissionCount   int64
 	LastSubmittedAt   string
+	ParkedAt          string
+}
+
+// IsTerminal reports History membership: a confirmed submission or an
+// applied/closed stage. Terminal status overrides attention placement, so a
+// later closure automatically leaves Focus/Saved without deleting local work.
+func (j Job) IsTerminal() bool {
+	return j.SubmissionCount > 0 || j.Stage == StageApplied || j.Stage == StageClosed
+}
+
+// Attention is the independent placement contract shared with KAN-16:
+// "focus" (unfinished, parked_at empty), "saved" (unfinished, parked aside),
+// or "history" (terminal regardless of parked_at).
+func (j Job) Attention() string {
+	if j.IsTerminal() {
+		return "history"
+	}
+	if strings.TrimSpace(j.ParkedAt) != "" {
+		return "saved"
+	}
+	return "focus"
 }
 
 func (j Job) StageLabel() string {
@@ -79,6 +109,16 @@ func validStage(s string) bool {
 func validPriority(s string) bool {
 	return s == PriorityNormal || s == PriorityHigh || s == PriorityLow
 }
+
+// PostingProvider is the Go-owned ATS platform key for this saved posting
+// URL ("lever", "recruitee", … or "" when unrecognized). Both the React
+// Opportunities list and the Go-rendered fallback render this value; React
+// must not re-derive it with its own heuristics.
+func (j Job) PostingProvider() string { return platforms.PostingProvider(j.URL) }
+
+// PostingProviderLabel is the accessible source name for PostingProvider,
+// or "" for unrecognized URLs (rendered with the neutral indicator).
+func (j Job) PostingProviderLabel() string { return platforms.PostingProviderLabel(j.PostingProvider()) }
 
 func (j Job) DisplayDescription() string { return platforms.NormalizeDescription(j.Description) }
 
@@ -128,6 +168,64 @@ func (j Job) MissingPostingDetails() []string {
 	return missing
 }
 
+// DisplayTitle is presentation only. Verified or manually entered titles pass
+// through unchanged. When no title is stored, it derives a readable fallback
+// from the posting slug (last URL path segment with hyphens/underscores as
+// spaces) instead of showing the entire URL. The stored Title stays empty, so
+// MissingPostingDetails, TitleManual, and source-check evidence still
+// distinguish the fallback from verified employer metadata. It never writes
+// inferred titles, never uses third-party search results, and never changes
+// stage or source status.
+func (j Job) DisplayTitle() string {
+	if strings.TrimSpace(j.Title) != "" {
+		return j.Title
+	}
+	if readable := readableTitleFromPostingURL(j.URL); readable != "" {
+		return readable
+	}
+	if strings.TrimSpace(j.Host) != "" {
+		return j.Host
+	}
+	return j.URL
+}
+
+// readableTitleFromPostingURL derives a human-readable fallback from the
+// posting slug only. It returns "" when the URL has no usable slug, so
+// callers can fall back to host or URL instead of inventing a title.
+func readableTitleFromPostingURL(rawURL string) string {
+	u, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	segments := strings.Split(strings.Trim(u.Path, "/"), "/")
+	slug := ""
+	for i := len(segments) - 1; i >= 0; i-- {
+		if s := strings.TrimSpace(segments[i]); s != "" {
+			slug = s
+			break
+		}
+	}
+	if slug == "" {
+		return ""
+	}
+	slug = strings.ReplaceAll(slug, "-", " ")
+	slug = strings.ReplaceAll(slug, "_", " ")
+	slug = strings.Join(strings.Fields(slug), " ")
+	if slug == "" {
+		return ""
+	}
+	words := strings.Fields(slug)
+	for i, w := range words {
+		lower := strings.ToLower(w)
+		r, size := utf8.DecodeRuneInString(lower)
+		if r == utf8.RuneError && size == 0 {
+			continue
+		}
+		words[i] = string(unicode.ToUpper(r)) + lower[size:]
+	}
+	return strings.Join(words, " ")
+}
+
 func (a *App) saveJob(job Job) error {
 	_, err := insertJob(a.db, job)
 	return err
@@ -146,12 +244,12 @@ func insertJob(db jobInserter, job Job) (sql.Result, error) {
 	result, err := db.Exec(
 		`INSERT INTO jobs (url, host, title, description, company, stage, priority,
             salary_text, salary_origin, title_manual, description_manual, company_manual, salary_manual,
-            source_status, source_note, source_checked_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            source_status, source_note, source_checked_at, parked_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		job.URL, job.Host, job.Title, job.Description, job.Company,
 		stage, PriorityNormal, job.SalaryText, job.SalaryOrigin,
 		job.TitleManual, job.DescriptionManual, job.CompanyManual, job.SalaryManual,
-		job.SourceStatus, job.SourceNote, job.SourceCheckedAt,
+		job.SourceStatus, job.SourceNote, job.SourceCheckedAt, job.ParkedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("save job: %w", err)
@@ -161,7 +259,7 @@ func insertJob(db jobInserter, job Job) (sql.Result, error) {
 
 func (a *App) allJobs() ([]Job, error) {
 	rows, err := a.db.Query(
-		"SELECT id, url, host, title, description, company, stage, priority, salary_text, salary_origin, title_manual, description_manual, company_manual, salary_manual, source_status, source_note, source_checked_at, COALESCE(selected_resume_id,0), (SELECT COUNT(*) FROM submissions WHERE job_id=jobs.id), COALESCE((SELECT MAX(submitted_at) FROM submissions WHERE job_id=jobs.id),'') FROM jobs ORDER BY id",
+		"SELECT id, url, host, title, description, company, stage, priority, salary_text, salary_origin, title_manual, description_manual, company_manual, salary_manual, source_status, source_note, source_checked_at, COALESCE(selected_resume_id,0), (SELECT COUNT(*) FROM submissions WHERE job_id=jobs.id), COALESCE((SELECT MAX(submitted_at) FROM submissions WHERE job_id=jobs.id),''), COALESCE(parked_at,'') FROM jobs ORDER BY id",
 	)
 	if err != nil {
 		return nil, fmt.Errorf("query jobs: %w", err)
@@ -171,7 +269,7 @@ func (a *App) allJobs() ([]Job, error) {
 	var jobs []Job
 	for rows.Next() {
 		var job Job
-		if err := rows.Scan(&job.ID, &job.URL, &job.Host, &job.Title, &job.Description, &job.Company, &job.Stage, &job.Priority, &job.SalaryText, &job.SalaryOrigin, &job.TitleManual, &job.DescriptionManual, &job.CompanyManual, &job.SalaryManual, &job.SourceStatus, &job.SourceNote, &job.SourceCheckedAt, &job.SelectedResumeID, &job.SubmissionCount, &job.LastSubmittedAt); err != nil {
+		if err := rows.Scan(&job.ID, &job.URL, &job.Host, &job.Title, &job.Description, &job.Company, &job.Stage, &job.Priority, &job.SalaryText, &job.SalaryOrigin, &job.TitleManual, &job.DescriptionManual, &job.CompanyManual, &job.SalaryManual, &job.SourceStatus, &job.SourceNote, &job.SourceCheckedAt, &job.SelectedResumeID, &job.SubmissionCount, &job.LastSubmittedAt, &job.ParkedAt); err != nil {
 			return nil, fmt.Errorf("scan job: %w", err)
 		}
 		jobs = append(jobs, job)
@@ -185,8 +283,8 @@ func (a *App) allJobs() ([]Job, error) {
 func (a *App) jobByID(id int64) (Job, error) {
 	var job Job
 	err := a.db.QueryRow(
-		"SELECT id, url, host, title, description, company, stage, priority, salary_text, salary_origin, title_manual, description_manual, company_manual, salary_manual, source_status, source_note, source_checked_at, COALESCE(selected_resume_id,0), (SELECT COUNT(*) FROM submissions WHERE job_id=jobs.id), COALESCE((SELECT MAX(submitted_at) FROM submissions WHERE job_id=jobs.id),'') FROM jobs WHERE id = ?", id,
-	).Scan(&job.ID, &job.URL, &job.Host, &job.Title, &job.Description, &job.Company, &job.Stage, &job.Priority, &job.SalaryText, &job.SalaryOrigin, &job.TitleManual, &job.DescriptionManual, &job.CompanyManual, &job.SalaryManual, &job.SourceStatus, &job.SourceNote, &job.SourceCheckedAt, &job.SelectedResumeID, &job.SubmissionCount, &job.LastSubmittedAt)
+		"SELECT id, url, host, title, description, company, stage, priority, salary_text, salary_origin, title_manual, description_manual, company_manual, salary_manual, source_status, source_note, source_checked_at, COALESCE(selected_resume_id,0), (SELECT COUNT(*) FROM submissions WHERE job_id=jobs.id), COALESCE((SELECT MAX(submitted_at) FROM submissions WHERE job_id=jobs.id),''), COALESCE(parked_at,'') FROM jobs WHERE id = ?", id,
+	).Scan(&job.ID, &job.URL, &job.Host, &job.Title, &job.Description, &job.Company, &job.Stage, &job.Priority, &job.SalaryText, &job.SalaryOrigin, &job.TitleManual, &job.DescriptionManual, &job.CompanyManual, &job.SalaryManual, &job.SourceStatus, &job.SourceNote, &job.SourceCheckedAt, &job.SelectedResumeID, &job.SubmissionCount, &job.LastSubmittedAt, &job.ParkedAt)
 	if err != nil {
 		return Job{}, fmt.Errorf("load job %d: %w", id, err)
 	}
@@ -231,15 +329,98 @@ func (a *App) updateJob(job Job) error {
 	return nil
 }
 
+// moveJobsAttention atomically moves unfinished jobs between Focus
+// (parked_at empty) and Saved for Later (parked_at timestamp). It never
+// changes stage, priority, resume selection, answers, letters, or submission
+// history. Terminal jobs (applied/closed or with submissions) keep History
+// membership regardless of the stored placement, so a later closure
+// automatically leaves Focus/Saved. Any missing/invalid ID, terminal job, or
+// DB error rolls the whole batch back: no partial moves are committed.
+func (a *App) moveJobsAttention(ids []int64, attention string, now string) (int64, error) {
+	var parkedAt string
+	switch attention {
+	case "focus":
+		parkedAt = ""
+	case "saved":
+		if strings.TrimSpace(now) == "" {
+			parkedAt = time.Now().UTC().Format(time.RFC3339)
+		} else {
+			parkedAt = now
+		}
+	default:
+		return 0, fmt.Errorf("invalid attention placement")
+	}
+	if len(ids) == 0 || len(ids) > maxDeleteBatch {
+		return 0, fmt.Errorf("select 1–%d jobs", maxDeleteBatch)
+	}
+	seen := make(map[int64]bool, len(ids))
+	for _, id := range ids {
+		if id <= 0 || seen[id] {
+			return 0, fmt.Errorf("invalid or duplicate job ID")
+		}
+		seen[id] = true
+	}
+	tx, err := a.db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("move jobs: %w", err)
+	}
+	defer tx.Rollback()
+	for _, id := range ids {
+		var stage string
+		var submissionCount int64
+		err := tx.QueryRow(`SELECT stage, (SELECT COUNT(*) FROM submissions WHERE job_id=jobs.id) FROM jobs WHERE id=?`, id).Scan(&stage, &submissionCount)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return 0, sql.ErrNoRows
+			}
+			return 0, fmt.Errorf("move job %d: %w", id, err)
+		}
+		if stage == StageApplied || stage == StageClosed || submissionCount > 0 {
+			return 0, ErrAttentionTerminal
+		}
+		if _, err := tx.Exec(`UPDATE jobs SET parked_at = ? WHERE id = ?`, parkedAt, id); err != nil {
+			return 0, fmt.Errorf("move job %d: %w", id, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("move jobs: %w", err)
+	}
+	return int64(len(ids)), nil
+}
+
+// setJobAttention moves a single unfinished job between Focus and Saved.
+// Terminal enforcement lives in moveJobsAttention so single and bulk moves
+// share one atomic eligibility contract.
+func (a *App) setJobAttention(id int64, attention string, now string) error {
+	_, err := a.moveJobsAttention([]int64{id}, attention, now)
+	return err
+}
+
 // applyPostingRefresh atomically applies an employer observation without touching manually
 // edited values. A failed lookup updates evidence only, never the saved job content.
+// A retrieved lookup also persists the sealed rich posting source (location,
+// workplace, employment, description evidence) the same way single intake
+// does, so bulk-enriched postings keep the useful public facts available
+// from their source. Non-retrieved or non-available results leave existing
+// evidence untouched, and manual descriptions keep their precedence through
+// the confirmed flags.
+//
+// KAN-16 closure protection: a confirmed closure retires an unfinished job to
+// History → Closed, but it must never rewrite an applied stage or a
+// submission-recorded job. Applied and submission-recorded rows keep their
+// stage and history; the closure is recorded as source_status evidence only.
 func (a *App) applyPostingRefresh(id int64, metadata platforms.Metadata, status, note, checkedAt string) error {
 	salaryOrigin := metadata.SalaryOrigin
 	if salaryOrigin == "" {
 		salaryOrigin = "employer"
 	}
-	result, err := a.db.Exec(`UPDATE jobs SET
-			stage = CASE WHEN ? = 'closed' THEN 'closed' ELSE stage END,
+	tx, err := a.db.Begin()
+	if err != nil {
+		return fmt.Errorf("refresh job %d: %w", id, err)
+	}
+	defer tx.Rollback()
+	result, err := tx.Exec(`UPDATE jobs SET
+			stage = CASE WHEN ? = 'closed' AND stage <> 'applied' AND NOT EXISTS (SELECT 1 FROM submissions WHERE submissions.job_id = jobs.id) THEN 'closed' ELSE stage END,
             title = CASE WHEN ? = 'retrieved' AND title_manual = 0 AND ? <> '' THEN ? ELSE title END,
             company = CASE WHEN ? = 'retrieved' AND company_manual = 0 AND ? <> '' THEN ? ELSE company END,
             description = CASE WHEN ? = 'retrieved' AND description_manual = 0 AND ? <> '' THEN ? ELSE description END,
@@ -263,6 +444,29 @@ func (a *App) applyPostingRefresh(id int64, metadata platforms.Metadata, status,
 	}
 	if n == 0 {
 		return sql.ErrNoRows
+	}
+	if status == "retrieved" {
+		var jobURL string
+		if err := tx.QueryRow(`SELECT url FROM jobs WHERE id = ?`, id).Scan(&jobURL); err != nil {
+			return fmt.Errorf("refresh job %d: %w", id, err)
+		}
+		usable := platforms.NormalizePostingSourceResult(metadata.Source)
+		if usable.Availability == platforms.PostingSourceAvailable && usable.Validate(jobURL, metadata.Description) == nil {
+			successAt := checkedAt
+			if _, err := time.Parse(time.RFC3339Nano, successAt); err != nil {
+				if parsed, perr := time.Parse(time.RFC3339, checkedAt); perr == nil {
+					successAt = parsed.UTC().Format(time.RFC3339Nano)
+				} else {
+					return fmt.Errorf("refresh job %d: invalid success time: %w", id, err)
+				}
+			}
+			if err := saveJobPostingSource(tx, id, jobURL, metadata.Description, successAt, usable, metadata.Description != "", metadata.SalaryText != ""); err != nil {
+				return fmt.Errorf("refresh job %d: %w", id, err)
+			}
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("refresh job %d: %w", id, err)
 	}
 	return nil
 }

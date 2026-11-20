@@ -16,7 +16,64 @@ const formUUID = `[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`
 var namespacedSystemField = regexp.MustCompile(`(?i)^` + formUUID + `__(systemfield_[a-z_]+)$`)
 var namespacedCustomField = regexp.MustCompile(`(?i)^` + formUUID + `_` + formUUID + `$`)
 
+// isPronounsLabel reports employer wording that asks for the applicant's
+// pronouns, in any of the observed phrasings. It is intentionally broader
+// than the qualified profile set so extended Lever-style controls are still
+// recognized as pronouns and routed to honest manual review.
+func isPronounsLabel(label string) bool {
+	return strings.Contains(candidateProfileLabel(label), "pronoun")
+}
+
+// pronounsRequiresManual reports pronouns controls that the existing
+// question and answer model cannot represent accurately. A single checkbox
+// can never capture a collection of pronoun options (it would render as an
+// incorrect Yes/No), and multi-option, multi-select, custom-text, or
+// "use name only" variants have no qualified single-value profile mapping.
+// Those controls stay manual-only with their observed options preserved;
+// no Fill eligibility is granted and no profile value is silently mapped.
+func pronounsRequiresManual(f schema.Field) bool {
+	if !isPronounsLabel(f.Label) {
+		return false
+	}
+	kind := strings.ToLower(strings.TrimSpace(f.Kind))
+	switch kind {
+	case "select", "radio", "multi_value_single_select":
+		for _, option := range f.Options {
+			low := strings.ToLower(strings.TrimSpace(option))
+			if low == "" {
+				continue
+			}
+			if low == "yes" || low == "no" || low == "true" || low == "false" {
+				return true
+			}
+			// Extended Lever-style pronouns beyond the qualified He/him,
+			// She/her, They/them set. Match full tokens so They/them is
+			// never mistaken for Ey/em.
+			if low == "xe/xem" || low == "ze/hir" || low == "ey/em" ||
+				low == "hir/hir" || low == "fae/faer" || low == "hu/hu" ||
+				strings.Contains(low, "xe/xem") || strings.Contains(low, "ze/hir") ||
+				strings.Contains(low, "ey/em") || strings.Contains(low, "fae/faer") ||
+				strings.Contains(low, "hu/hu") || strings.Contains(low, "hir/hir") ||
+				strings.Contains(low, "hir/") && strings.Contains(low, "/hir") ||
+				strings.Contains(low, "use name") || strings.Contains(low, "custom") {
+				return true
+			}
+		}
+		return false
+	case "text", "textarea", "input_text":
+		return false
+	default:
+		// checkbox, checkbox_group, custom_checkbox*, combobox, listbox,
+		// unsupported_ambiguous, and any other structured kind cannot
+		// represent a pronouns collection as a single Yes/No or profile fact.
+		return true
+	}
+}
+
 func editableQuestion(f schema.Field, unique bool) bool {
+	if pronounsRequiresManual(f) {
+		return false
+	}
 	if !stableQuestionIdentity(f, unique) {
 		return false
 	}
@@ -44,8 +101,47 @@ func profileQuestionIdentity(id string) string {
 }
 
 func stableQuestionIdentity(f schema.Field, unique bool) bool {
+	if !unique || f.Sensitive {
+		return false
+	}
+	// Observer fallback wording describes the observation failure, never the
+	// employer's question, so it must not become a question identity,
+	// reusable entry, or transfer target.
+	if inspectorFallbackLabel(f.Label) {
+		return false
+	}
 	id := profileQuestionIdentity(f.ID)
-	return unique && !f.Sensitive && id != "" && !positionalQuestionID.MatchString(id) && !strings.HasPrefix(id, "unidentified-") && !strings.Contains(strings.ToLower(f.Label), "cover letter")
+	if id == "" || strings.HasPrefix(id, "unidentified-") || strings.Contains(strings.ToLower(f.Label), "cover letter") {
+		return false
+	}
+	// Positional machine identities ("question-1", "field_3") are DOM
+	// observation junk, never employer questions. Greenhouse public API
+	// definitions are the exception: the provider itself names custom
+	// questions "question_N", so those identities are authoritative.
+	if positionalQuestionID.MatchString(id) && !providerDefinitionIdentity(f.ID) {
+		return false
+	}
+	return true
+}
+
+// providerDefinitionIdentity reports IDs minted by a documented provider
+// definition (Greenhouse public API groups), as opposed to live DOM
+// observation. Only the Greenhouse inspector uses these group prefixes.
+func providerDefinitionIdentity(id string) bool {
+	for _, prefix := range []string{"application:", "location:", "compliance:"} {
+		if strings.HasPrefix(id, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// inspectorFallbackLabel reports labels the read-only observer emits when it
+// could not establish employer wording. They describe the observation
+// failure, never the employer's question.
+func inspectorFallbackLabel(label string) bool {
+	trimmed := strings.TrimSpace(label)
+	return trimmed == "Unlabeled control" || strings.HasPrefix(trimmed, "Radio group: ")
 }
 
 // employerOnlyQuestion labels identify questions the existing preparation
@@ -99,6 +195,10 @@ func candidateLocation(p CandidateProfile) string {
 // resolveApplicationAnswer is pure and uses explicit identity plus compatible
 // labels. Label similarity alone never supplies an answer.
 func resolveApplicationAnswer(f schema.Field, explicit string, hasExplicit bool, p CandidateProfile, memory string, hasMemory bool) (string, string) {
+	return resolveApplicationAnswerForWebsite(f, explicit, hasExplicit, p, memory, hasMemory, false)
+}
+
+func resolveApplicationAnswerForWebsite(f schema.Field, explicit string, hasExplicit bool, p CandidateProfile, memory string, hasMemory, hasSeparateGitHubDestination bool) (string, string) {
 	if hasExplicit {
 		return explicit, "Saved for this application"
 	}
@@ -114,7 +214,7 @@ func resolveApplicationAnswer(f schema.Field, explicit string, hasExplicit bool,
 			}
 		}
 	}
-	if value := resolveAdditionalProfileFact(f, p); value != "" {
+	if value := resolveAdditionalProfileFactForWebsite(f, p, hasSeparateGitHubDestination); value != "" {
 		return value, "Approved candidate information"
 	}
 	if hasMemory && !f.Sensitive {
@@ -123,77 +223,38 @@ func resolveApplicationAnswer(f schema.Field, explicit string, hasExplicit bool,
 	return "", ""
 }
 
-// These exact labels and identities intentionally exclude eligibility, consent,
-// demographic questions and general narrative prompts. No value is inferred.
+// Resolve values separately from intrinsic field identity and transfer authority.
 func resolveAdditionalProfileFact(f schema.Field, p CandidateProfile) string {
-	id := profileQuestionIdentity(f.ID)
-	if !p.Approved || f.Sensitive || id == "" || positionalQuestionID.MatchString(id) || strings.HasPrefix(id, "unidentified-") {
+	return resolveAdditionalProfileFactForWebsite(f, p, false)
+}
+
+func resolveAdditionalProfileFactForWebsite(f schema.Field, p CandidateProfile, hasSeparateGitHubDestination bool) string {
+	if !p.Approved {
 		return ""
 	}
-	// Ordinary profile fields may have employer-generated opaque identities.
-	label := candidateProfileLabel(f.Label)
-	linkedin := label == "linkedin" || label == "linkedin url" || label == "linkedin profile" || label == "linkedin profile url" || label == "linkedin profile link" || label == "linkedin link" || label == "your linkedin profile" || label == "your linkedin url"
-	if linkedin {
-		id = "linkedin"
-	}
-	location := label == "location" || label == "current location" || label == "your location"
-	if location && (f.Kind == "text" || f.Kind == "combobox") {
+	key := additionalProfileAttribute(f)
+	if key == "location" {
 		return candidateLocation(p)
 	}
-
-	pronouns := label == "pronouns" || label == "preferred pronouns" || label == "what are your pronouns?" || label == "what are your pronouns"
-	var value string
-	urlField := false
-	if pronouns {
-		value = p.Pronouns
-	} else {
-		switch id {
-		case "city":
-			if label == "city" {
-				value = p.City
-			}
-		case "region", "state", "state_province":
-			if label == "state" || label == "region" || label == "state / region" || label == "state/region" || label == "state/province" {
-				value = p.Region
-			}
-		case "country":
-			if label == "country" {
-				value = p.Country
-			}
-		case "linkedin", "linkedin_url":
-			urlField = true
-			if linkedin {
-				value = p.LinkedIn
-			}
-		case "github", "github_url":
-			urlField = true
-			if label == "github" || label == "github url" || label == "github profile" || label == "github profile url" {
-				value = p.GitHub
-			}
-		case "portfolio", "portfolio_url":
-			urlField = true
-			if label == "portfolio" || label == "portfolio url" || label == "portfolio website" || label == "portfolio or work sample url" {
-				value = p.Portfolio
-			}
+	if key == "website" {
+		if value := strings.TrimSpace(p.Portfolio); value != "" {
+			return value
 		}
+		if !hasSeparateGitHubDestination {
+			return strings.TrimSpace(p.GitHub)
+		}
+		return ""
 	}
+	value := map[string]string{"pronouns": p.Pronouns, "city": p.City, "region": p.Region, "country": p.Country, "linkedin": p.LinkedIn, "github": p.GitHub, "portfolio": p.Portfolio}[key]
 	if value == "" {
 		return ""
 	}
-	if f.Kind == "text" || f.Kind == "textarea" || (urlField && f.Kind == "url") {
+	if f.Kind != "select" && f.Kind != "radio" {
 		return value
 	}
-	if urlField || (f.Kind != "select" && !(pronouns && f.Kind == "radio")) {
-		return ""
-	}
-	// Preserve exact employer text. Even two equivalent options are ambiguous.
 	match := ""
 	for _, option := range f.Options {
-		equal := option == value
-		if pronouns {
-			equal = pronounOption(option, value)
-		}
-		if equal {
+		if option == value || (key == "pronouns" && pronounOption(option, value)) {
 			if match != "" {
 				return ""
 			}
@@ -201,6 +262,19 @@ func resolveAdditionalProfileFact(f schema.Field, p CandidateProfile) string {
 		}
 	}
 	return match
+}
+
+func hasSeparateGitHubProfileDestination(fields []schema.Field) bool {
+	counts := make(map[string]int, len(fields))
+	for _, field := range fields {
+		counts[field.ID]++
+	}
+	for _, field := range fields {
+		if classifyApplicationField(field, counts[field.ID] == 1).Role == fieldCandidateProfile && additionalProfileAttribute(field) == "github" {
+			return true
+		}
+	}
+	return false
 }
 
 func pronounOption(option, preference string) bool {
@@ -219,61 +293,4 @@ func pronounOption(option, preference string) bool {
 		return normalized == "they/them" || normalized == "they/them/theirs"
 	}
 	return false
-}
-
-// Match the same explicit contact identities and compatible labels as the
-// browser contact filler. A name belonging to a manager or reference is excluded.
-func profileContactKey(f schema.Field) string {
-	if f.Sensitive {
-		return ""
-	}
-	id := profileQuestionIdentity(f.ID)
-	if match := namespacedSystemField.FindStringSubmatch(id); match != nil {
-		id = match[1]
-	}
-	// A telephone input supplies machine semantics even with an opaque ID.
-	// The exact compatible label below still excludes references and managers.
-	if f.Kind == "tel" && namespacedCustomField.MatchString(id) {
-		id = "phone"
-	}
-	id = strings.NewReplacer("_", "", "-", "", " ", "").Replace(strings.ToLower(id))
-	label := strings.ToLower(f.Label)
-	label = strings.NewReplacer("(required)", "", "(optional)", "", "*", "", "✱", "").Replace(label)
-	label = strings.Join(strings.Fields(label), " ")
-	key := ""
-	switch id {
-	case "name", "fullname", "systemfieldname":
-		if label == "name" || label == "full name" || label == "full legal name" || label == "your name" {
-			key = "name"
-		}
-	case "firstname", "givenname", "systemfieldfirstname":
-		if label == "first name" || label == "given name" {
-			key = "first_name"
-		}
-	case "lastname", "familyname", "surname", "systemfieldlastname":
-		if label == "last name" || label == "family name" || label == "surname" {
-			key = "last_name"
-		}
-	case "email", "emailaddress", "systemfieldemail":
-		if label == "email" || label == "email address" {
-			key = "email"
-		}
-	case "phone", "phonenumber", "mobilephone", "systemfieldphone":
-		if label == "phone" || label == "phone number" || label == "mobile phone" || label == "mobile number" {
-			key = "phone"
-		}
-	}
-	switch f.Kind {
-	case "text", "input_text", "textarea":
-		return key
-	case "email":
-		if key == "email" {
-			return key
-		}
-	case "tel":
-		if key == "phone" {
-			return key
-		}
-	}
-	return ""
 }

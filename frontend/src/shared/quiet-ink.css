@@ -233,3 +233,16 @@ button,input,select,textarea {accent-color:var(--color-action)}
 
 /* React mount. */
 #root{min-height:100vh}
+
+/* ATS platform icon: small bundled mark beside the employer identity.
+   The white chip keeps third-party artwork legible in light and dark
+   themes without filters or stretched art; wide wordmarks keep their
+   aspect ratio inside a capped chip. The fallback is a neutral globe that
+   occupies the same footprint, so known and unknown sources never shift
+   layout. The icon identifies the posting platform only. */
+.ats-icon{display:inline-flex;align-items:center;justify-content:center;height:22px;min-width:22px;max-width:88px;padding:2px 5px;box-sizing:border-box;background:#fff;border:1px solid var(--color-border-strong);border-radius:6px;flex:0 0 auto}
+.ats-icon img{display:block;height:16px;width:auto;max-width:76px;object-fit:contain}
+.ats-icon-fallback{background:var(--color-surface-muted);color:var(--color-muted)}
+.ats-icon-fallback svg{display:block;height:15px;width:15px}
+.job-row-meta .ats-icon{margin-right:1px}
+.page-description .ats-icon{margin-left:7px;vertical-align:-6px}

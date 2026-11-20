@@ -4,7 +4,7 @@
 
 The [macOS packaging PR #4](https://github.com/jenksed/yourmove-go/pull/4) merged into `main` at commit `2d2f16b8965bdea6aad07229e2edba06247ac5e2`. [CI on that merge](https://github.com/jenksed/yourmove-go/actions/runs/39908694684) completed successfully, including the bundle build/verification job. No public GitHub release was published at this review.
 
-Read the [release policy](RELEASE_POLICY.md), [roadmap](ROADMAP.md), [runbook](RELEASE_PROCESS.md), [v0.1.0 notes](releases/0.1.0-macos.md), and [artifact decision](../release/decisions/v0.1.0.md).
+Read the [release policy](RELEASE_POLICY.md), [October 23 release plan](roadmaps/archive/2026-10-23-initial-release-roadmap.md), [runbook](RELEASE_PROCESS.md), [v0.1.0 notes](releases/0.1.0-macos.md), and [artifact decision](../release/decisions/v0.1.0.md).
 
 ## Locally established
 
@@ -37,4 +37,4 @@ Read the [release policy](RELEASE_POLICY.md), [roadmap](ROADMAP.md), [runbook](R
 
 Do not ship an artifact that may lose or misassociate records, exceed the applicant's authorization, disclose sensitive information, or fail to install under its advertised distribution path. Unqualified optional features or ATS providers can be removed from the claims, but a broken core workflow cannot be relabeled as a pass.
 
-The target date in [ROADMAP.md](ROADMAP.md) is a planning checkpoint, not a release promise. Early shipment is allowed when the applicable gates are met; otherwise restrict the scope or hold.
+The [October 23 release plan](roadmaps/archive/2026-10-23-initial-release-roadmap.md) used target dates to schedule readiness reviews. Early shipment is allowed when the applicable gates are met; otherwise restrict the scope or hold.

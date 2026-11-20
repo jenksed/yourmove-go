@@ -36,12 +36,19 @@ func (a *App) updateCandidate(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.WriteHeader(http.StatusBadRequest)
 		// Preserve the rejected submission so the applicant can correct and
-		// retry without losing entered values. Nothing is persisted here.
+		// retry without losing entered values. Nothing is persisted here, so
+		// the heading badge reflects the persisted approval state, never the
+		// rejected checkbox.
+		saved, serr := a.candidateProfile()
+		if serr != nil {
+			saved = CandidateProfile{}
+		}
 		_ = a.resources.candidateTemplate.ExecuteTemplate(w, "candidate-save-error", struct {
 			Profile        CandidateProfile
+			Saved          CandidateProfile
 			Error          string
 			ApproveChecked bool
-		}{Profile: p, Error: "Profile was not saved: " + err.Error(), ApproveChecked: r.PostForm.Get("approve") == "yes"})
+		}{Profile: p, Saved: saved, Error: "Profile was not saved: " + err.Error(), ApproveChecked: r.PostForm.Get("approve") == "yes"})
 		return
 	}
 	http.Redirect(w, r, "/candidate", http.StatusSeeOther)

@@ -135,8 +135,14 @@ func briefQuestionFromEarly(q earlyApplicationQuestion) briefQuestion {
 }
 
 func safePublishedOptions(kind string, options []string) []string {
+	// Display-only passthrough for controls whose choices were reliably
+	// observed. Custom structured kinds stay manual-only through the
+	// classifier and editability gates; publishing their observed choices
+	// never confers save or Fill authority.
 	switch kind {
-	case "select", "radio", "multi_value_single_select":
+	case "select", "radio", "multi_value_single_select",
+		"checkbox_group", "custom_radio_group", "custom_checkbox_group",
+		"combobox", "custom_combobox", "listbox":
 		return append([]string(nil), options...)
 	default:
 		return nil

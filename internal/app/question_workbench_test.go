@@ -12,8 +12,8 @@ import (
 )
 
 func TestQuestionWorkbenchLocalStatusAndReturnContext(t *testing.T) {
-	editable := preparedQuestion{Key: strings.Repeat("a", 64), Editable: true, Source: "Saved for this application", Revision: 1}
-	ready := preparedQuestion{Key: strings.Repeat("b", 64), Editable: true, Value: "false", Revision: 2}
+	editable := preparedQuestion{Field: schema.Field{ID: "story", Kind: "textarea"}, Key: strings.Repeat("a", 64), Editable: true, Source: "Saved for this application", Revision: 1}
+	ready := preparedQuestion{Field: schema.Field{ID: "other", Kind: "text"}, Key: strings.Repeat("b", 64), Editable: true, Value: "false", Revision: 2}
 	profile := preparedQuestion{Key: strings.Repeat("d", 64), Editable: true, Value: "casey@example.test", Source: "Approved candidate information"}
 	manual := preparedQuestion{Key: strings.Repeat("c", 64), Value: "ignored", Field: schema.Field{Sensitive: true}}
 	if editable.LocalStatus() != "Needs your answer" || ready.LocalStatus() != "Answer saved locally. It has not been filled on the employer website." ||
